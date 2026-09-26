@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint:spec": "node scripts/lint-spec.ts"
+    "lint:spec": "node scripts/lint-spec.ts",
+    "generate:schema": "node scripts/generate-postgres-schema.ts",
+    "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +22,7 @@
   },
   "type": "module",
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^26.6.2",
     "ts-morph": "^28.0.0",
     "vitest": "^5.0.2"

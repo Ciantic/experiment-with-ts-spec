@@ -194,7 +194,7 @@ describe("lintSourceText", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: formula=`doesNotExist` is not defined in spec/domain/formulas.ts (rowFormulas, invoiceFormulas)",
+            "`label`: formula=`doesNotExist` is not defined in spec/postgres/formulas.ts (rowFormulas, invoiceFormulas)",
         ]);
     });
 

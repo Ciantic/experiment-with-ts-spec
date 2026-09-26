@@ -6,7 +6,11 @@ import type { InvoiceRow } from "./InvoiceRow.js";
 /** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;
 
-/** An invoice. */
+/**
+ * An invoice.
+ * 
+ * @table invoice
+ */
 export interface Invoice {
     /**
      * The unique identifier for the invoice.
@@ -22,6 +26,7 @@ export interface Invoice {
      * 
      * @fieldName Invoice number
      * @generated
+     * @unique
      * @widget text
      */
     number: string;
@@ -30,6 +35,7 @@ export interface Invoice {
      * The customer this invoice is issued to.
      * 
      * @fieldName Customer
+     * @relation Customer
      * @widget select
      */
     customer?: Customer;
@@ -89,6 +95,7 @@ export interface Invoice {
      * The line items that make up the invoice.
      * 
      * @fieldName Rows
+     * @children InvoiceRow
      * @widget table
      */
     rows: InvoiceRow[];

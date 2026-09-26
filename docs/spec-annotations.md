@@ -5,10 +5,19 @@ consumes. This note records what each tag means and how it lands in Postgres.
 
 ## Tags
 
+Field tags:
+
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
 - `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
+- `@relation <Entity>` — the field holds an entity object, not a scalar. Emits a foreign key column named `<field>Id`.
+- `@children <Entity>` — the field holds a child collection. Not a column; the child table carries the foreign key.
+- `@unique` — the column is unique.
+
+Interface tags:
+
+- `@table <name>` — the table name. Defaults to the snake_cased interface name.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:
@@ -22,7 +31,7 @@ of other data.
 ```
 
 - `storage=` selects the wrapper the expression is embedded in.
-- `formula=` names an entry in `spec/domain/formulas.ts`. Names are resolved
+- `formula=` names an entry in `spec/postgres/formulas.ts`. Names are resolved
   there, never inlined into the tag.
 
 ## Storage modes
@@ -73,13 +82,21 @@ consequences:
 - **Trigger order is part of the contract.** For `invoice_row`: `netAmount`,
   then `taxAmount`, then `totalAmount`. Reordering the assignments produces
   stale values rather than an error.
-- **One aggregate has two spellings.** `Invoice.netAmount`/`taxAmount` reference
-  the parent as `"invoice"."id"` in a view but `NEW."id"` in a trigger, so
-  `invoiceFormulas` stores both. They are the same fragment in two contexts and
-  must be edited together.
+- **One aggregate has two child-change spellings.** `Invoice.netAmount`/`taxAmount` are
+  maintained by triggers on `invoice_row`, so `invoiceFormulas` stores a `childNew`
+  statement (for insert/update) and a `childOld` statement (for delete). Both
+  hardcode the foreign key column name `"invoiceId"`, which is why the aggregate
+  fragments only work for a child whose key column has that name. They must be
+  edited together.
+- **The invoice total is not set by the rollup.** The rollups write `netAmount` and
+  `taxAmount` only. That update fires the invoice's own before-update trigger,
+  which recomputes `totalAmount` from the two. Ordering is therefore load-bearing.
 - **Currency is not yet modelled.** `Invoice.currency` was removed and `Price` is
   a bare `bigint`, so amounts currently carry no currency. The doc comments that
   say "in the invoice currency" are forward references to work not yet done.
+- **Tags must be on their own line.** A tag written inline on the same line as
+  the field, as in `/** @unique */ code: string;`, is not attached to the field
+  and is silently ignored by both the generator and the linter. Use a JSDoc block.
 - **No tag is a valid state.** A client-supplied field carries no `@generated`
   and no `@computed`. Only present tags are validated.
 - **Registry pairing is convention, not enforced.** `Invoice` amounts use
@@ -90,6 +107,10 @@ consequences:
 
 ## Deliberately not implemented
 
+- **Views for `storage=derived`.** The mode is accepted and documented, but the
+  generator emits nothing for it.
+- **`storage=generated`.** Rejected in practice: aggregates cross tables and a
+  generated column cannot read another generated column.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
   in the invoice currency. `formulas.ts` would then gain rate-aware expressions,
@@ -102,10 +123,16 @@ consequences:
 
 1. A generator parses the `@` tags from `spec/`.
 2. For each `@computed` field it resolves `formula=` against `rowFormulas` or
-   `invoiceFormulas` in `spec/domain/formulas.ts`.
+   `invoiceFormulas` in `spec/postgres/formulas.ts`.
 3. It wraps the fragment according to `storage=` and emits DDL: a generated
    column, a trigger assignment, or a view projection.
 4. `@generated` fields are emitted as ordinary columns the application populates.
+
+`scripts/generate-postgres-schema.ts` implements steps 2 and 3 for
+`storage=stored`. See `docs/schema-generation.md`.
+
+It reads `formulas.ts` with ts-morph rather than importing it, because the spec
+imports use `.js` extensions that plain `node` cannot resolve to `.ts` files.
 
 ## Linting
 
@@ -114,14 +141,14 @@ consequences:
 
 Enforced:
 
-- Tags are limited to `@fieldName`, `@widget`, `@generated`, `@computed`.
+- Tags are limited to the field and interface tags listed above.
 - Retired tags (`@readonly`, `@type`, `@values`) report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@generated` and `@computed` are mutually exclusive; `@generated` takes no
   parameters.
 - `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
   `formula=`, and rejects unknown parameters.
-- `formula=` must name a key in a registry in `spec/domain/formulas.ts`.
+- `formula=` must name a key in a registry in `spec/postgres/formulas.ts`.
 - Tags may not repeat on a field.
 
 Gotchas:

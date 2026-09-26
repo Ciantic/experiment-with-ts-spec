@@ -1,8 +1,19 @@
 /** Check the annotation tags on `spec/` interfaces. See docs/spec-annotations.md. */
-import { Node, Project, SyntaxKind, type JSDocTag, type PropertySignature } from "ts-morph";
+import { Node, Project, SyntaxKind, type InterfaceDeclaration, type JSDocTag, type PropertySignature } from "ts-morph";
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
-const ALLOWED_TAGS = new Set(["fieldName", "widget", "generated", "computed"]);
+const ALLOWED_TAGS = new Set([
+    "fieldName",
+    "widget",
+    "generated",
+    "computed",
+    "relation",
+    "children",
+    "unique",
+]);
+
+/** Tags an interface may carry. */
+const ALLOWED_INTERFACE_TAGS = new Set(["table"]);
 
 /** Retired tags, reported with their replacement rather than as "unknown". */
 const RETIRED_TAGS = new Map([
@@ -24,11 +35,11 @@ const ALLOWED_WIDGETS = new Set([
 /** Storage modes a @computed field may carry. */
 const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
 
-/** The formula registries in `spec/domain/formulas.ts`. */
+/** The formula registries in `spec/postgres/formulas.ts`. */
 const FORMULA_REGISTRIES = ["rowFormulas", "invoiceFormulas"];
 
 const SPEC_GLOB = "spec/**/*.ts";
-const FORMULAS_FILE = "spec/domain/formulas.ts";
+const FORMULAS_FILE = "spec/postgres/formulas.ts";
 
 export interface Finding {
     filePath: string;
@@ -100,7 +111,29 @@ function parseParameters(tag: JSDocTag): Map<string, string> {
     return parameters;
 }
 
-export function lintProperty(
+/** Check the tags on the interface declaration itself. */
+export function lintInterface(
+    declaration: InterfaceDeclaration,
+    filePath: string,
+    findings: Finding[],
+): void {
+    const name = declaration.getName();
+    for (const doc of declaration.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            const tagName = tag.getTagName();
+            if (ALLOWED_INTERFACE_TAGS.has(tagName)) {
+                continue;
+            }
+            findings.push({
+                filePath,
+                line: tag.getStartLineNumber(),
+                message: `\`${name}\`: @${tagName} is not a recognised interface tag`,
+            });
+        }
+    }
+}
+
+function lintProperty(
     property: PropertySignature,
     filePath: string,
     formulaNames: Set<string>,
@@ -224,6 +257,7 @@ export function lintSourceText(
     const sourceFile = project.createSourceFile(`/${filePath}`, text);
     const findings: Finding[] = [];
     for (const declaration of sourceFile.getInterfaces()) {
+        lintInterface(declaration, filePath, findings);
         for (const property of declaration.getProperties()) {
             lintProperty(property, filePath, formulaNames, findings);
         }
@@ -245,6 +279,7 @@ export function lintProject(project: Project): { findings: Finding[]; interfaces
         }
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
+            lintInterface(declaration, filePath, findings);
             for (const property of declaration.getProperties()) {
                 properties += 1;
                 lintProperty(property, filePath, formulaNames, findings);

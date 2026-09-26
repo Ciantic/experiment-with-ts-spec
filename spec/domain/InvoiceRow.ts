@@ -6,7 +6,11 @@ import type { InvoiceId } from "./Invoice.js";
 /** The unique identifier for an invoice row. */
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 
-/** A single line item on an invoice. */
+/**
+ * A single line item on an invoice.
+ * 
+ * @table invoice_row
+ */
 export interface InvoiceRow {
     /**
      * The unique identifier for the row.
