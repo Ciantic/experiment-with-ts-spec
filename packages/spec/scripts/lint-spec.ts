@@ -19,6 +19,7 @@ const ALLOWED_TAGS = new Set([
     "inlined",
     "unique",
     "default",
+    "version",
 ]);
 
 /** Tags an interface may carry. */
@@ -155,6 +156,13 @@ function parseParameters(tag: JSDocTag): Map<string, string> {
     return parameters;
 }
 
+/** True when a property carries `@version`. */
+function hasVersionTag(property: PropertySignature): boolean {
+    return property
+        .getJsDocs()
+        .some((doc) => doc.getTags().some((tag) => tag.getTagName() === "version"));
+}
+
 /** Check the tags on the interface declaration itself. */
 export function lintInterface(
     declaration: InterfaceDeclaration,
@@ -174,6 +182,16 @@ export function lintInterface(
                 message: `\`${name}\`: @${tagName} is not a recognised interface tag`,
             });
         }
+    }
+
+    // An entity has at most one optimistic-lock column.
+    const versioned = declaration.getProperties().filter(hasVersionTag);
+    for (const property of versioned.slice(1)) {
+        findings.push({
+            filePath,
+            line: property.getStartLineNumber(),
+            message: `\`${name}\`: @version may appear on at most one field`,
+        });
     }
 }
 
@@ -306,6 +324,21 @@ function lintProperty(
         }
         if ((tags.get("children") ?? []).length > 0) {
             report("@inlined and @children are mutually exclusive", inlinedTag);
+        }
+    }
+
+    // @version marks the optimistic-lock column; the type must be Version and the value is not derived.
+    const versionTag = (tags.get("version") ?? [])[0];
+    if (versionTag) {
+        if (generatedTags.length > 0) {
+            report("@version and @generated are mutually exclusive", versionTag);
+        }
+        if (computedTags.length > 0) {
+            report("@version and @computed are mutually exclusive", versionTag);
+        }
+        const typeText = property.getTypeNode()?.getText();
+        if (typeText !== "Version") {
+            report(`@version must be on a \`Version\` field, found \`${typeText ?? "unknown"}\``, versionTag);
         }
     }
 }

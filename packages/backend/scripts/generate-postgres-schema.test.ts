@@ -485,6 +485,42 @@ describe("generateSchema triggers", () => {
     });
 });
 
+describe("generateSchema @version", () => {
+    const thing = `export interface Thing {
+        id: GUID;
+        /**
+         * The revision.
+         * @version
+         * @default 0
+         */
+        version?: Version;
+    }`;
+
+    it("maps Version to int8 with a zero default", () => {
+        const { sql, diagnostics } = generate({ domain: { Thing: thing } });
+
+        expect(diagnostics).toEqual([]);
+        expect(sql).toContain('"version" int8 not null default 0');
+    });
+
+    it("emits a before-update guard that validates and increments the version", () => {
+        const { sql } = generate({ domain: { Thing: thing } });
+
+        expect(sql).toContain('create function "thing_version"() returns trigger as $$');
+        expect(sql).toContain('before update on "thing"');
+        expect(sql).toContain('if NEW."version" is distinct from OLD."version" then');
+        expect(sql).toContain(`raise exception 'version conflict on thing %', OLD."id"`);
+        expect(sql).toContain("using errcode = '40001';");
+        expect(sql).toContain('NEW."version" := OLD."version" + 1;');
+    });
+
+    it("emits no version trigger when no field carries @version", () => {
+        const { sql } = generate({ domain: { Thing: "export interface Thing { id: GUID; }" } });
+
+        expect(sql).not.toContain("_version");
+    });
+});
+
 describe("generateSchema defaults", () => {
     it("emits a database default for @default", () => {
         const { sql } = generate({

@@ -131,6 +131,22 @@ describe("generateRepository", () => {
         expect(code).toContain(') as data("id", "name") where "customer"."id" = data."id"');
         expect(code).not.toContain('"createdAt" = data."createdAt"');
     });
+
+    it("omits a @version column from insert but writes it on update", () => {
+        const code = generateRepository(
+            table("customer", "Customer", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("name"),
+                column("version", { sqlType: "int8", default: "0", version: true }),
+            ]),
+        );
+
+        expect(code).toContain("const values = [row.id, row.name];");
+        expect(code).toContain('insert into "customer" ("id", "name") values ');
+        expect(code).toContain("const values = [row.id, row.name, row.version];");
+        expect(code).toContain('update "customer" set "name" = data."name", "version" = data."version" from (values ');
+        expect(code).toContain('as data("id", "name", "version") where "customer"."id" = data."id"');
+    });
 });
 
 describe("generateIndex", () => {

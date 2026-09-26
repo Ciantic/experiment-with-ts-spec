@@ -346,6 +346,78 @@ describe("lintSourceText", () => {
 
         expect(messages(findings)).toEqual(["`customer`: @inlined and @relation are mutually exclusive"]);
     });
+
+    it("accepts @version on a Version field", () => {
+        const findings = lintSourceText(
+            `export interface Versioned {
+                /**
+                 * @fieldName Version
+                 * @widget number
+                 * @version
+                 * @default 0
+                 */
+                version?: Version;
+            }`,
+            formulaNames,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @version on a field that is not a Version", () => {
+        const findings = lintSourceText(
+            `export interface BadVersion {
+                /**
+                 * @fieldName Version
+                 * @widget text
+                 * @version
+                 */
+                version: string;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`version`: @version must be on a `Version` field, found `string`"]);
+    });
+
+    it("rejects @version together with @generated", () => {
+        const findings = lintSourceText(
+            `export interface Both {
+                /**
+                 * @fieldName Version
+                 * @widget number
+                 * @version
+                 * @generated
+                 */
+                version?: Version;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`version`: @version and @generated are mutually exclusive"]);
+    });
+
+    it("rejects more than one @version field in an interface", () => {
+        const findings = lintSourceText(
+            `export interface Two {
+                /**
+                 * @fieldName Version
+                 * @widget number
+                 * @version
+                 */
+                version?: Version;
+                /**
+                 * @fieldName Other
+                 * @widget number
+                 * @version
+                 */
+                other?: Version;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`Two`: @version may appear on at most one field"]);
+    });
 });
 
 describe("readFormulaNames", () => {

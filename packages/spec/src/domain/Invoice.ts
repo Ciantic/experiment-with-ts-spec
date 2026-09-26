@@ -1,5 +1,6 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
 import type { Money } from "../primitives/Money.js";
+import type { Version } from "../primitives/Version.js";
 import type { Customer } from "./Customer.js";
 import type { InvoiceRow } from "./InvoiceRow.js";
 
@@ -126,4 +127,14 @@ export interface Invoice {
      * @widget date
      */
     updatedAt?: Date;
+
+    /**
+     * The revision of the invoice, incremented on every write.
+     * 
+     * @fieldName Version
+     * @version
+     * @default 0
+     * @widget number
+     */
+    version?: Version;
 }

@@ -16,6 +16,11 @@ Field tags:
 - `@children <Entity>` — the field holds a child collection. Not a column; the child table carries the foreign key.
 - `@inlined <Entity>` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key.
 - `@unique` — the column is unique.
+- `@version` — the optimistic-lock column. Omitted on insert (the `@default`
+  supplies the first revision) and written on update as the caller's
+  precondition; a `before update` trigger validates and increments it. At most
+  one per interface, the field type must be `Version`, and it is exclusive with
+  `@generated` and `@computed`. See `docs/versioning.md`.
 
 Interface tags:
 
@@ -231,6 +236,9 @@ Enforced:
   parameters.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
+- `@version` requires the field type to be `Version`, is exclusive with
+  `@generated` and `@computed`, and may appear on at most one field per
+  interface.
 - `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
   `formula=`, and rejects unknown parameters.
 - `formula=` must be a member of an `@formula`-annotated type.

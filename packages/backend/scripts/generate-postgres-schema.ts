@@ -108,6 +108,34 @@ function renderSameRowTrigger(table: Table): string[] {
     ];
 }
 
+/** The before-update guard for a @version column: validate the caller's revision, then increment it. */
+function renderVersionTrigger(table: Table): string[] {
+    const version = table.columns.find((column) => column.version);
+    if (!version) {
+        return [];
+    }
+    const functionName = `${table.name}_version`;
+    const key = table.columns.find((column) => column.primaryKey);
+    // `is distinct from` is null-safe, so a caller that omits the version conflicts rather than passing.
+    const target = key ? `OLD.${quote(key.name)}` : `NEW.${quote(version.name)}`;
+    return [
+        `create function ${quote(functionName)}() returns trigger as $$`,
+        "begin",
+        `    if NEW.${quote(version.name)} is distinct from OLD.${quote(version.name)} then`,
+        `        raise exception 'version conflict on ${table.name} %', ${target}`,
+        "            using errcode = '40001';",
+        "    end if;",
+        `    NEW.${quote(version.name)} := OLD.${quote(version.name)} + 1;`,
+        "    return NEW;",
+        "end;",
+        "$$ language plpgsql;",
+        "",
+        `create trigger ${quote(functionName)} before update on ${quote(table.name)}`,
+        `    for each row execute function ${quote(functionName)}();`,
+        "",
+    ];
+}
+
 function renderRollupTriggers(table: Table): string[] {
     const lines: string[] = [];
     for (const [childTable, rollup] of table.rollups) {
@@ -160,6 +188,10 @@ export function generateSchema(
 
     for (const table of ordered) {
         lines.push(...renderSameRowTrigger(table));
+    }
+
+    for (const table of ordered) {
+        lines.push(...renderVersionTrigger(table));
     }
 
     for (const table of ordered) {

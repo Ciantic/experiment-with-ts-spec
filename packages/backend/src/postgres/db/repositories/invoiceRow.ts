@@ -24,12 +24,12 @@ export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRow[]): Pro
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.invoiceId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate, row.netAmount, row.taxAmount, row.totalAmount];
+        const values = [row.id, row.invoiceId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate, row.netAmount, row.taxAmount, row.totalAmount, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::int8" + ")");
     }
-    await db.query('update "invoice_row" set "invoiceId" = data."invoiceId", "description" = data."description", "quantity" = data."quantity", "unit" = data."unit", "unitPrice" = data."unitPrice", "taxRate" = data."taxRate", "netAmount" = data."netAmount", "taxAmount" = data."taxAmount", "totalAmount" = data."totalAmount" from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") where "invoice_row"."id" = data."id"', parameters);
+    await db.query('update "invoice_row" set "invoiceId" = data."invoiceId", "description" = data."description", "quantity" = data."quantity", "unit" = data."unit", "unitPrice" = data."unitPrice", "taxRate" = data."taxRate", "netAmount" = data."netAmount", "taxAmount" = data."taxAmount", "totalAmount" = data."totalAmount", "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount", "version") where "invoice_row"."id" = data."id"', parameters);
 }
 
 export async function deleteInvoiceRow(db: SqlExecutor, rows: InvoiceRow[]): Promise<void> {

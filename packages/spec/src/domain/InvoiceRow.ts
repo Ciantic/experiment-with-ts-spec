@@ -3,6 +3,7 @@ import type { Money } from "../primitives/Money.js";
 import type { Quantity } from "../primitives/Quantity.js";
 import type { TaxRate } from "../primitives/TaxRate.js";
 import type { Unit } from "../primitives/Unit.js";
+import type { Version } from "../primitives/Version.js";
 import type { InvoiceId } from "./Invoice.js";
 
 /** The unique identifier for an invoice row. */
@@ -125,4 +126,14 @@ export interface InvoiceRow {
      * @widget date
      */
     updatedAt?: Date;
+
+    /**
+     * The revision of the row, incremented on every write.
+     * 
+     * @fieldName Version
+     * @version
+     * @default 0
+     * @widget number
+     */
+    version?: Version;
 }

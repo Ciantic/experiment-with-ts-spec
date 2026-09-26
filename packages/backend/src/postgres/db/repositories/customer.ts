@@ -24,12 +24,12 @@ export async function updateCustomer(db: SqlExecutor, rows: Customer[]): Promise
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.name, row.email, row.address, row.businessId];
+        const values = [row.id, row.name, row.email, row.address, row.businessId, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::int8" + ")");
     }
-    await db.query('update "customer" set "name" = data."name", "email" = data."email", "address" = data."address", "businessId" = data."businessId" from (values ' + tuples.join(", ") + ') as data("id", "name", "email", "address", "businessId") where "customer"."id" = data."id"', parameters);
+    await db.query('update "customer" set "name" = data."name", "email" = data."email", "address" = data."address", "businessId" = data."businessId", "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "name", "email", "address", "businessId", "version") where "customer"."id" = data."id"', parameters);
 }
 
 export async function deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {

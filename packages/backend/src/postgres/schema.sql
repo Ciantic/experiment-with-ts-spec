@@ -8,6 +8,7 @@ create table "customer" (
     "businessId" text not null,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
     constraint "customer_pkey" primary key ("id")
 );
 
@@ -23,6 +24,7 @@ create table "invoice" (
     "notes" text not null,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
     constraint "invoice_pkey" primary key ("id")
 );
 
@@ -39,6 +41,7 @@ create table "invoice_row" (
     "totalAmount" decimal not null,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
     constraint "invoice_row_pkey" primary key ("id")
 );
 
@@ -54,6 +57,7 @@ create table "invoice_sent" (
     "customerBusinessId" text,
     "customerCreatedAt" timestamptz,
     "customerUpdatedAt" timestamptz,
+    "customerVersion" int8,
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
     "notes" text not null,
@@ -122,6 +126,48 @@ $$ language plpgsql;
 
 create trigger "invoice_sent_row_compute" before insert or update on "invoice_sent_row"
     for each row execute function "invoice_sent_row_compute"();
+
+create function "customer_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on customer %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "customer_version" before update on "customer"
+    for each row execute function "customer_version"();
+
+create function "invoice_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on invoice %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_version" before update on "invoice"
+    for each row execute function "invoice_version"();
+
+create function "invoice_row_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on invoice_row %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_row_version" before update on "invoice_row"
+    for each row execute function "invoice_row_version"();
 
 create function "invoice_row_rollup_invoice_set"() returns trigger as $$
 begin

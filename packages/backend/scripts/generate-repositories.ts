@@ -58,12 +58,15 @@ export function generateRepository(table: Table): string {
     const entity = table.interfaceName;
     const columns = table.columns;
     const primaryKeys = columns.filter((column) => column.primaryKey);
-    // A column with a database default is left to the database; the repository never writes it.
-    const written = columns.filter((column) => column.default === undefined);
-    const otherColumns = written.filter((column) => !column.primaryKey);
+    // A column with a database default is left to the database on insert; the repository never writes it.
+    const insertColumns = columns.filter((column) => column.default === undefined);
+    // A @version column has a default but is written on update: it carries the optimistic-lock precondition.
+    const updateColumns = columns.filter((column) => column.default === undefined || column.version);
+    const otherColumns = updateColumns.filter((column) => !column.primaryKey);
     // An update must set something; a table whose only written column is the key sets it to itself.
     const setColumns = otherColumns.length > 0 ? otherColumns : primaryKeys;
-    const writtenColumns = written.map((column) => quote(column.name)).join(", ");
+    const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
+    const updateColumnNames = updateColumns.map((column) => quote(column.name)).join(", ");
     const primaryKeyColumns = primaryKeys.map((column) => quote(column.name)).join(", ");
     const setClause = setColumns.map((column) => `${quote(column.name)} = data.${quote(column.name)}`).join(", ");
     const match = primaryKeys
@@ -77,17 +80,17 @@ export function generateRepository(table: Table): string {
     lines.push("");
 
     lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(written));
+    lines.push(...collectValues(insertColumns));
     lines.push(
-        `    await db.query('insert into ${quote(table.name)} (${writtenColumns}) values ' + tuples.join(", "), parameters);`,
+        `    await db.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
     );
     lines.push("}");
     lines.push("");
 
     lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(written));
+    lines.push(...collectValues(updateColumns));
     lines.push(
-        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${writtenColumns}) where ${match}', parameters);`,
+        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${updateColumnNames}) where ${match}', parameters);`,
     );
     lines.push("}");
     lines.push("");

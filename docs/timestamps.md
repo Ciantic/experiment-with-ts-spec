@@ -159,7 +159,9 @@ from `@inlined`.
 ## Deliberately not implemented
 
 - **Soft delete (`deletedAt`).** Deletion is a real `delete`.
-- **Optimistic locking.** No version counter; `updatedAt` is not used as a
-  precondition. A concurrent write is last-writer-wins.
+- **Optimistic locking via `updatedAt`.** Not this column: `now()` is transaction
+  time, so two writes in one transaction share a value and a stale read could
+  still match. A separate monotonic counter was added instead; see
+  `docs/versioning.md`.
 - **Timestamps on the snapshots.** Above.
 - **An actor column.** Who made the change (`updatedBy`) is not modelled.

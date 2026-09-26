@@ -60,9 +60,14 @@ inlined optional customer is written as `row.customer?.id`, and a relation field
 as `row.customer?.id`, without the generator special-casing either.
 
 A column with a database default (`@default`) is left to the database and never
-appears in a generated `insert` or `update`. That covers both timestamps: the
-default fills `createdAt` and `updatedAt` on insert, and the trigger refreshes
-`updatedAt` on every write; see `docs/timestamps.md`.
+appears in a generated `insert`. That covers both timestamps: the default fills
+`createdAt` and `updatedAt` on insert, and the trigger refreshes `updatedAt` on
+every write; see `docs/timestamps.md`.
+
+The one exception is a `@version` column. It is defaulted, so it is omitted on
+insert, but it is written on update because it carries the optimistic-lock
+precondition the trigger checks. The generator therefore builds `insertColumns`
+and `updateColumns` separately; see `docs/versioning.md`.
 
 ## Gotchas
 
@@ -74,7 +79,12 @@ default fills `createdAt` and `updatedAt` on insert, and the trigger refreshes
   required (the columns are `not null` with no default) but has no effect.
 - **A defaulted column is never written.** Both timestamps have database defaults
   and are excluded from `insert` and `update`, so the generated functions cannot
-  set them even deliberately. Writing one takes raw SQL.
+  set them even deliberately. Writing one takes raw SQL. A `@version` column is
+  the exception: it is defaulted but *is* written on update.
+- **`update` does not check the version itself.** The `@version` column is sent
+  as an ordinary value; the conflict check and the increment are in a database
+  trigger. A stale row makes the update raise rather than silently skip. See
+  `docs/versioning.md`.
 - **`delete` and `update` key on the primary key only.** A primary-key-only
   `update` is a no-op write; it exists because the function must set something.
 - **No transaction wrapping.** A multi-row statement is atomic on its own, but

@@ -27,6 +27,7 @@ name back.
 
 - `GUID`, `BrandedId<...>`, and any `<Entity>Id` type — `uuid`.
 - `Decimal` — `decimal`, for every numeric value: money, counts, and rates.
+- `Version` — `int8`, an optimistic-lock counter. See `docs/versioning.md`.
 - `Date` — `timestamptz`.
 - `string`, `Email`, `Unit`, `Currency` — `text`.
 - `boolean` — `boolean`.
@@ -78,6 +79,12 @@ This only surfaced once the DDL was run against a real Postgres.
 `@computed storage=stored formula=now` (the `updatedAt` fields) resolves through
 `timestampFormulas` rather than `rowFormulas`/`invoiceFormulas`, and emits
 `NEW."updatedAt" := now();` in the same before trigger. See `docs/timestamps.md`.
+
+A `@version` column gets its own `before update` trigger, separate from the
+`_compute` trigger: it raises on a version mismatch and increments the column.
+It is `before update` only, since there is no `OLD` on insert, and it fires after
+`_compute` (Postgres orders same-timing triggers by name). See
+`docs/versioning.md`.
 
 Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or

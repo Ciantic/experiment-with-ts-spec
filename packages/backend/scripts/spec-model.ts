@@ -51,6 +51,7 @@ const NAMED_TYPES: Record<string, string> = {
     Unit: "text",
     Currency: "text",
     BrandedId: "uuid",
+    Version: "int8",
 };
 
 /** Entity-typed fields must carry this annotation to become a foreign key column. */
@@ -87,6 +88,8 @@ export interface Column {
     references?: { table: string; column: string };
     /** A database column default, written verbatim; the repository does not write the column. */
     default?: string;
+    /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
+    version?: boolean;
     read?: string;
 }
 
@@ -506,6 +509,9 @@ export function buildSpecTables(
             }
             if (defaultValue !== undefined) {
                 column.default = defaultValue;
+            }
+            if (tagValue(property, "version") !== undefined) {
+                column.version = true;
             }
 
             if (isForeignKey) {

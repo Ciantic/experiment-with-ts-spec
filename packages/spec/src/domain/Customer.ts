@@ -1,4 +1,5 @@
 import type { GUID } from "../primitives/GUID.js";
+import type { Version } from "../primitives/Version.js";
 
 /**
  * A customer that invoices can be issued to.
@@ -66,4 +67,14 @@ export interface Customer {
      * @widget date
      */
     updatedAt?: Date;
+
+    /**
+     * The revision of the customer record, incremented on every write.
+     * 
+     * @fieldName Version
+     * @version
+     * @default 0
+     * @widget number
+     */
+    version?: Version;
 }

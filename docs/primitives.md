@@ -102,6 +102,20 @@ Gotchas:
 - **There is no currency on amounts.** See `docs/spec-annotations.md` for the
   multi-currency work that was deferred.
 
+## Version
+
+`Version` is the one numeric primitive that is not a `Decimal`:
+
+```typescript
+export type Version = bigint & { readonly __brand: "Version" };
+```
+
+It is an optimistic-lock counter. `bigint` rather than `number` because the
+`int8` column already comes back as a `bigint` from both drivers, and because
+`version + 1n` is exactly the arithmetic a branded string cannot express. The
+brand keeps a revision distinct from a `Quantity`. See `docs/versioning.md`,
+including the `JSON.stringify` caveat that comes with `bigint`.
+
 ## Deliberately not implemented
 
 - **Currency on amounts.** Amounts currently carry no currency. See
