@@ -3,6 +3,10 @@
 `packages/backend/scripts/generate-postgres-schema.ts` turns the domain models in
 `packages/spec/src/domain/` into Postgres DDL.
 
+The spec is read by `packages/backend/scripts/spec-model.ts`, which both this generator and
+the repository generator consume. Only the rendering differs; see
+`docs/repositories.md`.
+
 - `pnpm generate:schema` — writes `packages/backend/src/postgres/schema.sql`.
 - `pnpm generate:schema --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm generate:schema:stdout` — prints to stdout instead of writing.

@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "generate:schema": "node scripts/generate-postgres-schema.ts",
-    "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout"
+    "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
+    "generate:repositories": "node scripts/generate-repositories.ts"
   },
   "dependencies": {
     "spec": "workspace:*"

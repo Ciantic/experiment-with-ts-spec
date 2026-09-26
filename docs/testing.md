@@ -30,6 +30,11 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
   `generateSchema` with self-contained fixtures. `generateSchema` takes
   `{ specGlob, formulasFile }` precisely so a test never has to touch the real spec.
+- `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
+  renderer with table fixtures built by hand, so it exercises no ts-morph and no
+  domain.
+- `packages/backend/src/postgres/db/sql-executor.test.ts` — asserts that PGlite
+  satisfies the `SqlExecutor` interface the generated repositories accept.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source

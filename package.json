@@ -8,7 +8,8 @@
     "typecheck": "pnpm -r run typecheck",
     "lint:spec": "pnpm --filter spec run lint:spec",
     "generate:schema": "pnpm --filter backend run generate:schema",
-    "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout"
+    "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout",
+    "generate:repositories": "pnpm --filter backend run generate:repositories"
   },
   "keywords": [],
   "author": "",
