@@ -22,11 +22,9 @@ server canonicalises them, and `information_schema.columns` reports the canonica
 name back.
 
 - `GUID`, `BrandedId<...>`, and any `<Entity>Id` type — `uuid`.
-- `Price` — `int8`, in minor units.
-- `Decimal` — `decimal`.
+- `Decimal` — `decimal`, for every numeric value: money, counts, and rates.
 - `Date` — `timestamptz`.
 - `string`, `Email`, `Unit`, `Currency` — `text`.
-- `number` — `float8`, which is the reference's JavaScript `number` mapping.
 - `boolean` — `boolean`.
 - `boolean` — `boolean`.
 - A union of string literals (such as `InvoiceStatus`) — `text` plus a CHECK
@@ -124,8 +122,8 @@ triggers and constraints against PGlite is the missing layer.
 Gotchas found by running the DDL:
 
 - **PGlite parses `int8` to a JS number by default,** which silently loses
-  precision above 2^53. The tests pass an OID 20 parser returning `BigInt` to
-  match `Price`.
+  precision above 2^53. The parsers in `postgres/pglite-setup.ts` map it to
+  `bigint`. No spec field uses `bigint` now, so this only matters if one is added.
 - **The fragments must be `NEW`-qualified** (see above). Running the DDL is what
   revealed this.
 - **Foreign keys have no `ON DELETE` clause,** so a referenced row cannot be
@@ -146,8 +144,7 @@ https://github.com/Ciantic/pg-unified-mapping.
 
 The rules are the same in both:
 
-- `int8` returns `bigint`, matching `Price`. Without this it is a JS number and
-  loses precision above 2^53.
+- `int8` returns `bigint`. No spec field uses it at present.
 - `date` and `timestamp` return strings, not `Date`. The spec models them with a
   `Date` type at the application boundary; the driver returning strings keeps the
   wire format explicit. Converting is the caller's job.
@@ -161,10 +158,10 @@ Gotchas:
   it installed. Nothing exercises the mapping: it has no tests, and the
   structural `PgModule` type is unverified against the real driver. Passing a real
   `pg` instance would type-check it.
-- **PGlite and `pg` return decimal as a string.** The spec therefore uses the
-  `Decimal` string brand for `quantity` and `taxRate` rather than `number`, so the
-  declared type and the runtime type agree. A `number` field mapped to `decimal`
-  would come back as a string, which is why `number` maps to `float8` instead.
+- **Everything numeric is `decimal`.** Amounts, quantities, and tax rates share
+  one type, so the drivers return strings for all of them, matching the `Decimal`
+  brand. Rounding to two decimals is in the formula (`round(..., 2)`), not in the
+  column type, so a stored amount's scale is defined in one place.
 - **Only the OIDs listed in each file are remapped.** Anything else delegates to
   the driver's own parser.
 - **PGlite parsers are keyed by OID in a `ParserOptions` object**, whereas `pg`

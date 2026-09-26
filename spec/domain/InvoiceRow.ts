@@ -1,6 +1,7 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Decimal } from "../primitives/Decimal.js";
 import type { Price } from "../primitives/Price.js";
+import type { Quantity } from "../primitives/Quantity.js";
+import type { TaxRate } from "../primitives/TaxRate.js";
 import type { Unit } from "../primitives/Unit.js";
 import type { InvoiceId } from "./Invoice.js";
 
@@ -45,7 +46,7 @@ export interface InvoiceRow {
      * @fieldName Quantity
      * @widget number
      */
-    quantity: Decimal;
+    quantity: Quantity;
 
     /**
      * The unit of measure the quantity is expressed in, such as hours or pieces.
@@ -64,12 +65,12 @@ export interface InvoiceRow {
     unitPrice: Price;
 
     /**
-     * The tax rate applied to this row, as a percentage.
+     * The tax rate applied to this row, as a fraction (0.255 is 25.5%).
      * 
      * @fieldName Tax rate
      * @widget number
      */
-    taxRate: Decimal;
+    taxRate: TaxRate;
 
     /**
      * The net amount for this row, before taxes.

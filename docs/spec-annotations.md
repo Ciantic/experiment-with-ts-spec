@@ -59,16 +59,19 @@ Columns are named exactly as the TypeScript fields, quoted camelCase
 fragments and the spec fields use identical identifiers. Changing a field name
 therefore changes a column name — intentional, since it keeps one name in play.
 
-## Money representation
+## Number representation
 
-`Price` is `bigint`, in minor units (cents). The formulas carry the arithmetic
-consequences:
+Every numeric column is `decimal`, from the `Decimal` brand, which the drivers
+return as a string. Rounding is therefore part of the formula rather than a
+column type:
 
-- `"quantity"` is `numeric` (fractional quantities such as `1.5` hours), while
-  `"unitPrice"` is `bigint`. Their product is `numeric`, which will not fit a
-  `bigint` column without an explicit `round(...)::bigint`.
-- Rounding is therefore part of the expression, not a hidden default. Every
-  money formula rounds explicitly.
+- `rowNetAmount` is `round(NEW."quantity" * NEW."unitPrice", 2)`, fixing money to
+  two decimals.
+- `rowTaxAmount` is `round(NEW."netAmount" * NEW."taxRate", 2)`, where `taxRate`
+  is a fraction (`0.255` is 25.5%).
+- The aggregates need no cast, since `sum` of `decimal` is `decimal`.
+
+Rationale and the alternative that was tried are in `docs/primitives.md`.
 
 ## Gotchas
 
@@ -91,9 +94,9 @@ consequences:
 - **The invoice total is not set by the rollup.** The rollups write `netAmount` and
   `taxAmount` only. That update fires the invoice's own before-update trigger,
   which recomputes `totalAmount` from the two. Ordering is therefore load-bearing.
-- **Currency is not yet modelled.** `Invoice.currency` was removed and `Price` is
-  a bare `bigint`, so amounts currently carry no currency. The doc comments that
-  say "in the invoice currency" are forward references to work not yet done.
+- **Currency is not yet modelled.** `Invoice.currency` was removed, so amounts
+  currently carry no currency. The doc comments that say "in the invoice
+  currency" are forward references to work not yet done.
 - **Tags must be on their own line.** A tag written inline on the same line as
   the field, as in `/** @unique */ code: string;`, is not attached to the field
   and is silently ignored by both the generator and the linter. Use a JSDoc block.

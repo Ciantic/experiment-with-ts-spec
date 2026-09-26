@@ -1,2 +1,4 @@
-/** A monetary amount in the currency's smallest unit, so no rounding is lost. See docs/primitives.md. */
-export type Price = bigint & { readonly __brand: "Price" };
+/** A monetary amount. A `Decimal` refined with its own brand. See docs/primitives.md. */
+import type { Decimal } from "./Decimal.js";
+
+export type Price = Decimal & { readonly __brand: "Price" };

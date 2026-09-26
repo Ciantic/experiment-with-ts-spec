@@ -16,9 +16,9 @@ create table "invoice" (
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
     "status" text not null,
-    "netAmount" int8 not null,
-    "taxAmount" int8 not null,
-    "totalAmount" int8 not null,
+    "netAmount" decimal not null,
+    "taxAmount" decimal not null,
+    "totalAmount" decimal not null,
     "notes" text not null,
     constraint "invoice_pkey" primary key ("id"),
     constraint "invoice_status_check" check ("status" in ('draft', 'sent', 'paid', 'overdue', 'cancelled'))
@@ -30,11 +30,11 @@ create table "invoice_row" (
     "description" text not null,
     "quantity" decimal not null,
     "unit" text not null,
-    "unitPrice" int8 not null,
+    "unitPrice" decimal not null,
     "taxRate" decimal not null,
-    "netAmount" int8 not null,
-    "taxAmount" int8 not null,
-    "totalAmount" int8 not null,
+    "netAmount" decimal not null,
+    "taxAmount" decimal not null,
+    "totalAmount" decimal not null,
     constraint "invoice_row_pkey" primary key ("id")
 );
 
@@ -50,8 +50,8 @@ create trigger "invoice_compute" before insert or update on "invoice"
 
 create function "invoice_row_compute"() returns trigger as $$
 begin
-    NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice")::bigint;
-    NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate" / 100)::bigint;
+    NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2);
+    NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2);
     NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
     return NEW;
 end;
@@ -62,8 +62,8 @@ create trigger "invoice_row_compute" before insert or update on "invoice_row"
 
 create function "invoice_row_rollup_invoice_set"() returns trigger as $$
 begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0)::bigint from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0)::bigint from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
     return null;
 end;
 $$ language plpgsql;
@@ -73,8 +73,8 @@ create trigger "invoice_row_rollup_invoice_set" after insert or update on "invoi
 
 create function "invoice_row_rollup_invoice_unset"() returns trigger as $$
 begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0)::bigint from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0)::bigint from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
     return null;
 end;
 $$ language plpgsql;

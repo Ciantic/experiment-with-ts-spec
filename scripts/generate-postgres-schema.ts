@@ -32,8 +32,10 @@ const PRIMITIVE_TYPES: Record<string, string> = {
 const NAMED_TYPES: Record<string, string> = {
     GUID: "uuid",
     Date: "timestamptz",
-    Price: "int8",
     Decimal: "decimal",
+    Price: "decimal",
+    Quantity: "decimal",
+    TaxRate: "decimal",
     Email: "text",
     Unit: "text",
     Currency: "text",
@@ -205,7 +207,7 @@ export function generateSchema(
         });
     };
 
-    /** Resolve a named alias to its type node, so `Price` can be seen as `bigint`. */
+    /** Resolve a named alias to its type node, so a branded type is seen as its base type. */
     function aliasTypeNode(name: string): TypeNode | undefined {
         if (aliasCache.has(name)) {
             return aliasCache.get(name);

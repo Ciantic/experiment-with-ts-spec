@@ -57,7 +57,7 @@ describe("generateSchema output", () => {
             domain: {
                 Thing: `export interface Thing {
                     id: GUID;
-                    amount: Price;
+                    amount: Decimal;
                     rate: Decimal;
                     email: Email;
                     at: Date;
@@ -66,7 +66,7 @@ describe("generateSchema output", () => {
         });
 
         expect(sql).toContain('"id" uuid not null');
-        expect(sql).toContain('"amount" int8 not null');
+        expect(sql).toContain('"amount" decimal not null');
         expect(sql).toContain('"rate" decimal not null');
         expect(sql).toContain('"email" text not null');
         expect(sql).toContain('"at" timestamptz not null');
@@ -300,14 +300,14 @@ describe("generateSchema triggers", () => {
             domain: {
                 Thing: `export interface Thing {
                     id: GUID;
-                    a: number;
-                    b: bigint;
+                    a: Decimal;
+                    b: Decimal;
                     /** @computed storage=stored formula=rowNet */
-                    net: Price;
+                    net: Decimal;
                     /** @computed storage=stored formula=rowTax */
-                    tax: Price;
+                    tax: Decimal;
                     /** @computed storage=stored formula=rowTotal */
-                    total: Price;
+                    total: Decimal;
                 }`,
             },
         });
@@ -347,7 +347,7 @@ describe("generateSchema triggers", () => {
                 Parent: `export interface Parent {
                     id: GUID;
                     /** @computed storage=stored formula=parentNet */
-                    net: Price;
+                    net: Decimal;
                 }`,
                 Child: "export interface Child { id: GUID; parentId: ParentId; }",
             },
@@ -375,9 +375,9 @@ describe("generateSchema triggers", () => {
                 Parent: `export interface Parent {
                     id: GUID;
                     /** @computed storage=stored formula=net */
-                    net: Price;
+                    net: Decimal;
                     /** @computed storage=stored formula=tax */
-                    tax: Price;
+                    tax: Decimal;
                 }`,
                 Child: "export interface Child { id: GUID; parentId: ParentId; }",
             },
