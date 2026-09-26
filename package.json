@@ -1,14 +1,14 @@
 {
-  "name": "to-be-determined",
+  "name": "test-backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint:spec": "node scripts/lint-spec.ts",
-    "generate:schema": "node scripts/generate-postgres-schema.ts",
-    "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout"
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint:spec": "pnpm --filter spec run lint:spec",
+    "generate:schema": "pnpm --filter backend run generate:schema",
+    "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout"
   },
   "keywords": [],
   "author": "",
@@ -20,11 +20,5 @@
       "onFail": "download"
     }
   },
-  "type": "module",
-  "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
-    "@types/node": "^26.6.2",
-    "ts-morph": "^28.0.0",
-    "vitest": "^5.0.2"
-  }
+  "type": "module"
 }

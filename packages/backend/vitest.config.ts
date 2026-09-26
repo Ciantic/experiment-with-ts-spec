@@ -1,4 +1,4 @@
-/** Vitest configuration. See docs/testing.md. */
+/** Vitest configuration for the backend package. See docs/testing.md. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

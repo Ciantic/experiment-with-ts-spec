@@ -46,7 +46,8 @@ const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
 /** The type-level tag that marks a union as the set of valid `formula=` names. */
 const FORMULA_TAG = "formula";
 
-const SPEC_GLOB = "spec/**/*.ts";
+/** Matches the spec interfaces, relative to this package's tsconfig. */
+const SPEC_GLOB = "src/**/*.ts";
 
 export interface Finding {
     filePath: string;

@@ -1,9 +1,9 @@
 # Schema generation
 
-`scripts/generate-postgres-schema.ts` turns the domain models in `spec/domain/`
-into Postgres DDL.
+`packages/backend/scripts/generate-postgres-schema.ts` turns the domain models in
+`packages/spec/src/domain/` into Postgres DDL.
 
-- `pnpm generate:schema` — writes `postgres/schema.sql`.
+- `pnpm generate:schema` — writes `packages/backend/postgres/schema.sql`.
 - `pnpm generate:schema --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm generate:schema:stdout` — prints to stdout instead of writing.
 
@@ -47,7 +47,7 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - `@unique` adds a `unique` constraint.
 
 Columns are named exactly as the fields, quoted camelCase, matching the
-fragments in `postgres/formulas.ts`. There is no name mapping.
+fragments in `packages/backend/postgres/formulas.ts`. There is no name mapping.
 
 ## Ordering
 
@@ -71,7 +71,7 @@ Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or
 update` and `after delete` triggers on the child table, which `update` the
 parent with a fresh `sum`. The statements live in `invoiceFormulas` in
-`postgres/formulas.ts` as `childNew` and `childOld`.
+`packages/backend/postgres/formulas.ts` as `childNew` and `childOld`.
 
 The invoice total is not part of that update. Writing `netAmount` and `taxAmount`
 fires the invoice's own before-update trigger, which recomputes `totalAmount`.
@@ -85,13 +85,14 @@ statements.
 
 Two test files:
 
-- `scripts/generate-postgres-schema.test.ts` — the generator's behaviour, driven by
-  self-contained in-memory fixtures. It does not read the real spec, so it stays
-  valid as the domain changes. `generateSchema` takes `{ specGlob, formulasFile }`
-  so a fixture can be generated from its own files.
-- `postgres/schema.test.ts` — one check: the committed file executes in Postgres.
+- `packages/backend/scripts/generate-postgres-schema.test.ts` — the generator's
+  behaviour, driven by self-contained in-memory fixtures. It does not read the real
+  spec, so it stays valid as the domain changes. `generateSchema` takes
+  `{ specGlob, formulasFile }` so a fixture can be generated from its own files.
+- `packages/backend/postgres/schema.test.ts` — one check: the committed file
+  executes in Postgres.
 
-Nothing checks that `postgres/schema.sql` is up to date. It is a generated
+Nothing checks that `packages/backend/postgres/schema.sql` is up to date. It is a generated
 artifact, and staleness is caught by remembering to run `pnpm generate:schema`,
 not by a test. A drift test is the obvious way to enforce it if that becomes a
 problem.
@@ -122,7 +123,7 @@ triggers and constraints against PGlite is the missing layer.
 Gotchas found by running the DDL:
 
 - **PGlite parses `int8` to a JS number by default,** which silently loses
-  precision above 2^53. The parsers in `postgres/pglite-setup.ts` map it to
+  precision above 2^53. The parsers in `packages/backend/postgres/pglite-setup.ts` map it to
   `bigint`. No spec field uses `bigint` now, so this only matters if one is added.
 - **The fragments must be `NEW`-qualified** (see above). Running the DDL is what
   revealed this.
@@ -137,9 +138,9 @@ The schema says what the columns are; the drivers also need to hand back the
 right JavaScript types. Both are ported from
 https://github.com/Ciantic/pg-unified-mapping.
 
-- `postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an instance
-  configured with result parsers.
-- `postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
+- `packages/backend/postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an
+  instance configured with result parsers.
+- `packages/backend/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
   `types` option for `new pg.Client(...)` or `new pg.Pool(...)`.
 
 The rules are the same in both:

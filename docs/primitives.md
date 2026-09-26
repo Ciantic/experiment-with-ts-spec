@@ -1,7 +1,7 @@
 # Primitives
 
-Value types in `spec/primitives/`. These are scalars, not entities; entities live
-in `spec/domain/`.
+Value types in `packages/spec/src/primitives/`. These are scalars, not entities;
+entities live in `packages/spec/src/domain/`.
 
 ## Branding
 

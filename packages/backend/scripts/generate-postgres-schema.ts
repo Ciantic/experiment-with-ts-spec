@@ -1,6 +1,7 @@
 /** Generate Postgres DDL from `spec/domain`. See docs/schema-generation.md. */
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
     Node,
     Project,
@@ -11,8 +12,16 @@ import {
     type TypeNode,
 } from "ts-morph";
 
-const DEFAULT_SPEC_GLOB = "spec/domain/**/*.ts";
-const DEFAULT_FORMULAS_FILE = "postgres/formulas.ts";
+const require = createRequire(import.meta.url);
+
+/** The `spec` package root, resolved through the workspace dependency. */
+const SPEC_PACKAGE_ROOT = dirname(require.resolve("spec/package.json"));
+
+/** This package's root, so paths do not depend on the current working directory. */
+const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
+
+const DEFAULT_SPEC_GLOB = join(SPEC_PACKAGE_ROOT, "src/domain/**/*.ts");
+const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "postgres/formulas.ts");
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
@@ -683,11 +692,15 @@ function renderRollupTriggers(table: Table): string[] {
 }
 
 /** Where the DDL is written when no `--out` is given. */
-const DEFAULT_OUT = "postgres/schema.sql";
+const DEFAULT_OUT = join(BACKEND_PACKAGE_ROOT, "postgres/schema.sql");
 
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    const { sql, diagnostics } = generateSchema(project);
+    project.addSourceFilesAtPaths(DEFAULT_SPEC_GLOB);
+    const { sql, diagnostics } = generateSchema(project, {
+        specGlob: DEFAULT_SPEC_GLOB,
+        formulasFile: DEFAULT_FORMULAS_FILE,
+    });
 
     for (const diagnostic of diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
