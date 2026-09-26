@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint:spec": "node scripts/lint-spec.ts"
   },
   "keywords": [],
@@ -20,6 +21,7 @@
   "type": "module",
   "devDependencies": {
     "@types/node": "^26.6.2",
-    "ts-morph": "^28.0.0"
+    "ts-morph": "^28.0.0",
+    "vitest": "^5.0.2"
   }
 }

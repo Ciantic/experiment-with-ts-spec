@@ -30,14 +30,14 @@ const FORMULA_REGISTRIES = ["rowFormulas", "invoiceFormulas"];
 const SPEC_GLOB = "spec/**/*.ts";
 const FORMULAS_FILE = "spec/domain/formulas.ts";
 
-interface Finding {
+export interface Finding {
     filePath: string;
     line: number;
     message: string;
 }
 
 /** Read formula names from formulas.ts statically, so the module need not load. */
-function readFormulaNames(project: Project): Set<string> {
+export function readFormulaNames(project: Project): Set<string> {
     const names = new Set<string>();
     const sourceFile = project.getSourceFile(FORMULAS_FILE);
     if (!sourceFile) {
@@ -100,7 +100,7 @@ function parseParameters(tag: JSDocTag): Map<string, string> {
     return parameters;
 }
 
-function lintProperty(
+export function lintProperty(
     property: PropertySignature,
     filePath: string,
     formulaNames: Set<string>,
@@ -214,15 +214,27 @@ function lintProperty(
     }
 }
 
-function main(): void {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
+/** Lint an in-memory source string, for tests and one-off checks. */
+export function lintSourceText(
+    text: string,
+    formulaNames: Set<string>,
+    filePath = "fixture.ts",
+): Finding[] {
+    const project = new Project({ useInMemoryFileSystem: true });
+    const sourceFile = project.createSourceFile(`/${filePath}`, text);
+    const findings: Finding[] = [];
+    for (const declaration of sourceFile.getInterfaces()) {
+        for (const property of declaration.getProperties()) {
+            lintProperty(property, filePath, formulaNames, findings);
+        }
+    }
+    return findings;
+}
+
+/** Lint every interface in the project's spec files. */
+export function lintProject(project: Project): { findings: Finding[]; interfaces: number; properties: number } {
     const findings: Finding[] = [];
     const formulaNames = readFormulaNames(project);
-
-    if (formulaNames.size === 0) {
-        console.error(`warning: no formula names found in ${FORMULAS_FILE}`);
-    }
-
     let interfaces = 0;
     let properties = 0;
 
@@ -231,7 +243,6 @@ function main(): void {
         if (filePath === FORMULAS_FILE) {
             continue;
         }
-
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
             for (const property of declaration.getProperties()) {
@@ -241,6 +252,18 @@ function main(): void {
         }
     }
 
+    return { findings, interfaces, properties };
+}
+
+function main(): void {
+    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
+    const formulaNames = readFormulaNames(project);
+
+    if (formulaNames.size === 0) {
+        console.error(`warning: no formula names found in ${FORMULAS_FILE}`);
+    }
+
+    const { findings, interfaces, properties } = lintProject(project);
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
 
     for (const finding of findings) {
@@ -257,4 +280,6 @@ function main(): void {
     process.exitCode = 1;
 }
 
-main();
+if (import.meta.main) {
+    main();
+}
