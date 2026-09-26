@@ -9,6 +9,13 @@ import type { InvoiceId } from "./Invoice.js";
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 
 /**
+ * Same-row formulas available to `invoice_row` fields.
+ *
+ * @formula
+ */
+export type RowFormula = "rowNetAmount" | "rowTaxAmount" | "rowTotalAmount";
+
+/**
  * A single line item on an invoice.
  * 
  * @table invoice_row

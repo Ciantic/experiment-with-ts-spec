@@ -47,7 +47,7 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - `@unique` adds a `unique` constraint.
 
 Columns are named exactly as the fields, quoted camelCase, matching the
-fragments in `formulas.ts`. There is no name mapping.
+fragments in `postgres/formulas.ts`. There is no name mapping.
 
 ## Ordering
 
@@ -70,8 +70,8 @@ This only surfaced once the DDL was run against a real Postgres.
 Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or
 update` and `after delete` triggers on the child table, which `update` the
-parent with a fresh `sum`. The statements live in `invoiceFormulas` as `childNew`
-and `childOld`.
+parent with a fresh `sum`. The statements live in `invoiceFormulas` in
+`postgres/formulas.ts` as `childNew` and `childOld`.
 
 The invoice total is not part of that update. Writing `netAmount` and `taxAmount`
 fires the invoice's own before-update trigger, which recomputes `totalAmount`.

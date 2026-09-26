@@ -12,7 +12,7 @@ import {
 } from "ts-morph";
 
 const DEFAULT_SPEC_GLOB = "spec/domain/**/*.ts";
-const DEFAULT_FORMULAS_FILE = "spec/postgres/formulas.ts";
+const DEFAULT_FORMULAS_FILE = "postgres/formulas.ts";
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {

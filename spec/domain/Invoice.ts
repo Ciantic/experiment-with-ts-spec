@@ -7,6 +7,13 @@ import type { InvoiceRow } from "./InvoiceRow.js";
 export type InvoiceId = BrandedId<"InvoiceId">;
 
 /**
+ * Invoice-level formulas: one same-row total plus two cross-table aggregates.
+ *
+ * @formula
+ */
+export type InvoiceFormula = "invoiceNetAmount" | "invoiceTaxAmount" | "invoiceTotalAmount";
+
+/**
  * An invoice.
  * 
  * @table invoice

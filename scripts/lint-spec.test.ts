@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
 import { lintProject, lintSourceText, readFormulaNames, type Finding } from "./lint-spec.js";
 
-/** The real registries, so `formula=` checks resolve as they do in the CLI. */
+/** The real union types, so `formula=` checks resolve as they do in the CLI. */
 function realFormulaNames(): Set<string> {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
     return readFormulaNames(project);
@@ -194,7 +194,7 @@ describe("lintSourceText", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: formula=`doesNotExist` is not defined in spec/postgres/formulas.ts (rowFormulas, invoiceFormulas)",
+            "`label`: formula=`doesNotExist` is not declared by any @formula type in spec/",
         ]);
     });
 
@@ -299,11 +299,71 @@ describe("lintSourceText", () => {
 });
 
 describe("readFormulaNames", () => {
-    it("reads the registries despite the as-const wrapper", () => {
+    it("discovers names from @formula-annotated types", () => {
         const names = realFormulaNames();
 
         expect(names).toContain("rowNetAmount");
         expect(names).toContain("invoiceTotalAmount");
+    });
+});
+
+describe("lintFormulaType", () => {
+    it("accepts an @formula type of string literals", () => {
+        const findings = lintSourceText(
+            `/**
+             * @formula
+             */
+            export type ThingFormula = "a" | "b";`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts a single-member @formula type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @formula
+             */
+            export type OneFormula = "only";`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects an @formula type with no string literals", () => {
+        const findings = lintSourceText(
+            `/**
+             * @formula
+             */
+            export type BadFormula = number;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`BadFormula`: @formula type must declare at least one string literal",
+        ]);
+    });
+
+    it("rejects an @formula union with a non-literal member", () => {
+        const findings = lintSourceText(
+            `/**
+             * @formula
+             */
+            export type MixedFormula = "a" | string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`MixedFormula`: @formula type members must all be string literals",
+        ]);
+    });
+
+    it("ignores a type without the @formula annotation", () => {
+        const findings = lintSourceText(`export type NotAFormula = "a" | "b";`, new Set());
+
+        expect(findings).toEqual([]);
     });
 });
 

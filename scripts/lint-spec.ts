@@ -1,5 +1,12 @@
 /** Check the annotation tags on `spec/` interfaces. See docs/spec-annotations.md. */
-import { Node, Project, SyntaxKind, type InterfaceDeclaration, type JSDocTag, type PropertySignature } from "ts-morph";
+import {
+    Node,
+    Project,
+    type InterfaceDeclaration,
+    type JSDocTag,
+    type PropertySignature,
+    type TypeAliasDeclaration,
+} from "ts-morph";
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
 const ALLOWED_TAGS = new Set([
@@ -36,11 +43,10 @@ const ALLOWED_WIDGETS = new Set([
 /** Storage modes a @computed field may carry. */
 const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
 
-/** The formula registries in `spec/postgres/formulas.ts`. */
-const FORMULA_REGISTRIES = ["rowFormulas", "invoiceFormulas"];
+/** The type-level tag that marks a union as the set of valid `formula=` names. */
+const FORMULA_TAG = "formula";
 
 const SPEC_GLOB = "spec/**/*.ts";
-const FORMULAS_FILE = "spec/postgres/formulas.ts";
 
 export interface Finding {
     filePath: string;
@@ -48,37 +54,72 @@ export interface Finding {
     message: string;
 }
 
-/** Read formula names from formulas.ts statically, so the module need not load. */
+/** True when a type alias carries `@formula`. */
+function isFormulaType(declaration: TypeAliasDeclaration): boolean {
+    return declaration
+        .getJsDocs()
+        .some((doc) => doc.getTags().some((tag) => tag.getTagName() === FORMULA_TAG));
+}
+
+/** The members of a type, unwrapping a single-member alias that has no union node. */
+function typeMembers(declaration: TypeAliasDeclaration): Node[] {
+    const typeNode = declaration.getTypeNode();
+    if (!typeNode) {
+        return [];
+    }
+    return Node.isUnionTypeNode(typeNode) ? typeNode.getTypeNodes() : [typeNode];
+}
+
+/** The string-literal members of an `@formula` type, in declaration order. */
+function formulaNamesIn(declaration: TypeAliasDeclaration): string[] {
+    const names: string[] = [];
+    for (const member of typeMembers(declaration)) {
+        if (!Node.isLiteralTypeNode(member)) {
+            continue;
+        }
+        const literal = member.getLiteral();
+        if (Node.isStringLiteral(literal)) {
+            names.push(literal.getLiteralText());
+        }
+    }
+    return names;
+}
+
+/** Read formula names from every `@formula`-annotated type under `spec/`, statically. */
 export function readFormulaNames(project: Project): Set<string> {
     const names = new Set<string>();
-    const sourceFile = project.getSourceFile(FORMULAS_FILE);
-    if (!sourceFile) {
-        return names;
-    }
-
-    for (const declaration of sourceFile.getVariableDeclarations()) {
-        if (!FORMULA_REGISTRIES.includes(declaration.getName())) {
-            continue;
-        }
-        const initializer = declaration.getInitializer();
-        if (!initializer) {
-            continue;
-        }
-        // The registries are `as const`, so the literal is an AsExpression.
-        const objectLiteral = Node.isAsExpression(initializer)
-            ? initializer.getExpressionIfKind(SyntaxKind.ObjectLiteralExpression)
-            : initializer.asKind(SyntaxKind.ObjectLiteralExpression);
-        if (!objectLiteral) {
-            continue;
-        }
-        for (const property of objectLiteral.getProperties()) {
-            if (Node.isPropertyAssignment(property)) {
-                names.add(property.getName().replace(/^["']|["']$/g, ""));
+    for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
+        for (const declaration of sourceFile.getTypeAliases()) {
+            if (!isFormulaType(declaration)) {
+                continue;
+            }
+            for (const name of formulaNamesIn(declaration)) {
+                names.add(name);
             }
         }
     }
-
     return names;
+}
+
+/** Check that each `@formula` type is a non-empty union of string literals. */
+function lintFormulaType(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
+    if (!isFormulaType(declaration)) {
+        return;
+    }
+    const names = formulaNamesIn(declaration);
+    if (names.length === 0) {
+        findings.push({
+            filePath,
+            line: declaration.getStartLineNumber(),
+            message: `\`${declaration.getName()}\`: @formula type must declare at least one string literal`,
+        });
+    } else if (names.length !== typeMembers(declaration).length) {
+        findings.push({
+            filePath,
+            line: declaration.getStartLineNumber(),
+            message: `\`${declaration.getName()}\`: @formula type members must all be string literals`,
+        });
+    }
 }
 
 /** Collect the JSDoc tags on a property, keyed by tag name. */
@@ -234,10 +275,7 @@ function lintProperty(
         if (!formula) {
             report("@computed is missing formula=", computedTag);
         } else if (!formulaNames.has(formula)) {
-            report(
-                `formula=\`${formula}\` is not defined in ${FORMULAS_FILE} (${FORMULA_REGISTRIES.join(", ")})`,
-                computedTag,
-            );
+            report(`formula=\`${formula}\` is not declared by any @formula type in spec/`, computedTag);
         }
 
         for (const key of parameters.keys()) {
@@ -277,6 +315,9 @@ export function lintSourceText(
             lintProperty(property, filePath, formulaNames, findings);
         }
     }
+    for (const declaration of sourceFile.getTypeAliases()) {
+        lintFormulaType(declaration, filePath, findings);
+    }
     return findings;
 }
 
@@ -289,8 +330,8 @@ export function lintProject(project: Project): { findings: Finding[]; interfaces
 
     for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
-        if (filePath === FORMULAS_FILE) {
-            continue;
+        for (const declaration of sourceFile.getTypeAliases()) {
+            lintFormulaType(declaration, filePath, findings);
         }
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
@@ -310,7 +351,7 @@ function main(): void {
     const formulaNames = readFormulaNames(project);
 
     if (formulaNames.size === 0) {
-        console.error(`warning: no formula names found in ${FORMULAS_FILE}`);
+        console.error("warning: no formula names found; annotate a type under spec/ with @formula");
     }
 
     const { findings, interfaces, properties } = lintProject(project);

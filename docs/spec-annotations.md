@@ -20,6 +20,12 @@ Interface tags:
 
 - `@table <name>` — the table name. Defaults to the snake_cased interface name.
 
+Type tags:
+
+- `@formula` — marks a union of string literals as a set of valid `formula=`
+  names. Applied to a type alias, not to a field or interface. See
+  "Saying what, not how".
+
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:
 `id` is assigned once and never recomputed, whereas `totalAmount` is a function
@@ -64,8 +70,11 @@ only.
 ```
 
 - `storage=` selects the wrapper the expression is embedded in.
-- `formula=` names an entry in `spec/postgres/formulas.ts`. Names are resolved
-  there, never inlined into the tag.
+- `formula=` names a member of a type annotated `@formula`, such as `RowFormula`
+  in `spec/domain/InvoiceRow.ts` or `InvoiceFormula` in `spec/domain/Invoice.ts`.
+  The annotation, not a hardcoded list or location, is what makes a type a set of
+  names. The Postgres SQL behind a name lives in `postgres/formulas.ts`; it is
+  never inlined into the tag.
 
 ## Storage modes
 
@@ -119,7 +128,8 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   then `taxAmount`, then `totalAmount`. Reordering the assignments produces
   stale values rather than an error.
 - **One aggregate has two child-change spellings.** `Invoice.netAmount`/`taxAmount` are
-  maintained by triggers on `invoice_row`, so `invoiceFormulas` stores a `childNew`
+  maintained by triggers on `invoice_row`, so `invoiceFormulas` in
+  `postgres/formulas.ts` stores a `childNew`
   statement (for insert/update) and a `childOld` statement (for delete). Both
   hardcode the foreign key column name `"invoiceId"`, which is why the aggregate
   fragments only work for a child whose key column has that name. They must be
@@ -136,8 +146,9 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 - **No tag is a valid state.** A client-supplied field carries no `@generated`
   and no `@computed`. Only present tags are validated.
 - **Registry pairing is convention, not enforced.** `Invoice` amounts use
-  `invoiceFormulas` and `InvoiceRow` amounts use `rowFormulas`, but the linter
-  does not check the pairing. A cross-registry `formula=` would pass.
+  `invoiceFormulas` and `InvoiceRow` amounts use `rowFormulas` in
+  `postgres/formulas.ts`, but the linter does not check the pairing. A
+  cross-registry `formula=` would pass.
 - **`invoiceTotalAmount` is same-row.** It could live in either registry; it sits
   in `invoiceFormulas` so all three invoice amounts are maintained in one place.
 
@@ -149,7 +160,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   generated column cannot read another generated column.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. `formulas.ts` would then gain rate-aware expressions,
+  in the invoice currency. `postgres/formulas.ts` would then gain rate-aware expressions,
   and the rounding/tax ordering (convert-then-tax vs tax-then-convert) would
   need to be pinned down.
 - **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
@@ -159,7 +170,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 
 1. A generator parses the `@` tags from `spec/`.
 2. For each `@computed` field it resolves `formula=` against `rowFormulas` or
-   `invoiceFormulas` in `spec/postgres/formulas.ts`.
+   `invoiceFormulas` in `postgres/formulas.ts`.
 3. It wraps the fragment according to `storage=` and emits DDL: a generated
    column, a trigger assignment, or a view projection.
 4. `@generated` fields are emitted as ordinary columns the application populates.
@@ -167,8 +178,30 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 `scripts/generate-postgres-schema.ts` implements steps 2 and 3 for
 `storage=stored`. See `docs/schema-generation.md`.
 
-It reads `formulas.ts` with ts-morph rather than importing it, because the spec
-imports use `.js` extensions that plain `node` cannot resolve to `.ts` files.
+It reads `postgres/formulas.ts` with ts-morph rather than importing it, because
+the spec imports use `.js` extensions that plain `node` cannot resolve to `.ts`
+files.
+
+## Saying what, not how
+
+The formula names are the spec's vocabulary; the expressions are one database's
+implementation of it. Splitting them keeps `spec/` free of SQL:
+
+- `spec/domain/InvoiceRow.ts` declares `RowFormula`, and `spec/domain/Invoice.ts`
+  declares `InvoiceFormula`, each a union of the valid `formula=` names annotated
+  `@formula`. Nothing about Postgres appears in either file.
+- `postgres/formulas.ts` maps each name to its SQL fragment, typed
+  `Record<RowFormula, string>` and `Record<InvoiceFormula, …>`, so adding a name
+  to the spec fails the type-check until a fragment is written for it.
+
+The name is the contract a domain field references; the fragment is what the
+Postgres generator emits. A different backend would supply its own fragment file
+against the same spec unions.
+
+Discovery is by annotation alone. The linter scans `spec/` for `@formula`-marked
+types and reads their string-literal members; it holds no file name and no type
+name. A new formula family is therefore a new `@formula` union anywhere under
+`spec/`, with no tool change.
 
 ## Linting
 
@@ -186,17 +219,22 @@ Enforced:
   and `@children`.
 - `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
   `formula=`, and rejects unknown parameters.
-- `formula=` must name a key in a registry in `spec/postgres/formulas.ts`.
+- `formula=` must be a member of an `@formula`-annotated type.
+- An `@formula` type must be a non-empty union of string literals.
 - Tags may not repeat on a field.
 
 Gotchas:
 
-- **Formula names are read statically, not imported.** The linter parses
-  `formulas.ts` with ts-morph so it never has to load the module. This keeps it
-  runnable under plain `node` type stripping.
-- **The registry initialiser is `as const`.** The object literal is wrapped in an
-  `AsExpression`, so a direct `getInitializerIfKind(ObjectLiteralExpression)`
-  returns nothing. Read the wrapper or every `formula=` resolves as undefined.
+- **Formula names are discovered, not listed.** The linter scans `spec/` for
+  `@formula`-annotated types with ts-morph and reads their string-literal
+  members, so it never loads a module and knows no file or type name. This
+  keeps it runnable under plain `node` type stripping.
+- **`@formula` is a type tag, not a field tag.** It is absent from the field and
+  interface tag sets, so writing it on a field or interface reports "not a
+  recognised tag".
+- **The fragment registries are plain object literals.** The generator's static
+  reader also accepts an `as const` wrapper, since fixtures use one, but the real
+  `postgres/formulas.ts` relies on its `Record<…>` annotation instead.
 - **Absence of both tags is valid.** Client-supplied fields legitimately carry
   neither, so a rule requiring one would flag almost every field.
 - **Node 24 runs the script directly.** `node scripts/lint-spec.ts` relies on
