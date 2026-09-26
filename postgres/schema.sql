@@ -15,13 +15,11 @@ create table "invoice" (
     "customerId" uuid references "customer"("id"),
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
-    "status" text not null,
     "netAmount" decimal not null,
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
     "notes" text not null,
-    constraint "invoice_pkey" primary key ("id"),
-    constraint "invoice_status_check" check ("status" in ('draft', 'sent', 'paid', 'overdue', 'cancelled'))
+    constraint "invoice_pkey" primary key ("id")
 );
 
 create table "invoice_row" (
@@ -36,6 +34,39 @@ create table "invoice_row" (
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
     constraint "invoice_row_pkey" primary key ("id")
+);
+
+create table "invoice_sent" (
+    "id" uuid not null,
+    "invoiceId" uuid not null references "invoice"("id"),
+    "sentAt" timestamptz not null,
+    "number" text not null unique,
+    "customerId" uuid,
+    "customerName" text,
+    "customerEmail" text,
+    "customerAddress" text,
+    "customerBusinessId" text,
+    "issueDate" timestamptz not null,
+    "dueDate" timestamptz not null,
+    "notes" text not null,
+    "netAmount" decimal not null,
+    "taxAmount" decimal not null,
+    "totalAmount" decimal not null,
+    constraint "invoice_sent_pkey" primary key ("id")
+);
+
+create table "invoice_sent_row" (
+    "id" uuid not null,
+    "invoiceSentId" uuid not null references "invoice_sent"("id"),
+    "description" text not null,
+    "quantity" decimal not null,
+    "unit" text not null,
+    "unitPrice" decimal not null,
+    "taxRate" decimal not null,
+    "netAmount" decimal not null,
+    "taxAmount" decimal not null,
+    "totalAmount" decimal not null,
+    constraint "invoice_sent_row_pkey" primary key ("id")
 );
 
 create function "invoice_compute"() returns trigger as $$
@@ -60,6 +91,18 @@ $$ language plpgsql;
 create trigger "invoice_row_compute" before insert or update on "invoice_row"
     for each row execute function "invoice_row_compute"();
 
+create function "invoice_sent_row_compute"() returns trigger as $$
+begin
+    NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2);
+    NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2);
+    NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_sent_row_compute" before insert or update on "invoice_sent_row"
+    for each row execute function "invoice_sent_row_compute"();
+
 create function "invoice_row_rollup_invoice_set"() returns trigger as $$
 begin
     update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
@@ -81,3 +124,25 @@ $$ language plpgsql;
 
 create trigger "invoice_row_rollup_invoice_unset" after delete on "invoice_row"
     for each row execute function "invoice_row_rollup_invoice_unset"();
+
+create function "invoice_sent_rollup_invoice_set"() returns trigger as $$
+begin
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
+    return null;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_sent_rollup_invoice_set" after insert or update on "invoice_sent"
+    for each row execute function "invoice_sent_rollup_invoice_set"();
+
+create function "invoice_sent_rollup_invoice_unset"() returns trigger as $$
+begin
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
+    return null;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_sent_rollup_invoice_unset" after delete on "invoice_sent"
+    for each row execute function "invoice_sent_rollup_invoice_unset"();

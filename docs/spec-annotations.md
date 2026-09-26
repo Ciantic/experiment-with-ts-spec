@@ -13,6 +13,7 @@ Field tags:
 - `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
 - `@relation <Entity>` — the field holds an entity object, not a scalar. Emits a foreign key column named `<field>Id`.
 - `@children <Entity>` — the field holds a child collection. Not a column; the child table carries the foreign key.
+- `@inlined <Entity>` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key.
 - `@unique` — the column is unique.
 
 Interface tags:
@@ -23,6 +24,38 @@ Interface tags:
 two. The distinction matters because they produce different column behaviour:
 `id` is assigned once and never recomputed, whereas `totalAmount` is a function
 of other data.
+
+## `@inlined`
+
+```
+@inlined Customer
+```
+
+An `@inlined <Entity>` field is an entity reference that is *copied* rather than
+*linked*. Instead of a `<field>Id uuid references …` column, the target entity's
+scalar fields are flattened into columns on the same table, prefixed with the
+field name:
+
+| `Customer` field | `InvoiceSent.customer` column |
+| --- | --- |
+| `id` | `customerId` |
+| `name` | `customerName` |
+| `email` | `customerEmail` |
+
+No foreign key is emitted, so the row survives a change to — or the deletion of —
+the referenced entity. That is the point: an inlined entity is a snapshot of the
+values at write time, not a live link. `@inlined` and `@relation` are mutually
+exclusive; `@inlined` is the snapshot spelling, `@relation` the linked one.
+
+Nullability propagates: a column is `not null` only when both the outer field and
+the inlined field are required, so an optional `customer?: Customer` yields all
+nullable customer columns.
+
+The inlined columns carry the target field's type (including a closed-union
+CHECK) but not its `@unique`. `@generated` and `@computed` on the target are
+ignored: an inlined value is data, not a derivation. Non-scalar target fields
+(entity references or child arrays) are a diagnostic; `@inlined` flattens scalars
+only.
 
 ## `@computed` parameters
 
@@ -149,6 +182,8 @@ Enforced:
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@generated` and `@computed` are mutually exclusive; `@generated` takes no
   parameters.
+- `@inlined` requires an entity name and is mutually exclusive with `@relation`
+  and `@children`.
 - `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
   `formula=`, and rejects unknown parameters.
 - `formula=` must name a key in a registry in `spec/postgres/formulas.ts`.

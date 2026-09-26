@@ -48,6 +48,9 @@ const RELATION_TAG = "relation";
 /** Array-typed fields must carry this annotation to be skipped as a child collection. */
 const CHILDREN_TAG = "children";
 
+/** Entity-typed fields may carry this to inline the target's scalar fields instead of emitting a foreign key. */
+const INLINED_TAG = "inlined";
+
 /** The formula registries, read statically from `formulas.ts`. */
 interface FormulaRegistries {
     row: Record<string, string>;
@@ -162,6 +165,11 @@ interface TypeResolution {
 /** InvoiceRow -> invoice_row. */
 function snakeCase(name: string): string {
     return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+}
+
+/** customer + id -> customerId. Inlined columns are prefixed by the field name. */
+function inlinedColumnName(fieldName: string, targetField: string): string {
+    return fieldName + targetField.charAt(0).toUpperCase() + targetField.slice(1);
 }
 
 function quote(name: string): string {
@@ -333,6 +341,49 @@ export function generateSchema(
         return tagValue(declaration, "table") ?? snakeCase(entity);
     }
 
+    /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
+    function inlineColumns(
+        property: PropertySignature,
+        fieldName: string,
+        entity: string,
+        notNull: boolean,
+        table: Table,
+    ): void {
+        const declaration = interfaces.get(entity);
+        if (!declaration) {
+            report(property, `\`${fieldName}\`: @${INLINED_TAG} ${entity} has no interface`);
+            return;
+        }
+        for (const inner of declaration.getProperties()) {
+            const innerName = inner.getName();
+            const innerType = inner.getTypeNode();
+            if (!innerType) {
+                report(inner, `\`${entity}.${innerName}\`: cannot resolve a type node`);
+                continue;
+            }
+            const resolved = resolveTypeNode(innerType);
+            if (!resolved) {
+                report(inner, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
+                continue;
+            }
+            if (resolved.isArray || resolved.entity) {
+                report(inner, `\`${entity}.${innerName}\`: @${INLINED_TAG} only inlines scalar fields`);
+                continue;
+            }
+            const column: Column = {
+                name: inlinedColumnName(fieldName, innerName),
+                sqlType: resolved.sqlType ?? "text",
+                notNull: notNull && !inner.hasQuestionToken(),
+                primaryKey: false,
+                unique: false,
+            };
+            if (resolved.checkValues) {
+                column.checkValues = resolved.checkValues;
+            }
+            table.columns.push(column);
+        }
+    }
+
     const tables = new Map<string, Table>();
 
     for (const [interfaceName, declaration] of interfaces) {
@@ -372,6 +423,11 @@ export function generateSchema(
             }
 
             if (resolved.entity) {
+                const inlined = tagValue(property, INLINED_TAG);
+                if (inlined) {
+                    inlineColumns(property, fieldName, inlined, notNull, table);
+                    continue;
+                }
                 const relation = tagValue(property, RELATION_TAG);
                 if (!relation) {
                     report(

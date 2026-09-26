@@ -204,6 +204,101 @@ describe("generateSchema types", () => {
     });
 });
 
+describe("generateSchema @inlined", () => {
+    const owner = "export interface Owner { id: GUID; name: string; email: string; }";
+
+    it("flattens the target into prefixed columns with no foreign key", () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Owner: owner,
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @inlined Owner
+                     */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(diagnostics).toEqual([]);
+        expect(sql).toContain('"ownerId" uuid');
+        expect(sql).toContain('"ownerName" text');
+        expect(sql).toContain('"ownerEmail" text');
+        expect(sql).not.toContain('references "owner"');
+    });
+
+    it("makes inlined columns nullable when the field is optional", () => {
+        const { sql } = generate({
+            domain: {
+                Owner: owner,
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @inlined Owner
+                     */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(sql).not.toContain('"ownerName" text not null');
+    });
+
+    it("makes inlined columns not null when field and target are required", () => {
+        const { sql } = generate({
+            domain: {
+                Owner: owner,
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @inlined Owner
+                     */
+                    owner: Owner;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"ownerId" uuid not null');
+        expect(sql).toContain('"ownerName" text not null');
+    });
+
+    it("reports a non-scalar field in the inlined entity", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Leaf: "export interface Leaf { id: GUID; }",
+                Branch: "export interface Branch { id: GUID; leaf: Leaf; }",
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @inlined Branch
+                     */
+                    branch?: Branch;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain("`Branch.leaf`: @inlined only inlines scalar fields");
+    });
+
+    it("reports @inlined pointing at an unknown entity", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Owner: owner,
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @inlined Missing
+                     */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain("`owner`: @inlined Missing has no interface");
+    });
+});
+
 describe("generateSchema ordering", () => {
     it("emits referenced tables before referencing ones", () => {
         const { sql } = generate({

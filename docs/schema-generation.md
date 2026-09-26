@@ -27,7 +27,7 @@ name back.
 - `string`, `Email`, `Unit`, `Currency` — `text`.
 - `boolean` — `boolean`.
 - `boolean` — `boolean`.
-- A union of string literals (such as `InvoiceStatus`) — `text` plus a CHECK
+- A union of string literals (such as `"draft" | "sent"`) — `text` plus a CHECK
   constraint listing the values.
 - An open union (`Unit`, `Currency`, which end in `string & {}`) — plain `text`,
   no CHECK, because the value set is deliberately not closed.

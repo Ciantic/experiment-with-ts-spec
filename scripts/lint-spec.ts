@@ -9,6 +9,7 @@ const ALLOWED_TAGS = new Set([
     "computed",
     "relation",
     "children",
+    "inlined",
     "unique",
 ]);
 
@@ -243,6 +244,20 @@ function lintProperty(
             if (key !== "storage" && key !== "formula") {
                 report(`@computed has unknown parameter \`${key}=\``, computedTag);
             }
+        }
+    }
+
+    // @inlined names the entity to flatten and conflicts with the relation tags.
+    const inlinedTag = (tags.get("inlined") ?? [])[0];
+    if (inlinedTag) {
+        if (!(inlinedTag.getCommentText() ?? "").trim()) {
+            report("@inlined is missing its <Entity>", inlinedTag);
+        }
+        if ((tags.get("relation") ?? []).length > 0) {
+            report("@inlined and @relation are mutually exclusive", inlinedTag);
+        }
+        if ((tags.get("children") ?? []).length > 0) {
+            report("@inlined and @children are mutually exclusive", inlinedTag);
         }
     }
 }

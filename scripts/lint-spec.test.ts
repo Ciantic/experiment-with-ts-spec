@@ -247,6 +247,55 @@ describe("lintSourceText", () => {
 
         expect(findings).toEqual([]);
     });
+
+    it("accepts @inlined naming an entity", () => {
+        const findings = lintSourceText(
+            `export interface Inlined {
+                /**
+                 * @fieldName Customer
+                 * @widget select
+                 * @inlined Customer
+                 */
+                customer?: Customer;
+            }`,
+            formulaNames,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports @inlined without an entity", () => {
+        const findings = lintSourceText(
+            `export interface Bare {
+                /**
+                 * @fieldName Customer
+                 * @widget select
+                 * @inlined
+                 */
+                customer?: Customer;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`customer`: @inlined is missing its <Entity>"]);
+    });
+
+    it("rejects @inlined together with @relation", () => {
+        const findings = lintSourceText(
+            `export interface Both {
+                /**
+                 * @fieldName Customer
+                 * @widget select
+                 * @inlined Customer
+                 * @relation Customer
+                 */
+                customer?: Customer;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`customer`: @inlined and @relation are mutually exclusive"]);
+    });
 });
 
 describe("readFormulaNames", () => {

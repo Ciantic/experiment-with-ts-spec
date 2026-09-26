@@ -1,41 +1,60 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
 import type { Money } from "../primitives/Money.js";
 import type { Customer } from "./Customer.js";
-import type { InvoiceRow } from "./InvoiceRow.js";
+import type { InvoiceId } from "./Invoice.js";
+import type { InvoiceSentRow } from "./InvoiceSentRow.js";
 
-/** The unique identifier for an invoice. */
-export type InvoiceId = BrandedId<"InvoiceId">;
+/** The unique identifier for a sent invoice. */
+export type InvoiceSentId = BrandedId<"InvoiceSentId">;
 
 /**
- * An invoice.
- * 
- * @table invoice
+ * An invoice as issued, frozen at the moment it was sent.
+ *
+ * See docs/invoice-snapshotting.md.
+ *
+ * @table invoice_sent
  */
-export interface Invoice {
+export interface InvoiceSent {
     /**
-     * The unique identifier for the invoice.
+     * The unique identifier for the sent invoice.
      * 
      * @fieldName ID
      * @generated
      * @widget text
      */
-    id: InvoiceId;
+    id: InvoiceSentId;
+
+    /**
+     * The draft this sent invoice was issued from.
+     * 
+     * @fieldName Invoice
+     * @generated
+     * @widget text
+     */
+    invoiceId: InvoiceId;
+
+    /**
+     * The moment the invoice was sent.
+     * 
+     * @fieldName Sent at
+     * @widget date
+     */
+    sentAt: Date;
 
     /**
      * The human-readable invoice number shown to the customer.
      * 
      * @fieldName Invoice number
-     * @generated
      * @unique
      * @widget text
      */
     number: string;
 
     /**
-     * The customer this invoice is issued to.
+     * The customer details as they were at send time.
      * 
      * @fieldName Customer
-     * @relation Customer
+     * @inlined Customer
      * @widget select
      */
     customer?: Customer;
@@ -57,10 +76,17 @@ export interface Invoice {
     dueDate: Date;
 
     /**
+     * Free-form notes to display on the invoice.
+     * 
+     * @fieldName Notes
+     * @widget textarea
+     */
+    notes: string;
+
+    /**
      * The net amount of the invoice, before taxes.
      * 
      * @fieldName Net amount
-     * @computed storage=stored formula=invoiceNetAmount
      * @widget number
      */
     netAmount: Money;
@@ -69,7 +95,6 @@ export interface Invoice {
      * The tax amount of the invoice.
      * 
      * @fieldName Tax amount
-     * @computed storage=stored formula=invoiceTaxAmount
      * @widget number
      */
     taxAmount: Money;
@@ -78,7 +103,6 @@ export interface Invoice {
      * The total amount of the invoice, including taxes.
      * 
      * @fieldName Total amount
-     * @computed storage=stored formula=invoiceTotalAmount
      * @widget number
      */
     totalAmount: Money;
@@ -87,16 +111,8 @@ export interface Invoice {
      * The line items that make up the invoice.
      * 
      * @fieldName Rows
-     * @children InvoiceRow
+     * @children InvoiceSentRow
      * @widget table
      */
-    rows: InvoiceRow[];
-
-    /**
-     * Free-form notes to display on the invoice.
-     * 
-     * @fieldName Notes
-     * @widget textarea
-     */
-    notes: string;
+    rows: InvoiceSentRow[];
 }
