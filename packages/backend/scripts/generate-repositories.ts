@@ -25,18 +25,35 @@ function fileName(interfaceName: string): string {
     return interfaceName.charAt(0).toLowerCase() + interfaceName.slice(1) + ".ts";
 }
 
+/** A column's value expression and the type its placeholder is cast to. */
+interface ValueEntry {
+    expression: string;
+    sqlType: string;
+}
+
 /** The accessor that reads a column from a row, e.g. `customer?.id` for an inlined optional field. */
 function readExpression(column: Column): string {
     return `row.${column.read ?? column.name}`;
 }
 
-/** The lines that gather the given columns into `parameters` and `tuples`, one tuple per row. */
-function collectValues(columns: Column[]): string[] {
-    const values = columns.map(readExpression).join(", ");
+/** The value entry for a plain write, where every column of the row is present. */
+function readEntry(column: Column): ValueEntry {
+    return { expression: readExpression(column), sqlType: column.sqlType };
+}
+
+/** The value entry for a patch: a version is required, every other column is null when the caller omits it. */
+function patchEntry(column: Column): ValueEntry {
+    const read = readExpression(column);
+    return { expression: column.version ? read : `${read} ?? null`, sqlType: column.sqlType };
+}
+
+/** The lines that gather the given values into `parameters` and `tuples`, one tuple per row. */
+function collectValues(entries: ValueEntry[]): string[] {
+    const values = entries.map((entry) => entry.expression).join(", ");
     // The `values` alias is otherwise untyped text; casting each placeholder keeps keys and
     // assignments matching the column type (a bare text value would not compare to a uuid key).
-    const tuple = columns
-        .map((column, index) => `"$" + (offset + ${index + 1}) + "::${column.sqlType}"`)
+    const tuple = entries
+        .map((entry, index) => `"$" + (offset + ${index + 1}) + "::${entry.sqlType}"`)
         .join(' + ", " + ');
     return [
         "    if (rows.length === 0) {",
@@ -53,50 +70,71 @@ function collectValues(columns: Column[]): string[] {
     ];
 }
 
-/** Render one repository module: create, update, and delete over `rows` of `table`. */
+/** Render one repository module: create, patch, and delete over `rows` of `table`. */
 export function generateRepository(table: Table): string {
     const entity = table.interfaceName;
     const columns = table.columns;
     const primaryKeys = columns.filter((column) => column.primaryKey);
+    const versionColumns = columns.filter((column) => column.version);
     // A column with a database default is left to the database on insert; the repository never writes it.
     const insertColumns = columns.filter((column) => column.default === undefined);
-    // A @version column has a default but is written on update: it carries the optimistic-lock precondition.
-    const updateColumns = columns.filter((column) => column.default === undefined || column.version);
-    const otherColumns = updateColumns.filter((column) => !column.primaryKey);
-    // An update must set something; a table whose only written column is the key sets it to itself.
-    const setColumns = otherColumns.length > 0 ? otherColumns : primaryKeys;
+    // A patch may set every column except the key; a defaulted column is skipped unless it is the version.
+    const patchColumns = columns.filter(
+        (column) => !column.primaryKey && (column.default === undefined || column.version),
+    );
+    // The tuple carries the keys first, then the patchable columns.
+    const dataEntries = [...primaryKeys.map(readEntry), ...patchColumns.map(patchEntry)];
+    const requiredColumns = [...primaryKeys, ...versionColumns];
+    const requiredKeys = requiredColumns.map((column) => quote(column.name)).join(" | ");
     const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
-    const updateColumnNames = updateColumns.map((column) => quote(column.name)).join(", ");
+    const dataColumnNames = [...primaryKeys, ...patchColumns].map((column) => quote(column.name)).join(", ");
     const primaryKeyColumns = primaryKeys.map((column) => quote(column.name)).join(", ");
-    const setClause = setColumns.map((column) => `${quote(column.name)} = data.${quote(column.name)}`).join(", ");
+    const keyAssignment = (column: Column) => `${quote(column.name)} = data.${quote(column.name)}`;
+    // An omitted column keeps its stored value, so a patch cannot set one to null; the version is required.
+    const patchAssignment = (column: Column) =>
+        column.version
+            ? keyAssignment(column)
+            : `${quote(column.name)} = coalesce(data.${quote(column.name)}, ${quote(table.name)}.${quote(column.name)})`;
+    // An update must set something; a table with nothing to patch sets its key to the key it already holds.
+    const setClause =
+        patchColumns.length > 0
+            ? patchColumns.map(patchAssignment).join(", ")
+            : primaryKeys.map(keyAssignment).join(", ");
     const match = primaryKeys
         .map((column) => `${quote(table.name)}.${quote(column.name)} = data.${quote(column.name)}`)
         .join(" and ");
+    const requiredComment =
+        versionColumns.length > 0
+            ? "/** A partial update: every column is optional except the key and the version. */"
+            : "/** A partial update: every column is optional except the key. */";
 
     const lines: string[] = [];
     lines.push(HEADER);
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.js";');
     lines.push("");
+    lines.push(requiredComment);
+    lines.push(`export type ${entity}Patch = Partial<${entity}> & Required<Pick<${entity}, ${requiredKeys}>>;`);
+    lines.push("");
 
     lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(insertColumns));
+    lines.push(...collectValues(insertColumns.map(readEntry)));
     lines.push(
         `    await db.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
     );
     lines.push("}");
     lines.push("");
 
-    lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(updateColumns));
+    lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}Patch[]): Promise<void> {`);
+    lines.push(...collectValues(dataEntries));
     lines.push(
-        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${updateColumnNames}) where ${match}', parameters);`,
+        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${dataColumnNames}) where ${match}', parameters);`,
     );
     lines.push("}");
     lines.push("");
 
     lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(primaryKeys));
+    lines.push(...collectValues(primaryKeys.map(readEntry)));
     lines.push(
         `    await db.query('delete from ${quote(table.name)} using (values ' + tuples.join(", ") + ') as data(${primaryKeyColumns}) where ${match}', parameters);`,
     );

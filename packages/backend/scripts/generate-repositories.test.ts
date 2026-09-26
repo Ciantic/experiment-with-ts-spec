@@ -43,7 +43,7 @@ describe("generateRepository", () => {
         const code = generateRepository(customer);
 
         expect(code).toContain("export async function createCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {");
-        expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {");
+        expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {");
         expect(code).toContain("export async function deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {");
     });
 
@@ -68,15 +68,49 @@ describe("generateRepository", () => {
         );
     });
 
-    it("updates the non-key columns and matches on the primary key", () => {
-        const code = generateRepository(customer);
+    it("exports a patch type requiring only the key and the version", () => {
+        const code = generateRepository(
+            table("customer", "Customer", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("name"),
+                column("version", { sqlType: "int8", default: "0", version: true }),
+            ]),
+        );
 
         expect(code).toContain(
-            'update "customer" set "name" = data."name", "email" = data."email" from (values ',
+            'export type CustomerPatch = Partial<Customer> & Required<Pick<Customer, "id" | "version">>;',
         );
+    });
+
+    it("requires only the key in the patch type when there is no version column", () => {
+        const code = generateRepository(customer);
+
+        expect(code).toContain('export type CustomerPatch = Partial<Customer> & Required<Pick<Customer, "id">>;');
+    });
+
+    it("updates only the columns a patch supplies, keeping the stored value for the rest", () => {
+        const code = generateRepository(customer);
+
+        expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[])");
+        expect(code).toContain("const values = [row.id, row.name ?? null, row.email ?? null];");
         expect(code).toContain(
-            ') as data("id", "name", "email") where "customer"."id" = data."id"',
+            'update "customer" set "name" = coalesce(data."name", "customer"."name"), "email" = coalesce(data."email", "customer"."email") from (values ',
         );
+        expect(code).toContain(') as data("id", "name", "email") where "customer"."id" = data."id"');
+    });
+
+    it("assigns the version directly rather than coalescing it", () => {
+        const code = generateRepository(
+            table("customer", "Customer", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("name"),
+                column("version", { sqlType: "int8", default: "0", version: true }),
+            ]),
+        );
+
+        expect(code).toContain('"name" = coalesce(data."name", "customer"."name")');
+        expect(code).toContain('"version" = data."version"');
+        expect(code).not.toContain('coalesce(data."version"');
     });
 
     it("deletes by the primary key columns only", () => {
@@ -98,7 +132,7 @@ describe("generateRepository", () => {
         expect(code).toContain("const values = [row.id, row.customer?.name];");
     });
 
-    it("reads a relation field through its id", () => {
+    it("reads a relation field through its id for an insert, and coalesces it for a patch", () => {
         const code = generateRepository(
             table("invoice", "Invoice", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
@@ -107,9 +141,10 @@ describe("generateRepository", () => {
         );
 
         expect(code).toContain("const values = [row.id, row.customer?.id];");
+        expect(code).toContain("const values = [row.id, row.customer?.id ?? null];");
     });
 
-    it("sets the key to itself when a table has no other columns", () => {
+    it("sets the key to itself when a table has nothing to patch", () => {
         const code = generateRepository(
             table("tag", "Tag", [column("id", { sqlType: "uuid", primaryKey: true })]),
         );
@@ -129,7 +164,7 @@ describe("generateRepository", () => {
         expect(code).not.toContain("row.createdAt");
         expect(code).toContain('insert into "customer" ("id", "name") values ');
         expect(code).toContain(') as data("id", "name") where "customer"."id" = data."id"');
-        expect(code).not.toContain('"createdAt" = data."createdAt"');
+        expect(code).not.toContain('"createdAt" = coalesce(data."createdAt"');
     });
 
     it("omits a @version column from insert but writes it on update", () => {
@@ -143,8 +178,7 @@ describe("generateRepository", () => {
 
         expect(code).toContain("const values = [row.id, row.name];");
         expect(code).toContain('insert into "customer" ("id", "name") values ');
-        expect(code).toContain("const values = [row.id, row.name, row.version];");
-        expect(code).toContain('update "customer" set "name" = data."name", "version" = data."version" from (values ');
+        expect(code).toContain("const values = [row.id, row.name ?? null, row.version];");
         expect(code).toContain('as data("id", "name", "version") where "customer"."id" = data."id"');
     });
 });

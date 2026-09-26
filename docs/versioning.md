@@ -148,14 +148,17 @@ column that is *defaulted yet written*:
 
 This is the first exception to "a defaulted column is never written"
 (`docs/repositories.md`), so `packages/backend/scripts/generate-repositories.ts`
-now builds a different column set per statement: `insertColumns` excludes
-everything with a default, `updateColumns` includes a defaulted column that is
-flagged `version`.
+builds a different column set per statement: the insert excludes everything with
+a default, while the patch includes a defaulted column that is flagged `version`.
 
 The repository sends the caller's version in the `set` list rather than leaving
 it to the trigger, because the trigger's check is against `NEW`. If the update
 did not set the column, `NEW."version"` would always equal `OLD."version"` and
 the precondition would never fire.
+
+Because an update is a patch (`docs/repositories.md`), the version is one of the
+two columns the patch type makes mandatory — the other is the primary key. A
+caller cannot build a patch that omits the precondition.
 
 ## Gotchas
 

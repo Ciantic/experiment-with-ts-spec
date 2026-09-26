@@ -2,6 +2,9 @@
 import type { InvoiceSentRow } from "spec/domain/InvoiceSentRow.js";
 import type { SqlExecutor } from "../sql-executor.js";
 
+/** A partial update: every column is optional except the key. */
+export type InvoiceSentRowPatch = Partial<InvoiceSentRow> & Required<Pick<InvoiceSentRow, "id">>;
+
 export async function createInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow[]): Promise<void> {
     if (rows.length === 0) {
         return;
@@ -17,19 +20,19 @@ export async function createInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
     await db.query('insert into "invoice_sent_row" ("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") values ' + tuples.join(", "), parameters);
 }
 
-export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow[]): Promise<void> {
+export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRowPatch[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.invoiceSentId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate, row.netAmount, row.taxAmount, row.totalAmount];
+        const values = [row.id, row.invoiceSentId ?? null, row.description ?? null, row.quantity ?? null, row.unit ?? null, row.unitPrice ?? null, row.taxRate ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ")");
     }
-    await db.query('update "invoice_sent_row" set "invoiceSentId" = data."invoiceSentId", "description" = data."description", "quantity" = data."quantity", "unit" = data."unit", "unitPrice" = data."unitPrice", "taxRate" = data."taxRate", "netAmount" = data."netAmount", "taxAmount" = data."taxAmount", "totalAmount" = data."totalAmount" from (values ' + tuples.join(", ") + ') as data("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") where "invoice_sent_row"."id" = data."id"', parameters);
+    await db.query('update "invoice_sent_row" set "invoiceSentId" = coalesce(data."invoiceSentId", "invoice_sent_row"."invoiceSentId"), "description" = coalesce(data."description", "invoice_sent_row"."description"), "quantity" = coalesce(data."quantity", "invoice_sent_row"."quantity"), "unit" = coalesce(data."unit", "invoice_sent_row"."unit"), "unitPrice" = coalesce(data."unitPrice", "invoice_sent_row"."unitPrice"), "taxRate" = coalesce(data."taxRate", "invoice_sent_row"."taxRate"), "netAmount" = coalesce(data."netAmount", "invoice_sent_row"."netAmount"), "taxAmount" = coalesce(data."taxAmount", "invoice_sent_row"."taxAmount"), "totalAmount" = coalesce(data."totalAmount", "invoice_sent_row"."totalAmount") from (values ' + tuples.join(", ") + ') as data("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") where "invoice_sent_row"."id" = data."id"', parameters);
 }
 
 export async function deleteInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow[]): Promise<void> {

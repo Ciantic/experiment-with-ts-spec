@@ -2,6 +2,9 @@
 import type { InvoiceSent } from "spec/domain/InvoiceSent.js";
 import type { SqlExecutor } from "../sql-executor.js";
 
+/** A partial update: every column is optional except the key. */
+export type InvoiceSentPatch = Partial<InvoiceSent> & Required<Pick<InvoiceSent, "id">>;
+
 export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSent[]): Promise<void> {
     if (rows.length === 0) {
         return;
@@ -17,19 +20,19 @@ export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSent[]): P
     await db.query('insert into "invoice_sent" ("id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") values ' + tuples.join(", "), parameters);
 }
 
-export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSent[]): Promise<void> {
+export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.invoiceId, row.sentAt, row.number, row.customer?.id, row.customer?.name, row.customer?.email, row.customer?.address, row.customer?.businessId, row.customer?.createdAt, row.customer?.updatedAt, row.customer?.version, row.issueDate, row.dueDate, row.notes, row.netAmount, row.taxAmount, row.totalAmount];
+        const values = [row.id, row.invoiceId ?? null, row.sentAt ?? null, row.number ?? null, row.customer?.id ?? null, row.customer?.name ?? null, row.customer?.email ?? null, row.customer?.address ?? null, row.customer?.businessId ?? null, row.customer?.createdAt ?? null, row.customer?.updatedAt ?? null, row.customer?.version ?? null, row.issueDate ?? null, row.dueDate ?? null, row.notes ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::timestamptz" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::uuid" + ", " + "$" + (offset + 6) + "::text" + ", " + "$" + (offset + 7) + "::text" + ", " + "$" + (offset + 8) + "::text" + ", " + "$" + (offset + 9) + "::text" + ", " + "$" + (offset + 10) + "::timestamptz" + ", " + "$" + (offset + 11) + "::timestamptz" + ", " + "$" + (offset + 12) + "::int8" + ", " + "$" + (offset + 13) + "::timestamptz" + ", " + "$" + (offset + 14) + "::timestamptz" + ", " + "$" + (offset + 15) + "::text" + ", " + "$" + (offset + 16) + "::decimal" + ", " + "$" + (offset + 17) + "::decimal" + ", " + "$" + (offset + 18) + "::decimal" + ")");
     }
-    await db.query('update "invoice_sent" set "invoiceId" = data."invoiceId", "sentAt" = data."sentAt", "number" = data."number", "customerId" = data."customerId", "customerName" = data."customerName", "customerEmail" = data."customerEmail", "customerAddress" = data."customerAddress", "customerBusinessId" = data."customerBusinessId", "customerCreatedAt" = data."customerCreatedAt", "customerUpdatedAt" = data."customerUpdatedAt", "customerVersion" = data."customerVersion", "issueDate" = data."issueDate", "dueDate" = data."dueDate", "notes" = data."notes", "netAmount" = data."netAmount", "taxAmount" = data."taxAmount", "totalAmount" = data."totalAmount" from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") where "invoice_sent"."id" = data."id"', parameters);
+    await db.query('update "invoice_sent" set "invoiceId" = coalesce(data."invoiceId", "invoice_sent"."invoiceId"), "sentAt" = coalesce(data."sentAt", "invoice_sent"."sentAt"), "number" = coalesce(data."number", "invoice_sent"."number"), "customerId" = coalesce(data."customerId", "invoice_sent"."customerId"), "customerName" = coalesce(data."customerName", "invoice_sent"."customerName"), "customerEmail" = coalesce(data."customerEmail", "invoice_sent"."customerEmail"), "customerAddress" = coalesce(data."customerAddress", "invoice_sent"."customerAddress"), "customerBusinessId" = coalesce(data."customerBusinessId", "invoice_sent"."customerBusinessId"), "customerCreatedAt" = coalesce(data."customerCreatedAt", "invoice_sent"."customerCreatedAt"), "customerUpdatedAt" = coalesce(data."customerUpdatedAt", "invoice_sent"."customerUpdatedAt"), "customerVersion" = coalesce(data."customerVersion", "invoice_sent"."customerVersion"), "issueDate" = coalesce(data."issueDate", "invoice_sent"."issueDate"), "dueDate" = coalesce(data."dueDate", "invoice_sent"."dueDate"), "notes" = coalesce(data."notes", "invoice_sent"."notes"), "netAmount" = coalesce(data."netAmount", "invoice_sent"."netAmount"), "taxAmount" = coalesce(data."taxAmount", "invoice_sent"."taxAmount"), "totalAmount" = coalesce(data."totalAmount", "invoice_sent"."totalAmount") from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") where "invoice_sent"."id" = data."id"', parameters);
 }
 
 export async function deleteInvoiceSent(db: SqlExecutor, rows: InvoiceSent[]): Promise<void> {
