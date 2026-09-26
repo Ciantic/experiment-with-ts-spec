@@ -14,11 +14,20 @@ The tags it consumes are defined in `docs/spec-annotations.md`.
 
 ## Type mapping
 
+Names follow the table in
+https://github.com/Ciantic/pg-unified-mapping, so the emitted keyword is the one
+that library lists for the type. These are Postgres aliases (`int8` = `bigint`,
+`decimal` = `numeric`, `float8` = `double precision`), not distinct types: the
+server canonicalises them, and `information_schema.columns` reports the canonical
+name back.
+
 - `GUID`, `BrandedId<...>`, and any `<Entity>Id` type — `uuid`.
-- `Price` — `bigint`, in minor units.
+- `Price` — `int8`, in minor units.
+- `Decimal` — `decimal`.
 - `Date` — `timestamptz`.
 - `string`, `Email`, `Unit`, `Currency` — `text`.
-- `number` — `numeric`.
+- `number` — `float8`, which is the reference's JavaScript `number` mapping.
+- `boolean` — `boolean`.
 - `boolean` — `boolean`.
 - A union of string literals (such as `InvoiceStatus`) — `text` plus a CHECK
   constraint listing the values.
@@ -152,9 +161,10 @@ Gotchas:
   it installed. Nothing exercises the mapping: it has no tests, and the
   structural `PgModule` type is unverified against the real driver. Passing a real
   `pg` instance would type-check it.
-- **PGlite and `pg` disagree on `numeric`.** Both return a string, but the spec
-  declares `quantity` and `taxRate` as `number`. Those fields therefore come back
-  as strings and must be converted at the boundary, or the spec types widened.
+- **PGlite and `pg` return decimal as a string.** The spec therefore uses the
+  `Decimal` string brand for `quantity` and `taxRate` rather than `number`, so the
+  declared type and the runtime type agree. A `number` field mapped to `decimal`
+  would come back as a string, which is why `number` maps to `float8` instead.
 - **Only the OIDs listed in each file are remapped.** Anything else delegates to
   the driver's own parser.
 - **PGlite parsers are keyed by OID in a `ParserOptions` object**, whereas `pg`

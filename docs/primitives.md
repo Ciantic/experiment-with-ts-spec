@@ -43,19 +43,28 @@ excluded.
 Some lint configurations flag `{}` under `ban-types`; `Record<never, never>` is
 the equivalent spelling if that comes up.
 
-## Money
+## Money and decimals
 
 `Price` is `bigint` in the currency's smallest indivisible unit (cents), so no
 rounding is lost. Consequences:
 
 - `JSON.stringify` throws on `bigint`, so amounts need a decimal-string
   representation on the wire and conversion at the edge.
-- Arithmetic mixes with `number` awkwardly: `quantity` is a plain `number`
-  (fractional quantities such as `1.5` hours are allowed), so deriving a line
-  total needs an explicit conversion and an explicit rounding rule.
 - `Price` does not know its own currency. The earlier
   `{ amount: bigint; currency: Currency }` shape made amounts self-describing but
   was reverted when exchange rates were deferred.
+
+`Decimal` is a string brand, for numbers that are not whole minor units and not
+integers: `quantity` and `taxRate`. It exists because the driver returns
+`numeric` as a string to preserve precision, so a `number` field would round-trip
+through a type that no longer matches. Using `Decimal` keeps the declared type
+and the runtime type the same.
+
+- Do not mix `Decimal` and `number`. Arithmetic between them in TypeScript either
+  coerces or fails, and in SQL the numeric arithmetic happens before any JS value
+  exists.
+- `Decimal` is not validated as numeric, only branded. Parsing and rounding are
+  the caller's job.
 
 ## Deliberately not implemented
 

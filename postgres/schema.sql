@@ -16,9 +16,9 @@ create table "invoice" (
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
     "status" text not null,
-    "netAmount" bigint not null,
-    "taxAmount" bigint not null,
-    "totalAmount" bigint not null,
+    "netAmount" int8 not null,
+    "taxAmount" int8 not null,
+    "totalAmount" int8 not null,
     "notes" text not null,
     constraint "invoice_pkey" primary key ("id"),
     constraint "invoice_status_check" check ("status" in ('draft', 'sent', 'paid', 'overdue', 'cancelled'))
@@ -28,13 +28,13 @@ create table "invoice_row" (
     "id" uuid not null,
     "invoiceId" uuid not null references "invoice"("id"),
     "description" text not null,
-    "quantity" numeric not null,
+    "quantity" decimal not null,
     "unit" text not null,
-    "unitPrice" bigint not null,
-    "taxRate" numeric not null,
-    "netAmount" bigint not null,
-    "taxAmount" bigint not null,
-    "totalAmount" bigint not null,
+    "unitPrice" int8 not null,
+    "taxRate" decimal not null,
+    "netAmount" int8 not null,
+    "taxAmount" int8 not null,
+    "totalAmount" int8 not null,
     constraint "invoice_row_pkey" primary key ("id")
 );
 

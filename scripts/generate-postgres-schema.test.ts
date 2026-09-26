@@ -47,9 +47,9 @@ describe("generateSchema output", () => {
         });
 
         expect(sql).toContain('"name" text not null');
-        expect(sql).toContain('"count" numeric not null');
+        expect(sql).toContain('"count" float8 not null');
         expect(sql).toContain('"flag" boolean not null');
-        expect(sql).toContain('"big" bigint not null');
+        expect(sql).toContain('"big" int8 not null');
     });
 
     it("maps known named types to Postgres types", () => {
@@ -58,6 +58,7 @@ describe("generateSchema output", () => {
                 Thing: `export interface Thing {
                     id: GUID;
                     amount: Price;
+                    rate: Decimal;
                     email: Email;
                     at: Date;
                 }`,
@@ -65,7 +66,8 @@ describe("generateSchema output", () => {
         });
 
         expect(sql).toContain('"id" uuid not null');
-        expect(sql).toContain('"amount" bigint not null');
+        expect(sql).toContain('"amount" int8 not null');
+        expect(sql).toContain('"rate" decimal not null');
         expect(sql).toContain('"email" text not null');
         expect(sql).toContain('"at" timestamptz not null');
     });

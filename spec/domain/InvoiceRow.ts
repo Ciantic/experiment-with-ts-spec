@@ -1,4 +1,5 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
+import type { Decimal } from "../primitives/Decimal.js";
 import type { Price } from "../primitives/Price.js";
 import type { Unit } from "../primitives/Unit.js";
 import type { InvoiceId } from "./Invoice.js";
@@ -44,7 +45,7 @@ export interface InvoiceRow {
      * @fieldName Quantity
      * @widget number
      */
-    quantity: number;
+    quantity: Decimal;
 
     /**
      * The unit of measure the quantity is expressed in, such as hours or pieces.
@@ -68,7 +69,7 @@ export interface InvoiceRow {
      * @fieldName Tax rate
      * @widget number
      */
-    taxRate: number;
+    taxRate: Decimal;
 
     /**
      * The net amount for this row, before taxes.

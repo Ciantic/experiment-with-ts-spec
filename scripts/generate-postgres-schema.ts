@@ -20,19 +20,20 @@ export interface GenerateOptions {
     formulasFile?: string;
 }
 
-/** TypeScript primitives to Postgres types. */
+/** TypeScript primitives to Postgres types. Names match pg-unified-mapping, not the canonical aliases. */
 const PRIMITIVE_TYPES: Record<string, string> = {
     string: "text",
-    number: "numeric",
+    number: "float8",
     boolean: "boolean",
-    bigint: "bigint",
+    bigint: "int8",
 };
 
 /** Named types to Postgres types, checked before alias resolution. */
 const NAMED_TYPES: Record<string, string> = {
     GUID: "uuid",
     Date: "timestamptz",
-    Price: "bigint",
+    Price: "int8",
+    Decimal: "decimal",
     Email: "text",
     Unit: "text",
     Currency: "text",
