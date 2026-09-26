@@ -3,17 +3,16 @@ import type { Price } from "../primitives/Price.js";
 import type { Customer } from "./Customer.js";
 import type { InvoiceRow } from "./InvoiceRow.js";
 
-/**
- * The unique identifier for an invoice.
- */
+/** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;
 
+/** An invoice. */
 export interface Invoice {
     /**
      * The unique identifier for the invoice.
      * 
      * @fieldName ID
-     * @readonly
+     * @generated
      * @widget text
      */
     id: InvoiceId;
@@ -22,7 +21,7 @@ export interface Invoice {
      * The human-readable invoice number shown to the customer.
      * 
      * @fieldName Invoice number
-     * @readonly
+     * @generated
      * @widget text
      */
     number: string;
@@ -63,7 +62,7 @@ export interface Invoice {
      * The net amount of the invoice, before taxes.
      * 
      * @fieldName Net amount
-     * @readonly
+     * @computed storage=stored formula=invoiceNetAmount
      * @widget number
      */
     netAmount: Price;
@@ -72,7 +71,7 @@ export interface Invoice {
      * The tax amount of the invoice.
      * 
      * @fieldName Tax amount
-     * @readonly
+     * @computed storage=stored formula=invoiceTaxAmount
      * @widget number
      */
     taxAmount: Price;
@@ -81,7 +80,7 @@ export interface Invoice {
      * The total amount of the invoice, including taxes.
      * 
      * @fieldName Total amount
-     * @readonly
+     * @computed storage=stored formula=invoiceTotalAmount
      * @widget number
      */
     totalAmount: Price;
@@ -103,9 +102,7 @@ export interface Invoice {
     notes: string;
 }
 
-/**
- * The lifecycle status of an invoice.
- */
+/** The lifecycle status of an invoice. */
 export type InvoiceStatus =
     | "draft"
     | "sent"

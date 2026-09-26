@@ -1,14 +1,12 @@
 import type { GUID } from "../primitives/GUID.js";
 
-/**
- * A customer that invoices can be issued to.
- */
+/** A customer that invoices can be issued to. */
 export interface Customer {
     /**
      * The unique identifier for the customer.
      * 
      * @fieldName ID
-     * @readonly
+     * @generated
      * @widget text
      */
     id: GUID;

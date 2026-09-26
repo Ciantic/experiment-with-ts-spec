@@ -1,5 +1,2 @@
-/**
- * A monetary amount expressed in the smallest indivisible unit of a currency
- * (for example cents), so that no rounding is lost.
- */
+/** A monetary amount in the currency's smallest unit, so no rounding is lost. See docs/primitives.md. */
 export type Price = bigint & { readonly __brand: "Price" };

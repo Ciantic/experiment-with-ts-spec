@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint:spec": "node scripts/lint-spec.ts"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
   },
   "type": "module",
   "devDependencies": {
-    "@types/node": "^26.6.2"
+    "@types/node": "^26.6.2",
+    "ts-morph": "^28.0.0"
   }
 }

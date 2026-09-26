@@ -3,20 +3,16 @@ import type { Price } from "../primitives/Price.js";
 import type { Unit } from "../primitives/Unit.js";
 import type { InvoiceId } from "./Invoice.js";
 
-/**
- * The unique identifier for an invoice row.
- */
+/** The unique identifier for an invoice row. */
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 
-/**
- * A single line item on an invoice.
- */
+/** A single line item on an invoice. */
 export interface InvoiceRow {
     /**
      * The unique identifier for the row.
      * 
      * @fieldName ID
-     * @readonly
+     * @generated
      * @widget text
      */
     id: InvoiceRowId;
@@ -25,7 +21,7 @@ export interface InvoiceRow {
      * The identifier of the invoice this row belongs to.
      * 
      * @fieldName Invoice
-     * @readonly
+     * @generated
      * @widget text
      */
     invoiceId: InvoiceId;
@@ -74,7 +70,7 @@ export interface InvoiceRow {
      * The net amount for this row, before taxes.
      * 
      * @fieldName Net amount
-     * @readonly
+     * @computed storage=stored formula=rowNetAmount
      * @widget number
      */
     netAmount: Price;
@@ -83,7 +79,7 @@ export interface InvoiceRow {
      * The tax amount for this row.
      * 
      * @fieldName Tax amount
-     * @readonly
+     * @computed storage=stored formula=rowTaxAmount
      * @widget number
      */
     taxAmount: Price;
@@ -92,7 +88,7 @@ export interface InvoiceRow {
      * The total amount for this row, including taxes.
      * 
      * @fieldName Total amount
-     * @readonly
+     * @computed storage=stored formula=rowTotalAmount
      * @widget number
      */
     totalAmount: Price;
