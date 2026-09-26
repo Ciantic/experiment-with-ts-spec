@@ -21,7 +21,7 @@ const SPEC_PACKAGE_ROOT = dirname(require.resolve("spec/package.json"));
 const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 const DEFAULT_SPEC_GLOB = join(SPEC_PACKAGE_ROOT, "src/domain/**/*.ts");
-const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "postgres/formulas.ts");
+const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "src/postgres/formulas.ts");
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
@@ -692,7 +692,7 @@ function renderRollupTriggers(table: Table): string[] {
 }
 
 /** Where the DDL is written when no `--out` is given. */
-const DEFAULT_OUT = join(BACKEND_PACKAGE_ROOT, "postgres/schema.sql");
+const DEFAULT_OUT = join(BACKEND_PACKAGE_ROOT, "src/postgres/schema.sql");
 
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });

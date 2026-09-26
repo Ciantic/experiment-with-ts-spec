@@ -74,7 +74,7 @@ only.
   in `packages/spec/src/domain/InvoiceRow.ts` or `InvoiceFormula` in
   `packages/spec/src/domain/Invoice.ts`. The annotation, not a hardcoded list or
   location, is what makes a type a set of names. The Postgres SQL behind a name
-  lives in `packages/backend/postgres/formulas.ts`; it is never inlined into the tag.
+  lives in `packages/backend/src/postgres/formulas.ts`; it is never inlined into the tag.
 
 ## Storage modes
 
@@ -129,7 +129,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   stale values rather than an error.
 - **One aggregate has two child-change spellings.** `Invoice.netAmount`/`taxAmount` are
   maintained by triggers on `invoice_row`, so `invoiceFormulas` in
-  `packages/backend/postgres/formulas.ts` stores a `childNew`
+  `packages/backend/src/postgres/formulas.ts` stores a `childNew`
   statement (for insert/update) and a `childOld` statement (for delete). Both
   hardcode the foreign key column name `"invoiceId"`, which is why the aggregate
   fragments only work for a child whose key column has that name. They must be
@@ -147,7 +147,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   and no `@computed`. Only present tags are validated.
 - **Registry pairing is convention, not enforced.** `Invoice` amounts use
   `invoiceFormulas` and `InvoiceRow` amounts use `rowFormulas` in
-  `packages/backend/postgres/formulas.ts`, but the linter does not check the pairing. A
+  `packages/backend/src/postgres/formulas.ts`, but the linter does not check the pairing. A
   cross-registry `formula=` would pass.
 - **`invoiceTotalAmount` is same-row.** It could live in either registry; it sits
   in `invoiceFormulas` so all three invoice amounts are maintained in one place.
@@ -160,7 +160,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   generated column cannot read another generated column.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. `packages/backend/postgres/formulas.ts` would then gain rate-aware expressions,
+  in the invoice currency. `packages/backend/src/postgres/formulas.ts` would then gain rate-aware expressions,
   and the rounding/tax ordering (convert-then-tax vs tax-then-convert) would
   need to be pinned down.
 - **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
@@ -170,7 +170,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 
 1. A generator parses the `@` tags from `packages/spec/`.
 2. For each `@computed` field it resolves `formula=` against `rowFormulas` or
-   `invoiceFormulas` in `packages/backend/postgres/formulas.ts`.
+   `invoiceFormulas` in `packages/backend/src/postgres/formulas.ts`.
 3. It wraps the fragment according to `storage=` and emits DDL: a generated
    column, a trigger assignment, or a view projection.
 4. `@generated` fields are emitted as ordinary columns the application populates.
@@ -178,7 +178,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 `packages/backend/scripts/generate-postgres-schema.ts` implements steps 2 and 3
 for `storage=stored`. See `docs/schema-generation.md`.
 
-It reads `packages/backend/postgres/formulas.ts` with ts-morph rather than importing it, because
+It reads `packages/backend/src/postgres/formulas.ts` with ts-morph rather than importing it, because
 the spec imports use `.js` extensions that plain `node` cannot resolve to `.ts`
 files.
 
@@ -191,7 +191,7 @@ implementation of it. Splitting them keeps `packages/spec/` free of SQL:
   `packages/spec/src/domain/Invoice.ts` declares `InvoiceFormula`, each a union of
   the valid `formula=` names annotated `@formula`. Nothing about Postgres appears
   in either file.
-- `packages/backend/postgres/formulas.ts` maps each name to its SQL fragment, typed
+- `packages/backend/src/postgres/formulas.ts` maps each name to its SQL fragment, typed
   `Record<RowFormula, string>` and `Record<InvoiceFormula, …>`, so adding a name
   to the spec fails the type-check until a fragment is written for it.
 
@@ -235,7 +235,7 @@ Gotchas:
   recognised tag".
 - **The fragment registries are plain object literals.** The generator's static
   reader also accepts an `as const` wrapper, since fixtures use one, but the real
-  `packages/backend/postgres/formulas.ts` relies on its `Record<…>` annotation instead.
+  `packages/backend/src/postgres/formulas.ts` relies on its `Record<…>` annotation instead.
 - **Absence of both tags is valid.** Client-supplied fields legitimately carry
   neither, so a rule requiring one would flag almost every field.
 - **Node 24 runs the script directly.** `node scripts/lint-spec.ts` relies on

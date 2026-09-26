@@ -31,7 +31,7 @@ consequences:
 - `invoice_sent_row` reuses `rowFormulas`, so its amounts are still rounded by
   SQL. The inputs are copied too, so recomputing reproduces the sent values.
 - `invoice_sent`'s totals are plain columns, copied from the draft. The aggregate
-  fragments in `invoiceFormulas` (in `packages/backend/postgres/formulas.ts`) cannot be reused:
+  fragments in `invoiceFormulas` (in `packages/backend/src/postgres/formulas.ts`) cannot be reused:
   they hardcode the child key
   `"invoiceId"` and `update "invoice"`, so a rollup would target the wrong table
   and column. A dedicated `invoiceSentFormulas` registry, spelling

@@ -1,4 +1,4 @@
-/** Result type mapping for the `pg` driver, mirroring postgres/pglite-setup.ts. */
+/** Result type mapping for the `pg` driver, mirroring src/postgres/pglite-setup.ts. */
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {

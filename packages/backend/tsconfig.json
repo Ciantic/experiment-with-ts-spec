@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["postgres/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
 }

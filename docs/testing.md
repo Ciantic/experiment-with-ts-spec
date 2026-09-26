@@ -30,7 +30,7 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
   `generateSchema` with self-contained fixtures. `generateSchema` takes
   `{ specGlob, formulasFile }` precisely so a test never has to touch the real spec.
-- `packages/backend/postgres/schema.test.ts` — one check: the generated SQL
+- `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
@@ -53,7 +53,7 @@ values, all of which are domain decisions rather than code behaviour.
   that rollups fire on delete, or that a constraint rejects a bad status. Those
   are domain assertions and would be rewritten with the model. The consequence is
   real and accepted: a semantically wrong but valid trigger passes every test.
-- **A drift test for `packages/backend/postgres/schema.sql`.** Staleness is caught by running
+- **A drift test for `packages/backend/src/postgres/schema.sql`.** Staleness is caught by running
   `pnpm generate:schema`, not by a test.
 
 Both are worth adding once the model settles and the domain stops moving.
