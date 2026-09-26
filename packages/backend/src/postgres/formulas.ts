@@ -1,12 +1,18 @@
 // Postgres fragments for `@computed` columns. See docs/spec-annotations.md.
 import type { InvoiceFormula } from "spec/domain/Invoice.js";
 import type { RowFormula } from "spec/domain/InvoiceRow.js";
+import type { TimestampFormula } from "spec/domain/Timestamp.js";
 
 /** Same-row expressions for `invoice_row`, assigned in this order. See docs/schema-generation.md. */
 export const rowFormulas: Record<RowFormula, string> = {
     rowNetAmount: `round(NEW."quantity" * NEW."unitPrice", 2)`,
     rowTaxAmount: `round(NEW."netAmount" * NEW."taxRate", 2)`,
     rowTotalAmount: `NEW."netAmount" + NEW."taxAmount"`,
+};
+
+/** Timestamp expressions, used by `createdAt`/`updatedAt`. See docs/timestamps.md. */
+export const timestampFormulas: Record<TimestampFormula, string> = {
+    now: `now()`,
 };
 
 /** The spellings of an invoice formula: a same-row assignment, or the child-change statements for an aggregate. */

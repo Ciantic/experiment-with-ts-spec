@@ -59,14 +59,22 @@ The column value is read through the accessor recorded on the model, so an
 inlined optional customer is written as `row.customer?.id`, and a relation field
 as `row.customer?.id`, without the generator special-casing either.
 
+A column with a database default (`@default`) is left to the database and never
+appears in a generated `insert` or `update`. That covers both timestamps: the
+default fills `createdAt` and `updatedAt` on insert, and the trigger refreshes
+`updatedAt` on every write; see `docs/timestamps.md`.
+
 ## Gotchas
 
 - **Foreign keys have no `ON DELETE` clause**, so `deleteInvoice` fails while
   rows still reference it. Deleting children is the caller's job; there is no
   cascade.
-- **Computed columns are supplied like any other.** The insert sends them, then
-  the before-trigger overwrites them. Passing a value is required (the columns
-  are `not null` with no default) but has no effect.
+- **Computed columns without a default are supplied like any other.** The insert
+  sends them, then the before-trigger overwrites them. Passing a value is
+  required (the columns are `not null` with no default) but has no effect.
+- **A defaulted column is never written.** Both timestamps have database defaults
+  and are excluded from `insert` and `update`, so the generated functions cannot
+  set them even deliberately. Writing one takes raw SQL.
 - **`delete` and `update` key on the primary key only.** A primary-key-only
   `update` is a no-op write; it exists because the function must set something.
 - **No transaction wrapping.** A multi-row statement is atomic on its own, but

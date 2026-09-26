@@ -11,6 +11,7 @@ Field tags:
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
 - `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
+- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
 - `@relation <Entity>` — the field holds an entity object, not a scalar. Emits a foreign key column named `<field>Id`.
 - `@children <Entity>` — the field holds a child collection. Not a column; the child table carries the foreign key.
 - `@inlined <Entity>` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key.
@@ -24,12 +25,20 @@ Type tags:
 
 - `@formula` — marks a union of string literals as a set of valid `formula=`
   names. Applied to a type alias, not to a field or interface. See
-  "Saying what, not how".
+  "Saying what, not how". `TimestampFormula` is cross-cutting rather than
+  belonging to one entity, so it sits alone in
+  `packages/spec/src/domain/Timestamp.ts`.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:
 `id` is assigned once and never recomputed, whereas `totalAmount` is a function
 of other data.
+
+`@generated` says *who* assigns a value, not *how*. On its own it carries no SQL:
+it is presentation metadata telling a UI not to offer the field. How the value
+arrives is a separate decision — a client-supplied column, a `@default`, or a
+`@computed` trigger. The timestamps show two of those spellings; see
+`docs/timestamps.md`.
 
 ## `@inlined`
 
@@ -191,9 +200,13 @@ implementation of it. Splitting them keeps `packages/spec/` free of SQL:
   `packages/spec/src/domain/Invoice.ts` declares `InvoiceFormula`, each a union of
   the valid `formula=` names annotated `@formula`. Nothing about Postgres appears
   in either file.
+- `packages/spec/src/domain/Timestamp.ts` declares `TimestampFormula` (`now`),
+  the cross-cutting set used for `updatedAt`. It belongs to no entity, which is
+  why it has its own file.
 - `packages/backend/src/postgres/formulas.ts` maps each name to its SQL fragment, typed
-  `Record<RowFormula, string>` and `Record<InvoiceFormula, …>`, so adding a name
-  to the spec fails the type-check until a fragment is written for it.
+  `Record<RowFormula, string>`, `Record<InvoiceFormula, …>`, and
+  `Record<TimestampFormula, string>`, so adding a name to the spec fails the
+  type-check until a fragment is written for it.
 
 The name is the contract a domain field references; the fragment is what the
 Postgres generator emits. A different backend would supply its own fragment file

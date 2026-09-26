@@ -46,4 +46,24 @@ export interface Customer {
      * @widget text
      */
     businessId: string;
+
+    /**
+     * The moment the customer record was created.
+     * 
+     * @fieldName Created at
+     * @generated
+     * @default now()
+     * @widget date
+     */
+    createdAt?: Date;
+
+    /**
+     * The moment the customer record was last updated.
+     * 
+     * @fieldName Updated at
+     * @computed storage=stored formula=now
+     * @default now()
+     * @widget date
+     */
+    updatedAt?: Date;
 }

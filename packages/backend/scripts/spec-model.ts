@@ -66,6 +66,7 @@ const INLINED_TAG = "inlined";
 interface FormulaRegistries {
     row: Record<string, string>;
     invoice: Record<string, { sameRow?: string; childNew?: string; childOld?: string }>;
+    timestamp: Record<string, string>;
 }
 
 /** A problem found while reading the spec; the generators report these instead of producing output. */
@@ -84,6 +85,8 @@ export interface Column {
     unique: boolean;
     checkValues?: string[];
     references?: { table: string; column: string };
+    /** A database column default, written verbatim; the repository does not write the column. */
+    default?: string;
     read?: string;
 }
 
@@ -137,7 +140,7 @@ function readStringValue(node: Node): string | undefined {
 
 /** Read `formulas.ts` without importing it, so the script runs under plain node. */
 export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_FILE): FormulaRegistries {
-    const registries: FormulaRegistries = { row: {}, invoice: {} };
+    const registries: FormulaRegistries = { row: {}, invoice: {}, timestamp: {} };
     const sourceFile = project.getSourceFile(formulasFile);
     if (!sourceFile) {
         return registries;
@@ -145,7 +148,7 @@ export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_F
 
     for (const declaration of sourceFile.getVariableDeclarations()) {
         const name = declaration.getName();
-        if (name !== "rowFormulas" && name !== "invoiceFormulas") {
+        if (name !== "rowFormulas" && name !== "invoiceFormulas" && name !== "timestampFormulas") {
             continue;
         }
         const initializer = declaration.getInitializer();
@@ -166,10 +169,10 @@ export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_F
             }
             const key = property.getName().replace(/^["']|["']$/g, "");
             const value = property.getInitializer();
-            if (name === "rowFormulas") {
+            if (name === "rowFormulas" || name === "timestampFormulas") {
                 const text = value ? readStringValue(value) : undefined;
                 if (text !== undefined) {
-                    registries.row[key] = text;
+                    (name === "rowFormulas" ? registries.row : registries.timestamp)[key] = text;
                 }
                 continue;
             }
@@ -225,7 +228,10 @@ export function buildSpecTables(
     const diagnostics: Diagnostic[] = [];
     const interfaces = new Map<string, InterfaceDeclaration>();
     const aliasCache = new Map<string, TypeNode | undefined>();
-    const { row: rowRegistry, invoice: invoiceRegistry } = readFormulas(project, formulasFile);
+    const { row: rowRegistry, invoice: invoiceRegistry, timestamp: timestampRegistry } = readFormulas(
+        project,
+        formulasFile,
+    );
 
     for (const sourceFile of project.getSourceFiles(specGlob)) {
         for (const declaration of sourceFile.getInterfaces()) {
@@ -485,16 +491,21 @@ export function buildSpecTables(
 
             const isPrimaryKey = fieldName === "id";
             const isForeignKey = !isPrimaryKey && (typeNode.getText().endsWith("Id") ?? false);
+            // A default makes the column not null even when the field is optional: the database fills it.
+            const defaultValue = tagValue(property, "default");
             const column: Column = {
                 name: fieldName,
                 sqlType: resolved.sqlType ?? "text",
-                notNull: notNull || isPrimaryKey,
+                notNull: notNull || isPrimaryKey || defaultValue !== undefined,
                 primaryKey: isPrimaryKey,
                 unique: tagValue(property, "unique") !== undefined,
                 read: fieldName,
             };
             if (resolved.checkValues) {
                 column.checkValues = resolved.checkValues;
+            }
+            if (defaultValue !== undefined) {
+                column.default = defaultValue;
             }
 
             if (isForeignKey) {
@@ -520,6 +531,11 @@ export function buildSpecTables(
             const rowExpression = rowRegistry[formula];
             if (rowExpression !== undefined) {
                 table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(rowExpression)};`);
+                continue;
+            }
+            const timestampExpression = timestampRegistry[formula];
+            if (timestampExpression !== undefined) {
+                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(timestampExpression)};`);
                 continue;
             }
             const invoiceFormula = invoiceRegistry[formula];

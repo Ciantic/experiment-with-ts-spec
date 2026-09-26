@@ -18,6 +18,7 @@ const ALLOWED_TAGS = new Set([
     "children",
     "inlined",
     "unique",
+    "default",
 ]);
 
 /** Tags an interface may carry. */
@@ -284,6 +285,14 @@ function lintProperty(
                 report(`@computed has unknown parameter \`${key}=\``, computedTag);
             }
         }
+    }
+
+    // @default carries a SQL expression the database uses when the column is omitted.
+    // It may accompany @computed: a before trigger runs after defaults are applied,
+    // so the two agree on insert where they overlap (see docs/timestamps.md).
+    const defaultTag = (tags.get("default") ?? [])[0];
+    if (defaultTag && !(defaultTag.getCommentText() ?? "").trim()) {
+        report("@default is missing its expression", defaultTag);
     }
 
     // @inlined names the entity to flatten and conflicts with the relation tags.

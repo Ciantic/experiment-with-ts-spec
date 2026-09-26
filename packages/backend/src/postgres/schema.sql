@@ -6,6 +6,8 @@ create table "customer" (
     "email" text not null,
     "address" text not null,
     "businessId" text not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
     constraint "customer_pkey" primary key ("id")
 );
 
@@ -19,6 +21,8 @@ create table "invoice" (
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
     "notes" text not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
     constraint "invoice_pkey" primary key ("id")
 );
 
@@ -33,6 +37,8 @@ create table "invoice_row" (
     "netAmount" decimal not null,
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
     constraint "invoice_row_pkey" primary key ("id")
 );
 
@@ -46,6 +52,8 @@ create table "invoice_sent" (
     "customerEmail" text,
     "customerAddress" text,
     "customerBusinessId" text,
+    "customerCreatedAt" timestamptz,
+    "customerUpdatedAt" timestamptz,
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
     "notes" text not null,
@@ -69,9 +77,20 @@ create table "invoice_sent_row" (
     constraint "invoice_sent_row_pkey" primary key ("id")
 );
 
+create function "customer_compute"() returns trigger as $$
+begin
+    NEW."updatedAt" := now();
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "customer_compute" before insert or update on "customer"
+    for each row execute function "customer_compute"();
+
 create function "invoice_compute"() returns trigger as $$
 begin
     NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
+    NEW."updatedAt" := now();
     return NEW;
 end;
 $$ language plpgsql;
@@ -84,6 +103,7 @@ begin
     NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2);
     NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2);
     NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
+    NEW."updatedAt" := now();
     return NEW;
 end;
 $$ language plpgsql;

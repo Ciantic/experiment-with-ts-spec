@@ -484,3 +484,90 @@ describe("generateSchema triggers", () => {
         expect(sql).toContain('set "tax" =');
     });
 });
+
+describe("generateSchema defaults", () => {
+    it("emits a database default for @default", () => {
+        const { sql } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /** @default now() */
+                    at: Date;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"at" timestamptz not null default now()');
+    });
+
+    it("keeps a defaulted column not null even when the field is optional", () => {
+        const { sql } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /** @default now() */
+                    at?: Date;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"at" timestamptz not null default now()');
+        expect(sql).not.toContain('"at" timestamptz default now()');
+    });
+
+    it("emits no default when @default is absent", () => {
+        const { sql } = generate({ domain: { Thing: "export interface Thing { id: GUID; at: Date; }" } });
+
+        expect(sql).not.toContain("default");
+    });
+
+    it("emits both a default and a trigger assignment when a field carries both tags", () => {
+        const formula = "export const timestampFormulas = { now: 'now()' } as const;";
+        const { sql } = generate({
+            formulas: [
+                "export const rowFormulas = {} as const;",
+                "export const invoiceFormulas = {} as const;",
+                formula,
+            ].join("\n"),
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /**
+                     * @computed storage=stored formula=now
+                     * @default now()
+                     */
+                    updatedAt?: Date;
+                }`,
+            },
+        });
+
+        // The default covers the insert path; the trigger refreshes on every write.
+        expect(sql).toContain('"updatedAt" timestamptz not null default now()');
+        expect(sql).toContain('NEW."updatedAt" := now();');
+    });
+});
+
+describe("generateSchema timestamp formulas", () => {
+    const formulas = [
+        "export const rowFormulas = {} as const;",
+        "export const invoiceFormulas = {} as const;",
+        "export const timestampFormulas = { now: 'now()' } as const;",
+    ].join("\n");
+
+    it("assigns a timestamp formula in the table's before trigger", () => {
+        const { sql } = generate({
+            formulas,
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /** @computed storage=stored formula=now */
+                    updatedAt: Date;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('create function "thing_compute"() returns trigger as $$');
+        expect(sql).toContain('NEW."updatedAt" := now();');
+        expect(sql).toContain('before insert or update on "thing"');
+    });
+});

@@ -105,4 +105,24 @@ export interface InvoiceRow {
      * @widget number
      */
     totalAmount: Money;
+
+    /**
+     * The moment the row was created.
+     * 
+     * @fieldName Created at
+     * @generated
+     * @default now()
+     * @widget date
+     */
+    createdAt?: Date;
+
+    /**
+     * The moment the row was last updated.
+     * 
+     * @fieldName Updated at
+     * @computed storage=stored formula=now
+     * @default now()
+     * @widget date
+     */
+    updatedAt?: Date;
 }

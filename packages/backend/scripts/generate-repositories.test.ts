@@ -116,6 +116,21 @@ describe("generateRepository", () => {
 
         expect(code).toContain('update "tag" set "id" = data."id" from (values ');
     });
+
+    it("does not write a column that has a database default", () => {
+        const code = generateRepository(
+            table("customer", "Customer", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("name"),
+                column("createdAt", { sqlType: "timestamptz", default: "now()" }),
+            ]),
+        );
+
+        expect(code).not.toContain("row.createdAt");
+        expect(code).toContain('insert into "customer" ("id", "name") values ');
+        expect(code).toContain(') as data("id", "name") where "customer"."id" = data."id"');
+        expect(code).not.toContain('"createdAt" = data."createdAt"');
+    });
 });
 
 describe("generateIndex", () => {

@@ -248,6 +248,56 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
+    it("accepts @default with an expression on a @generated field", () => {
+        const findings = lintSourceText(
+            `export interface Defaulted {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @generated
+                 * @default now()
+                 */
+                createdAt?: Date;
+            }`,
+            formulaNames,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts @default alongside @computed", () => {
+        const findings = lintSourceText(
+            `export interface DefaultedComputed {
+                /**
+                 * @fieldName Updated at
+                 * @widget date
+                 * @computed storage=stored formula=rowNetAmount
+                 * @default now()
+                 */
+                updatedAt?: Date;
+            }`,
+            formulaNames,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports @default without an expression", () => {
+        const findings = lintSourceText(
+            `export interface EmptyDefault {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @default
+                 */
+                createdAt?: Date;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`createdAt`: @default is missing its expression"]);
+    });
+
     it("accepts @inlined naming an entity", () => {
         const findings = lintSourceText(
             `export interface Inlined {

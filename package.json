@@ -6,10 +6,14 @@
   "scripts": {
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm run lint:spec",
     "lint:spec": "pnpm --filter spec run lint:spec",
+    "generate": "pnpm run generate:schema && pnpm run generate:repositories",
     "generate:schema": "pnpm --filter backend run generate:schema",
     "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout",
-    "generate:repositories": "pnpm --filter backend run generate:repositories"
+    "generate:repositories": "pnpm --filter backend run generate:repositories",
+    "build": "pnpm -r --if-present run build",
+    "check": "pnpm run lint && pnpm run generate && pnpm run build"
   },
   "keywords": [],
   "author": "",

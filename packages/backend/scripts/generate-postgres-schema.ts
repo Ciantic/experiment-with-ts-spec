@@ -58,6 +58,9 @@ function renderTable(table: Table): string[] {
         if (column.notNull) {
             part += " not null";
         }
+        if (column.default) {
+            part += ` default ${column.default}`;
+        }
         if (column.references) {
             part += ` references ${quote(column.references.table)}(${quote(column.references.column)})`;
         }

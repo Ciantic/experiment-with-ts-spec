@@ -54,6 +54,9 @@ consequences:
   `customer?: Customer`, so every inlined customer column is nullable. A sent
   invoice with no customer is representable; requiring one is a separate
   constraint.
+- **The snapshot inherits the customer's timestamps.** `@inlined Customer`
+  flattens every scalar field, so `customerCreatedAt` and `customerUpdatedAt`
+  land on `invoice_sent` too. See `docs/timestamps.md`.
 
 ## Deliberately not implemented
 

@@ -49,6 +49,10 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   referencing that entity, nullable when the field is optional.
 - `@children <Entity>` is skipped; the child table owns the foreign key.
 - `@unique` adds a `unique` constraint.
+- `@default <expression>` appends `default <expression>`. The column is `not null`
+  even when the field is optional, and the repository generators leave the column
+  out of their statements. It may accompany `@computed`, where the default applies
+  to the insert path and the trigger to every write.
 
 Columns are named exactly as the fields, quoted camelCase, matching the
 fragments in `packages/backend/src/postgres/formulas.ts`. There is no name mapping.
@@ -70,6 +74,10 @@ The expressions are plpgsql statements, so every reference to a column of the
 row being written must be `NEW`-qualified. An unqualified `"quantity"` is a
 plpgsql error (`column "quantity" does not exist`), not an implicit `NEW` lookup.
 This only surfaced once the DDL was run against a real Postgres.
+
+`@computed storage=stored formula=now` (the `updatedAt` fields) resolves through
+`timestampFormulas` rather than `rowFormulas`/`invoiceFormulas`, and emits
+`NEW."updatedAt" := now();` in the same before trigger. See `docs/timestamps.md`.
 
 Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or

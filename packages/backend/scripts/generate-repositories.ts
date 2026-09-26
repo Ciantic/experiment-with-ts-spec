@@ -58,10 +58,12 @@ export function generateRepository(table: Table): string {
     const entity = table.interfaceName;
     const columns = table.columns;
     const primaryKeys = columns.filter((column) => column.primaryKey);
-    const otherColumns = columns.filter((column) => !column.primaryKey);
-    // An update must set something; a primary-key-only table sets the key to itself.
+    // A column with a database default is left to the database; the repository never writes it.
+    const written = columns.filter((column) => column.default === undefined);
+    const otherColumns = written.filter((column) => !column.primaryKey);
+    // An update must set something; a table whose only written column is the key sets it to itself.
     const setColumns = otherColumns.length > 0 ? otherColumns : primaryKeys;
-    const allColumns = columns.map((column) => quote(column.name)).join(", ");
+    const writtenColumns = written.map((column) => quote(column.name)).join(", ");
     const primaryKeyColumns = primaryKeys.map((column) => quote(column.name)).join(", ");
     const setClause = setColumns.map((column) => `${quote(column.name)} = data.${quote(column.name)}`).join(", ");
     const match = primaryKeys
@@ -75,17 +77,17 @@ export function generateRepository(table: Table): string {
     lines.push("");
 
     lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(columns));
+    lines.push(...collectValues(written));
     lines.push(
-        `    await db.query('insert into ${quote(table.name)} (${allColumns}) values ' + tuples.join(", "), parameters);`,
+        `    await db.query('insert into ${quote(table.name)} (${writtenColumns}) values ' + tuples.join(", "), parameters);`,
     );
     lines.push("}");
     lines.push("");
 
     lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
-    lines.push(...collectValues(columns));
+    lines.push(...collectValues(written));
     lines.push(
-        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${allColumns}) where ${match}', parameters);`,
+        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${writtenColumns}) where ${match}', parameters);`,
     );
     lines.push("}");
     lines.push("");
