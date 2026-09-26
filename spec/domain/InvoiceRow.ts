@@ -1,5 +1,5 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Price } from "../primitives/Price.js";
+import type { Money } from "../primitives/Money.js";
 import type { Quantity } from "../primitives/Quantity.js";
 import type { TaxRate } from "../primitives/TaxRate.js";
 import type { Unit } from "../primitives/Unit.js";
@@ -62,7 +62,7 @@ export interface InvoiceRow {
      * @fieldName Unit price
      * @widget number
      */
-    unitPrice: Price;
+    unitPrice: Money;
 
     /**
      * The tax rate applied to this row, as a fraction (0.255 is 25.5%).
@@ -79,7 +79,7 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowNetAmount
      * @widget number
      */
-    netAmount: Price;
+    netAmount: Money;
 
     /**
      * The tax amount for this row.
@@ -88,7 +88,7 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowTaxAmount
      * @widget number
      */
-    taxAmount: Price;
+    taxAmount: Money;
 
     /**
      * The total amount for this row, including taxes.
@@ -97,5 +97,5 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowTotalAmount
      * @widget number
      */
-    totalAmount: Price;
+    totalAmount: Money;
 }

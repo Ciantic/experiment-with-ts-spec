@@ -33,7 +33,7 @@ const NAMED_TYPES: Record<string, string> = {
     GUID: "uuid",
     Date: "timestamptz",
     Decimal: "decimal",
-    Price: "decimal",
+    Money: "decimal",
     Quantity: "decimal",
     TaxRate: "decimal",
     Email: "text",

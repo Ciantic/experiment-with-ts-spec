@@ -1,5 +1,5 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Price } from "../primitives/Price.js";
+import type { Money } from "../primitives/Money.js";
 import type { Customer } from "./Customer.js";
 import type { InvoiceRow } from "./InvoiceRow.js";
 
@@ -71,7 +71,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceNetAmount
      * @widget number
      */
-    netAmount: Price;
+    netAmount: Money;
 
     /**
      * The tax amount of the invoice.
@@ -80,7 +80,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceTaxAmount
      * @widget number
      */
-    taxAmount: Price;
+    taxAmount: Money;
 
     /**
      * The total amount of the invoice, including taxes.
@@ -89,7 +89,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceTotalAmount
      * @widget number
      */
-    totalAmount: Price;
+    totalAmount: Money;
 
     /**
      * The line items that make up the invoice.

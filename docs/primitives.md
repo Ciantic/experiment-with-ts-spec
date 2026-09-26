@@ -50,12 +50,12 @@ Every numeric value in the model is a decimal carried as a string:
 ```typescript
 export type Decimal = string & { readonly __decimal: true };
 
-export type Price = Decimal & { readonly __brand: "Price" };
+export type Money = Decimal & { readonly __brand: "Money" };
 export type Quantity = Decimal & { readonly __brand: "Quantity" };
 export type TaxRate = Decimal & { readonly __brand: "TaxRate" };
 ```
 
-Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Price`, counts are
+Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
 `Quantity`, and ratios are `TaxRate`. All are `decimal` in Postgres; the brands
 only exist in the type system.
 
@@ -65,7 +65,7 @@ Why the brands:
   value could be assigned to a field of the wrong meaning and the compiler would
   say nothing.
 - Each branded type refines `Decimal`, so a function accepting `Decimal` accepts
-  any of them, while a function accepting `Price` rejects a `Quantity`.
+  any of them, while a function accepting `Money` rejects a `Quantity`.
 
 - **Exact.** Postgres `decimal` is arbitrary-precision, so no binary or scale loss.
 - **String, not number.** The driver returns `decimal` as a string anyway, so the
@@ -80,7 +80,7 @@ Conventions:
 - `taxRate` is a fraction, not a percentage: `"0.255"` is 25.5%. Three decimals
   are needed for rates such as 8.875%, and `decimal` carries them exactly.
 
-This replaced three separate types (`Price` as an integer `bigint` in minor
+This replaced three separate types (`Money` as an integer `bigint` in minor
 units, `Quantity`, `TaxRate`). The integer approach was exact but required a
 scale convention per field, and mixed two representations in one model.
 
