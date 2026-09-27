@@ -1,5 +1,8 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ts } from "ts-morph";
+import { createPglite } from "../src/postgres/pglite-setup.js";
+import type { SqlExecutor } from "../src/postgres/db/sql-executor.js";
 import { generateIndex, generateRepositories, generateRepository } from "./generate-repositories.js";
 import type { Column, Table } from "./spec-model.js";
 
@@ -24,6 +27,52 @@ const customer = table("customer", "Customer", [
     column("name"),
     column("email"),
 ]);
+
+/** A `create table` for a fixture, derived from its column metadata so this stays domain-free. */
+function createTableSql(table: Table): string {
+    const definitions = table.columns.map((column) => {
+        const parts = [`"${column.name}" ${column.sqlType}`];
+        if (column.notNull) {
+            parts.push("not null");
+        }
+        if (column.default !== undefined) {
+            parts.push(`default ${column.default}`);
+        }
+        return `    ${parts.join(" ")}`;
+    });
+    const keys = table.columns.filter((column) => column.primaryKey).map((column) => `"${column.name}"`);
+    if (keys.length > 0) {
+        definitions.push(`    primary key (${keys.join(", ")})`);
+    }
+    return `create table "${table.name}" (\n${definitions.join(",\n")}\n);`;
+}
+
+/** The three generated CRUD functions, resolved from an evaluated module. */
+interface GeneratedRepository {
+    create: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+    update: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+    delete: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+}
+
+/** Strips the generated module's type-only imports and evaluates the rest in memory. */
+function loadRepository(table: Table): GeneratedRepository {
+    const code = ts.transpileModule(generateRepository(table), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const exports: Record<string, unknown> = {};
+    // The module imports only types, so this require is never reached at runtime.
+    new Function("exports", "require", code)(exports, () => {
+        throw new Error("the generated repository must not import a runtime dependency");
+    });
+    const pick = (prefix: string) => {
+        const fn = exports[`${prefix}${table.interfaceName}`];
+        if (typeof fn !== "function") {
+            throw new Error(`the generated module does not export ${prefix}${table.interfaceName}`);
+        }
+        return fn as (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+    };
+    return { create: pick("create"), update: pick("update"), delete: pick("delete") };
+}
 
 describe("generateRepository", () => {
     it("starts with the do-not-edit header", () => {
@@ -211,5 +260,91 @@ describe("generateRepositories", () => {
         const files = generateRepositories(tables);
 
         expect([...files.keys()].sort()).toEqual(["customer.ts", "index.ts", "invoice.ts"]);
+    });
+});
+
+const owner = table("owner", "Owner", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("name"),
+]);
+
+const widget = table("widget", "Widget", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("name"),
+    column("note", { notNull: false }),
+    column("ownerId", { sqlType: "uuid", notNull: false, read: "owner?.id" }),
+    column("version", { sqlType: "int8", default: "0", version: true }),
+]);
+
+const OWNER_ID = "00000000-0000-0000-0000-0000000000aa";
+const WIDGET_ID = "00000000-0000-0000-0000-0000000000bb";
+
+describe("generated repositories against PGlite", () => {
+    let db: ReturnType<typeof createPglite>;
+    let owners: GeneratedRepository;
+    let widgets: GeneratedRepository;
+
+    beforeAll(async () => {
+        db = createPglite();
+        await db.exec(createTableSql(owner));
+        await db.exec(createTableSql(widget));
+        owners = loadRepository(owner);
+        widgets = loadRepository(widget);
+    });
+
+    afterAll(async () => {
+        await db.close();
+    });
+
+    beforeEach(async () => {
+        await db.query('delete from "widget"');
+        await db.query('delete from "owner"');
+    });
+
+    it("inserts rows through the generated create function", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: { id: OWNER_ID } }]);
+
+        const { rows } = await db.query<{ id: string; name: string; note: string | null; ownerId: string | null }>(
+            'select "id", "name", "note", "ownerId" from "widget"',
+        );
+
+        expect(rows).toEqual([{ id: WIDGET_ID, name: "run", note: null, ownerId: OWNER_ID }]);
+    });
+
+    it("carries a related entity's key through the generated read accessor", async () => {
+        await owners.create(db, [{ id: OWNER_ID, name: "owner" }]);
+        await widgets.create(db, [{ id: WIDGET_ID, name: "child", note: null, owner: { id: OWNER_ID } }]);
+
+        const { rows } = await db.query<{ ownerId: string | null }>('select "ownerId" from "widget"');
+
+        expect(rows).toEqual([{ ownerId: OWNER_ID }]);
+    });
+
+    it("patches only the columns the caller supplies", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "before", note: "keep", owner: { id: OWNER_ID } }]);
+
+        await widgets.update(db, [{ id: WIDGET_ID, name: "after", version: 0n }]);
+
+        const { rows } = await db.query<{ name: string; note: string | null; version: bigint }>(
+            'select "name", "note", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "after", note: "keep", version: 0n }]);
+    });
+
+    it("deletes rows through the generated delete function", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "gone", note: null, owner: { id: OWNER_ID } }]);
+
+        await widgets.delete(db, [{ id: WIDGET_ID }]);
+
+        const { rows } = await db.query('select "id" from "widget"');
+
+        expect(rows).toEqual([]);
+    });
+
+    it("treats an empty array as a no-op", async () => {
+        await expect(widgets.create(db, [])).resolves.toBeUndefined();
+        await expect(widgets.update(db, [])).resolves.toBeUndefined();
+        await expect(widgets.delete(db, [])).resolves.toBeUndefined();
     });
 });

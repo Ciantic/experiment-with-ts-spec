@@ -32,7 +32,9 @@ values, all of which are domain decisions rather than code behaviour.
   `{ specGlob, formulasFile }` precisely so a test never has to touch the real spec.
 - `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
-  domain.
+  domain. A second group transpiles the generated module, builds a matching
+  `create table` from the fixture's column metadata, and runs create/update/delete
+  against PGlite. It asserts the generated SQL *executes*, not what the data means.
 - `packages/backend/src/postgres/db/sql-executor.test.ts` — asserts that PGlite
   satisfies the `SqlExecutor` interface the generated repositories accept.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
