@@ -4,3 +4,4 @@ export * from "./invoice.js";
 export * from "./invoiceRow.js";
 export * from "./invoiceSent.js";
 export * from "./invoiceSentRow.js";
+export * from "./seller.js";

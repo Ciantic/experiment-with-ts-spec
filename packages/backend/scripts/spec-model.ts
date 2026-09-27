@@ -50,6 +50,9 @@ const NAMED_TYPES: Record<string, string> = {
     Email: "text",
     Unit: "text",
     Currency: "text",
+    EInvoiceAddress: "text",
+    EInvoiceOperator: "text",
+    Language: "text",
     BrandedId: "uuid",
     Version: "int8",
 };

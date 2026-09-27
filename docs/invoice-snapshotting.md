@@ -10,18 +10,22 @@ An issued invoice is a legal document: what the customer received must not chang
 when some referenced record does. The draft already freezes amounts
 (`storage=stored`, see `docs/spec-annotations.md`), but a live `@relation
 Customer` still re-renders every past invoice when an address or a VAT number is
-edited. `InvoiceSent` closes that gap by copying the customer at send time.
+edited. The same holds for `Seller`, the company that issued it. `InvoiceSent`
+closes that gap by copying both parties at send time.
 
 ## Shape
 
-- `invoice_sent` copies the header and inlines the customer. `@inlined Customer`
+- `invoice_sent` copies the header and inlines both parties. `@inlined Customer`
   becomes `customerId`, `customerName`, `customerEmail`, … columns on the same
-  table, with no foreign key.
+  table, with no foreign key; `@inlined Seller` does the same for the issuer.
 - `invoice_sent_row` copies the line items.
 - `invoiceId` links back to the draft, for traceability. It is the only foreign
   key out of the snapshot.
 - `number` is `@unique`, as on the draft. When a number is issued — at draft
   creation or at send — is a separate decision.
+- `language` is required on the snapshot even though it is optional on the draft,
+  like `number`: the send resolves it (override, else draft, else a party
+  default) and the frozen document records what was rendered.
 
 ## The draft is partial, the snapshot is complete
 
@@ -82,9 +86,11 @@ consequences:
   `customer?: Customer`, so every inlined customer column is nullable. A sent
   invoice with no customer is representable; requiring one is a separate
   constraint.
-- **The snapshot inherits the customer's timestamps.** `@inlined Customer`
-  flattens every scalar field, so `customerCreatedAt` and `customerUpdatedAt`
-  land on `invoice_sent` too. See `docs/timestamps.md`.
+- **The snapshot inherits the parties' timestamps and language.** `@inlined
+  Customer` and `@inlined Seller` flatten every scalar field, so
+  `customerCreatedAt`, `customerUpdatedAt`, `sellerCreatedAt`,
+  `sellerUpdatedAt`, `customerLanguage`, and `sellerLanguage` land on
+  `invoice_sent` too. See `docs/timestamps.md` and `docs/invoice-sending.md`.
 
 ## Deliberately not implemented
 

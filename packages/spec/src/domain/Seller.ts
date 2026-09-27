@@ -4,26 +4,26 @@ import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.js";
 import type { Language } from "../primitives/Language.js";
 import type { Version } from "../primitives/Version.js";
 
-/** The unique identifier for a customer. */
-export type CustomerId = BrandedId<"CustomerId">;
+/** The unique identifier for a seller. */
+export type SellerId = BrandedId<"SellerId">;
 
 /**
- * A customer that invoices can be issued to.
+ * The company that issues invoices.
  * 
- * @table customer
+ * @table seller
  */
-export interface Customer {
+export interface Seller {
     /**
-     * The unique identifier for the customer.
+     * The unique identifier for the seller.
      * 
      * @fieldName ID
      * @generated
      * @widget text
      */
-    id: CustomerId;
+    id: SellerId;
 
     /**
-     * The display name of the customer.
+     * The display name of the seller.
      * 
      * @fieldName Name
      * @widget text
@@ -31,23 +31,7 @@ export interface Customer {
     name: string;
 
     /**
-     * The email address invoices are sent to.
-     * 
-     * @fieldName Email
-     * @widget text
-     */
-    email: string;
-
-    /**
-     * The first line of the customer's billing address.
-     * 
-     * @fieldName Address
-     * @widget text
-     */
-    address: string;
-
-    /**
-     * The business identifier of the customer, such as a VAT number.
+     * The business identifier of the seller, such as a VAT number.
      * 
      * @fieldName Business ID
      * @widget text
@@ -55,7 +39,7 @@ export interface Customer {
     businessId: string;
 
     /**
-     * The customer's Finnish e-invoice address (verkkolaskuosoite).
+     * The seller's Finnish e-invoice address (verkkolaskuosoite).
      * 
      * @fieldName E-invoice address
      * @widget text
@@ -63,7 +47,7 @@ export interface Customer {
     eInvoiceAddress?: EInvoiceAddress;
 
     /**
-     * The operator that routes the customer's e-invoices.
+     * The operator that routes the seller's e-invoices.
      * 
      * @fieldName E-invoice operator
      * @widget text
@@ -71,7 +55,7 @@ export interface Customer {
     eInvoiceOperator?: EInvoiceOperator;
 
     /**
-     * The language this customer's invoices are rendered in by default.
+     * The language this seller's invoices are rendered in by default.
      * 
      * @fieldName Language
      * @widget select
@@ -79,7 +63,7 @@ export interface Customer {
     language?: Language;
 
     /**
-     * The moment the customer record was created.
+     * The moment the seller record was created.
      * 
      * @fieldName Created at
      * @generated
@@ -89,7 +73,7 @@ export interface Customer {
     createdAt?: Date;
 
     /**
-     * The moment the customer record was last updated.
+     * The moment the seller record was last updated.
      * 
      * @fieldName Updated at
      * @computed storage=stored formula=now
@@ -99,7 +83,7 @@ export interface Customer {
     updatedAt?: Date;
 
     /**
-     * The revision of the customer record, incremented on every write.
+     * The revision of the seller record, incremented on every write.
      * 
      * @fieldName Version
      * @version

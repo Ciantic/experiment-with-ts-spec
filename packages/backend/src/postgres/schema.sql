@@ -6,16 +6,34 @@ create table "customer" (
     "email" text not null,
     "address" text not null,
     "businessId" text not null,
+    "eInvoiceAddress" text,
+    "eInvoiceOperator" text,
+    "language" text,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
     "version" int8 not null default 0,
     constraint "customer_pkey" primary key ("id")
 );
 
+create table "seller" (
+    "id" uuid not null,
+    "name" text not null,
+    "businessId" text not null,
+    "eInvoiceAddress" text,
+    "eInvoiceOperator" text,
+    "language" text,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "seller_pkey" primary key ("id")
+);
+
 create table "invoice" (
     "id" uuid not null,
     "number" text unique,
     "customerId" uuid references "customer"("id"),
+    "sellerId" uuid references "seller"("id"),
+    "language" text,
     "issueDate" timestamptz,
     "dueDate" timestamptz,
     "netAmount" decimal,
@@ -55,9 +73,22 @@ create table "invoice_sent" (
     "customerEmail" text,
     "customerAddress" text,
     "customerBusinessId" text,
+    "customerEInvoiceAddress" text,
+    "customerEInvoiceOperator" text,
+    "customerLanguage" text,
     "customerCreatedAt" timestamptz,
     "customerUpdatedAt" timestamptz,
     "customerVersion" int8,
+    "sellerId" uuid,
+    "sellerName" text,
+    "sellerBusinessId" text,
+    "sellerEInvoiceAddress" text,
+    "sellerEInvoiceOperator" text,
+    "sellerLanguage" text,
+    "sellerCreatedAt" timestamptz,
+    "sellerUpdatedAt" timestamptz,
+    "sellerVersion" int8,
+    "language" text not null,
     "issueDate" timestamptz not null,
     "dueDate" timestamptz not null,
     "notes" text not null,
@@ -90,6 +121,16 @@ $$ language plpgsql;
 
 create trigger "customer_compute" before insert or update on "customer"
     for each row execute function "customer_compute"();
+
+create function "seller_compute"() returns trigger as $$
+begin
+    NEW."updatedAt" := now();
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "seller_compute" before insert or update on "seller"
+    for each row execute function "seller_compute"();
 
 create function "invoice_compute"() returns trigger as $$
 begin
@@ -140,6 +181,20 @@ $$ language plpgsql;
 
 create trigger "customer_version" before update on "customer"
     for each row execute function "customer_version"();
+
+create function "seller_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on seller %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "seller_version" before update on "seller"
+    for each row execute function "seller_version"();
 
 create function "invoice_version"() returns trigger as $$
 begin

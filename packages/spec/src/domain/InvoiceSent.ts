@@ -1,8 +1,10 @@
 import type { BrandedId } from "../primitives/BrandedId.js";
+import type { Language } from "../primitives/Language.js";
 import type { Money } from "../primitives/Money.js";
 import type { Customer } from "./Customer.js";
 import type { InvoiceId } from "./Invoice.js";
 import type { InvoiceSentRow } from "./InvoiceSentRow.js";
+import type { Seller } from "./Seller.js";
 
 /** The unique identifier for a sent invoice. */
 export type InvoiceSentId = BrandedId<"InvoiceSentId">;
@@ -58,6 +60,23 @@ export interface InvoiceSent {
      * @widget select
      */
     customer?: Customer;
+
+    /**
+     * The seller details as they were at send time.
+     * 
+     * @fieldName Seller
+     * @inlined Seller
+     * @widget select
+     */
+    seller?: Seller;
+
+    /**
+     * The language the invoice was rendered in when it was sent.
+     * 
+     * @fieldName Language
+     * @widget select
+     */
+    language: Language;
 
     /**
      * The date the invoice was issued.

@@ -12,12 +12,12 @@ export async function createCustomer(db: SqlExecutor, rows: Customer[]): Promise
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.name, row.email, row.address, row.businessId];
+        const values = [row.id, row.name, row.email, row.address, row.businessId, row.eInvoiceAddress, row.eInvoiceOperator, row.language];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::text" + ", " + "$" + (offset + 7) + "::text" + ", " + "$" + (offset + 8) + "::text" + ")");
     }
-    await db.query('insert into "customer" ("id", "name", "email", "address", "businessId") values ' + tuples.join(", "), parameters);
+    await db.query('insert into "customer" ("id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") values ' + tuples.join(", "), parameters);
 }
 
 export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {
@@ -27,12 +27,12 @@ export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Pr
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.name ?? null, row.email ?? null, row.address ?? null, row.businessId ?? null, row.version];
+        const values = [row.id, row.name ?? null, row.email ?? null, row.address ?? null, row.businessId ?? null, row.eInvoiceAddress ?? null, row.eInvoiceOperator ?? null, row.language ?? null, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::int8" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::text" + ", " + "$" + (offset + 7) + "::text" + ", " + "$" + (offset + 8) + "::text" + ", " + "$" + (offset + 9) + "::int8" + ")");
     }
-    await db.query('update "customer" set "name" = coalesce(data."name", "customer"."name"), "email" = coalesce(data."email", "customer"."email"), "address" = coalesce(data."address", "customer"."address"), "businessId" = coalesce(data."businessId", "customer"."businessId"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "name", "email", "address", "businessId", "version") where "customer"."id" = data."id"', parameters);
+    await db.query('update "customer" set "name" = coalesce(data."name", "customer"."name"), "email" = coalesce(data."email", "customer"."email"), "address" = coalesce(data."address", "customer"."address"), "businessId" = coalesce(data."businessId", "customer"."businessId"), "eInvoiceAddress" = coalesce(data."eInvoiceAddress", "customer"."eInvoiceAddress"), "eInvoiceOperator" = coalesce(data."eInvoiceOperator", "customer"."eInvoiceOperator"), "language" = coalesce(data."language", "customer"."language"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") where "customer"."id" = data."id"', parameters);
 }
 
 export async function deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {
