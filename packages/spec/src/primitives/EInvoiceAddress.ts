@@ -6,6 +6,7 @@ import type { $brand } from "zod";
  * See docs/invoice-sending.md.
  *
  * @primitive
+ * @pgtype text
  * @zod z.string().brand<"EInvoiceAddress">()
  */
 export type EInvoiceAddress = string & $brand<"EInvoiceAddress">;

@@ -36,16 +36,21 @@ Type tags:
 - `@primitive` — a bare marker on a type alias that identifies it as a scalar
   value type rather than an entity. Applied to the aliases in
   `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
-  `@zod`; the marker itself takes no value. See `docs/primitives.md`.
+  `@zod` and `@pgtype`; the marker itself takes no value. See `docs/primitives.md`.
 - `@zod <expression>` — the type's Zod schema, written verbatim and never
   evaluated by the spec, such as `z.uuid()` or
   `z.uuid().brand<"Something">()`. It is what gives a primitive a runtime
   counterpart to its compile-time brand. At most one per type alias.
+- `@pgtype <sql-type>` — the storage type a generator maps the alias to, such as
+  `uuid` or `decimal`. The spec declares *what* the value is stored as; a
+  generator reads the tag rather than knowing the domain type by name, so adding
+  a primitive does not require editing the backend. `@primitive` types must
+  carry it. See `docs/primitives.md`.
 
 Type tags sit on a type alias and are validated as a group: `@formula` types are
-checked as unions of string literals, `@primitive` types must declare `@zod`, and
-any tag outside the three is reported. A field never carries a type tag; an alias
-never carries a field or interface tag.
+checked as unions of string literals, `@primitive` types must declare `@zod` and
+`@pgtype`, and any tag outside the four is reported. A field never carries a type
+tag; an alias never carries a field or interface tag.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:
@@ -174,7 +179,8 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   and no `@computed`. Only present tags are validated.
 - **Registry pairing is convention, not enforced.** `Invoice` amounts use
   `invoiceFormulas` and `InvoiceRow` amounts use `rowFormulas` in
-  `packages/backend/src/postgres/formulas.ts`, but the linter does not check the pairing. A
+  `packages/backend/src/postgres/formulas.ts`, but nothing checks the pairing. The
+  generator merges every registry and keys fragments by formula name alone, so a
   cross-registry `formula=` would pass.
 - **`invoiceTotalAmount` is same-row.** It could live in either registry; it sits
   in `invoiceFormulas` so all three invoice amounts are maintained in one place.
@@ -196,8 +202,8 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 ## Wiring
 
 1. A generator parses the `@` tags from `packages/spec/`.
-2. For each `@computed` field it resolves `formula=` against `rowFormulas` or
-   `invoiceFormulas` in `packages/backend/src/postgres/formulas.ts`.
+2. For each `@computed` field it resolves `formula=` against the registries in
+   `packages/backend/src/postgres/formulas.ts`, keyed by formula name.
 3. It wraps the fragment according to `storage=` and emits DDL: a generated
    column, a trigger assignment, or a view projection.
 4. `@generated` fields are emitted as ordinary columns the application populates.

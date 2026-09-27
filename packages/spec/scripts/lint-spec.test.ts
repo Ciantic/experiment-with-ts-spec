@@ -421,10 +421,11 @@ describe("lintSourceText", () => {
 });
 
 describe("type-level tags", () => {
-    it("accepts a @primitive type carrying its @zod schema", () => {
+    it("accepts a @primitive type carrying its @zod schema and @pgtype", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
+             * @pgtype uuid
              * @zod z.uuid().brand<"ThingId">()
              */
             export type ThingId = string & $brand<"ThingId">;`,
@@ -438,6 +439,7 @@ describe("type-level tags", () => {
         const findings = lintSourceText(
             `/**
              * @primitive something
+             * @pgtype uuid
              * @zod z.uuid()
              */
             export type Thing = string;`,
@@ -447,7 +449,7 @@ describe("type-level tags", () => {
         expect(messages(findings)).toEqual(["`Thing`: @primitive takes no value"]);
     });
 
-    it("requires @zod on a @primitive type", () => {
+    it("requires @zod and @pgtype on a @primitive type", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
@@ -456,7 +458,35 @@ describe("type-level tags", () => {
             new Set(),
         );
 
-        expect(messages(findings)).toEqual(["`Thing`: @primitive requires @zod"]);
+        expect(messages(findings)).toEqual([
+            "`Thing`: @primitive requires @zod",
+            "`Thing`: @primitive requires @pgtype",
+        ]);
+    });
+
+    it("requires @pgtype on a @primitive type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @zod z.uuid()
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @primitive requires @pgtype"]);
+    });
+
+    it("reports @pgtype without a storage type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgtype
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @pgtype is missing its storage type"]);
     });
 
     it("reports @zod without a schema expression", () => {
@@ -475,6 +505,7 @@ describe("type-level tags", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
+             * @pgtype uuid
              * @zod z.uuid()
              * @zod z.string()
              */

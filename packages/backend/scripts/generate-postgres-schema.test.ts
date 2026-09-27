@@ -12,14 +12,46 @@ interface Fixture {
     formulas?: string;
 }
 
+/** Primitive aliases a fixture field can reference, each declaring its own Postgres type. */
+const PRIMITIVES = `
+/**
+ * @primitive
+ * @pgtype uuid
+ * @zod z.uuid()
+ */
+export type GUID = string;
+
+/**
+ * @primitive
+ * @pgtype decimal
+ * @zod z.string()
+ */
+export type Decimal = string;
+
+/**
+ * @primitive
+ * @pgtype text
+ * @zod z.email()
+ */
+export type Email = string;
+
+/**
+ * @primitive
+ * @pgtype int8
+ * @zod z.bigint()
+ */
+export type Version = bigint;
+`.trim();
+
 /** Generate from an in-memory project, so no fixture depends on the real spec. */
 function generate(fixture: Fixture) {
     const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile("fixtures/domain/primitives.ts", PRIMITIVES);
     for (const [name, text] of Object.entries(fixture.domain)) {
         project.createSourceFile(`fixtures/domain/${name}.ts`, text);
     }
     project.createSourceFile(FORMULAS_FILE, fixture.formulas ?? EMPTY_FORMULAS);
-    return generateSchema(project, { specGlob: SPEC_GLOB, formulasFile: FORMULAS_FILE });
+    return generateSchema(project, { specGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB, formulasFile: FORMULAS_FILE });
 }
 
 function messages(diagnostics: Diagnostic[]): string[] {
@@ -52,7 +84,7 @@ describe("generateSchema output", () => {
         expect(sql).toContain('"big" int8 not null');
     });
 
-    it("maps known named types to Postgres types", () => {
+    it("maps named types to the Postgres type their @pgtype declares", () => {
         const { sql } = generate({
             domain: {
                 Thing: `export interface Thing {
@@ -70,6 +102,33 @@ describe("generateSchema output", () => {
         expect(sql).toContain('"rate" decimal not null');
         expect(sql).toContain('"email" text not null');
         expect(sql).toContain('"at" timestamptz not null');
+    });
+
+    it("derives a foreign key's column type from the target entity's key, not a fixed type", () => {
+        const { sql } = generate({
+            domain: {
+                // Version is @pgtype int8, so a key of that type proves the type is not hardcoded.
+                Owner: "export interface Owner { id: Version; }",
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /** @relation Owner */
+                    owner: Owner;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"ownerId" int8 not null references "owner"("id")');
+    });
+
+    it("types an <Entity>Id field from the entity it keys", () => {
+        const { sql } = generate({
+            domain: {
+                Owner: "export interface Owner { id: Version; }",
+                Thing: "export interface Thing { id: GUID; ownerId: OwnerId; }",
+            },
+        });
+
+        expect(sql).toContain('"ownerId" int8 not null references "owner"("id")');
     });
 
     it("makes an optional field nullable", () => {
@@ -417,6 +476,23 @@ describe("generateSchema triggers", () => {
         expect(net).toBeGreaterThan(-1);
         expect(net).toBeLessThan(tax);
         expect(tax).toBeLessThan(total);
+    });
+
+    it("reads every registry regardless of its name", () => {
+        // The generator keys fragments by formula name only, so the registry variable is irrelevant.
+        const { sql } = generate({
+            formulas: "export const anything = { doubled: 'NEW.\"a\" * 2' } as const;",
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    a: Decimal;
+                    /** @computed storage=stored formula=doubled */
+                    twice: Decimal;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('NEW."twice" := NEW."a" * 2;');
     });
 
     it("emits no trigger for a table without computed fields", () => {

@@ -3,8 +3,9 @@
 `packages/backend/scripts/generate-postgres-schema.ts` turns the domain models in
 `packages/spec/src/domain/` into Postgres DDL.
 
-The spec is read by `packages/backend/scripts/spec-model.ts`, which both this generator and
-the repository generator consume. Only the rendering differs; see
+The spec is parsed by `packages/spec/scripts/spec-model.ts`; the Postgres table
+model is built by `packages/backend/scripts/postgres-model.ts`, which both this
+generator and the repository generator consume. Only the rendering differs; see
 `docs/repositories.md`.
 
 - `pnpm generate:schema` — writes `packages/backend/src/postgres/schema.sql`.
@@ -25,19 +26,26 @@ that library lists for the type. These are Postgres aliases (`int8` = `bigint`,
 server canonicalises them, and `information_schema.columns` reports the canonical
 name back.
 
-- `GUID`, `BrandedId<...>`, and any `<Entity>Id` type — `uuid`.
-- `Decimal` — `decimal`, for every numeric value: money, counts, and rates.
-- `Version` — `int8`, an optimistic-lock counter. See `docs/versioning.md`.
-- `Date` — `timestamptz`.
-- `string`, `Email`, `Unit`, `Currency` — `text`.
-- `boolean` — `boolean`.
-- `boolean` — `boolean`.
-- A union of string literals (such as `"draft" | "sent"`) — `text` plus a CHECK
+Named spec types are mapped by the `@pgtype` tag their alias declares, so the
+mapping lives in `packages/spec/src/primitives/`, not in the generator. Adding a
+primitive is a spec-only change. The generator hardcodes only the TypeScript
+built-ins:
+
+- The keyword types `string` → `text`, `number` → `float8`, `boolean` →
+  `boolean`, `bigint` → `int8`.
+- `Date` (the built-in) → `timestamptz`.
+
+Everything else resolves through the alias tree:
+
+- A `@primitive` alias (`GUID`, `Decimal`, `Money`, `Version`, and so on) → the
+  type its `@pgtype` names.
+- `BrandedId<...>` and any `<Entity>Id` alias → `uuid`.
+- A union of string literals (such as `"draft" | "sent"`) → `text` plus a CHECK
   constraint listing the values.
-- An open union (`Unit`, `Currency`, which end in `string & {}`) — plain `text`,
+- An open union (`Unit`, `Currency`, which end in `string & {}`) → plain `text`,
   no CHECK, because the value set is deliberately not closed.
-- An entity type — a foreign key column, via `@relation`.
-- An array of entities — not a column, via `@children`.
+- An entity type → a foreign key column, via `@relation`.
+- An array of entities → not a column, via `@children`.
 
 Unresolvable types are reported as diagnostics and no SQL is produced.
 

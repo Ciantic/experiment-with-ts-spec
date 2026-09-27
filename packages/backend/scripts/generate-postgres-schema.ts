@@ -6,14 +6,15 @@ import {
     BACKEND_PACKAGE_ROOT,
     DEFAULT_FORMULAS_FILE,
     DEFAULT_SPEC_GLOB,
+    SPEC_GLOB,
     buildSpecTables,
     quote,
     type Diagnostic,
     type GenerateOptions,
     type Table,
-} from "./spec-model.ts";
+} from "./postgres-model.ts";
 
-export type { Diagnostic } from "./spec-model.ts";
+export type { Diagnostic } from "./postgres-model.ts";
 
 /** Where the DDL is written when no `--out` is given. */
 const DEFAULT_OUT = join(BACKEND_PACKAGE_ROOT, "src/postgres/schema.sql");
@@ -203,9 +204,10 @@ export function generateSchema(
 
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    project.addSourceFilesAtPaths(DEFAULT_SPEC_GLOB);
+    project.addSourceFilesAtPaths(SPEC_GLOB);
     const { sql, diagnostics } = generateSchema(project, {
         specGlob: DEFAULT_SPEC_GLOB,
+        aliasGlob: SPEC_GLOB,
         formulasFile: DEFAULT_FORMULAS_FILE,
     });
 

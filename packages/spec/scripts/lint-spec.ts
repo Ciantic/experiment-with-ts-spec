@@ -1,55 +1,46 @@
 /** Check the annotation tags on `spec/` interfaces. See docs/spec-annotations.md. */
 import {
-    Node,
     Project,
     type InterfaceDeclaration,
     type JSDocTag,
     type PropertySignature,
     type TypeAliasDeclaration,
 } from "ts-morph";
+import {
+    FIELD_TAGS,
+    INTERFACE_TAGS,
+    RETIRED_TAGS,
+    SPEC_GLOB,
+    STORAGE_MODES,
+    TYPE_TAGS,
+    WIDGETS,
+    formulaNamesIn,
+    parseParameters,
+    readFormulaNames,
+    readTags,
+    typeMembers,
+} from "./spec-model.ts";
+
+// Re-exported so the model's formula discovery and the linter have one entry point.
+export { readFormulaNames };
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
-const ALLOWED_TAGS = new Set([
-    "fieldName",
-    "widget",
-    "generated",
-    "computed",
-    "relation",
-    "children",
-    "inlined",
-    "unique",
-    "default",
-    "version",
-]);
+const ALLOWED_TAGS = new Set<string>(FIELD_TAGS);
 
 /** Tags an interface may carry. */
-const ALLOWED_INTERFACE_TAGS = new Set(["table"]);
+const ALLOWED_INTERFACE_TAGS = new Set<string>(INTERFACE_TAGS);
 
-/** Retired tags, reported with their replacement rather than as "unknown". */
-const RETIRED_TAGS = new Map([
-    ["readonly", "use @generated for system-assigned fields or @computed for derived fields"],
-    ["type", "the TypeScript type already carries this; drop it"],
-    ["values", "the TypeScript type already carries this; drop it"],
-]);
+/** Tags a type alias may carry. Anything else is rejected. */
+const ALLOWED_TYPE_TAGS = new Set<string>(TYPE_TAGS);
 
 /** Widget hints a field may carry. */
-const ALLOWED_WIDGETS = new Set([
-    "text",
-    "number",
-    "date",
-    "select",
-    "table",
-    "textarea",
-]);
+const ALLOWED_WIDGETS = new Set<string>(WIDGETS);
 
 /** Storage modes a @computed field may carry. */
-const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
+const ALLOWED_STORAGE = new Set<string>(STORAGE_MODES);
 
 /** The type-level tag that marks a union as the set of valid `formula=` names. */
 const FORMULA_TAG = "formula";
-
-/** Tags a type alias may carry. Anything else is rejected. */
-const ALLOWED_TYPE_TAGS = new Set([FORMULA_TAG, "primitive", "zod"]);
 
 /** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
 const PRIMITIVE_TAG = "primitive";
@@ -57,8 +48,8 @@ const PRIMITIVE_TAG = "primitive";
 /** The tag that carries a type's Zod schema expression, e.g. `z.uuid().brand<"InvoiceId">`. */
 const ZOD_TAG = "zod";
 
-/** Matches the spec interfaces, relative to this package's tsconfig. */
-const SPEC_GLOB = "src/**/*.ts";
+/** The tag that carries a type's storage-layer type, e.g. `uuid`. */
+const PG_TYPE_TAG = "pgtype";
 
 export interface Finding {
     filePath: string;
@@ -66,57 +57,10 @@ export interface Finding {
     message: string;
 }
 
-/** True when a type alias carries `@formula`. */
-function isFormulaType(declaration: TypeAliasDeclaration): boolean {
-    return declaration
-        .getJsDocs()
-        .some((doc) => doc.getTags().some((tag) => tag.getTagName() === FORMULA_TAG));
-}
-
-/** The members of a type, unwrapping a single-member alias that has no union node. */
-function typeMembers(declaration: TypeAliasDeclaration): Node[] {
-    const typeNode = declaration.getTypeNode();
-    if (!typeNode) {
-        return [];
-    }
-    return Node.isUnionTypeNode(typeNode) ? typeNode.getTypeNodes() : [typeNode];
-}
-
-/** The string-literal members of an `@formula` type, in declaration order. */
-function formulaNamesIn(declaration: TypeAliasDeclaration): string[] {
-    const names: string[] = [];
-    for (const member of typeMembers(declaration)) {
-        if (!Node.isLiteralTypeNode(member)) {
-            continue;
-        }
-        const literal = member.getLiteral();
-        if (Node.isStringLiteral(literal)) {
-            names.push(literal.getLiteralText());
-        }
-    }
-    return names;
-}
-
-/** Read formula names from every `@formula`-annotated type under `spec/`, statically. */
-export function readFormulaNames(project: Project): Set<string> {
-    const names = new Set<string>();
-    for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
-        for (const declaration of sourceFile.getTypeAliases()) {
-            if (!isFormulaType(declaration)) {
-                continue;
-            }
-            for (const name of formulaNamesIn(declaration)) {
-                names.add(name);
-            }
-        }
-    }
-    return names;
-}
-
 /** Check the tags on a type alias: `@formula`, `@primitive`, and `@zod`. */
 function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
     const name = declaration.getName();
-    const tags = collectTags(declaration);
+    const tags = readTags(declaration).byName;
     const report = (message: string, tag: JSDocTag) => {
         findings.push({ filePath, line: tag.getStartLineNumber(), message: `\`${name}\`: ${message}` });
     };
@@ -151,49 +95,25 @@ function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, find
         }
     }
 
-    // @primitive is a bare marker; its type must carry the matching @zod schema.
+    // @primitive is a bare marker; its type must carry the matching @zod schema and @pgtype storage type.
     const primitiveTag = (tags.get(PRIMITIVE_TAG) ?? [])[0];
     const zodTag = (tags.get(ZOD_TAG) ?? [])[0];
+    const pgtypeTag = (tags.get(PG_TYPE_TAG) ?? [])[0];
     if (primitiveTag && (primitiveTag.getCommentText() ?? "").trim()) {
         report(`@${PRIMITIVE_TAG} takes no value`, primitiveTag);
     }
     if (zodTag && !(zodTag.getCommentText() ?? "").trim()) {
         report(`@${ZOD_TAG} is missing its schema expression`, zodTag);
     }
+    if (pgtypeTag && !(pgtypeTag.getCommentText() ?? "").trim()) {
+        report(`@${PG_TYPE_TAG} is missing its storage type`, pgtypeTag);
+    }
     if (primitiveTag && !zodTag) {
         report(`@${PRIMITIVE_TAG} requires @${ZOD_TAG}`, primitiveTag);
     }
-}
-
-/** Collect the JSDoc tags on a declaration or property, keyed by tag name. */
-function collectTags(holder: PropertySignature | TypeAliasDeclaration): Map<string, JSDocTag[]> {
-    const tags = new Map<string, JSDocTag[]>();
-    for (const doc of holder.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            const name = tag.getTagName();
-            const existing = tags.get(name);
-            if (existing) {
-                existing.push(tag);
-            } else {
-                tags.set(name, [tag]);
-            }
-        }
+    if (primitiveTag && !pgtypeTag) {
+        report(`@${PRIMITIVE_TAG} requires @${PG_TYPE_TAG}`, primitiveTag);
     }
-    return tags;
-}
-
-/** Parse `key=value` pairs out of a tag comment such as `storage=stored formula=x`. */
-function parseParameters(tag: JSDocTag): Map<string, string> {
-    const parameters = new Map<string, string>();
-    const text = tag.getCommentText() ?? "";
-    for (const match of text.matchAll(/([A-Za-z]+)=(\S+)/g)) {
-        const key = match[1];
-        const value = match[2];
-        if (key !== undefined && value !== undefined) {
-            parameters.set(key, value);
-        }
-    }
-    return parameters;
 }
 
 /** True when a property carries `@version`. */
@@ -247,7 +167,7 @@ function lintProperty(
         findings.push({ filePath, line, message: `\`${fieldName}\`: ${message}` });
     };
 
-    const tags = collectTags(property);
+    const tags = readTags(property).byName;
 
     // Unknown and retired tags.
     for (const [name, instances] of tags) {

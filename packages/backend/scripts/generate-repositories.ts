@@ -6,11 +6,12 @@ import {
     BACKEND_PACKAGE_ROOT,
     DEFAULT_FORMULAS_FILE,
     DEFAULT_SPEC_GLOB,
+    SPEC_GLOB,
     buildSpecTables,
     quote,
     type Column,
     type Table,
-} from "./spec-model.ts";
+} from "./postgres-model.ts";
 
 /** Where the repository files are written when no `--out` is given. */
 const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/postgres/db/repositories");
@@ -164,9 +165,10 @@ export function generateRepositories(tables: Map<string, Table>): Map<string, st
 
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    project.addSourceFilesAtPaths(DEFAULT_SPEC_GLOB);
+    project.addSourceFilesAtPaths(SPEC_GLOB);
     const { tables, diagnostics } = buildSpecTables(project, {
         specGlob: DEFAULT_SPEC_GLOB,
+        aliasGlob: SPEC_GLOB,
         formulasFile: DEFAULT_FORMULAS_FILE,
     });
 

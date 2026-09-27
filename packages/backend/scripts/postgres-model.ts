@@ -1,33 +1,33 @@
-/** Read `spec/domain` into the table model shared by the backend generators. See docs/schema-generation.md. */
-import { createRequire } from "node:module";
-import { dirname, join, relative as relativePath } from "node:path";
+/**
+ * Map the parsed spec to the Postgres table model shared by the generators.
+ * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the SQL mapping.
+ * See docs/schema-generation.md.
+ */
+import { dirname, join } from "node:path";
+import { Node, SyntaxKind, type Project } from "ts-morph";
 import {
-    Node,
-    Project,
-    SyntaxKind,
-    type InterfaceDeclaration,
-    type JSDoc,
-    type PropertySignature,
-    type TypeNode,
-} from "ts-morph";
+    DEFAULT_SPEC_GLOB,
+    SPEC_GLOB,
+    parseSpec,
+    type Diagnostic,
+    type SpecProperty,
+} from "spec/scripts/spec-model.js";
 
-const require = createRequire(import.meta.url);
-
-/** The `spec` package root, resolved through the workspace dependency. */
-const SPEC_PACKAGE_ROOT = dirname(require.resolve("spec/package.json"));
-
-/** The spec `src` directory; a source path under it maps back to its package export specifier. */
-const SPEC_SRC_ROOT = join(SPEC_PACKAGE_ROOT, "src");
+export type { Diagnostic };
 
 /** This package's root, so paths do not depend on the current working directory. */
 export const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
-export const DEFAULT_SPEC_GLOB = join(SPEC_PACKAGE_ROOT, "src/domain/**/*.ts");
+export { DEFAULT_SPEC_GLOB, SPEC_GLOB };
+
 export const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "src/postgres/formulas.ts");
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
+    /** Where the entities are read from. */
     specGlob?: string;
+    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
+    aliasGlob?: string;
     formulasFile?: string;
 }
 
@@ -39,45 +39,19 @@ const PRIMITIVE_TYPES: Record<string, string> = {
     bigint: "int8",
 };
 
-/** Named types to Postgres types, checked before alias resolution. */
-const NAMED_TYPES: Record<string, string> = {
-    GUID: "uuid",
+/** TypeScript built-ins that are not spec aliases; keywords are handled by PRIMITIVE_TYPES. */
+const BUILTIN_TYPES: Record<string, string> = {
     Date: "timestamptz",
-    Decimal: "decimal",
-    Money: "decimal",
-    Quantity: "decimal",
-    TaxRate: "decimal",
-    Email: "text",
-    Unit: "text",
-    Currency: "text",
-    EInvoiceAddress: "text",
-    EInvoiceOperator: "text",
-    Language: "text",
-    BrandedId: "uuid",
-    Version: "int8",
 };
 
-/** Entity-typed fields must carry this annotation to become a foreign key column. */
-const RELATION_TAG = "relation";
-
-/** Array-typed fields must carry this annotation to be skipped as a child collection. */
-const CHILDREN_TAG = "children";
-
-/** Entity-typed fields may carry this to inline the target's scalar fields instead of emitting a foreign key. */
-const INLINED_TAG = "inlined";
-
-/** The formula registries, read statically from `formulas.ts`. */
-interface FormulaRegistries {
-    row: Record<string, string>;
-    invoice: Record<string, { sameRow?: string; childNew?: string; childOld?: string }>;
-    timestamp: Record<string, string>;
-}
-
-/** A problem found while reading the spec; the generators report these instead of producing output. */
-export interface Diagnostic {
-    filePath: string;
-    line: number;
-    message: string;
+/** One formula fragment, whatever registry it came from. See docs/spec-annotations.md. */
+export interface FormulaEntry {
+    /** An expression the generator wraps as `NEW."field" := <expr>;`. */
+    expression?: string;
+    /** A complete `NEW."field" := …;` statement, emitted verbatim. */
+    sameRow?: string;
+    childNew?: string;
+    childOld?: string;
 }
 
 /** A column generated from a domain field. `read` is the accessor the repository generator emits. */
@@ -115,25 +89,9 @@ interface TypeResolution {
     isArray?: boolean;
 }
 
-/** InvoiceRow -> invoice_row. */
-function snakeCase(name: string): string {
-    return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
-}
-
-/** customer + id -> customerId. Inlined columns are prefixed by the field name. */
-function inlinedColumnName(fieldName: string, targetField: string): string {
-    return fieldName + targetField.charAt(0).toUpperCase() + targetField.slice(1);
-}
-
 /** Quote an identifier, matching the fragments in formulas.ts. */
 export function quote(name: string): string {
     return `"${name}"`;
-}
-
-/** The module specifier that imports a spec source file, honouring the package's exports map. */
-export function specImportSpecifier(sourceFile: string): string {
-    const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile).replace(/\.ts$/, ".js");
-    return `spec/${relativeToSrc}`;
 }
 
 /** Read a string or template literal's text. */
@@ -144,24 +102,21 @@ function readStringValue(node: Node): string | undefined {
     return undefined;
 }
 
-/** Read `formulas.ts` without importing it, so the script runs under plain node. */
-export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_FILE): FormulaRegistries {
-    const registries: FormulaRegistries = { row: {}, invoice: {}, timestamp: {} };
+/** Read every registry exported by `formulas.ts`, keyed by formula name, without importing it. */
+export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_FILE): Map<string, FormulaEntry> {
+    const formulas = new Map<string, FormulaEntry>();
     const sourceFile = project.getSourceFile(formulasFile);
     if (!sourceFile) {
-        return registries;
+        return formulas;
     }
 
+    // Every registry is a top-level object literal, regardless of the name it is bound to.
     for (const declaration of sourceFile.getVariableDeclarations()) {
-        const name = declaration.getName();
-        if (name !== "rowFormulas" && name !== "invoiceFormulas" && name !== "timestampFormulas") {
-            continue;
-        }
         const initializer = declaration.getInitializer();
         if (!initializer) {
             continue;
         }
-        // The registries are `as const`, so the literal is an AsExpression.
+        // A registry is `as const` or annotated, so the literal may sit behind an AsExpression.
         const literal = Node.isAsExpression(initializer)
             ? initializer.getExpressionIfKind(SyntaxKind.ObjectLiteralExpression)
             : initializer.asKind(SyntaxKind.ObjectLiteralExpression);
@@ -173,55 +128,52 @@ export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_F
             if (!Node.isPropertyAssignment(property)) {
                 continue;
             }
-            const key = property.getName().replace(/^["']|["']$/g, "");
+            const key = unquote(property.getName());
             const value = property.getInitializer();
-            if (name === "rowFormulas" || name === "timestampFormulas") {
-                const text = value ? readStringValue(value) : undefined;
-                if (text !== undefined) {
-                    (name === "rowFormulas" ? registries.row : registries.timestamp)[key] = text;
-                }
+            // A string value is a same-row expression; an object value carries named statements.
+            const text = value ? readStringValue(value) : undefined;
+            if (text !== undefined) {
+                formulas.set(key, { expression: text });
                 continue;
             }
             const nested = value?.asKind(SyntaxKind.ObjectLiteralExpression);
             if (!nested) {
                 continue;
             }
-            const entry: { sameRow?: string; childNew?: string; childOld?: string } = {};
+            const entry: FormulaEntry = {};
             for (const inner of nested.getProperties()) {
                 if (!Node.isPropertyAssignment(inner)) {
                     continue;
                 }
-                const innerKey = inner.getName().replace(/^["']|["']$/g, "");
+                const innerKey = unquote(inner.getName());
                 const innerValue = inner.getInitializer();
-                const text = innerValue ? readStringValue(innerValue) : undefined;
-                if (text === undefined) {
+                const innerText = innerValue ? readStringValue(innerValue) : undefined;
+                if (innerText === undefined) {
                     continue;
                 }
                 if (innerKey === "sameRow" || innerKey === "childNew" || innerKey === "childOld") {
-                    entry[innerKey] = text;
+                    entry[innerKey] = innerText;
                 }
             }
-            registries.invoice[key] = entry;
+            formulas.set(key, entry);
         }
     }
 
-    return registries;
+    return formulas;
 }
 
-/** Read a positional tag value such as `@relation Customer`. */
-function tagValue(holder: { getJsDocs(): JSDoc[] }, name: string): string | undefined {
-    for (const doc of holder.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            if (tag.getTagName() === name) {
-                return (tag.getCommentText() ?? "").trim();
-            }
-        }
-    }
-    return undefined;
+/** Strip the quotes ts-morph keeps on a string-literal property name. */
+function unquote(name: string): string {
+    return name.replace(/^["']|["']$/g, "");
 }
 
 function stripSemicolon(text: string): string {
     return text.trim().replace(/;$/, "");
+}
+
+/** customer + id -> customerId. Inlined columns are prefixed by the field name. */
+function inlinedColumnName(fieldName: string, targetField: string): string {
+    return fieldName + targetField.charAt(0).toUpperCase() + targetField.slice(1);
 }
 
 /** Build the table model shared by the schema and repository generators. */
@@ -230,68 +182,69 @@ export function buildSpecTables(
     options: GenerateOptions = {},
 ): { tables: Map<string, Table>; diagnostics: Diagnostic[] } {
     const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
+    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
     const formulasFile = options.formulasFile ?? DEFAULT_FORMULAS_FILE;
     const diagnostics: Diagnostic[] = [];
-    const interfaces = new Map<string, InterfaceDeclaration>();
-    const aliasCache = new Map<string, TypeNode | undefined>();
-    const { row: rowRegistry, invoice: invoiceRegistry, timestamp: timestampRegistry } = readFormulas(
-        project,
-        formulasFile,
-    );
-
-    for (const sourceFile of project.getSourceFiles(specGlob)) {
-        for (const declaration of sourceFile.getInterfaces()) {
-            interfaces.set(declaration.getName(), declaration);
-        }
-    }
+    const formulas = readFormulas(project, formulasFile);
+    const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+    const tables = new Map<string, Table>();
 
     const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
-    const report = (declaration: InterfaceDeclaration | PropertySignature, message: string) => {
-        const sourceFile = declaration.getSourceFile();
+    const report = (node: Node, message: string) => {
+        const sourceFile = node.getSourceFile();
         diagnostics.push({
             filePath: relative(sourceFile.getFilePath()),
-            line: declaration.getStartLineNumber(),
+            line: node.getStartLineNumber(),
             message,
         });
     };
 
-    /** Resolve a named alias to its type node, so a branded type is seen as its base type. */
-    function aliasTypeNode(name: string): TypeNode | undefined {
-        if (aliasCache.has(name)) {
-            return aliasCache.get(name);
+    /** The SQL type of an entity's primary key, read from its own `id` field rather than assumed. */
+    const pkTypeInProgress = new Set<string>();
+    function primaryKeySqlType(entity: string): string {
+        const id = interfaces.get(entity)?.properties.find((property) => property.name === "id");
+        const typeNode = id?.declaration.getTypeNode();
+        // A self-referential `<Entity>Id` alias that is not declared would otherwise recurse forever.
+        if (!typeNode || pkTypeInProgress.has(entity)) {
+            return "text";
         }
-        let found: TypeNode | undefined;
-        for (const sourceFile of project.getSourceFiles(specGlob)) {
-            const alias = sourceFile.getTypeAlias(name);
-            if (alias) {
-                found = alias.getTypeNode();
-                break;
-            }
+        pkTypeInProgress.add(entity);
+        try {
+            return resolveTypeNode(typeNode)?.sqlType ?? "text";
+        } finally {
+            pkTypeInProgress.delete(entity);
         }
-        aliasCache.set(name, found);
-        return found;
     }
 
+    /** Resolve a named alias to its type, reading its `@pgtype` before its underlying type. */
     function resolveNamedType(name: string): TypeResolution | undefined {
-        const known = NAMED_TYPES[name];
-        if (known) {
-            return { sqlType: known };
+        const builtin = BUILTIN_TYPES[name];
+        if (builtin) {
+            return { sqlType: builtin };
+        }
+        const alias = aliases.get(name);
+        // A primitive declares its storage type; that wins over resolving through its base type.
+        if (alias?.tags.pgtype) {
+            return { sqlType: alias.tags.pgtype };
         }
         if (interfaces.has(name)) {
             return { entity: name };
         }
-        const alias = aliasTypeNode(name);
-        if (alias) {
-            return resolveTypeNode(alias);
+        const aliasType = alias?.declaration.getTypeNode();
+        if (aliasType) {
+            return resolveTypeNode(aliasType);
         }
-        // InvoiceId, CustomerId: the brand name identifies the entity.
+        // InvoiceId, CustomerId: an identifier named after the entity it keys, typed as that key.
         if (name.endsWith("Id")) {
-            return { sqlType: "uuid" };
+            const entity = name.slice(0, -2);
+            if (interfaces.has(entity)) {
+                return { sqlType: primaryKeySqlType(entity) };
+            }
         }
         return undefined;
     }
 
-    function resolveTypeNode(node: TypeNode): TypeResolution | undefined {
+    function resolveTypeNode(node: Node): TypeResolution | undefined {
         // string, number, boolean, bigint and friends.
         // `(string & {})` reaches here as a parenthesized type, so unwrap it first.
         const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
@@ -374,16 +327,12 @@ export function buildSpecTables(
     }
 
     function entityTableName(entity: string): string | undefined {
-        const declaration = interfaces.get(entity);
-        if (!declaration) {
-            return undefined;
-        }
-        return tagValue(declaration, "table") ?? snakeCase(entity);
+        return interfaces.get(entity)?.tableName;
     }
 
     /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
     function inlineColumns(
-        property: PropertySignature,
+        property: SpecProperty,
         fieldName: string,
         entity: string,
         notNull: boolean,
@@ -391,29 +340,29 @@ export function buildSpecTables(
     ): void {
         const declaration = interfaces.get(entity);
         if (!declaration) {
-            report(property, `\`${fieldName}\`: @${INLINED_TAG} ${entity} has no interface`);
+            report(property.declaration, `\`${fieldName}\`: @inlined ${entity} has no interface`);
             return;
         }
-        for (const inner of declaration.getProperties()) {
-            const innerName = inner.getName();
-            const innerType = inner.getTypeNode();
+        for (const inner of declaration.properties) {
+            const innerName = inner.name;
+            const innerType = inner.declaration.getTypeNode();
             if (!innerType) {
-                report(inner, `\`${entity}.${innerName}\`: cannot resolve a type node`);
+                report(inner.declaration, `\`${entity}.${innerName}\`: cannot resolve a type node`);
                 continue;
             }
             const resolved = resolveTypeNode(innerType);
             if (!resolved) {
-                report(inner, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
+                report(inner.declaration, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
                 continue;
             }
             if (resolved.isArray || resolved.entity) {
-                report(inner, `\`${entity}.${innerName}\`: @${INLINED_TAG} only inlines scalar fields`);
+                report(inner.declaration, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
                 continue;
             }
             const column: Column = {
                 name: inlinedColumnName(fieldName, innerName),
                 sqlType: resolved.sqlType ?? "text",
-                notNull: notNull && !inner.hasQuestionToken(),
+                notNull: notNull && !inner.optional,
                 primaryKey: false,
                 unique: false,
                 read: notNull ? `${fieldName}.${innerName}` : `${fieldName}?.${innerName}`,
@@ -425,67 +374,63 @@ export function buildSpecTables(
         }
     }
 
-    const tables = new Map<string, Table>();
-
-    for (const [interfaceName, declaration] of interfaces) {
-        const tableName = tagValue(declaration, "table") ?? snakeCase(interfaceName);
+    for (const spec of interfaces.values()) {
         const table: Table = {
-            name: tableName,
-            interfaceName,
-            importSpecifier: specImportSpecifier(declaration.getSourceFile().getFilePath()),
+            name: spec.tableName,
+            interfaceName: spec.name,
+            importSpecifier: spec.importSpecifier,
             columns: [],
             sameRowAssignments: [],
             rollups: new Map(),
         };
 
-        for (const property of declaration.getProperties()) {
-            const fieldName = property.getName();
-            const typeNode = property.getTypeNode();
-            const notNull = !property.hasQuestionToken();
+        for (const property of spec.properties) {
+            const fieldName = property.name;
+            const typeNode = property.declaration.getTypeNode();
+            const notNull = !property.optional;
+            const tags = property.tags;
 
             if (!typeNode) {
-                report(property, `\`${fieldName}\`: cannot resolve a type node`);
+                report(property.declaration, `\`${fieldName}\`: cannot resolve a type node`);
                 continue;
             }
 
             const resolved = resolveTypeNode(typeNode);
             if (!resolved) {
-                report(property, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
+                report(property.declaration, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
                 continue;
             }
 
             if (resolved.isArray) {
-                if (!tagValue(property, CHILDREN_TAG)) {
+                if (!tags.children) {
                     report(
-                        property,
-                        `\`${fieldName}\`: array fields need @${CHILDREN_TAG} <Entity> and are not columns`,
+                        property.declaration,
+                        `\`${fieldName}\`: array fields need @children <Entity> and are not columns`,
                     );
                 }
                 continue;
             }
 
             if (resolved.entity) {
-                const inlined = tagValue(property, INLINED_TAG);
-                if (inlined) {
-                    inlineColumns(property, fieldName, inlined, notNull, table);
+                if (tags.inlined) {
+                    inlineColumns(property, fieldName, tags.inlined, notNull, table);
                     continue;
                 }
-                const relation = tagValue(property, RELATION_TAG);
-                if (!relation) {
+                if (!tags.relation) {
                     report(
-                        property,
-                        `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @${RELATION_TAG} ${resolved.entity}`,
+                        property.declaration,
+                        `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation ${resolved.entity}`,
                     );
                     continue;
                 }
-                const targetTable = entityTableName(relation);
+                const targetTable = entityTableName(tags.relation);
                 if (!targetTable) {
-                    report(property, `\`${fieldName}\`: @${RELATION_TAG} ${relation} has no interface`);
+                    report(property.declaration, `\`${fieldName}\`: @relation ${tags.relation} has no interface`);
                     continue;
                 }
                 table.columns.push({
                     name: `${fieldName}Id`,
-                    sqlType: "uuid",
+                    sqlType: primaryKeySqlType(tags.relation),
                     notNull,
                     primaryKey: false,
                     unique: false,
@@ -498,13 +443,13 @@ export function buildSpecTables(
             const isPrimaryKey = fieldName === "id";
             const isForeignKey = !isPrimaryKey && (typeNode.getText().endsWith("Id") ?? false);
             // A default makes the column not null even when the field is optional: the database fills it.
-            const defaultValue = tagValue(property, "default");
+            const defaultValue = tags.default;
             const column: Column = {
                 name: fieldName,
                 sqlType: resolved.sqlType ?? "text",
                 notNull: notNull || isPrimaryKey || defaultValue !== undefined,
                 primaryKey: isPrimaryKey,
-                unique: tagValue(property, "unique") !== undefined,
+                unique: tags.unique,
                 read: fieldName,
             };
             if (resolved.checkValues) {
@@ -513,7 +458,7 @@ export function buildSpecTables(
             if (defaultValue !== undefined) {
                 column.default = defaultValue;
             }
-            if (tagValue(property, "version") !== undefined) {
+            if (tags.version) {
                 column.version = true;
             }
 
@@ -521,59 +466,49 @@ export function buildSpecTables(
                 const entity = typeNode.getText().slice(0, -2);
                 const targetTable = entityTableName(entity);
                 if (!targetTable) {
-                    report(property, `\`${fieldName}\`: no interface for foreign key entity \`${entity}\``);
+                    report(property.declaration, `\`${fieldName}\`: no interface for foreign key entity \`${entity}\``);
                     continue;
                 }
+                // The key column takes the referenced entity's key type, not a fixed one.
+                column.sqlType = primaryKeySqlType(entity);
                 column.references = { table: targetTable, column: "id" };
             }
 
             table.columns.push(column);
 
-            const computed = tagValue(property, "computed");
-            if (!computed) {
-                continue;
-            }
-            const formula = /formula=(\S+)/.exec(computed)?.[1];
+            const formula = tags.computed?.formula;
             if (!formula) {
                 continue;
             }
-            const rowExpression = rowRegistry[formula];
-            if (rowExpression !== undefined) {
-                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(rowExpression)};`);
-                continue;
-            }
-            const timestampExpression = timestampRegistry[formula];
-            if (timestampExpression !== undefined) {
-                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(timestampExpression)};`);
-                continue;
-            }
-            const invoiceFormula = invoiceRegistry[formula];
-            if (invoiceFormula?.sameRow) {
-                table.sameRowAssignments.push(stripSemicolon(invoiceFormula.sameRow) + ";");
+            const entry = formulas.get(formula);
+            // A string fragment is an expression to wrap; a `sameRow` fragment is a whole statement.
+            if (entry?.expression !== undefined) {
+                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(entry.expression)};`);
+            } else if (entry?.sameRow !== undefined) {
+                table.sameRowAssignments.push(stripSemicolon(entry.sameRow) + ";");
             }
         }
 
         if (!table.columns.some((column) => column.primaryKey)) {
-            report(declaration, `\`${interfaceName}\`: no \`id\` field to use as primary key`);
+            report(spec.declaration, `\`${spec.name}\`: no \`id\` field to use as primary key`);
         }
 
-        tables.set(interfaceName, table);
+        tables.set(spec.name, table);
     }
 
     /** Attach each cross-table aggregate to the child table that changes it. */
-    for (const [interfaceName, declaration] of interfaces) {
-        const parentTable = tables.get(interfaceName);
+    for (const spec of interfaces.values()) {
+        const parentTable = tables.get(spec.name);
         if (!parentTable) {
             continue;
         }
-        for (const property of declaration.getProperties()) {
-            const computed = tagValue(property, "computed");
-            const formula = computed ? /formula=(\S+)/.exec(computed)?.[1] : undefined;
+        for (const property of spec.properties) {
+            const formula = property.tags.computed?.formula;
             if (!formula) {
                 continue;
             }
-            const invoiceFormula = invoiceRegistry[formula];
-            if (!invoiceFormula?.childNew || !invoiceFormula.childOld) {
+            const entry = formulas.get(formula);
+            if (!entry?.childNew || !entry.childOld) {
                 continue;
             }
             for (const child of tables.values()) {
@@ -587,8 +522,8 @@ export function buildSpecTables(
                     newStatements: [],
                     oldStatements: [],
                 };
-                rollup.newStatements.push(invoiceFormula.childNew);
-                rollup.oldStatements.push(invoiceFormula.childOld);
+                rollup.newStatements.push(entry.childNew);
+                rollup.oldStatements.push(entry.childOld);
                 parentTable.rollups.set(child.name, rollup);
             }
         }

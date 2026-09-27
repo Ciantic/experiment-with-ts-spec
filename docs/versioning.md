@@ -36,11 +36,11 @@ string.
 - **Branded, not an alias.** `1n` is a plausible version and a plausible count;
   the brand keeps `Version` and `Quantity` from being interchangeable.
 
-The `NAMED_TYPES` entry in `packages/backend/scripts/spec-model.ts` is
-load-bearing, not cosmetic: `resolveNamedType` checks the map before alias
-resolution, so without `Version: "int8"` the alias would resolve to the `bigint`
-keyword and emit `int8` anyway — the same result by a different route. The
-explicit entry documents the intent and survives a change to the alias.
+The `@pgtype int8` tag on `Version` in `packages/spec/src/primitives/Version.ts` is
+load-bearing, not cosmetic: the generator reads it before resolving the alias, so
+without it the alias would resolve to the `bigint` keyword and emit `int8`
+anyway — the same result by a different route. The explicit tag documents the
+intent and survives a change to the alias.
 
 ## The column
 
@@ -205,7 +205,7 @@ caller cannot build a patch that omits the precondition.
 
 1. `packages/spec/src/primitives/Version.ts` defines the brand; `@version` and
    `@default 0` go on the field.
-2. `packages/backend/scripts/spec-model.ts` maps `Version` to `int8` and sets
+2. `packages/backend/scripts/postgres-model.ts` maps `Version` to `int8` and sets
    `Column.version` from the tag.
 3. `packages/backend/scripts/generate-postgres-schema.ts` emits the column and
    `renderVersionTrigger`.

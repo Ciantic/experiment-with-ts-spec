@@ -38,7 +38,8 @@ The order is load-bearing:
   input.
 
 `pnpm run generate` runs the schema generator before the repository generator.
-Both read the spec through `packages/backend/scripts/spec-model.ts` and neither
+Both read the spec through `packages/spec/scripts/spec-model.ts`, mapped to
+columns by `packages/backend/scripts/postgres-model.ts`, and neither
 reads the other's output, so the order between them is presentational — it mirrors
 the order the artifacts appear in the repository.
 

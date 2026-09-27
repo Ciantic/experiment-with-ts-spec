@@ -3,6 +3,7 @@
  * string. See docs/invoice-sending.md.
  *
  * @primitive
+ * @pgtype text
  * @zod z.enum(["fi", "sv", "en"]).or(z.string())
  */
 export type Language =

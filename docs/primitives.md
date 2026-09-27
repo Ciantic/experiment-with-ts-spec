@@ -5,12 +5,13 @@ entities live in `packages/spec/src/domain/`.
 
 ## Annotations
 
-Every alias in this folder carries two type-level tags, described in
+Every alias in this folder carries three type-level tags, described in
 `docs/spec-annotations.md`:
 
 ```typescript
 /**
  * @primitive
+ * @pgtype uuid
  * @zod z.uuid().brand<Name>()
  */
 export type BrandedId<Name extends string> = GUID & $brand<Name>;
@@ -18,6 +19,10 @@ export type BrandedId<Name extends string> = GUID & $brand<Name>;
 
 - `@primitive` marks the alias as a scalar value type, not an entity. It is a
   bare marker and takes no value.
+- `@pgtype` is the Postgres type a generator maps the alias to (`uuid`, `decimal`,
+  `text`, `int8`). It is what keeps the storage mapping in the spec: the backend
+  reads the tag instead of hardcoding domain type names, so a new primitive is a
+  spec-only change.
 - `@zod` is the type's Zod schema, written verbatim. The tag is text a generator
   consumes; the schema is never evaluated in this package. It is what gives a
   brand that exists only in the type system a runtime counterpart that can

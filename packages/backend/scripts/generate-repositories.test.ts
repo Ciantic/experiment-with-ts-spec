@@ -4,7 +4,7 @@ import { ts } from "ts-morph";
 import { createPglite } from "../src/postgres/pglite-setup.js";
 import type { SqlExecutor } from "../src/postgres/db/sql-executor.js";
 import { generateIndex, generateRepositories, generateRepository } from "./generate-repositories.js";
-import type { Column, Table } from "./spec-model.js";
+import type { Column, Table } from "./postgres-model.js";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };

@@ -92,10 +92,11 @@ statement stays valid.
 
 The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
-`packages/backend/scripts/spec-model.ts`. One interpretation of `@table`,
-`@relation`, `@children`, `@inlined`, `<Entity>Id` foreign keys, and type
-mapping feeds both the DDL and the repositories, so a repository cannot name a
-column the schema does not have.
+`packages/backend/scripts/postgres-model.ts`, which maps the parsed spec
+(`packages/spec/scripts/spec-model.ts`) to columns. One interpretation of
+`@table`, `@relation`, `@children`, `@inlined`, `<Entity>Id` foreign keys, and
+type mapping feeds both the DDL and the repositories, so a repository cannot
+name a column the schema does not have.
 
 The column value is read through the accessor recorded on the model, so an
 inlined optional customer is written as `row.customer?.id`, and a relation field
