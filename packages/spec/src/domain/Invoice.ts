@@ -37,7 +37,7 @@ export interface Invoice {
      * @unique
      * @widget text
      */
-    number: string;
+    number?: string;
 
     /**
      * The customer this invoice is issued to.
@@ -54,7 +54,7 @@ export interface Invoice {
      * @fieldName Issue date
      * @widget date
      */
-    issueDate: Date;
+    issueDate?: Date;
 
     /**
      * The date by which payment is due.
@@ -62,7 +62,7 @@ export interface Invoice {
      * @fieldName Due date
      * @widget date
      */
-    dueDate: Date;
+    dueDate?: Date;
 
     /**
      * The net amount of the invoice, before taxes.
@@ -71,7 +71,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceNetAmount
      * @widget number
      */
-    netAmount: Money;
+    netAmount?: Money;
 
     /**
      * The tax amount of the invoice.
@@ -80,7 +80,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceTaxAmount
      * @widget number
      */
-    taxAmount: Money;
+    taxAmount?: Money;
 
     /**
      * The total amount of the invoice, including taxes.
@@ -89,7 +89,7 @@ export interface Invoice {
      * @computed storage=stored formula=invoiceTotalAmount
      * @widget number
      */
-    totalAmount: Money;
+    totalAmount?: Money;
 
     /**
      * The line items that make up the invoice.
@@ -98,7 +98,7 @@ export interface Invoice {
      * @children InvoiceRow
      * @widget table
      */
-    rows: InvoiceRow[];
+    rows?: InvoiceRow[];
 
     /**
      * Free-form notes to display on the invoice.
@@ -106,7 +106,7 @@ export interface Invoice {
      * @fieldName Notes
      * @widget textarea
      */
-    notes: string;
+    notes?: string;
 
     /**
      * The moment the invoice draft was created.

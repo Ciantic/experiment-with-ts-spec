@@ -23,6 +23,34 @@ edited. `InvoiceSent` closes that gap by copying the customer at send time.
 - `number` is `@unique`, as on the draft. When a number is issued — at draft
   creation or at send — is a separate decision.
 
+## The draft is partial, the snapshot is complete
+
+`Invoice` is a draft: a form the user is still filling in. Field optionality
+follows from that. Only the identity keys are required; everything a draft may
+not have yet is optional.
+
+- Required: `Invoice.id`, `InvoiceRow.id`, and `InvoiceRow.invoiceId`. A row
+  always belongs to an invoice.
+- Optional: `number`, `issueDate`, `dueDate`, `netAmount`, `taxAmount`,
+  `totalAmount`, `rows`, `notes`, and the row's `description`, `quantity`, `unit`,
+  `unitPrice`, `taxRate`, and amounts. `customer`, `createdAt`, `updatedAt`, and
+  `version` were already optional (`docs/timestamps.md`, `docs/versioning.md`).
+- `InvoiceSent` and `InvoiceSentRow` are the opposite: frozen at send time, so
+  every field stays required. A sent invoice is complete by definition.
+
+Optionality is nullability, so the optional draft columns are nullable in
+`invoice` and `invoice_row`; `id` stays `not null` as the primary key, and
+`createdAt`/`updatedAt`/`version` stay `not null` because their `@default` fills
+them even though the field is optional.
+
+Two consequences worth naming:
+
+- **`number` is `@unique`, and nulls do not collide.** Postgres allows any number
+  of rows with a null key, so unnumbered drafts coexist until one is issued.
+- **The amounts are `@computed` and optional together.** With no rows, or with
+  rows whose inputs are null, the trigger expression propagates null rather than
+  inventing a zero — an uncomputed total is absent, not zero.
+
 ## The frozen-copy rule
 
 The snapshot copies values; it does not recompute them from the draft. Two

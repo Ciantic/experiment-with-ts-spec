@@ -46,7 +46,7 @@ export interface InvoiceRow {
      * @fieldName Description
      * @widget text
      */
-    description: string;
+    description?: string;
 
     /**
      * The number of units billed on this row.
@@ -54,7 +54,7 @@ export interface InvoiceRow {
      * @fieldName Quantity
      * @widget number
      */
-    quantity: Quantity;
+    quantity?: Quantity;
 
     /**
      * The unit of measure the quantity is expressed in, such as hours or pieces.
@@ -62,7 +62,7 @@ export interface InvoiceRow {
      * @fieldName Unit
      * @widget text
      */
-    unit: Unit;
+    unit?: Unit;
 
     /**
      * The price per unit, in the invoice currency.
@@ -70,7 +70,7 @@ export interface InvoiceRow {
      * @fieldName Unit price
      * @widget number
      */
-    unitPrice: Money;
+    unitPrice?: Money;
 
     /**
      * The tax rate applied to this row, as a fraction (0.255 is 25.5%).
@@ -78,7 +78,7 @@ export interface InvoiceRow {
      * @fieldName Tax rate
      * @widget number
      */
-    taxRate: TaxRate;
+    taxRate?: TaxRate;
 
     /**
      * The net amount for this row, before taxes.
@@ -87,7 +87,7 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowNetAmount
      * @widget number
      */
-    netAmount: Money;
+    netAmount?: Money;
 
     /**
      * The tax amount for this row.
@@ -96,7 +96,7 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowTaxAmount
      * @widget number
      */
-    taxAmount: Money;
+    taxAmount?: Money;
 
     /**
      * The total amount for this row, including taxes.
@@ -105,7 +105,7 @@ export interface InvoiceRow {
      * @computed storage=stored formula=rowTotalAmount
      * @widget number
      */
-    totalAmount: Money;
+    totalAmount?: Money;
 
     /**
      * The moment the row was created.
