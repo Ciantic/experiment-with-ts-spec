@@ -1,2 +1,9 @@
-/** A monotonic record revision, used as an optimistic-lock precondition. See docs/versioning.md. */
-export type Version = bigint & { readonly __brand: "Version" };
+import type { $brand } from "zod";
+
+/**
+ * A monotonic record revision, used as an optimistic-lock precondition. See docs/versioning.md.
+ *
+ * @primitive
+ * @zod z.bigint().brand<"Version">()
+ */
+export type Version = bigint & $brand<"Version">;

@@ -33,6 +33,19 @@ Type tags:
   "Saying what, not how". `TimestampFormula` is cross-cutting rather than
   belonging to one entity, so it sits alone in
   `packages/spec/src/domain/Timestamp.ts`.
+- `@primitive` — a bare marker on a type alias that identifies it as a scalar
+  value type rather than an entity. Applied to the aliases in
+  `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
+  `@zod`; the marker itself takes no value. See `docs/primitives.md`.
+- `@zod <expression>` — the type's Zod schema, written verbatim and never
+  evaluated by the spec, such as `z.uuid()` or
+  `z.uuid().brand<"Something">()`. It is what gives a primitive a runtime
+  counterpart to its compile-time brand. At most one per type alias.
+
+Type tags sit on a type alias and are validated as a group: `@formula` types are
+checked as unions of string literals, `@primitive` types must declare `@zod`, and
+any tag outside the three is reported. A field never carries a type tag; an alias
+never carries a field or interface tag.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:

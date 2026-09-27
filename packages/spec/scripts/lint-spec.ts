@@ -48,6 +48,15 @@ const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
 /** The type-level tag that marks a union as the set of valid `formula=` names. */
 const FORMULA_TAG = "formula";
 
+/** Tags a type alias may carry. Anything else is rejected. */
+const ALLOWED_TYPE_TAGS = new Set([FORMULA_TAG, "primitive", "zod"]);
+
+/** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
+const PRIMITIVE_TAG = "primitive";
+
+/** The tag that carries a type's Zod schema expression, e.g. `z.uuid().brand<"InvoiceId">`. */
+const ZOD_TAG = "zod";
+
 /** Matches the spec interfaces, relative to this package's tsconfig. */
 const SPEC_GLOB = "src/**/*.ts";
 
@@ -104,31 +113,62 @@ export function readFormulaNames(project: Project): Set<string> {
     return names;
 }
 
-/** Check that each `@formula` type is a non-empty union of string literals. */
-function lintFormulaType(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
-    if (!isFormulaType(declaration)) {
-        return;
+/** Check the tags on a type alias: `@formula`, `@primitive`, and `@zod`. */
+function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
+    const name = declaration.getName();
+    const tags = collectTags(declaration);
+    const report = (message: string, tag: JSDocTag) => {
+        findings.push({ filePath, line: tag.getStartLineNumber(), message: `\`${name}\`: ${message}` });
+    };
+
+    for (const [tagName, instances] of tags) {
+        if (!ALLOWED_TYPE_TAGS.has(tagName)) {
+            for (const tag of instances) {
+                report(`@${tagName} is not a recognised type tag`, tag);
+            }
+        }
+        if (instances.length > 1) {
+            for (const tag of instances) {
+                report(`@${tagName} appears more than once`, tag);
+            }
+        }
     }
-    const names = formulaNamesIn(declaration);
-    if (names.length === 0) {
-        findings.push({
-            filePath,
-            line: declaration.getStartLineNumber(),
-            message: `\`${declaration.getName()}\`: @formula type must declare at least one string literal`,
-        });
-    } else if (names.length !== typeMembers(declaration).length) {
-        findings.push({
-            filePath,
-            line: declaration.getStartLineNumber(),
-            message: `\`${declaration.getName()}\`: @formula type members must all be string literals`,
-        });
+
+    if (tags.has(FORMULA_TAG)) {
+        const names = formulaNamesIn(declaration);
+        if (names.length === 0) {
+            findings.push({
+                filePath,
+                line: declaration.getStartLineNumber(),
+                message: `\`${name}\`: @formula type must declare at least one string literal`,
+            });
+        } else if (names.length !== typeMembers(declaration).length) {
+            findings.push({
+                filePath,
+                line: declaration.getStartLineNumber(),
+                message: `\`${name}\`: @formula type members must all be string literals`,
+            });
+        }
+    }
+
+    // @primitive is a bare marker; its type must carry the matching @zod schema.
+    const primitiveTag = (tags.get(PRIMITIVE_TAG) ?? [])[0];
+    const zodTag = (tags.get(ZOD_TAG) ?? [])[0];
+    if (primitiveTag && (primitiveTag.getCommentText() ?? "").trim()) {
+        report(`@${PRIMITIVE_TAG} takes no value`, primitiveTag);
+    }
+    if (zodTag && !(zodTag.getCommentText() ?? "").trim()) {
+        report(`@${ZOD_TAG} is missing its schema expression`, zodTag);
+    }
+    if (primitiveTag && !zodTag) {
+        report(`@${PRIMITIVE_TAG} requires @${ZOD_TAG}`, primitiveTag);
     }
 }
 
-/** Collect the JSDoc tags on a property, keyed by tag name. */
-function collectTags(property: PropertySignature): Map<string, JSDocTag[]> {
+/** Collect the JSDoc tags on a declaration or property, keyed by tag name. */
+function collectTags(holder: PropertySignature | TypeAliasDeclaration): Map<string, JSDocTag[]> {
     const tags = new Map<string, JSDocTag[]>();
-    for (const doc of property.getJsDocs()) {
+    for (const doc of holder.getJsDocs()) {
         for (const tag of doc.getTags()) {
             const name = tag.getTagName();
             const existing = tags.get(name);
@@ -359,7 +399,7 @@ export function lintSourceText(
         }
     }
     for (const declaration of sourceFile.getTypeAliases()) {
-        lintFormulaType(declaration, filePath, findings);
+        lintTypeAlias(declaration, filePath, findings);
     }
     return findings;
 }
@@ -374,7 +414,7 @@ export function lintProject(project: Project): { findings: Finding[]; interfaces
     for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getTypeAliases()) {
-            lintFormulaType(declaration, filePath, findings);
+            lintTypeAlias(declaration, filePath, findings);
         }
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;

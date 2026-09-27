@@ -420,6 +420,87 @@ describe("lintSourceText", () => {
     });
 });
 
+describe("type-level tags", () => {
+    it("accepts a @primitive type carrying its @zod schema", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @zod z.uuid().brand<"ThingId">()
+             */
+            export type ThingId = string & $brand<"ThingId">;`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a value on the @primitive marker", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive something
+             * @zod z.uuid()
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @primitive takes no value"]);
+    });
+
+    it("requires @zod on a @primitive type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @primitive requires @zod"]);
+    });
+
+    it("reports @zod without a schema expression", () => {
+        const findings = lintSourceText(
+            `/**
+             * @zod
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @zod is missing its schema expression"]);
+    });
+
+    it("reports a duplicated @zod", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @zod z.uuid()
+             * @zod z.string()
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @zod appears more than once",
+            "`Thing`: @zod appears more than once",
+        ]);
+    });
+
+    it("reports an unrecognised type tag", () => {
+        const findings = lintSourceText(
+            `/**
+             * @nonsense
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
+    });
+});
+
 describe("readFormulaNames", () => {
     it("discovers names from @formula-annotated types", () => {
         const names = realFormulaNames();

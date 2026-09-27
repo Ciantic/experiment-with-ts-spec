@@ -3,19 +3,77 @@
 Value types in `packages/spec/src/primitives/`. These are scalars, not entities;
 entities live in `packages/spec/src/domain/`.
 
-## Branding
+## Annotations
 
-`BrandedId<Name>` produces a GUID that is nominally distinct per name:
+Every alias in this folder carries two type-level tags, described in
+`docs/spec-annotations.md`:
 
 ```typescript
-export type BrandedId<Name extends string> = GUID & { readonly __brand: Name };
+/**
+ * @primitive
+ * @zod z.uuid().brand<Name>()
+ */
+export type BrandedId<Name extends string> = GUID & $brand<Name>;
 ```
 
-The `readonly __brand` property exists only in the type, never at runtime, and is
-what separates `InvoiceId` from `InvoiceRowId`. A plain alias (`type InvoiceId =
-GUID`) would not: aliases are structurally interchangeable, so the compiler could
-not catch an invoice id passed where a row id was expected. `Decimal` brands
-`string` the same way.
+- `@primitive` marks the alias as a scalar value type, not an entity. It is a
+  bare marker and takes no value.
+- `@zod` is the type's Zod schema, written verbatim. The tag is text a generator
+  consumes; the schema is never evaluated in this package. It is what gives a
+  brand that exists only in the type system a runtime counterpart that can
+  validate a value at the boundary.
+
+Zod is a **type-only** dependency: `$brand` is imported with `import type`, so it
+is erased at runtime and `packages/spec/` still ships no executable code. Because
+the schema expression and the type must agree on the *same* `$brand` symbol, the
+workspace must resolve a single copy of Zod — two copies declare two
+`unique symbol`s and the brands silently stop matching.
+
+Each schema stays self-contained. `Money`, `Quantity`, and `TaxRate` each write
+out the decimal string shape and then apply their brands rather than importing
+`Decimal`'s schema, so a primitive has no runtime dependency on another.
+
+The schema mirrors the alias:
+
+- A **branded** alias (`Email`, `Decimal`, `Money`, `Version`, `BrandedId`) gets
+  the matching `.brand<…>()`. The brand is the whole point of the alias, so the
+  schema must reproduce it. `Money` refines `Decimal`, so its schema chains the
+  base brand first, `.brand<"Decimal">().brand<"Money">()`, and
+  `z.infer<typeof moneySchema>` is then assignable to `Money` with no cast.
+- A **closed** union gets `z.enum([...])`.
+- An **open** union (`Unit`, `Currency`, `Language`, `EInvoiceOperator`) gets
+  `z.enum([...]).or(z.string())`, not a brand — the alias is a plain string with
+  hints, not a nominal type. It validates the same as `z.string()`, but keeps the
+  known members visible to schema introspection (OpenAPI, `z.toJSONSchema()`).
+
+A `.brand<>()` on an unbranded alias is wrong: it claims a nominal type the
+alias does not have, so the runtime schema and the compile-time type disagree.
+
+## Branding
+
+Brands come from Zod (`$brand`), not a hand-rolled property:
+
+```typescript
+export type BrandedId<Name extends string> = GUID & $brand<Name>;
+```
+
+`$brand<T>` is a phantom property keyed by a module-private `unique symbol`, so
+it exists only in the type, never at runtime, and cannot collide with a real
+property. It is what separates `InvoiceId` from `InvoiceRowId`. A plain alias
+(`type InvoiceId = GUID`) would not: aliases are structurally interchangeable, so
+the compiler could not catch an invoice id passed where a row id was expected.
+`Decimal` brands `string` the same way.
+
+Using Zod's brand rather than a local `{ readonly __brand: … }` has two payoffs:
+
+- **The schema and the type agree.** `z.infer<typeof x>` produces `$brand<…>`, so
+  a parsed value is already the spec type — no cast between a `__brand` and a
+  `$brand` spelling.
+- **Brands accumulate.** `$brand`'s payload is a mapped object, so intersecting
+  two brands yields `{ Decimal: true; Money: true }`, not `never`. A shared
+  property name with a literal type would collapse on intersection; the mapped
+  form does not. That is why the old types split `__decimal` from `__brand`; with
+  `$brand` the split is unnecessary.
 
 Cost: values must be cast at the boundary where they are constructed or parsed,
 because nothing produces a branded value on its own.
@@ -48,11 +106,11 @@ the equivalent spelling if that comes up.
 Every numeric value in the model is a decimal carried as a string:
 
 ```typescript
-export type Decimal = string & { readonly __decimal: true };
+export type Decimal = string & $brand<"Decimal">;
 
-export type Money = Decimal & { readonly __brand: "Money" };
-export type Quantity = Decimal & { readonly __brand: "Quantity" };
-export type TaxRate = Decimal & { readonly __brand: "TaxRate" };
+export type Money = Decimal & $brand<"Money">;
+export type Quantity = Decimal & $brand<"Quantity">;
+export type TaxRate = Decimal & $brand<"TaxRate">;
 ```
 
 Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
@@ -86,11 +144,10 @@ scale convention per field, and mixed two representations in one model.
 
 Gotchas:
 
-- **Never reuse a brand property name in an intersection.** `A & { __brand: "X" }`
-  where `A` already declares `__brand` intersects the two literal types, which
-  collapses to `never`. Every branded type then becomes structurally identical and
-  the branding silently stops working — the compiler accepts anything. That is why
-  the base type uses `__decimal` and the refinements use `__brand`.
+- **Keep one copy of Zod in the workspace.** `$brand` is a `unique symbol`
+  declared per module, so a second resolved copy makes its brands mutually
+  unassignable — the same silent failure the old `__brand` literal-collapse had.
+  Deduplication is what keeps `z.infer` and the spec types in step.
 - **Branding is not validation.** Nothing checks that the string parses as a
   number. Parsing and rounding are the caller's job.
 - **Construction needs a cast.** Nothing produces a branded value on its own, so
@@ -107,7 +164,7 @@ Gotchas:
 `Version` is the one numeric primitive that is not a `Decimal`:
 
 ```typescript
-export type Version = bigint & { readonly __brand: "Version" };
+export type Version = bigint & $brand<"Version">;
 ```
 
 It is an optimistic-lock counter. `bigint` rather than `number` because the

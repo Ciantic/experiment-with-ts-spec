@@ -1,4 +1,9 @@
-/** An ISO 4217 currency code: these known codes plus any other string. See docs/primitives.md. */
+/**
+ * An ISO 4217 currency code: these known codes plus any other string. See docs/primitives.md.
+ *
+ * @primitive
+ * @zod z.enum(["EUR", "USD", "GBP", "SEK"]).or(z.string())
+ */
 export type Currency =
     | "EUR"
     | "USD"

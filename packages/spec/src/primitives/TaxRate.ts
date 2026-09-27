@@ -1,4 +1,10 @@
-/** A tax rate as a fraction, so 25.5% is "0.255". See docs/primitives.md. */
+import type { $brand } from "zod";
 import type { Decimal } from "./Decimal.js";
 
-export type TaxRate = Decimal & { readonly __brand: "TaxRate" };
+/**
+ * A tax rate as a fraction, so 25.5% is "0.255". See docs/primitives.md.
+ *
+ * @primitive
+ * @zod z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"TaxRate">()
+ */
+export type TaxRate = Decimal & $brand<"TaxRate">;
