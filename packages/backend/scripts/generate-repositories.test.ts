@@ -17,6 +17,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         interfaceName,
         importSpecifier: `spec/domain/${interfaceName}.js`,
         columns,
+        graphFields: [],
         sameRowAssignments: [],
         rollups: new Map(),
     };

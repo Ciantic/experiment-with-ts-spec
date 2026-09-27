@@ -11,9 +11,13 @@
     "typecheck": "tsc --noEmit",
     "generate:schema": "node scripts/generate-postgres-schema.ts",
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
-    "generate:repositories": "node scripts/generate-repositories.ts"
+    "generate:repositories": "node scripts/generate-repositories.ts",
+    "generate:graphql": "node scripts/generate-graphql.ts",
+    "serve:graphql": "node --import ./src/server/register-typescript.ts src/server/main.ts"
   },
   "dependencies": {
+    "dataloader": "^2.2.3",
+    "graphql": "^17.0.2",
     "spec": "workspace:*"
   },
   "devDependencies": {

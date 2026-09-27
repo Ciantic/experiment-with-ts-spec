@@ -80,6 +80,30 @@ export interface Diagnostic {
     message: string;
 }
 
+/** How a spec field is presented in the graph. See docs/graphql.md. */
+export type GraphFieldKind = "scalar" | "computed" | "relation" | "children" | "inlined";
+
+/** A spec field as a graph node: a scalar column, an edge, or a flattened inlined value. */
+export interface GraphField {
+    /** The interface property name, e.g. `customer`. */
+    name: string;
+    kind: GraphFieldKind;
+    /** The spec type as written, e.g. `Money`, `Customer`, or `InvoiceRow`. */
+    typeName: string;
+    /** For relation/children/inlined: the target interface name. */
+    target: string | undefined;
+    /** For scalar/computed/relation: the physical column that backs the field. */
+    column: string | undefined;
+    /** For children: the child column that references the parent entity. */
+    foreignKeyColumn: string | undefined;
+    /** For inlined: the parent column holding the target's `id`. */
+    inlinedIdColumn: string | undefined;
+    /** For inlined: target field -> parent column, to rebuild the nested value without a join. */
+    inlinedColumns: { field: string; column: string }[];
+    notNull: boolean;
+    isArray: boolean;
+}
+
 /** A column generated from a domain field. `read` is the accessor the repository generator emits. */
 export interface Column {
     name: string;
@@ -102,6 +126,8 @@ export interface Table {
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.js`. */
     importSpecifier: string;
     columns: Column[];
+    /** The spec fields as a graph: scalars, relations, children, and inlined values. See docs/graphql.md. */
+    graphFields: GraphField[];
     /** `NEW."x" := <expr>;` assignments, in interface field order. */
     sameRowAssignments: string[];
     /** Child-change statements keyed by the child table that carries them. */
@@ -381,18 +407,19 @@ export function buildSpecTables(
         return tagValue(declaration, "table") ?? snakeCase(entity);
     }
 
-    /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
+    /** Expand an `@inlined` entity field into prefixed scalar columns, returning field -> column. */
     function inlineColumns(
         property: PropertySignature,
         fieldName: string,
         entity: string,
         notNull: boolean,
         table: Table,
-    ): void {
+    ): { field: string; column: string }[] {
+        const mapping: { field: string; column: string }[] = [];
         const declaration = interfaces.get(entity);
         if (!declaration) {
             report(property, `\`${fieldName}\`: @${INLINED_TAG} ${entity} has no interface`);
-            return;
+            return mapping;
         }
         for (const inner of declaration.getProperties()) {
             const innerName = inner.getName();
@@ -422,7 +449,9 @@ export function buildSpecTables(
                 column.checkValues = resolved.checkValues;
             }
             table.columns.push(column);
+            mapping.push({ field: innerName, column: column.name });
         }
+        return mapping;
     }
 
     const tables = new Map<string, Table>();
@@ -434,6 +463,7 @@ export function buildSpecTables(
             interfaceName,
             importSpecifier: specImportSpecifier(declaration.getSourceFile().getFilePath()),
             columns: [],
+            graphFields: [],
             sameRowAssignments: [],
             rollups: new Map(),
         };
@@ -460,6 +490,19 @@ export function buildSpecTables(
                         property,
                         `\`${fieldName}\`: array fields need @${CHILDREN_TAG} <Entity> and are not columns`,
                     );
+                } else {
+                    table.graphFields.push({
+                        name: fieldName,
+                        kind: "children",
+                        typeName: resolved.entity ?? typeNode.getText(),
+                        target: resolved.entity,
+                        column: undefined,
+                        foreignKeyColumn: undefined,
+                        inlinedIdColumn: undefined,
+                        inlinedColumns: [],
+                        notNull,
+                        isArray: true,
+                    });
                 }
                 continue;
             }
@@ -467,7 +510,19 @@ export function buildSpecTables(
             if (resolved.entity) {
                 const inlined = tagValue(property, INLINED_TAG);
                 if (inlined) {
-                    inlineColumns(property, fieldName, inlined, notNull, table);
+                    const inlinedColumns = inlineColumns(property, fieldName, inlined, notNull, table);
+                    table.graphFields.push({
+                        name: fieldName,
+                        kind: "inlined",
+                        typeName: inlined,
+                        target: inlined,
+                        column: undefined,
+                        foreignKeyColumn: undefined,
+                        inlinedIdColumn: inlinedColumns.find((entry) => entry.field === "id")?.column,
+                        inlinedColumns,
+                        notNull,
+                        isArray: false,
+                    });
                     continue;
                 }
                 const relation = tagValue(property, RELATION_TAG);
@@ -491,6 +546,18 @@ export function buildSpecTables(
                     unique: false,
                     references: { table: targetTable, column: "id" },
                     read: notNull ? `${fieldName}.id` : `${fieldName}?.id`,
+                });
+                table.graphFields.push({
+                    name: fieldName,
+                    kind: "relation",
+                    typeName: relation,
+                    target: relation,
+                    column: `${fieldName}Id`,
+                    foreignKeyColumn: undefined,
+                    inlinedIdColumn: undefined,
+                    inlinedColumns: [],
+                    notNull,
+                    isArray: false,
                 });
                 continue;
             }
@@ -528,6 +595,18 @@ export function buildSpecTables(
             }
 
             table.columns.push(column);
+            table.graphFields.push({
+                name: fieldName,
+                kind: tagValue(property, "computed") ? "computed" : "scalar",
+                typeName: typeNode.getText(),
+                target: undefined,
+                column: fieldName,
+                foreignKeyColumn: undefined,
+                inlinedIdColumn: undefined,
+                inlinedColumns: [],
+                notNull,
+                isArray: false,
+            });
 
             const computed = tagValue(property, "computed");
             if (!computed) {
@@ -558,6 +637,20 @@ export function buildSpecTables(
         }
 
         tables.set(interfaceName, table);
+    }
+
+    /** Resolve each `@children` field to the child column that references its parent. */
+    for (const table of tables.values()) {
+        for (const field of table.graphFields) {
+            if (field.kind !== "children" || !field.target) {
+                continue;
+            }
+            const child = tables.get(field.target);
+            const foreignKey = child?.columns.find((column) => column.references?.table === table.name);
+            if (foreignKey) {
+                field.foreignKeyColumn = foreignKey.name;
+            }
+        }
     }
 
     /** Attach each cross-table aggregate to the child table that changes it. */

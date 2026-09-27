@@ -35,8 +35,17 @@ values, all of which are domain decisions rather than code behaviour.
   domain. A second group transpiles the generated module, builds a matching
   `create table` from the fixture's column metadata, and runs create/update/delete
   against PGlite. It asserts the generated SQL *executes*, not what the data means.
+- `packages/backend/scripts/generate-graphql.test.ts` — drives the GraphQL
+  renderer with hand-built graph fixtures, asserting the emitted resolvers and
+  loaders. One case validates the *committed* schema builds (`assertValidSchema`);
+  like the linter's real-spec case, it checks the generated artifact rather than
+  the domain's content.
 - `packages/backend/src/postgres/db/sql-executor.test.ts` — asserts that PGlite
-  satisfies the `SqlExecutor` interface the generated repositories accept.
+  satisfies both `SqlExecutor` (writes) and `RowExecutor` (reads) as the
+  generated repositories and GraphQL loaders accept them.
+- `packages/backend/src/server/request-handler.test.ts` — starts the handler on
+  an ephemeral port with a fixture schema and a stub context, then asserts status
+  codes and JSON shapes over HTTP. No domain and no database.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source

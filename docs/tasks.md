@@ -13,8 +13,8 @@ runs, in order:
 
 1. `pnpm run lint` — the linters. Today that is `lint:spec`, which validates the
    `@` annotations in `packages/spec/`.
-2. `pnpm run generate` — `generate:schema` then `generate:repositories`, both in
-   `packages/backend`.
+2. `pnpm run generate` — `generate:schema`, `generate:repositories`, and
+   `generate:graphql`, all in `packages/backend`.
 3. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -37,10 +37,11 @@ The order is load-bearing:
 - **Build last.** It is the only step that consumes the generated output as
   input.
 
-`pnpm run generate` runs the schema generator before the repository generator.
-Both read the spec through `packages/backend/scripts/spec-model.ts` and neither
-reads the other's output, so the order between them is presentational — it mirrors
-the order the artifacts appear in the repository.
+`pnpm run generate` runs the schema generator before the repository and GraphQL
+generators. All three read the spec through
+`packages/backend/scripts/spec-model.ts` and none reads another's output, so the
+order between them is presentational — it mirrors the order the artifacts appear
+in the repository.
 
 ## Why `--if-present`
 
