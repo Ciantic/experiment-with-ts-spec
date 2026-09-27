@@ -4,10 +4,12 @@ import { join } from "node:path";
 import { Project } from "ts-morph";
 import {
     BACKEND_PACKAGE_ROOT,
+    DEFAULT_ANNOTATION_GLOB,
     DEFAULT_FORMULAS_FILE,
     DEFAULT_SPEC_GLOB,
     buildSpecTables,
     quote,
+    readGraphScalars,
     type GraphField,
     type Table,
 } from "./spec-model.ts";
@@ -24,31 +26,26 @@ const LOADERS_FILE = "loaders.ts";
 const SCHEMA_FILE = "schema.ts";
 const INDEX_FILE = "index.ts";
 
-/** Spec type names that get their own GraphQL scalar, mapped to the emitted scalar's name. */
-const CUSTOM_SCALARS: Record<string, string> = {
-    Date: "DateTime",
-    Money: "Money",
-    Quantity: "Quantity",
-    TaxRate: "TaxRate",
-    Decimal: "Decimal",
-    Version: "Version",
+/** GraphQL built-in scalar names, mapped to the symbol imported from `graphql`. */
+const GRAPHQL_BUILTINS: Record<string, string> = {
+    String: "GraphQLString",
+    ID: "GraphQLID",
+    Int: "GraphQLInt",
+    Float: "GraphQLFloat",
+    Boolean: "GraphQLBoolean",
 };
 
-/** Spec type names mapped straight to a GraphQL built-in. */
-const BUILTIN_SCALARS: Record<string, string> = {
-    string: "GraphQLString",
-    number: "GraphQLFloat",
-    boolean: "GraphQLBoolean",
-    bigint: "GraphQLString",
-    GUID: "GraphQLID",
-    BrandedId: "GraphQLID",
-    Email: "GraphQLString",
-    Unit: "GraphQLString",
-    Currency: "GraphQLString",
-    Language: "GraphQLString",
-    EInvoiceAddress: "GraphQLString",
-    EInvoiceOperator: "GraphQLString",
+/** TypeScript built-in types mapped to a GraphQL scalar. These are language types, not spec types. */
+const TYPESCRIPT_SCALARS: Record<string, string> = {
+    string: "String",
+    number: "Float",
+    boolean: "Boolean",
+    bigint: "String",
+    Date: "DateTime",
 };
+
+/** Custom scalars serialized as ISO strings; every other custom scalar is serialized as text. */
+const DATE_SCALARS = new Set(["DateTime"]);
 
 /** Invoice -> invoice, InvoiceSentRow -> invoiceSentRow. */
 function lowerFirst(name: string): string {
@@ -75,18 +72,33 @@ function primaryKey(table: Table): string {
     return table.columns.find((column) => column.primaryKey)?.name ?? "id";
 }
 
-/** The GraphQL scalar expression for a scalar or computed field. */
-function scalarExpression(field: GraphField): string {
-    const custom = CUSTOM_SCALARS[field.typeName];
-    if (custom) {
-        return custom;
+/** The GraphQL scalar name a scalar/computed field is exposed as, from its annotation or its TypeScript type. */
+function graphQLScalarName(field: GraphField, scalars: Map<string, string>): string {
+    const leaf = field.scalarName ?? field.typeName;
+    return scalars.get(leaf) ?? TYPESCRIPT_SCALARS[leaf] ?? "String";
+}
+
+/** The expression that names a scalar in generated code: a builtin symbol, or the custom scalar itself. */
+function scalarExpression(field: GraphField, scalars: Map<string, string>): string {
+    const name = graphQLScalarName(field, scalars);
+    return GRAPHQL_BUILTINS[name] ?? name;
+}
+
+/** The custom scalars the schema needs, in a stable order. */
+function customScalarNames(tables: Table[], scalars: Map<string, string>): string[] {
+    const names = new Set<string>();
+    for (const table of tables) {
+        for (const field of table.graphFields) {
+            if (field.kind !== "scalar" && field.kind !== "computed") {
+                continue;
+            }
+            const name = graphQLScalarName(field, scalars);
+            if (!GRAPHQL_BUILTINS[name]) {
+                names.add(name);
+            }
+        }
     }
-    const builtin = BUILTIN_SCALARS[field.typeName];
-    if (builtin) {
-        return builtin;
-    }
-    // Any other `<Entity>Id` is a branded GUID.
-    return field.typeName.endsWith("Id") ? "GraphQLID" : "GraphQLString";
+    return [...names].sort();
 }
 
 function nonNull(inner: string): string {
@@ -98,7 +110,7 @@ function listOf(inner: string): string {
 }
 
 /** The GraphQL output type expression for a field. */
-function outputExpression(field: GraphField): string {
+function outputExpression(field: GraphField, scalars: Map<string, string>): string {
     if (field.kind === "children") {
         const list = listOf(nonNull(`${field.target}Type`));
         return field.notNull ? nonNull(list) : list;
@@ -106,13 +118,13 @@ function outputExpression(field: GraphField): string {
     if (field.kind === "relation" || field.kind === "inlined") {
         return field.notNull ? nonNull(`${field.target}Type`) : `${field.target}Type`;
     }
-    const base = scalarExpression(field);
+    const base = scalarExpression(field, scalars);
     return field.notNull ? nonNull(base) : base;
 }
 
 /** One field entry in a generated `GraphQLObjectType`, including its resolver when it is not a plain column. */
-function fieldEntry(table: Table, field: GraphField): string {
-    const type = outputExpression(field);
+function fieldEntry(table: Table, field: GraphField, scalars: Map<string, string>): string {
+    const type = outputExpression(field, scalars);
     if (field.kind === "relation") {
         const column = field.column ?? `${field.name}Id`;
         const loader = `${lowerFirst(field.target ?? "")}ById`;
@@ -154,14 +166,14 @@ function fieldEntry(table: Table, field: GraphField): string {
     return `        ${field.name}: { type: ${type} },`;
 }
 
-function objectType(table: Table): string[] {
+function objectType(table: Table, scalars: Map<string, string>): string[] {
     const lines = [
         `const ${table.interfaceName}Type = new GraphQLObjectType({`,
         `    name: "${table.interfaceName}",`,
         "    fields: () => ({",
     ];
     for (const field of table.graphFields) {
-        lines.push(fieldEntry(table, field));
+        lines.push(fieldEntry(table, field, scalars));
     }
     lines.push("    }),", "});");
     return lines;
@@ -189,13 +201,16 @@ function queryType(tables: Table[]): string[] {
     return lines;
 }
 
-/** Render the custom scalars, shared by every scalar field that is not a GraphQL built-in. */
-export function generateScalars(): string {
-    return [
+/** Render the custom scalars named by the spec's `@graphql` annotations. */
+export function generateScalars(customNames: string[]): string {
+    if (customNames.length === 0) {
+        return [HEADER, "", "/** No custom scalars are referenced by the spec. */", ""].join("\n");
+    }
+    const lines: string[] = [
         HEADER,
         'import { GraphQLScalarType, Kind, type ValueNode } from "graphql";',
         "",
-        "/** Read a string or numeric literal; every custom scalar here is carried as text. */",
+        "/** Read a string or numeric literal; a scalar annotation names a type, never a literal default. */",
         "function literalText(node: ValueNode): string {",
         "    if (node.kind === Kind.STRING || node.kind === Kind.INT || node.kind === Kind.FLOAT) {",
         "        return node.value;",
@@ -203,61 +218,21 @@ export function generateScalars(): string {
         '    throw new TypeError("expected a string or numeric literal");',
         "}",
         "",
-        "/** A decimal carried as a string, matching the spec's Decimal brand and the driver mapping. */",
-        "export const Decimal = new GraphQLScalarType({",
-        '    name: "Decimal",',
-        '    description: "A decimal number, carried as a string to keep its precision.",',
-        "    serialize: (value) => String(value),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-        "/** A monetary amount. See docs/primitives.md. */",
-        "export const Money = new GraphQLScalarType({",
-        '    name: "Money",',
-        '    description: "A monetary amount, carried as a decimal string.",',
-        "    serialize: (value) => String(value),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-        "/** A quantity of units. See docs/primitives.md. */",
-        "export const Quantity = new GraphQLScalarType({",
-        '    name: "Quantity",',
-        '    description: "A quantity, carried as a decimal string.",',
-        "    serialize: (value) => String(value),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-        "/** A tax rate as a fraction. See docs/primitives.md. */",
-        "export const TaxRate = new GraphQLScalarType({",
-        '    name: "TaxRate",',
-        '    description: "A tax rate as a fraction, carried as a decimal string.",',
-        "    serialize: (value) => String(value),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-        "/** An optimistic-lock revision. See docs/versioning.md. */",
-        "export const Version = new GraphQLScalarType({",
-        '    name: "Version",',
-        '    description: "An optimistic-lock revision, carried as a string.",',
-        "    serialize: (value) => String(value),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-        "/** An ISO-8601 timestamp. */",
-        "export const DateTime = new GraphQLScalarType({",
-        '    name: "DateTime",',
-        '    description: "An ISO-8601 timestamp.",',
-        "    serialize: (value) => (value instanceof Date ? value.toISOString() : String(value)),",
-        "    parseValue: (value) => String(value),",
-        "    parseLiteral: (node) => literalText(node),",
-        "});",
-        "",
-    ].join("\n");
+    ];
+    for (const name of customNames) {
+        const serialize = DATE_SCALARS.has(name)
+            ? "(value) => (value instanceof Date ? value.toISOString() : String(value))"
+            : "(value) => String(value)";
+        lines.push(`/** The ${name} scalar. */`);
+        lines.push(`export const ${name} = new GraphQLScalarType({`);
+        lines.push(`    name: "${name}",`);
+        lines.push(`    serialize: ${serialize},`);
+        lines.push("    parseValue: (value) => String(value),");
+        lines.push("    parseLiteral: (node) => literalText(node),");
+        lines.push("});");
+        lines.push("");
+    }
+    return lines.join("\n");
 }
 
 /** Render the DataLoaders, list roots, and the per-request context. */
@@ -356,36 +331,42 @@ export function generateLoaders(tables: Map<string, Table>): string {
 }
 
 /** Render the object types, the Query root, and the schema. */
-export function generateSchema(tables: Map<string, Table>): string {
+export function generateSchema(tables: Map<string, Table>, scalars: Map<string, string> = new Map()): string {
     const ordered = [...tables.values()];
-    const lines: string[] = [HEADER];
-    lines.push("import {");
-    lines.push("    GraphQLBoolean,");
-    lines.push("    GraphQLFloat,");
-    lines.push("    GraphQLID,");
-    lines.push("    GraphQLInt,");
-    lines.push("    GraphQLList,");
-    lines.push("    GraphQLNonNull,");
-    lines.push("    GraphQLObjectType,");
-    lines.push("    GraphQLSchema,");
-    lines.push("    GraphQLString,");
-    lines.push('} from "graphql";');
-    const usedScalars = new Set<string>();
+    const custom = customScalarNames(ordered, scalars);
+    // GraphQLList/NonNull/Int/ID/ObjectType/Schema are always used; the rest only if a field needs them.
+    const builtins = new Set([
+        "GraphQLID",
+        "GraphQLInt",
+        "GraphQLList",
+        "GraphQLNonNull",
+        "GraphQLObjectType",
+        "GraphQLSchema",
+    ]);
     for (const table of ordered) {
         for (const field of table.graphFields) {
-            const scalar = CUSTOM_SCALARS[field.typeName];
-            if (scalar) {
-                usedScalars.add(scalar);
+            if (field.kind !== "scalar" && field.kind !== "computed") {
+                continue;
+            }
+            const symbol = GRAPHQL_BUILTINS[graphQLScalarName(field, scalars)];
+            if (symbol) {
+                builtins.add(symbol);
             }
         }
     }
-    if (usedScalars.size > 0) {
-        lines.push(`import { ${[...usedScalars].sort().join(", ")} } from "${specifier(SCALARS_FILE)}";`);
+    const lines: string[] = [HEADER];
+    lines.push("import {");
+    for (const symbol of [...builtins].sort()) {
+        lines.push(`    ${symbol},`);
+    }
+    lines.push('} from "graphql";');
+    if (custom.length > 0) {
+        lines.push(`import { ${custom.join(", ")} } from "${specifier(SCALARS_FILE)}";`);
     }
     lines.push(`import type { GraphQLContext } from "${specifier(LOADERS_FILE)}";`);
     lines.push("");
     for (const table of ordered) {
-        lines.push(...objectType(table));
+        lines.push(...objectType(table, scalars));
         lines.push("");
     }
     lines.push(...queryType(ordered));
@@ -420,12 +401,12 @@ export function generateIndex(): string {
     ].join("\n");
 }
 
-/** Render every generated file, keyed by file name. */
-export function generateGraphql(tables: Map<string, Table>): Map<string, string> {
+/** Render every generated file, keyed by file name. `scalars` is the spec's `@graphql` map. */
+export function generateGraphql(tables: Map<string, Table>, scalars: Map<string, string> = new Map()): Map<string, string> {
     const files = new Map<string, string>();
-    files.set(SCALARS_FILE, generateScalars());
+    files.set(SCALARS_FILE, generateScalars(customScalarNames([...tables.values()], scalars)));
     files.set(LOADERS_FILE, generateLoaders(tables));
-    files.set(SCHEMA_FILE, generateSchema(tables));
+    files.set(SCHEMA_FILE, generateSchema(tables, scalars));
     files.set(INDEX_FILE, generateIndex());
     return files;
 }
@@ -433,8 +414,12 @@ export function generateGraphql(tables: Map<string, Table>): Map<string, string>
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
     project.addSourceFilesAtPaths(DEFAULT_SPEC_GLOB);
+    // Primitives carry the @graphql annotations, and they live outside src/domain.
+    project.addSourceFilesAtPaths(DEFAULT_ANNOTATION_GLOB);
+    const scalars = readGraphScalars(project, { aliasGlob: DEFAULT_ANNOTATION_GLOB });
     const { tables, diagnostics } = buildSpecTables(project, {
         specGlob: DEFAULT_SPEC_GLOB,
+        aliasGlob: DEFAULT_ANNOTATION_GLOB,
         formulasFile: DEFAULT_FORMULAS_FILE,
     });
 
@@ -455,7 +440,7 @@ function main(): void {
         return;
     }
 
-    const files = generateGraphql(tables);
+    const files = generateGraphql(tables, scalars);
     mkdirSync(outDir, { recursive: true });
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);

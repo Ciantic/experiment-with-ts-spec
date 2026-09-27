@@ -33,6 +33,12 @@ Type tags:
   "Saying what, not how". `TimestampFormula` is cross-cutting rather than
   belonging to one entity, so it sits alone in
   `packages/spec/src/domain/Timestamp.ts`.
+- `@graphql <Scalar>` — names the GraphQL scalar a type is exposed as. Applied to
+  a type alias, on the primitives in `packages/spec/src/primitives/`, so the API
+  vocabulary lives with the type rather than in a table in the backend. The
+  generator reads these annotations and holds no spec type names of its own; see
+  `docs/graphql.md`. A tagged JSDoc must sit directly above the `export type`, not
+  above an `import` above it, or it attaches to the import and is ignored.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:

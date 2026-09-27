@@ -489,6 +489,44 @@ describe("lintFormulaType", () => {
     });
 });
 
+describe("lintTypeAlias", () => {
+    it("accepts a @graphql annotation naming a scalar", () => {
+        const findings = lintSourceText(
+            `/**
+             * @graphql Money
+             */
+            export type Money = string & { readonly __brand: "Money" };`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @graphql without a scalar name", () => {
+        const findings = lintSourceText(
+            `/**
+             * @graphql
+             */
+            export type Money = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Money`: @graphql is missing its scalar name"]);
+    });
+
+    it("reports an unrecognised type tag", () => {
+        const findings = lintSourceText(
+            `/**
+             * @wibble
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @wibble is not a recognised type tag"]);
+    });
+});
+
 describe("the committed spec", () => {
     it("passes lint", () => {
         const project = new Project({ tsConfigFilePath: "tsconfig.json" });

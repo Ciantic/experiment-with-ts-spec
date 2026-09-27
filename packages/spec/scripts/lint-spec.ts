@@ -25,6 +25,9 @@ const ALLOWED_TAGS = new Set([
 /** Tags an interface may carry. */
 const ALLOWED_INTERFACE_TAGS = new Set(["table"]);
 
+/** Tags a type alias may carry. */
+const ALLOWED_TYPE_TAGS = new Set(["formula", "graphql"]);
+
 /** Retired tags, reported with their replacement rather than as "unknown". */
 const RETIRED_TAGS = new Map([
     ["readonly", "use @generated for system-assigned fields or @computed for derived fields"],
@@ -47,7 +50,6 @@ const ALLOWED_STORAGE = new Set(["generated", "stored", "derived"]);
 
 /** The type-level tag that marks a union as the set of valid `formula=` names. */
 const FORMULA_TAG = "formula";
-
 /** Matches the spec interfaces, relative to this package's tsconfig. */
 const SPEC_GLOB = "src/**/*.ts";
 
@@ -102,6 +104,32 @@ export function readFormulaNames(project: Project): Set<string> {
         }
     }
     return names;
+}
+
+/** Check the tags on a type alias: only known tags, and `@graphql` must name a scalar. */
+function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
+    const name = declaration.getName();
+    for (const doc of declaration.getJsDocs()) {
+        for (const tag of doc.getTags()) {
+            const tagName = tag.getTagName();
+            if (!ALLOWED_TYPE_TAGS.has(tagName)) {
+                findings.push({
+                    filePath,
+                    line: tag.getStartLineNumber(),
+                    message: `\`${name}\`: @${tagName} is not a recognised type tag`,
+                });
+                continue;
+            }
+            if (tagName === "graphql" && !(tag.getCommentText() ?? "").trim()) {
+                findings.push({
+                    filePath,
+                    line: tag.getStartLineNumber(),
+                    message: `\`${name}\`: @graphql is missing its scalar name`,
+                });
+            }
+        }
+    }
+    lintFormulaType(declaration, filePath, findings);
 }
 
 /** Check that each `@formula` type is a non-empty union of string literals. */
@@ -359,7 +387,7 @@ export function lintSourceText(
         }
     }
     for (const declaration of sourceFile.getTypeAliases()) {
-        lintFormulaType(declaration, filePath, findings);
+        lintTypeAlias(declaration, filePath, findings);
     }
     return findings;
 }
@@ -374,7 +402,7 @@ export function lintProject(project: Project): { findings: Finding[]; interfaces
     for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getTypeAliases()) {
-            lintFormulaType(declaration, filePath, findings);
+            lintTypeAlias(declaration, filePath, findings);
         }
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;

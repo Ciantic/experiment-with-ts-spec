@@ -36,8 +36,8 @@ in the schema and not in the table.
 
 ## The four files
 
-- **`scalars.ts`** — the custom scalars: `Decimal`, `Money`, `Quantity`,
-  `TaxRate`, `Version`, `DateTime`. Each is carried as text.
+- **`scalars.ts`** — the custom scalars the spec references through `@graphql`,
+  each carried as text (see "Scalars").
 - **`loaders.ts`** — the `DataLoader`s, the paged list queries, and the
   `GraphQLContext` handed to every resolver.
 - **`schema.ts`** — one `GraphQLObjectType` per entity, the `Query` root, and the
@@ -75,21 +75,33 @@ and the field name are the same.
 
 ## Scalars
 
-| Spec type | GraphQL |
-| --- | --- |
-| `string`, `Email`, `Unit`, `Currency`, `Language`, `EInvoiceAddress`, `EInvoiceOperator` | `String` |
-| `number` | `Float` |
-| `boolean` | `Boolean` |
-| `GUID`, `BrandedId`, any `<Entity>Id` | `ID` |
-| `Date` | `DateTime` |
-| `Money`, `Quantity`, `TaxRate`, `Decimal` | the same-named scalar |
-| `Version` | `Version` |
+Scalar mapping is annotation-driven. The generator holds no spec type names: it
+resolves each field to a type name (`Money` stays `Money`, `InvoiceId` resolves
+through `BrandedId` to itself, a bare `string` is `string`) and looks that name
+up in the `@graphql` annotations the spec declares on its primitives
+(`docs/spec-annotations.md`):
 
-`Money`, `Quantity`, `TaxRate`, and `Version` are carried as strings, matching
-the drivers: the numeric mappers return `decimal` as a string
-(`docs/primitives.md`) and `int8` as a `bigint` (`docs/versioning.md`). A GraphQL
-`Float` would reintroduce the precision loss those types exist to avoid; a
-`Version` sent as a JSON number would trip `JSON.stringify` on a `bigint`.
+| Spec type | `@graphql` | GraphQL |
+| --- | --- | --- |
+| `string` (and `Email`, `Unit`, `Currency`, `Language`, `EInvoiceAddress`, `EInvoiceOperator`) | `String` | `String` |
+| `GUID`, `BrandedId`, any `<Entity>Id` | `ID` | `ID` |
+| `Money`, `Quantity`, `TaxRate`, `Decimal` | `Money`, `Quantity`, `TaxRate`, `Decimal` | the same-named scalar |
+| `Version` | `Version` | `Version` |
+| `Date` | `DateTime` | `DateTime` |
+
+A type with no annotation falls back to its TypeScript type: `string` -> `String`,
+`number` -> `Float`, `boolean` -> `Boolean`, `bigint` -> `String`, `Date` ->
+`DateTime`. That fallback is language-level, not spec-level; the spec's own
+vocabulary is entirely in the annotations. Adding a primitive therefore needs no
+generator change — annotate it and it appears.
+
+`scalars.ts` emits only the custom scalars the schema actually references, so an
+unused primitive produces no code. `Money`, `Quantity`, `TaxRate`, and `Version`
+are carried as strings, matching the drivers: the numeric mappers return
+`decimal` as a string (`docs/primitives.md`) and `int8` as a `bigint`
+(`docs/versioning.md`). A GraphQL `Float` would reintroduce the precision loss
+those types exist to avoid; a `Version` sent as a JSON number would trip
+`JSON.stringify` on a `bigint`.
 
 ## Roots
 
@@ -253,11 +265,15 @@ under plain node.
 
 ## Wiring
 
-1. `packages/backend/scripts/spec-model.ts` classifies every spec field into
+1. `packages/spec/src/primitives/` carries an `@graphql` annotation per primitive,
+   and `packages/backend/scripts/spec-model.ts` classifies every spec field into
    `Table.graphFields` while it builds the column model.
-2. `generate-graphql.ts` maps those kinds to GraphQL types, resolvers, and
-   `DataLoader`s, and writes the four files.
-3. A caller builds a context from a driver and runs an operation:
+2. `readGraphScalars` reads the `@graphql` map from the whole spec source tree —
+   the primitives sit outside `src/domain`, so the generators take a second,
+   wider glob (`aliasGlob`, defaulting to `spec/src/**/*.ts`) for type aliases.
+3. `generate-graphql.ts` maps those kinds and names to GraphQL types, resolvers,
+   and `DataLoader`s, and writes the four files.
+4. A caller builds a context from a driver and runs an operation:
 
    ```ts
    const context = createContext(createPglite());

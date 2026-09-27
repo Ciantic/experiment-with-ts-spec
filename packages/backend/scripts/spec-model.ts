@@ -23,11 +23,17 @@ const SPEC_SRC_ROOT = join(SPEC_PACKAGE_ROOT, "src");
 export const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 export const DEFAULT_SPEC_GLOB = join(SPEC_PACKAGE_ROOT, "src/domain/**/*.ts");
+
+/** The whole spec source tree. Annotations that name an API scalar live on the primitives, outside `src/domain`. */
+export const DEFAULT_ANNOTATION_GLOB = join(SPEC_PACKAGE_ROOT, "src/**/*.ts");
+
 export const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "src/postgres/formulas.ts");
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
     specGlob?: string;
+    /** Where type aliases are read from; a superset of `specGlob`, since primitives sit outside `src/domain`. */
+    aliasGlob?: string;
     formulasFile?: string;
 }
 
@@ -66,6 +72,9 @@ const CHILDREN_TAG = "children";
 /** Entity-typed fields may carry this to inline the target's scalar fields instead of emitting a foreign key. */
 const INLINED_TAG = "inlined";
 
+/** The tag that names the API scalar a spec type is exposed as. See docs/graphql.md. */
+const GRAPHQL_TAG = "graphql";
+
 /** The formula registries, read statically from `formulas.ts`. */
 interface FormulaRegistries {
     row: Record<string, string>;
@@ -90,6 +99,12 @@ export interface GraphField {
     kind: GraphFieldKind;
     /** The spec type as written, e.g. `Money`, `Customer`, or `InvoiceRow`. */
     typeName: string;
+    /**
+     * For scalar/computed: the named type the field resolves to through aliases, used to
+     * look up an API scalar. `Money` stays `Money`, `InvoiceId` resolves to `BrandedId`, and
+     * a bare `string` is itself. See docs/graphql.md.
+     */
+    scalarName: string | undefined;
     /** For relation/children/inlined: the target interface name. */
     target: string | undefined;
     /** For scalar/computed/relation: the physical column that backs the field. */
@@ -234,6 +249,21 @@ export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_F
     return registries;
 }
 
+/** Read the `@graphql` annotation on each spec type alias: spec type name -> API scalar name. */
+export function readGraphScalars(project: Project, options: GenerateOptions = {}): Map<string, string> {
+    const aliasGlob = options.aliasGlob ?? DEFAULT_ANNOTATION_GLOB;
+    const scalars = new Map<string, string>();
+    for (const sourceFile of project.getSourceFiles(aliasGlob)) {
+        for (const alias of sourceFile.getTypeAliases()) {
+            const value = tagValue(alias, GRAPHQL_TAG);
+            if (value) {
+                scalars.set(alias.getName(), value);
+            }
+        }
+    }
+    return scalars;
+}
+
 /** Read a positional tag value such as `@relation Customer`. */
 function tagValue(holder: { getJsDocs(): JSDoc[] }, name: string): string | undefined {
     for (const doc of holder.getJsDocs()) {
@@ -269,6 +299,57 @@ export function buildSpecTables(
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces.set(declaration.getName(), declaration);
         }
+    }
+
+    // Type aliases come from the wider annotation glob, since primitives sit outside `src/domain`.
+    const aliasGlob = options.aliasGlob ?? DEFAULT_ANNOTATION_GLOB;
+    const annotatedAliases = new Set(readGraphScalars(project, { aliasGlob }).keys());
+    const aliasNodes = new Map<string, TypeNode>();
+    for (const sourceFile of project.getSourceFiles(aliasGlob)) {
+        for (const alias of sourceFile.getTypeAliases()) {
+            const node = alias.getTypeNode();
+            if (node) {
+                aliasNodes.set(alias.getName(), node);
+            }
+        }
+    }
+
+    /** The named type a field resolves to through aliases, stopping at an `@graphql`-annotated alias. */
+    function leafScalarName(name: string, seen: Set<string> = new Set()): string {
+        if (annotatedAliases.has(name)) {
+            return name;
+        }
+        const node = aliasNodes.get(name);
+        if (!node || seen.has(name)) {
+            return name;
+        }
+        seen.add(name);
+        return leafFromNode(node, seen) ?? name;
+    }
+
+    function leafFromNode(node: TypeNode, seen: Set<string>): string | undefined {
+        const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
+        if (parenthesized) {
+            return leafFromNode(parenthesized.getTypeNode(), seen);
+        }
+        if (node.getKindName().endsWith("Keyword")) {
+            return node.getText();
+        }
+        const reference = node.asKind(SyntaxKind.TypeReference);
+        if (reference) {
+            return leafScalarName(reference.getTypeName().getText(), seen);
+        }
+        const compound =
+            node.asKind(SyntaxKind.IntersectionType) ?? node.asKind(SyntaxKind.UnionType);
+        if (compound) {
+            for (const member of compound.getTypeNodes()) {
+                const leaf = leafFromNode(member, seen);
+                if (leaf) {
+                    return leaf;
+                }
+            }
+        }
+        return undefined;
     }
 
     const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
@@ -495,6 +576,7 @@ export function buildSpecTables(
                         name: fieldName,
                         kind: "children",
                         typeName: resolved.entity ?? typeNode.getText(),
+                        scalarName: undefined,
                         target: resolved.entity,
                         column: undefined,
                         foreignKeyColumn: undefined,
@@ -515,6 +597,7 @@ export function buildSpecTables(
                         name: fieldName,
                         kind: "inlined",
                         typeName: inlined,
+                        scalarName: undefined,
                         target: inlined,
                         column: undefined,
                         foreignKeyColumn: undefined,
@@ -551,6 +634,7 @@ export function buildSpecTables(
                     name: fieldName,
                     kind: "relation",
                     typeName: relation,
+                    scalarName: undefined,
                     target: relation,
                     column: `${fieldName}Id`,
                     foreignKeyColumn: undefined,
@@ -599,6 +683,7 @@ export function buildSpecTables(
                 name: fieldName,
                 kind: tagValue(property, "computed") ? "computed" : "scalar",
                 typeName: typeNode.getText(),
+                scalarName: leafScalarName(typeNode.getText()),
                 target: undefined,
                 column: fieldName,
                 foreignKeyColumn: undefined,
