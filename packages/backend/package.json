@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "generate:schema": "node scripts/generate-postgres-schema.ts",
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
-    "generate:repositories": "node scripts/generate-repositories.ts"
+    "generate:repositories": "node scripts/generate-repositories.ts",
+    "generate:queries": "node scripts/generate-query-metadata.ts"
   },
   "dependencies": {
     "spec": "workspace:*"

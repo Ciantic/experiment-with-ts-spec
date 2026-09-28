@@ -46,11 +46,18 @@ Type tags:
   generator reads the tag rather than knowing the domain type by name, so adding
   a primitive does not require editing the backend. `@primitive` types must
   carry it. See `docs/primitives.md`.
+- `@query <Entity> [one|many]` — declares one read. The alias's object type is
+  the query's arguments; the alias name becomes the method name and the entity
+  becomes the source table. `one` returns a single row or `undefined`, `many` a
+  list, with `many` the default. Applied to a type alias under
+  `packages/spec/src/queries/`, not to a field or interface. See
+  `docs/queries.md`.
 
 Type tags sit on a type alias and are validated as a group: `@formula` types are
 checked as unions of string literals, `@primitive` types must declare `@zod` and
-`@pgtype`, and any tag outside the four is reported. A field never carries a type
-tag; an alias never carries a field or interface tag.
+`@pgtype`, `@query` types must be object literals naming a domain entity, and any
+tag outside the five is reported. A field never carries a type tag; an alias
+never carries a field or interface tag.
 
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:

@@ -70,12 +70,25 @@ export interface Column {
     read?: string;
 }
 
+/** A branch field: a `@relation`, a `@children`, or an `@inlined` entity. See docs/queries.md. */
+export interface Relation {
+    kind: "relation" | "children" | "inlined";
+    /** The target table, for `relation` and `children`. */
+    table?: string;
+    /** `relation`: this table's foreign-key column. `children`: the child's foreign-key column. */
+    column?: string;
+    /** `inlined`: target field -> this table's prefixed column. */
+    columns?: Record<string, string>;
+}
+
 export interface Table {
     name: string;
     interfaceName: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.js`. */
     importSpecifier: string;
     columns: Column[];
+    /** Branch fields, keyed by the interface field name. See docs/queries.md. */
+    relations: Map<string, Relation>;
     /** `NEW."x" := <expr>;` assignments, in interface field order. */
     sameRowAssignments: string[];
     /** Child-change statements keyed by the child table that carries them. */
@@ -343,6 +356,7 @@ export function buildSpecTables(
             report(property.declaration, `\`${fieldName}\`: @inlined ${entity} has no interface`);
             return;
         }
+        const columns: Record<string, string> = {};
         for (const inner of declaration.properties) {
             const innerName = inner.name;
             const innerType = inner.declaration.getTypeNode();
@@ -359,8 +373,9 @@ export function buildSpecTables(
                 report(inner.declaration, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
                 continue;
             }
+            const columnName = inlinedColumnName(fieldName, innerName);
             const column: Column = {
-                name: inlinedColumnName(fieldName, innerName),
+                name: columnName,
                 sqlType: resolved.sqlType ?? "text",
                 notNull: notNull && !inner.optional,
                 primaryKey: false,
@@ -370,8 +385,10 @@ export function buildSpecTables(
             if (resolved.checkValues) {
                 column.checkValues = resolved.checkValues;
             }
+            columns[innerName] = columnName;
             table.columns.push(column);
         }
+        table.relations.set(fieldName, { kind: "inlined", table: declaration.tableName, columns });
     }
 
     for (const spec of interfaces.values()) {
@@ -380,6 +397,7 @@ export function buildSpecTables(
             interfaceName: spec.name,
             importSpecifier: spec.importSpecifier,
             columns: [],
+            relations: new Map(),
             sameRowAssignments: [],
             rollups: new Map(),
         };
@@ -407,7 +425,15 @@ export function buildSpecTables(
                         property.declaration,
                         `\`${fieldName}\`: array fields need @children <Entity> and are not columns`,
                     );
+                    continue;
                 }
+                const childTable = entityTableName(tags.children);
+                if (!childTable) {
+                    report(property.declaration, `\`${fieldName}\`: @children ${tags.children} has no interface`);
+                    continue;
+                }
+                // The child's foreign-key column is resolved once every table is built.
+                table.relations.set(fieldName, { kind: "children", table: childTable });
                 continue;
             }
 
@@ -436,6 +462,11 @@ export function buildSpecTables(
                     unique: false,
                     references: { table: targetTable, column: "id" },
                     read: notNull ? `${fieldName}.id` : `${fieldName}?.id`,
+                });
+                table.relations.set(fieldName, {
+                    kind: "relation",
+                    table: targetTable,
+                    column: `${fieldName}Id`,
                 });
                 continue;
             }
@@ -526,6 +557,32 @@ export function buildSpecTables(
                 rollup.oldStatements.push(entry.childOld);
                 parentTable.rollups.set(child.name, rollup);
             }
+        }
+    }
+
+    /** Resolve each `@children` relation's foreign-key column once every table's columns exist. */
+    const byTableName = new Map<string, Table>();
+    for (const table of tables.values()) {
+        byTableName.set(table.name, table);
+    }
+    for (const table of tables.values()) {
+        for (const [fieldName, relation] of table.relations) {
+            if (relation.kind !== "children" || !relation.table) {
+                continue;
+            }
+            const child = byTableName.get(relation.table);
+            const foreignKey = child?.columns.find((column) => column.references?.table === table.name);
+            if (!foreignKey) {
+                const spec = interfaces.get(table.interfaceName);
+                if (spec) {
+                    report(
+                        spec.declaration,
+                        `\`${fieldName}\`: @children ${relation.table} has no foreign key to ${table.name}`,
+                    );
+                }
+                continue;
+            }
+            relation.column = foreignKey.name;
         }
     }
 

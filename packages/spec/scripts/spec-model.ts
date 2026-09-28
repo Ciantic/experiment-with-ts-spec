@@ -43,7 +43,7 @@ export const FIELD_TAGS = [
 export const INTERFACE_TAGS = ["table"] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype"] as const;
+export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype", "query"] as const;
 
 /** Every tag this model recognises. */
 export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
@@ -108,6 +108,8 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
     pgtype?: string;
+    /** The `@query` value: a target entity and a cardinality, e.g. `Invoice many`. See docs/queries.md. */
+    query?: string;
 }
 
 /** A field of a spec interface. */
@@ -238,6 +240,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "pgtype":
                     if (value !== undefined) tags.pgtype ??= value;
                     break;
+                case "query":
+                    if (value !== undefined) tags.query ??= value;
+                    break;
                 case "generated":
                     tags.generated = true;
                     break;
@@ -311,6 +316,55 @@ export function readFormulaNames(project: Project, specGlob = SPEC_GLOB): Set<st
         }
     }
     return names;
+}
+
+/** The cardinality of a `@query`: one row, or a list. */
+export type QueryCardinality = "one" | "many";
+
+/** A `@query`-annotated alias: the arguments of one read. See docs/queries.md. */
+export interface SpecQuery {
+    /** The alias name, which becomes the method name. */
+    name: string;
+    /** The entity `@query` names. */
+    entity: string;
+    cardinality: QueryCardinality;
+    filePath: string;
+    /** The module specifier that imports the args alias, e.g. `spec/queries/InvoiceQueries.js`. */
+    importSpecifier: string;
+    declaration: TypeAliasDeclaration;
+}
+
+/** Split a `@query` value into its entity and cardinality; cardinality defaults to `many`. */
+export function parseQueryTag(value: string): { entity: string; cardinality: QueryCardinality } {
+    const parts = value.trim().split(/\s+/);
+    return {
+        entity: parts[0] ?? "",
+        cardinality: parts[1] === "one" ? "one" : "many",
+    };
+}
+
+/** Read every `@query`-annotated alias under `spec/`, statically. */
+export function readQueries(project: Project, specGlob = SPEC_GLOB): SpecQuery[] {
+    const queries: SpecQuery[] = [];
+    for (const sourceFile of project.getSourceFiles(specGlob)) {
+        for (const declaration of sourceFile.getTypeAliases()) {
+            const value = readTags(declaration).query;
+            if (value === undefined) {
+                continue;
+            }
+            const { entity, cardinality } = parseQueryTag(value);
+            const filePath = sourceFile.getFilePath();
+            queries.push({
+                name: declaration.getName(),
+                entity,
+                cardinality,
+                filePath,
+                importSpecifier: specImportSpecifier(filePath),
+                declaration,
+            });
+        }
+    }
+    return queries;
 }
 
 /** Parse the spec into interfaces, aliases, and the formula vocabulary. */

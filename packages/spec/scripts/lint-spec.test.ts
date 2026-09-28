@@ -530,6 +530,72 @@ describe("type-level tags", () => {
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
     });
+
+    it("accepts @query on an object type literal", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type ListInvoices = { customerId?: string };`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports @query without an entity", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query
+             */
+            export type ListInvoices = {};`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`ListInvoices`: @query is missing its <Entity>"]);
+    });
+
+    it("rejects an unknown @query cardinality", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice few
+             */
+            export type ListInvoices = {};`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ListInvoices`: @query cardinality `few` must be `one` or `many`",
+        ]);
+    });
+
+    it("rejects extra @query tokens", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many extra
+             */
+            export type ListInvoices = {};`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ListInvoices`: @query takes an <Entity> and an optional `one` or `many`",
+        ]);
+    });
+
+    it("rejects @query on a type that is not an object literal", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type ListInvoices = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ListInvoices`: @query must be on an object type literal of its arguments",
+        ]);
+    });
 });
 
 describe("readFormulaNames", () => {
@@ -636,6 +702,48 @@ describe("lintProject", () => {
         const { findings } = lintProject(project, { entityGlob, aliasGlob });
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
+    });
+
+    it("accepts a @query naming a domain entity", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/domain/Invoice.ts",
+            `export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+        project.createSourceFile(
+            "/src/queries/InvoiceQueries.ts",
+            `/**
+             * @query Invoice one
+             */
+            export type GetInvoice = { id: string };`,
+        );
+
+        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a @query naming an unknown entity", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/queries/InvoiceQueries.ts",
+            `/**
+             * @query Nope one
+             */
+            export type GetInvoice = { id: string };`,
+        );
+
+        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(messages(findings)).toEqual([
+            "`GetInvoice`: @query Nope is not an interface in domain/",
+        ]);
     });
 });
 

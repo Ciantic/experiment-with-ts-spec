@@ -1,6 +1,7 @@
 /** Check the annotation tags on `spec/` interfaces. See docs/spec-annotations.md. */
 import {
     Project,
+    Node,
     type InterfaceDeclaration,
     type JSDocTag,
     type PropertySignature,
@@ -18,6 +19,7 @@ import {
     formulaNamesIn,
     parseParameters,
     readFormulaNames,
+    readQueries,
     readTags,
     typeMembers,
 } from "./spec-model.ts";
@@ -51,6 +53,9 @@ const ZOD_TAG = "zod";
 
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */
 const PG_TYPE_TAG = "pgtype";
+
+/** The tag that marks an alias as the arguments of a read. See docs/queries.md. */
+const QUERY_TAG = "query";
 
 export interface Finding {
     filePath: string;
@@ -114,6 +119,28 @@ function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, find
     }
     if (primitiveTag && !pgtypeTag) {
         report(`@${PRIMITIVE_TAG} requires @${PG_TYPE_TAG}`, primitiveTag);
+    }
+
+    // @query names a target entity and an optional cardinality; it rides on an object type literal.
+    const queryTag = (tags.get(QUERY_TAG) ?? [])[0];
+    if (queryTag) {
+        const value = (queryTag.getCommentText() ?? "").trim();
+        const parts = value === "" ? [] : value.split(/\s+/);
+        const entity = parts[0];
+        const cardinality = parts[1];
+        if (!entity) {
+            report(`@${QUERY_TAG} is missing its <Entity>`, queryTag);
+        } else {
+            const typeNode = declaration.getTypeNode();
+            if (typeNode && !Node.isTypeLiteral(typeNode)) {
+                report(`@${QUERY_TAG} must be on an object type literal of its arguments`, queryTag);
+            }
+        }
+        if (parts.length > 2) {
+            report(`@${QUERY_TAG} takes an <Entity> and an optional \`one\` or \`many\``, queryTag);
+        } else if (cardinality !== undefined && cardinality !== "one" && cardinality !== "many") {
+            report(`@${QUERY_TAG} cardinality \`${cardinality}\` must be \`one\` or \`many\``, queryTag);
+        }
     }
 }
 
@@ -354,15 +381,28 @@ export function lintProject(
     }
 
     // Interfaces are entities, and entities live only in domain/; operations/ and queries/ are contracts.
+    const entityNames = new Set<string>();
     for (const sourceFile of project.getSourceFiles(entityGlob)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
+            entityNames.add(declaration.getName());
             lintInterface(declaration, filePath, findings);
             for (const property of declaration.getProperties()) {
                 properties += 1;
                 lintProperty(property, filePath, formulaNames, findings);
             }
+        }
+    }
+
+    // A `@query` must name an entity that exists.
+    for (const query of readQueries(project, aliasGlob)) {
+        if (!entityNames.has(query.entity)) {
+            findings.push({
+                filePath: query.filePath.replace(`${process.cwd()}/`, ""),
+                line: query.declaration.getStartLineNumber(),
+                message: `\`${query.name}\`: @query ${query.entity} is not an interface in domain/`,
+            });
         }
     }
 

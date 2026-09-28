@@ -1,0 +1,203 @@
+/** Unit tests for the read resolver, driven by hand-built metadata and PGlite. See docs/testing.md. */
+import { beforeAll, describe, expect, it } from "vitest";
+import { createPglite } from "../pglite-setup.js";
+import type { SqlExecutor } from "./sql-executor.js";
+import { createResolver, type QueryModel } from "./resolvers.js";
+
+/** Fixture entities, so the tests do not read the real spec. */
+interface Customer {
+    id: string;
+    name: string;
+    email: string;
+}
+
+interface InvoiceRow {
+    id: string;
+    description: string;
+    amount: string;
+}
+
+interface Invoice {
+    id: string;
+    number: string;
+    totalAmount: string;
+    customer?: Customer;
+    rows?: InvoiceRow[];
+    snapshot?: { name: string; email: string };
+}
+
+/** Three tables: a to-one relation, a to-many children branch, and an inlined branch. */
+const model: QueryModel = {
+    tables: {
+        customer: {
+            name: "customer",
+            key: "id",
+            fields: { id: "id", name: "name", email: "email" },
+            relations: {},
+        },
+        invoice: {
+            name: "invoice",
+            key: "id",
+            fields: { id: "id", number: "number", totalAmount: "totalAmount" },
+            relations: {
+                customer: { kind: "relation", table: "customer", column: "customerId" },
+                rows: { kind: "children", table: "invoice_row", column: "invoiceId" },
+                snapshot: { kind: "inlined", columns: { name: "snapshotName", email: "snapshotEmail" } },
+            },
+        },
+        invoice_row: {
+            name: "invoice_row",
+            key: "id",
+            fields: { id: "id", description: "description", amount: "amount" },
+            relations: {},
+        },
+    },
+};
+
+const resolver = createResolver(model);
+let db: SqlExecutor;
+
+/** A PGlite executor that counts the queries it runs, so batched branches can be asserted. */
+function counting(inner: SqlExecutor): SqlExecutor & { count: () => number } {
+    let count = 0;
+    return {
+        count: () => count,
+        query: (sql, parameters) => {
+            count += 1;
+            return inner.query(sql, parameters);
+        },
+    };
+}
+
+beforeAll(async () => {
+    const pglite = createPglite();
+    await pglite.exec(`
+        create table customer (id text primary key, name text not null, email text not null);
+        create table invoice (
+            id text primary key,
+            number text not null,
+            "customerId" text references customer(id),
+            "totalAmount" text not null,
+            "snapshotName" text,
+            "snapshotEmail" text
+        );
+        create table invoice_row (
+            id text primary key,
+            "invoiceId" text not null references invoice(id),
+            description text not null,
+            amount text not null
+        );
+        insert into customer values
+            ('c1', 'Acme', 'a@example.com'),
+            ('c2', 'Beta', 'b@example.com');
+        insert into invoice ("id", "number", "customerId", "totalAmount", "snapshotName", "snapshotEmail") values
+            ('i1', 'INV-1', 'c1', '100', 'Acme AS', 'old@example.com'),
+            ('i2', 'INV-2', 'c2', '200', 'Beta AS', 'beta@example.com'),
+            ('i3', 'INV-3', 'c1', '300', 'Acme AS', 'old@example.com');
+        insert into invoice_row ("id", "invoiceId", "description", "amount") values
+            ('r1', 'i1', 'Widget', '50'),
+            ('r2', 'i1', 'Gadget', '50'),
+            ('r3', 'i2', 'Thing', '200');
+    `);
+    db = pglite;
+});
+
+describe("resolveMany", () => {
+    it("projects only the selected scalars", async () => {
+        const select = { id: true, number: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select });
+
+        expect(rows).toHaveLength(3);
+        expect(rows[0]).toEqual({ id: "i1", number: "INV-1" });
+    });
+
+    it("reads an inlined branch from the same row, with no extra query", async () => {
+        const select = { number: true, snapshot: { name: true } } as const;
+        const counted = counting(db);
+        const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
+
+        expect(rows[0]?.snapshot).toEqual({ name: "Acme AS" });
+        expect(counted.count()).toBe(1);
+    });
+
+    it("loads a to-one relation in one batched query", async () => {
+        const select = { number: true, customer: { name: true } } as const;
+        const counted = counting(db);
+        const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
+
+        expect(rows[0]?.customer).toEqual({ name: "Acme" });
+        expect(rows[1]?.customer).toEqual({ name: "Beta" });
+        expect(counted.count()).toBe(2);
+    });
+
+    it("loads a to-many branch in one batched query and groups it", async () => {
+        const select = { number: true, rows: { description: true, amount: true } } as const;
+        const counted = counting(db);
+        const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
+
+        expect(rows[0]?.rows).toEqual([
+            { description: "Widget", amount: "50" },
+            { description: "Gadget", amount: "50" },
+        ]);
+        expect(rows[1]?.rows).toEqual([{ description: "Thing", amount: "200" }]);
+        expect(rows[2]?.rows).toEqual([]);
+        expect(counted.count()).toBe(2);
+    });
+
+    it("treats `true` on a branch as all of its scalar fields", async () => {
+        const select = { number: true, rows: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i2" }, { select });
+
+        expect(rows[0]?.rows).toEqual([{ id: "r3", description: "Thing", amount: "200" }]);
+    });
+
+    it("filters by a scalar argument", async () => {
+        const select = { number: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i3" }, { select });
+
+        expect(rows).toEqual([{ number: "INV-3" }]);
+    });
+
+    it("filters by a foreign-key argument", async () => {
+        const select = { id: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(
+            db,
+            "invoice",
+            { customerId: "c1" },
+            { select },
+        );
+
+        expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
+    });
+
+    it("returns nothing for a filter that matches no rows", async () => {
+        const select = { number: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "nope" }, { select });
+
+        expect(rows).toEqual([]);
+    });
+
+    it("rejects an unknown filter field", async () => {
+        const select = { number: true } as const;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { nonsense: 1 }, { select }),
+        ).rejects.toThrow("unknown filter field `nonsense` on `invoice`");
+    });
+});
+
+describe("resolveOne", () => {
+    it("returns the first matching row", async () => {
+        const select = { number: true, totalAmount: true } as const;
+        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: "i1" }, { select });
+
+        expect(row).toEqual({ number: "INV-1", totalAmount: "100" });
+    });
+
+    it("returns undefined when nothing matches", async () => {
+        const select = { number: true } as const;
+        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: "nope" }, { select });
+
+        expect(row).toBeUndefined();
+    });
+});
