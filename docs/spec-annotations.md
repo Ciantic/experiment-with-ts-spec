@@ -53,11 +53,20 @@ Type tags:
   `packages/spec/src/queries/`, not to a field or interface. See
   `docs/queries.md`.
 
+Query argument tags (on a member of a `@query` alias's object type):
+
+- `@in <field>` — the argument is a set: the read matches `<field>` against the
+  member's array, `field in (…)`. The member must be an array type, and
+  `<field>` names a scalar field or a relation's foreign-key column of the
+  `@query` entity, the same namespace a plain filter uses. The argument name and
+  `<field>` are independent, so `ids` may annotate `@in id`. See
+  `docs/queries.md`.
+
 Type tags sit on a type alias and are validated as a group: `@formula` types are
 checked as unions of string literals, `@primitive` types must declare `@zod` and
 `@pgtype`, `@query` types must be object literals naming a domain entity, and any
 tag outside the five is reported. A field never carries a type tag; an alias
-never carries a field or interface tag.
+never carries a field or interface tag; a `@query` argument may carry only `@in`.
 
 `@relation`, `@children`, and `@inlined` are bare markers, like `@generated`:
 they take no value. The entity and the cardinality both come from the field
@@ -275,6 +284,13 @@ Enforced:
   interface.
 - `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
   `formula=`, and rejects unknown parameters.
+- `@in` requires the field it matches and must sit on an array-typed `@query`
+  argument; no other tag is recognised on a query argument.
+- A `@query` argument must name a filterable field of the entity it reads — a
+  scalar field or a relation's `<field>Id` foreign key — and its type must be a
+  scalar (a keyword, `Date`, or a named non-entity type). An array argument needs
+  `@in`; an entity-typed, object-literal, or array-of-entity argument is
+  rejected. See `docs/queries.md`.
 - `formula=` must be a member of an `@formula`-annotated type.
 - An `@formula` type must be a non-empty union of string literals.
 - Tags may not repeat on a field.
@@ -297,3 +313,9 @@ Gotchas:
   native type stripping; there is no build step and no `tsx`.
 - **Statically decidable only.** The linter checks the tags, not whether a
   formula is semantically right for its field.
+- **A query argument is checked against its entity.** The linter resolves the
+  `@query` entity by name and rejects an argument that is not a filterable field
+  or whose type is not a scalar. This is name-based, not type-checked: a named
+  type that is not an entity interface is assumed scalar, so the linter cannot
+  tell a primitive from a mistyped alias. An unknown entity skips the argument
+  rules, leaving the separate "not an interface in domain/" finding.

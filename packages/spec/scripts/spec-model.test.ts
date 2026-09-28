@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, parseSpec, readTags } from "./spec-model.js";
+import { SPEC_SRC_ROOT, parseSpec, readQueries, readTags } from "./spec-model.js";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -115,6 +115,33 @@ describe("parseSpec formulas", () => {
         });
 
         expect([...formulaNames].sort()).toEqual(["rowNet", "rowTax"]);
+    });
+});
+
+describe("readQueries", () => {
+    it("reads each argument with its tags", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            join(SPEC_SRC_ROOT, "fixtures/InvoiceQueries.ts"),
+            [
+                "/**",
+                " * @query Invoice many",
+                " */",
+                "export type GetInvoices = {",
+                "    /**",
+                "     * @in id",
+                "     */",
+                "    ids: InvoiceId[];",
+                "};",
+            ].join("\n"),
+        );
+
+        const [query] = readQueries(project, GLOB);
+        const [argument] = query?.arguments ?? [];
+
+        expect(argument?.name).toBe("ids");
+        expect(argument?.typeText).toBe("InvoiceId[]");
+        expect(argument?.tags.in).toBe("id");
     });
 });
 

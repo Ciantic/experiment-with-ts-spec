@@ -38,8 +38,15 @@ export interface QueryModel {
 
 /** What a fetch selects and filters on: root arguments, or a column matched against parent keys. */
 type FetchFilter =
-    | { kind: "args"; args: Record<string, unknown> }
+    | { kind: "args"; args: Record<string, unknown>; inFilters?: Record<string, string> | undefined }
     | { kind: "match"; column: string; values: unknown[] };
+
+/** What a read selects and filters on, as the generated factory passes it. */
+export interface ResolveOptions<E, S extends Selection<E>> {
+    select: S;
+    /** Set-membership arguments from `@in`: argument name -> the field it matches. See docs/queries.md. */
+    inFilters?: Record<string, string>;
+}
 
 /** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
 interface FetchedRow {
@@ -54,14 +61,14 @@ export interface Resolver {
         db: SqlExecutor,
         table: string,
         args: Record<string, unknown>,
-        opts: { select: S },
+        opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]>;
 
     resolveOne<E, S extends Selection<E>>(
         db: SqlExecutor,
         table: string,
         args: Record<string, unknown>,
-        opts: { select: S },
+        opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S> | undefined>;
 }
 
@@ -205,6 +212,30 @@ export function createResolver(model: QueryModel): Resolver {
                 if (value === undefined) {
                     continue;
                 }
+                const inField = filter.inFilters?.[name];
+                if (inField !== undefined) {
+                    if (!Array.isArray(value)) {
+                        throw new Error(`set filter \`${name}\` on \`${table}\` needs an array`);
+                    }
+                    const column = columnForArgument(meta, inField);
+                    if (column === undefined) {
+                        throw new Error(`unknown filter field \`${inField}\` on \`${table}\``);
+                    }
+                    const values = distinct(value);
+                    if (values.length === 0) {
+                        where.push("false");
+                        continue;
+                    }
+                    const placeholders = values.map((item) => {
+                        params.push(item);
+                        return `$${params.length}`;
+                    });
+                    where.push(`${alias}.${quote(column)} in (${placeholders.join(", ")})`);
+                    continue;
+                }
+                if (Array.isArray(value)) {
+                    throw new Error(`filter \`${name}\` on \`${table}\` is an array; annotate it with @in`);
+                }
                 const column = columnForArgument(meta, name);
                 if (column === undefined) {
                     throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
@@ -301,11 +332,12 @@ export function createResolver(model: QueryModel): Resolver {
         db: SqlExecutor,
         table: string,
         args: Record<string, unknown>,
-        opts: { select: S },
+        opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]> {
         const rows = await fetch(db, table, opts.select as Record<string, unknown>, {
             kind: "args",
             args,
+            inFilters: opts.inFilters,
         });
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }
@@ -314,7 +346,7 @@ export function createResolver(model: QueryModel): Resolver {
         db: SqlExecutor,
         table: string,
         args: Record<string, unknown>,
-        opts: { select: S },
+        opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S> | undefined> {
         const rows = await resolveMany<E, S>(db, table, args, opts);
         return rows[0];

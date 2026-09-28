@@ -660,6 +660,201 @@ describe("type-level tags", () => {
     });
 });
 
+describe("query argument tags", () => {
+    /** Two entities whose fields all carry the required tags, so only query findings are asserted. */
+    const CUSTOMER = `export interface Customer {
+        /**
+         * @fieldName ID
+         * @widget text
+         */
+        id: string;
+    }`;
+
+    const INVOICE = `export interface Invoice {
+        /**
+         * @fieldName ID
+         * @widget text
+         */
+        id: string;
+        /**
+         * @fieldName Customer
+         * @widget select
+         * @relation
+         */
+        customer?: Customer;
+    }`;
+
+    /** A `@query` alias over the fixtures above, with the given argument members. */
+    const query = (members: string) =>
+        `${CUSTOMER}\n${INVOICE}\n/**\n * @query Invoice many\n */\nexport type Get = {\n${members}\n};`;
+
+    it("accepts @in on an array argument", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type GetInvoices = {
+                /**
+                 * @in id
+                 */
+                ids: InvoiceId[];
+            };`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts a scalar field and a relation foreign key", () => {
+        const findings = lintSourceText(
+            query("    id: string;\n    customerId: string;"),
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts @in over a real field with an unrelated argument name", () => {
+        const findings = lintSourceText(
+            query("    /**\n     * @in id\n     */\n    ids: string[];"),
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects an argument that is not a field of the entity", () => {
+        const findings = lintSourceText(query("    nonsense: string;"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`Get.nonsense`: `nonsense` is not a filterable field of `Invoice`",
+        ]);
+    });
+
+    it("rejects a branch field as a filter", () => {
+        const findings = lintSourceText(query("    customer: string;"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`Get.customer`: `customer` is not a filterable field of `Invoice`",
+        ]);
+    });
+
+    it("rejects an @in naming a field that does not exist", () => {
+        const findings = lintSourceText(
+            query("    /**\n     * @in nonsense\n     */\n    ids: string[];"),
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Get.ids`: @in `nonsense` is not a filterable field of `Invoice`",
+        ]);
+    });
+
+    it("rejects an entity-typed argument", () => {
+        const findings = lintSourceText(query("    customerId: Customer;"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`Get.customerId`: filter type `Customer` is not supported; a filter is a scalar, or with `@in` an array of scalars",
+        ]);
+    });
+
+    it("rejects an object-literal argument", () => {
+        const findings = lintSourceText(query("    id: { value: string };"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`Get.id`: filter type `{ value: string }` is not supported; a filter is a scalar, or with `@in` an array of scalars",
+        ]);
+    });
+
+    it("rejects an array argument with no @in", () => {
+        const findings = lintSourceText(query("    id: string[];"), new Set());
+
+        expect(messages(findings)).toEqual(["`Get.id`: an array filter needs `@in <field>`"]);
+    });
+
+    it("rejects an @in array of an entity", () => {
+        const findings = lintSourceText(
+            query("    /**\n     * @in id\n     */\n    ids: Customer[];"),
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Get.ids`: filter type `Customer` is not supported; a filter is a scalar, or with `@in` an array of scalars",
+        ]);
+    });
+
+    it("reports @in without the field it matches", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type GetInvoices = {
+                /**
+                 * @in
+                 */
+                ids: InvoiceId[];
+            };`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`GetInvoices.ids`: @in is missing the field it matches"]);
+    });
+
+    it("rejects @in on a scalar argument", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type GetInvoices = {
+                /**
+                 * @in id
+                 */
+                ids: InvoiceId;
+            };`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`GetInvoices.ids`: @in must be on an array field, such as `ids: InvoiceId[]`",
+        ]);
+    });
+
+    it("reports an unrecognised query argument tag", () => {
+        const findings = lintSourceText(
+            `/**
+             * @query Invoice many
+             */
+            export type GetInvoices = {
+                /**
+                 * @nonsense
+                 */
+                ids: InvoiceId[];
+            };`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`GetInvoices.ids`: @nonsense is not a recognised query argument tag",
+        ]);
+    });
+
+    it("reports @in on an entity field", () => {
+        const findings = lintSourceText(
+            `export interface Invoice {
+                /**
+                 * @fieldName IDs
+                 * @widget text
+                 * @in id
+                 */
+                ids: string;
+            }`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`ids`: @in is not a recognised tag"]);
+    });
+});
+
 describe("readFormulaNames", () => {
     it("discovers names from @formula-annotated types", () => {
         const names = realFormulaNames();
@@ -805,6 +1000,33 @@ describe("lintProject", () => {
 
         expect(messages(findings)).toEqual([
             "`GetInvoice`: @query Nope is not an interface in domain/",
+        ]);
+    });
+
+    it("rejects a @query argument that is not a field of the entity", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/domain/Invoice.ts",
+            `export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+        project.createSourceFile(
+            "/src/queries/InvoiceQueries.ts",
+            `/**
+             * @query Invoice one
+             */
+            export type GetInvoice = { nonsense: string };`,
+        );
+
+        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(messages(findings)).toEqual([
+            "`GetInvoice.nonsense`: `nonsense` is not a filterable field of `Invoice`",
         ]);
     });
 });

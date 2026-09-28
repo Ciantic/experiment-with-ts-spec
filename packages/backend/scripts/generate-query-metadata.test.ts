@@ -62,6 +62,14 @@ const getInvoice: QuerySpec = {
     importSpecifier: "spec/queries/InvoiceQueries.js",
 };
 
+const getInvoices: QuerySpec = {
+    name: "GetInvoices",
+    entity: "Invoice",
+    cardinality: "many",
+    importSpecifier: "spec/queries/InvoiceQueries.js",
+    inFilters: { ids: "id" },
+};
+
 describe("buildQueryModel", () => {
     it("keeps scalar fields and drops branch columns", () => {
         const model = buildQueryModel(tables);
@@ -119,6 +127,19 @@ describe("renderQueryModule", () => {
 
         expect(code).toContain("Promise<Selected<Invoice, S>[]>");
         expect(code).toContain("Promise<Selected<Invoice, S> | undefined>");
+    });
+
+    it("passes `@in` filters to the resolver", () => {
+        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [getInvoices]);
+
+        expect(code).toContain('inFilters: { "ids": "id" }');
+    });
+
+    it("omits inFilters when there are none", () => {
+        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices]);
+
+        expect(code).toContain("args, { select })");
+        expect(code).not.toContain("inFilters");
     });
 
     it("sorts methods by name", () => {

@@ -5,6 +5,7 @@
 import { dirname, join, relative as relativePath } from "node:path";
 import {
     Node,
+    SyntaxKind,
     type InterfaceDeclaration,
     type JSDoc,
     type JSDocTag,
@@ -45,12 +46,16 @@ export const INTERFACE_TAGS = ["table"] as const;
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype", "query"] as const;
 
+/** Tags a `@query` argument member may carry. See docs/queries.md. */
+export const QUERY_ARG_TAGS = ["in"] as const;
+
 /** Every tag this model recognises. */
-export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
+export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS, ...QUERY_ARG_TAGS] as const;
 
 export type FieldTag = (typeof FIELD_TAGS)[number];
 export type InterfaceTag = (typeof INTERFACE_TAGS)[number];
 export type TypeTag = (typeof TYPE_TAGS)[number];
+export type QueryArgTag = (typeof QUERY_ARG_TAGS)[number];
 export type Tag = (typeof TAGS)[number];
 
 /** Retired tags, mapped to the advice a linter reports in their place. */
@@ -113,6 +118,8 @@ export interface Tags {
     pgtype?: string;
     /** The `@query` value: a target entity and a cardinality, e.g. `Invoice many`. See docs/queries.md. */
     query?: string;
+    /** The `@in` value on a query argument: the field a set of values is matched against. See docs/queries.md. */
+    in?: string;
 }
 
 /** A field of a spec interface. */
@@ -249,6 +256,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "query":
                     if (value !== undefined) tags.query ??= value;
                     break;
+                case "in":
+                    if (value !== undefined) tags.in ??= value;
+                    break;
                 case "generated":
                     tags.generated = true;
                     break;
@@ -327,6 +337,16 @@ export function readFormulaNames(project: Project, specGlob = SPEC_GLOB): Set<st
 /** The cardinality of a `@query`: one row, or a list. */
 export type QueryCardinality = "one" | "many";
 
+/** One member of a `@query` alias's object type: an argument, with its tags. */
+export interface SpecQueryArgument {
+    name: string;
+    optional: boolean;
+    /** The argument type as written, e.g. `InvoiceId[]`. */
+    typeText: string;
+    declaration: PropertySignature;
+    tags: Tags;
+}
+
 /** A `@query`-annotated alias: the arguments of one read. See docs/queries.md. */
 export interface SpecQuery {
     /** The alias name, which becomes the method name. */
@@ -338,6 +358,8 @@ export interface SpecQuery {
     /** The module specifier that imports the args alias, e.g. `spec/queries/InvoiceQueries.js`. */
     importSpecifier: string;
     declaration: TypeAliasDeclaration;
+    /** The object-literal members of the alias, in declaration order. */
+    arguments: SpecQueryArgument[];
 }
 
 /** Split a `@query` value into its entity and cardinality; cardinality defaults to `many`. */
@@ -367,10 +389,34 @@ export function readQueries(project: Project, specGlob = SPEC_GLOB): SpecQuery[]
                 filePath,
                 importSpecifier: specImportSpecifier(filePath),
                 declaration,
+                arguments: readQueryArguments(declaration),
             });
         }
     }
     return queries;
+}
+
+/** The object-literal members of a `@query` alias, decoded with their tags. */
+export function readQueryArguments(declaration: TypeAliasDeclaration): SpecQueryArgument[] {
+    const arguments_: SpecQueryArgument[] = [];
+    const typeLiteral = declaration.getTypeNode()?.asKind(SyntaxKind.TypeLiteral);
+    if (!typeLiteral) {
+        return arguments_;
+    }
+    for (const member of typeLiteral.getMembers()) {
+        const property = member.asKind(SyntaxKind.PropertySignature);
+        if (!property) {
+            continue;
+        }
+        arguments_.push({
+            name: property.getName(),
+            optional: property.hasQuestionToken(),
+            typeText: property.getTypeNode()?.getText() ?? "",
+            declaration: property,
+            tags: readTags(property),
+        });
+    }
+    return arguments_;
 }
 
 /** Parse the spec into interfaces, aliases, and the formula vocabulary. */

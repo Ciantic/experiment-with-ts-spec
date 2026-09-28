@@ -211,10 +211,41 @@ all parents at that level; nested branches recurse the same way, one query per
 branch per level. The resolver holds no domain knowledge — it only reads
 `queryModel`, so a new entity and `@query` alias need no resolver change.
 
-Arguments filter by equality: a scalar field (`id`) or a relation's foreign-key
-column (`customerId`) both work. An unknown filter field throws rather than
-silently dropping a clause. `String`, `Date`, and `decimal` values pass through
-unchanged.
+Arguments filter by equality by default: a scalar field (`id`) or a relation's
+foreign-key column (`customerId`) both work. An unknown filter field throws
+rather than silently dropping a clause. `String`, `Date`, and `decimal` values
+pass through unchanged.
+
+An argument annotated `@in <field>` is a set: the read matches `<field>` against
+the array, `field in (…)`. The member must be an array type, and `<field>` names
+a field or foreign-key column exactly as a plain filter would.
+
+```ts
+/**
+ * Multiple invoices by their ids.
+ *
+ * @query Invoice many
+ */
+export type GetInvoices = {
+    /**
+     * @in id
+     */
+    ids: InvoiceId[];
+};
+```
+
+The argument is `ids` and the field it matches is `id`; the two are independent,
+so a set argument reads well while the annotation names the column. The generated
+factory carries the mapping to the resolver as `inFilters`, so a set argument
+needs no resolver change per query.
+
+A filter value is a scalar: a keyword, `Date`, or a named type that is not an
+entity. The linter checks each argument against the entity the alias reads — the
+name must be a scalar field or a relation's foreign-key column, the type must be
+a scalar, an array argument must carry `@in`, and an `@in`'s field must exist. An
+argument that names nothing (`where: string`), names a branch (`customer:
+string`), or carries an entity-typed or object value is caught at lint time
+rather than at run time.
 
 `resolveOne` fetches and returns the first row; there is no `limit 1`.
 
@@ -228,10 +259,12 @@ unchanged.
   branches, so a default selection cannot fan out into unbounded joins.
 - **A filter reads columns the selection may omit.** `select` governs the
   projection; the `args` still read whatever they name.
-- **Filters are equality only.** `issuedFrom`/`issuedTo` (a range) would need
-  `>=`/`<=`, which the resolver does not implement. Range operators need arg
-  annotations (a `@gte`/`@lte` tag) and a linter pass over type-literal members;
-  until then, keep args to equality.
+- **Equality, or a set.** A plain argument matches by `=`; an `@in` argument
+  matches `in (…)`. An array passed for an argument with no `@in` is rejected
+  rather than coerced. A range (`issuedFrom`/`issuedTo`) would need `>=`/`<=`,
+  which the resolver does not implement; range operators need arg annotations
+  (a `@gte`/`@lte` tag) alongside the linter pass over type-literal members that
+  `@in` already uses.
 - **Only one `@query` per alias.** A duplicate tag is a lint error like any other.
 - **The zod `$brand` is an internal.** `Scalar` imports it from `zod`; the spec
   package already depends on zod for `@primitive`. If that import ever moves,
@@ -262,7 +295,7 @@ middle ground if the args logic grows past equality.
 
 ## Deliberately not implemented
 
-- **Range and pattern filters.** Equality only; see the gotcha above.
+- **Range and pattern filters.** Equality and `@in` sets only; see the gotcha above.
 - **Per-branch arguments.** A branch cannot carry `orderBy`/`limit`; `rows:
   { description: true }` has nowhere to put them. The extension point is to
   widen a branch from `Selection<E>` to `{ select?: Selection<E>; orderBy?: …;

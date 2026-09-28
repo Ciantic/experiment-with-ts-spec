@@ -18,3 +18,15 @@ export type ListInvoices = {
 export type GetInvoice = {
     id: InvoiceId;
 };
+
+/**
+ * Multiple invoices by their ids.
+ * 
+ * @query Invoice many
+ */
+export type GetInvoices = {
+    /**
+     * @in id
+     */
+    ids: InvoiceId[];
+};

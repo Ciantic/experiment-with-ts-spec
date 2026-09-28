@@ -170,6 +170,38 @@ describe("resolveMany", () => {
         expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
     });
 
+    it("matches a set argument against the field named by the in-filter", async () => {
+        const select = { id: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(
+            db,
+            "invoice",
+            { ids: ["i1", "i3"] },
+            { select, inFilters: { ids: "id" } },
+        );
+
+        expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
+    });
+
+    it("returns nothing for an empty set", async () => {
+        const select = { id: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(
+            db,
+            "invoice",
+            { ids: [] },
+            { select, inFilters: { ids: "id" } },
+        );
+
+        expect(rows).toEqual([]);
+    });
+
+    it("rejects an array argument without an in-filter", async () => {
+        const select = { id: true } as const;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { ids: ["i1"] }, { select }),
+        ).rejects.toThrow("filter `ids` on `invoice` is an array; annotate it with @in");
+    });
+
     it("returns nothing for a filter that matches no rows", async () => {
         const select = { number: true } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "nope" }, { select });

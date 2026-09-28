@@ -91,6 +91,10 @@ for a `?` field. One `<name>Schema` is emitted per alias: `@query Invoice many`
 on `ListInvoices` yields `listInvoicesSchema` in
 `src/queries/invoiceQueries.ts`, grouped by the entity the query reads.
 
+`@in` is a backend operator annotation (`docs/spec-annotations.md`): the schema
+sees only the argument's type, so `ids: InvoiceId[]` validates as
+`z.array(…)` and the tag needs no handling here.
+
 ```typescript
 export const getInvoiceSchema = z.strictObject({
     id: primitives.brandedIdSchema<"InvoiceId">(),

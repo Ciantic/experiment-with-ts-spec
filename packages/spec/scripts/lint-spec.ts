@@ -2,6 +2,7 @@
 import {
     Project,
     Node,
+    SyntaxKind,
     type InterfaceDeclaration,
     type JSDocTag,
     type PropertySignature,
@@ -11,6 +12,7 @@ import {
     DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
+    QUERY_ARG_TAGS,
     RETIRED_TAGS,
     SPEC_GLOB,
     STORAGE_MODES,
@@ -36,6 +38,9 @@ const ALLOWED_INTERFACE_TAGS = new Set<string>(INTERFACE_TAGS);
 /** Tags a type alias may carry. Anything else is rejected. */
 const ALLOWED_TYPE_TAGS = new Set<string>(TYPE_TAGS);
 
+/** Tags a `@query` argument member may carry. Anything else is rejected. */
+const ALLOWED_QUERY_ARG_TAGS = new Set<string>(QUERY_ARG_TAGS);
+
 /** Widget hints a field may carry. */
 const ALLOWED_WIDGETS = new Set<string>(WIDGETS);
 
@@ -57,14 +62,74 @@ const PG_TYPE_TAG = "pgtype";
 /** The tag that marks an alias as the arguments of a read. See docs/queries.md. */
 const QUERY_TAG = "query";
 
+/** The tag that marks a query argument as a set-membership filter. See docs/queries.md. */
+const IN_TAG = "in";
+
 export interface Finding {
     filePath: string;
     line: number;
     message: string;
 }
 
+/** The fields of one entity an argument may filter on. See docs/queries.md. */
+interface QueryTarget {
+    /** Scalar field names; branch fields (`@relation`/`@children`/`@inlined`) are not filterable. */
+    fields: Set<string>;
+    /** Foreign-key columns of `@relation` fields, e.g. `customerId`. */
+    relationColumns: Set<string>;
+}
+
+/** Every entity the linter knows: what a query may target, and what counts as an entity type. */
+interface QueryLintContext {
+    targets: Map<string, QueryTarget>;
+    entityNames: Set<string>;
+}
+
+/** Keyword types a filter value may take; `Date` and branded primitives arrive as references. */
+const SCALAR_KEYWORDS = new Set(["string", "number", "boolean", "bigint"]);
+
+/** No entities, so the entity-aware rules are skipped when the scan set holds none. */
+const NO_ENTITIES: Set<string> = new Set();
+
+/** Index entities by name: their filterable fields, their relation foreign keys, and every name. */
+function buildQueryContext(interfaces: InterfaceDeclaration[]): QueryLintContext {
+    const targets = new Map<string, QueryTarget>();
+    const entityNames = new Set<string>();
+    for (const declaration of interfaces) {
+        const name = declaration.getName();
+        entityNames.add(name);
+        const fields = new Set<string>();
+        const relationColumns = new Set<string>();
+        for (const property of declaration.getProperties()) {
+            const field = property.getName();
+            const tags = readTags(property);
+            if (tags.relation) {
+                relationColumns.add(`${field}Id`);
+            } else if (!tags.children && !tags.inlined) {
+                fields.add(field);
+            }
+        }
+        targets.set(name, { fields, relationColumns });
+    }
+    return { targets, entityNames };
+}
+
+/** Whether an argument type is a filter value: a keyword, `Date`, or a named non-entity type. */
+function isScalarTypeNode(node: Node, entityNames: Set<string>): boolean {
+    if (node.getKindName().endsWith("Keyword")) {
+        return SCALAR_KEYWORDS.has(node.getText());
+    }
+    const reference = node.asKind(SyntaxKind.TypeReference);
+    return reference !== undefined && !entityNames.has(reference.getTypeName().getText());
+}
+
 /** Check the tags on a type alias: `@formula`, `@primitive`, and `@zod`. */
-function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, findings: Finding[]): void {
+function lintTypeAlias(
+    declaration: TypeAliasDeclaration,
+    filePath: string,
+    findings: Finding[],
+    context?: QueryLintContext,
+): void {
     const name = declaration.getName();
     const tags = readTags(declaration).byName;
     const report = (message: string, tag: JSDocTag) => {
@@ -141,7 +206,105 @@ function lintTypeAlias(declaration: TypeAliasDeclaration, filePath: string, find
         } else if (cardinality !== undefined && cardinality !== "one" && cardinality !== "many") {
             report(`@${QUERY_TAG} cardinality \`${cardinality}\` must be \`one\` or \`many\``, queryTag);
         }
+
+        const typeLiteral = declaration.getTypeNode()?.asKind(SyntaxKind.TypeLiteral);
+        if (typeLiteral) {
+            for (const member of typeLiteral.getMembers()) {
+                const property = member.asKind(SyntaxKind.PropertySignature);
+                if (property) {
+                    lintQueryArgument(
+                        property,
+                        {
+                            aliasName: declaration.getName(),
+                            entity,
+                            target: entity ? context?.targets.get(entity) : undefined,
+                            entityNames: context?.entityNames ?? NO_ENTITIES,
+                        },
+                        filePath,
+                        findings,
+                    );
+                }
+            }
+        }
     }
+}
+
+/** What a `@query` argument is checked against: its alias, entity, and the fields it may name. */
+interface QueryArgumentInfo {
+    aliasName: string;
+    entity: string | undefined;
+    target: QueryTarget | undefined;
+    entityNames: Set<string>;
+}
+
+/** Check one `@query` argument: its tags, the field it names, and that its type is filterable. */
+function lintQueryArgument(
+    property: PropertySignature,
+    info: QueryArgumentInfo,
+    filePath: string,
+    findings: Finding[],
+): void {
+    const field = property.getName();
+    const report = (message: string, tag?: JSDocTag) => {
+        const line = (tag ?? property).getStartLineNumber();
+        findings.push({ filePath, line, message: `\`${info.aliasName}.${field}\`: ${message}` });
+    };
+
+    // Only `@in` is recognised on a query argument.
+    const tags = readTags(property).byName;
+    let tagProblem = false;
+    for (const [tagName, instances] of tags) {
+        if (!ALLOWED_QUERY_ARG_TAGS.has(tagName)) {
+            tagProblem = true;
+            for (const tag of instances) {
+                report(`@${tagName} is not a recognised query argument tag`, tag);
+            }
+        }
+        if (instances.length > 1) {
+            tagProblem = true;
+            for (const tag of instances) {
+                report(`@${tagName} appears more than once`, tag);
+            }
+        }
+    }
+
+    const typeNode = property.getTypeNode();
+    const array = typeNode?.asKind(SyntaxKind.ArrayType);
+
+    // @in matches the argument's array against the named field of the target entity.
+    const inTag = (tags.get(IN_TAG) ?? [])[0];
+    if (inTag) {
+        const inField = (inTag.getCommentText() ?? "").trim();
+        if (!inField) {
+            report(`@${IN_TAG} is missing the field it matches`, inTag);
+        } else if (info.target && !isFilterable(info.target, inField)) {
+            report(`@${IN_TAG} \`${inField}\` is not a filterable field of \`${info.entity}\``, inTag);
+        }
+        if (array === undefined) {
+            report(`@${IN_TAG} must be on an array field, such as \`ids: InvoiceId[]\``, inTag);
+        }
+    } else if (array && !tagProblem) {
+        report("an array filter needs `@in <field>`");
+    }
+
+    // The value must be a scalar: a keyword, `Date`, or a primitive; `@in` adds an array of one.
+    const value = array ? array.getElementTypeNode() : typeNode;
+    if (value && !isScalarTypeNode(value, info.entityNames)) {
+        report(
+            `filter type \`${value.getText()}\` is not supported; a filter is a scalar, or with \`@in\` an array of scalars`,
+        );
+    }
+
+    // Without `@in` the argument name is the column, so it must be a filterable field; with
+    // `@in` the name is arbitrary and `@in`'s field carries the check above.
+    if (info.target && !inTag && !isFilterable(info.target, field)) {
+        report(`\`${field}\` is not a filterable field of \`${info.entity}\``);
+    }
+}
+
+/** Whether a filter may name this field: a scalar field or a relation's foreign-key column. */
+function isFilterable(target: QueryTarget, name: string): boolean {
+    return target.fields.has(name) || target.relationColumns.has(name);
 }
 
 /** True when a property carries `@version`. */
@@ -367,8 +530,9 @@ export function lintSourceText(
             lintProperty(property, filePath, formulaNames, findings);
         }
     }
+    const context = buildQueryContext(sourceFile.getInterfaces());
     for (const declaration of sourceFile.getTypeAliases()) {
-        lintTypeAlias(declaration, filePath, findings);
+        lintTypeAlias(declaration, filePath, findings, context);
     }
     return findings;
 }
@@ -393,21 +557,26 @@ export function lintProject(
     let interfaces = 0;
     let properties = 0;
 
+    // Entities are indexed first, so a `@query`'s arguments can be checked against them.
+    const entityDeclarations: InterfaceDeclaration[] = [];
+    for (const sourceFile of project.getSourceFiles(entityGlob)) {
+        entityDeclarations.push(...sourceFile.getInterfaces());
+    }
+    const context = buildQueryContext(entityDeclarations);
+
     // Type aliases are scanned everywhere: primitives and formulas may sit outside domain/.
     for (const sourceFile of project.getSourceFiles(aliasGlob)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getTypeAliases()) {
-            lintTypeAlias(declaration, filePath, findings);
+            lintTypeAlias(declaration, filePath, findings, context);
         }
     }
 
     // Interfaces are entities, and entities live only in domain/; operations/ and queries/ are contracts.
-    const entityNames = new Set<string>();
     for (const sourceFile of project.getSourceFiles(entityGlob)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
-            entityNames.add(declaration.getName());
             lintInterface(declaration, filePath, findings);
             for (const property of declaration.getProperties()) {
                 properties += 1;
@@ -418,7 +587,7 @@ export function lintProject(
 
     // A `@query` must name an entity that exists.
     for (const query of readQueries(project, aliasGlob)) {
-        if (!entityNames.has(query.entity)) {
+        if (!context.entityNames.has(query.entity)) {
             findings.push({
                 filePath: query.filePath.replace(`${process.cwd()}/`, ""),
                 line: query.declaration.getStartLineNumber(),

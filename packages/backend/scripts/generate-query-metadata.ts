@@ -35,6 +35,8 @@ export interface QuerySpec {
     cardinality: "one" | "many";
     /** The module specifier that imports the args alias. */
     importSpecifier: string;
+    /** Set-membership args, from `@in`: argument name -> the field it matches. */
+    inFilters?: Record<string, string>;
 }
 
 /** QueryTable as plain data, matching the resolver's `QueryTable`. */
@@ -161,8 +163,15 @@ export function renderQueryModule(
             `        ${lowerFirst(method.name)}: <S extends Selection<${entity}>>(opts: ${method.name} & { select: S }) => {`,
         );
         lines.push("            const { select, ...args } = opts;");
+        const filterEntries = Object.entries(method.inFilters ?? {}).map(
+            ([argument, field]) => `${JSON.stringify(argument)}: ${JSON.stringify(field)}`,
+        );
+        const options =
+            filterEntries.length > 0
+                ? `{ select, inFilters: { ${filterEntries.join(", ")} } }`
+                : "{ select }";
         lines.push(
-            `            return resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args, { select });`,
+            `            return resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args, ${options});`,
         );
         lines.push("        },");
     }
@@ -220,6 +229,11 @@ function main(): void {
         entity: query.entity,
         cardinality: query.cardinality,
         importSpecifier: query.importSpecifier,
+        inFilters: Object.fromEntries(
+            query.arguments
+                .filter((argument) => argument.tags.in !== undefined)
+                .map((argument) => [argument.name, argument.tags.in as string]),
+        ),
     }));
 
     const outIndex = process.argv.indexOf("--out");

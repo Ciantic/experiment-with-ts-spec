@@ -8,6 +8,11 @@ export const getInvoiceSchema = z.strictObject({
     select: invoiceSelectSchema,
 });
 
+export const getInvoicesSchema = z.strictObject({
+    ids: z.array(primitives.brandedIdSchema<"InvoiceId">()),
+    select: invoiceSelectSchema,
+});
+
 export const listInvoicesSchema = z.strictObject({
     customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
     select: invoiceSelectSchema,
