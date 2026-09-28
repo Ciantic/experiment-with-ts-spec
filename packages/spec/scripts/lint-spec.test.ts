@@ -601,6 +601,44 @@ describe("lintFormulaType", () => {
     });
 });
 
+describe("lintProject", () => {
+    const entityGlob = "/src/domain/**/*.ts";
+    const aliasGlob = "/src/**/*.ts";
+
+    it("lints interfaces under domain/", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
+
+        const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(interfaces).toBe(1);
+        expect(messages(findings)).toEqual(["`label`: missing @fieldName", "`label`: missing @widget"]);
+    });
+
+    it("skips contract interfaces outside domain/", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/queries/InvoiceQueries.ts",
+            "export interface InvoiceQueries { list(): void; }",
+        );
+        project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
+
+        const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(interfaces).toBe(1);
+        expect(messages(findings)).toEqual(["`label`: missing @fieldName", "`label`: missing @widget"]);
+    });
+
+    it("still scans type aliases outside domain/", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile("/src/queries/bad.ts", "/** @nonsense */ export type Thing = string;");
+
+        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
+    });
+});
+
 describe("the committed spec", () => {
     it("passes lint", () => {
         const project = new Project({ tsConfigFilePath: "tsconfig.json" });

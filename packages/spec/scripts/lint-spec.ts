@@ -7,6 +7,7 @@ import {
     type TypeAliasDeclaration,
 } from "ts-morph";
 import {
+    DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
     RETIRED_TAGS,
@@ -324,18 +325,37 @@ export function lintSourceText(
     return findings;
 }
 
-/** Lint every interface in the project's spec files. */
-export function lintProject(project: Project): { findings: Finding[]; interfaces: number; properties: number } {
+/** Inputs to {@link lintProject}. */
+export interface LintOptions {
+    /** Where entities (interfaces) are read from; defaults to the domain entities. */
+    entityGlob?: string;
+    /** Where type aliases are scanned; defaults to every spec file. */
+    aliasGlob?: string;
+}
+
+/** Lint every entity in the project's spec files: interfaces under `domain/`, type aliases everywhere. */
+export function lintProject(
+    project: Project,
+    options: LintOptions = {},
+): { findings: Finding[]; interfaces: number; properties: number } {
+    const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
+    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
     const findings: Finding[] = [];
-    const formulaNames = readFormulaNames(project);
+    const formulaNames = readFormulaNames(project, aliasGlob);
     let interfaces = 0;
     let properties = 0;
 
-    for (const sourceFile of project.getSourceFiles(SPEC_GLOB)) {
+    // Type aliases are scanned everywhere: primitives and formulas may sit outside domain/.
+    for (const sourceFile of project.getSourceFiles(aliasGlob)) {
         const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getTypeAliases()) {
             lintTypeAlias(declaration, filePath, findings);
         }
+    }
+
+    // Interfaces are entities, and entities live only in domain/; operations/ and queries/ are contracts.
+    for (const sourceFile of project.getSourceFiles(entityGlob)) {
+        const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
             lintInterface(declaration, filePath, findings);
