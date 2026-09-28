@@ -3,12 +3,14 @@
  * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the Zod mapping.
  * See docs/validation.md.
  */
-import { Node, SyntaxKind, type Project, type UnionTypeNode } from "ts-morph";
+import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNode } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     parseSpec,
+    readQueries,
     type Diagnostic,
+    type SpecInterface,
 } from "spec/scripts/spec-model.js";
 
 export type { Diagnostic };
@@ -34,6 +36,8 @@ export interface ZodEntity {
     name: string;
     schemaName: string;
     patchName: string;
+    /** The schema validating a `select` over this entity. See docs/queries.md. */
+    selectName: string;
     fileName: string;
     fields: ZodField[];
     /** Entity names a field references, so the file imports their schemas. */
@@ -42,6 +46,15 @@ export interface ZodEntity {
     usesPrimitives: boolean;
     /** Fields the patch schema requires: the key, and every `@version` field. */
     required: string[];
+    /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
+    selectFields: ZodSelectField[];
+}
+
+/** One field of a `select`, mirroring `Selection` in `spec/queries/selection.ts`. */
+export interface ZodSelectField {
+    name: string;
+    /** The entity a branch selects into; undefined for a scalar field. */
+    target?: string;
 }
 
 /** A primitive alias rendered as a schema, or a factory when the alias is generic. */
@@ -58,7 +71,23 @@ export interface ZodPrimitive {
 export interface ZodModel {
     primitives: ZodPrimitive[];
     entities: ZodEntity[];
+    queries: ZodQuery[];
     diagnostics: Diagnostic[];
+}
+
+/** A `@query` alias, rendered as a `<name>Schema` over its single argument. */
+export interface ZodQuery {
+    /** The alias name, e.g. `GetInvoice`. */
+    name: string;
+    /** The entity the query reads, which groups the generated files and supplies `select`. */
+    entity: string;
+    schemaName: string;
+    /** The argument fields, without `select`; the renderer adds the entity's select schema. */
+    fields: ZodField[];
+    /** Entity names the arguments reference, so the file imports their schemas. */
+    dependencies: string[];
+    /** True when an argument resolves through a primitive schema. */
+    usesPrimitives: boolean;
 }
 
 /** TypeScript keywords to the Zod schema that validates them. */
@@ -83,7 +112,7 @@ const BUILTIN_REFERENCES: Record<string, string> = {
 };
 
 /** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
-function lowerFirst(name: string): string {
+export function lowerFirst(name: string): string {
     // A leading run of capitals is an acronym: lowercase all of it, not just the first letter.
     const acronym = name.match(/^[A-Z]+(?=[A-Z][a-z]|$)/);
     if (acronym) {
@@ -95,6 +124,11 @@ function lowerFirst(name: string): string {
 /** Invoice -> invoiceSchema. */
 function schemaName(name: string): string {
     return `${lowerFirst(name)}Schema`;
+}
+
+/** Invoice -> invoiceSelectSchema. */
+export function selectSchemaName(name: string): string {
+    return `${lowerFirst(name)}SelectSchema`;
 }
 
 /** Invoice -> invoice.ts. */
@@ -209,6 +243,30 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         return `z.union([${members.join(", ")}])`;
     }
 
+    /** Resolve an object type literal's members to fields, each carrying its own optionality. */
+    function resolveObjectFields(typeLiteral: TypeLiteralNode, context: ResolveContext): ZodField[] | undefined {
+        const fields: ZodField[] = [];
+        for (const member of typeLiteral.getMembers()) {
+            const property = member.asKind(SyntaxKind.PropertySignature);
+            if (!property) {
+                return undefined;
+            }
+            const memberType = property.getTypeNode();
+            if (!memberType) {
+                return undefined;
+            }
+            const resolvedMember = resolveTypeNode(memberType, context);
+            if (resolvedMember === undefined) {
+                return undefined;
+            }
+            fields.push({
+                name: property.getName(),
+                expression: property.hasQuestionToken() ? `${resolvedMember}.optional()` : resolvedMember,
+            });
+        }
+        return fields;
+    }
+
     /** Resolve a type node to the Zod expression that validates it. */
     function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined {
         const node = unwrapParenthesized(raw);
@@ -261,11 +319,51 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         }
 
         const typeLiteral = node.asKind(SyntaxKind.TypeLiteral);
-        if (typeLiteral && typeLiteral.getMembers().length === 0) {
-            return "z.object({})";
+        if (typeLiteral) {
+            const objectFields = resolveObjectFields(typeLiteral, context);
+            if (objectFields === undefined) {
+                return undefined;
+            }
+            if (objectFields.length === 0) {
+                return "z.strictObject({})";
+            }
+            const membersText = objectFields
+                .map((field) => `${field.name}: ${field.expression}`)
+                .join(", ");
+            return `z.strictObject({ ${membersText} })`;
         }
 
         return undefined;
+    }
+
+    /**
+     * The entity a field selects into: its type resolves to an interface, directly or as an
+     * array element. The branch tags only say *how* it is stored; the value shape is the type's.
+     */
+    function entityNameOf(node: Node): string | undefined {
+        const unwrapped = unwrapParenthesized(node);
+        const array = unwrapped.asKind(SyntaxKind.ArrayType);
+        const element = array ? unwrapParenthesized(array.getElementTypeNode()) : unwrapped;
+        const reference = element.asKind(SyntaxKind.TypeReference);
+        if (!reference) {
+            return undefined;
+        }
+        const name = reference.getTypeName().getText();
+        return interfaces.has(name) ? name : undefined;
+    }
+
+    /** Classify every field of an interface for `select`: scalars take `true`, branches nest. */
+    function selectFieldsFor(spec: SpecInterface): ZodSelectField[] {
+        const fields: ZodSelectField[] = [];
+        for (const property of spec.properties) {
+            const typeNode = property.declaration.getTypeNode();
+            if (!typeNode) {
+                continue;
+            }
+            const target = entityNameOf(typeNode);
+            fields.push(target === undefined ? { name: property.name } : { name: property.name, target });
+        }
+        return fields;
     }
 
     const primitives: ZodPrimitive[] = [];
@@ -317,14 +415,43 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             name: spec.name,
             schemaName: schemaName(spec.name),
             patchName: `${lowerFirst(spec.name)}PatchSchema`,
+            selectName: selectSchemaName(spec.name),
             fileName: fileName(spec.name),
             fields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
             required,
+            selectFields: selectFieldsFor(spec),
         });
     }
     entities.sort((a, b) => a.name.localeCompare(b.name));
 
-    return { primitives, entities, diagnostics };
+    // A `@query` alias is the read's single argument: its fields are the filters, and the
+    // renderer adds `select` from the entity the query reads. The object type is written by hand.
+    const queries: ZodQuery[] = [];
+    for (const query of readQueries(project, aliasGlob)) {
+        const typeNode = query.declaration.getTypeNode();
+        const typeLiteral = typeNode?.asKind(SyntaxKind.TypeLiteral);
+        if (!typeLiteral) {
+            report(query.declaration, `\`${query.name}\`: @query arguments must be an object type literal`);
+            continue;
+        }
+        const context: ResolveContext = { dependencies: new Set(), usesPrimitives: false };
+        const fields = resolveObjectFields(typeLiteral, context);
+        if (fields === undefined) {
+            report(query.declaration, `\`${query.name}\`: unsupported arguments \`${typeLiteral.getText()}\``);
+            continue;
+        }
+        queries.push({
+            name: query.name,
+            entity: query.entity,
+            schemaName: schemaName(query.name),
+            fields,
+            dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
+            usesPrimitives: context.usesPrimitives,
+        });
+    }
+    queries.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { primitives, entities, queries, diagnostics };
 }

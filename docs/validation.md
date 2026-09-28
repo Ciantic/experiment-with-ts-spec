@@ -9,9 +9,13 @@ are generated from.
 ## Output
 
 - `src/primitives.ts` — one schema per `@primitive` alias, from its `@zod` tag.
-- `src/<entity>.ts` — one module per domain interface, exporting `<name>Schema`
-  and `<name>PatchSchema`.
-- `src/index.ts` — the barrel re-exporting the primitives and every entity.
+- `src/<entity>.ts` — one module per domain interface, exporting `<name>Schema`,
+  `<name>PatchSchema`, and `<name>SelectSchema`.
+- `src/queries/<entity>Queries.ts` — one module per entity a `@query` reads,
+  exporting a `<name>Schema` per query alias.
+- `src/queries/index.ts` — the barrel re-exporting every query module.
+- `src/index.ts` — the barrel re-exporting the primitives, every entity, and the
+  queries barrel.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -77,10 +81,73 @@ precondition, and every other field is optional. It matches the repository
 generator's rule — the key is the `id` field, the version is the `@version`
 field — without hardcoding a column list.
 
+## Query schemas
+
+A `@query` alias declares a read's arguments (`docs/queries.md`). A read takes
+one argument — its filters plus `select` — so the schema is that object with the
+entity's select schema added as a field. The arguments resolve like an entity's
+fields, with the same primitives, keywords, `Date` mapping, and `.optional()`
+for a `?` field. One `<name>Schema` is emitted per alias: `@query Invoice many`
+on `ListInvoices` yields `listInvoicesSchema` in
+`src/queries/invoiceQueries.ts`, grouped by the entity the query reads.
+
+```typescript
+export const getInvoiceSchema = z.strictObject({
+    id: primitives.brandedIdSchema<"InvoiceId">(),
+    select: invoiceSelectSchema,
+});
+
+export const listInvoicesSchema = z.strictObject({
+    customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
+    select: invoiceSelectSchema,
+});
+```
+
+The module is separate from the entities so a caller can validate a read without
+pulling in a write schema, and `--out` still writes below the given directory.
+
+### Select schemas
+
+`select` is not a fixed shape: a caller picks any subset of fields and nests
+into branches. So it is validated against a generated per-entity schema,
+`<name>SelectSchema`, that mirrors `Selection<E>` in
+`packages/spec/src/queries/selection.ts`:
+
+```typescript
+export const invoiceSelectSchema = z.lazy(() =>
+    z.strictObject({
+        id: z.literal(true).optional(),
+        totalAmount: z.literal(true).optional(),
+        customer: z.union([z.literal(true), z.lazy(() => customerSelectSchema)]).optional(),
+        rows: z.union([z.literal(true), z.lazy(() => invoiceRowSelectSchema)]).optional(),
+    }),
+);
+```
+
+- A **scalar** field takes `true`.
+- A **branch** — an entity reference or a child collection — takes `true` (its
+  own scalars) or a nested select.
+- A field that is neither is **rejected**: the object is `z.strictObject`, so an
+  unknown key fails rather than being stripped. That is what makes the schema a
+  validator rather than a hint.
+- `z.lazy` defers every reference, so a self- or mutually-recursive entity graph
+  is expressible.
+
+The branch/scalar split comes from the field's **type**, not its tag: a type
+that resolves to an interface is a branch. The `@relation` / `@children` /
+`@inlined` tags only say how the branch is stored (`docs/queries.md`); selection
+is about the value shape, so it follows the type.
+
+Select schemas are generated for **every** entity, not only those a `@query`
+reads, because a select nests into targets that may have no read of their own.
+They live in the entity module next to `<name>Schema`, so `src/index.ts` already
+re-exports them. A query's args schema references the one for the entity it
+reads, so validating a read validates its selection too.
+
 ## Annotations
 
-The generator reads only type-level annotations: `@primitive`, `@zod`, and the
-`@version` field tag. It never names a domain type. The parsing and tag
+The generator reads only type-level annotations: `@primitive`, `@zod`, `@query`,
+and the `@version` field tag. It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.

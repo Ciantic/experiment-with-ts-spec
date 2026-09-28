@@ -7,17 +7,21 @@ import { createResolver } from "../resolvers.js";
 import { queryModel } from "./model.js";
 
 export interface InvoiceQueries {
-    getInvoice<S extends Selection<Invoice>>(args: GetInvoice, opts: { select: S }): Promise<Selected<Invoice, S> | undefined>;
-    listInvoices<S extends Selection<Invoice>>(args: ListInvoices, opts: { select: S }): Promise<Selected<Invoice, S>[]>;
+    getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined>;
+    listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]>;
 }
 
 const resolver = createResolver(queryModel);
 
 export function invoiceQueries(db: SqlExecutor): InvoiceQueries {
     return {
-        getInvoice: <S extends Selection<Invoice>>(args: GetInvoice, opts: { select: S }) =>
-            resolver.resolveOne<Invoice, S>(db, "invoice", args as Record<string, unknown>, opts),
-        listInvoices: <S extends Selection<Invoice>>(args: ListInvoices, opts: { select: S }) =>
-            resolver.resolveMany<Invoice, S>(db, "invoice", args as Record<string, unknown>, opts),
+        getInvoice: <S extends Selection<Invoice>>(opts: GetInvoice & { select: S }) => {
+            const { select, ...args } = opts;
+            return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
+        },
+        listInvoices: <S extends Selection<Invoice>>(opts: ListInvoices & { select: S }) => {
+            const { select, ...args } = opts;
+            return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
+        },
     };
 }

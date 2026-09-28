@@ -1,9 +1,10 @@
 /** Unit tests for the Zod generator, driven by self-contained fixtures. */
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project, ts } from "ts-morph";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
-import { generateEntity, generatePrimitives, generateZodSchemas } from "./generate-zod-schemas.ts";
+import { generateEntity, generatePrimitives, generateQueryFile, generateZodSchemas } from "./generate-zod-schemas.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
 
@@ -127,6 +128,20 @@ export interface Parent {
 export type ParentId = BrandedId<"ParentId">;
 `.trim();
 
+/** The Zod surface the stub needs, so the functional tests stay typed. */
+interface ZodStub {
+    string: () => unknown;
+    bigint: () => unknown;
+    object: (shape: unknown) => unknown;
+    strictObject: (shape: unknown) => unknown;
+    literal: (value: unknown) => { optional: () => unknown };
+}
+
+function zodStub(): ZodStub {
+    const require = createRequire(import.meta.url);
+    return (require("zod") as { z: ZodStub }).z;
+}
+
 describe("generatePrimitives", () => {
     it("renders a schema per primitive, sorted by name", () => {
         const { files } = generate({ domain: {} });
@@ -195,8 +210,8 @@ describe("generateEntity", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("thing.ts") ?? "";
 
-        expect(code).toContain('import { childSchema } from "./child.js";');
-        expect(code).toContain('import { parentSchema } from "./parent.js";');
+        expect(code).toContain('import { childSchema, childSelectSchema } from "./child.js";');
+        expect(code).toContain('import { parentSchema, parentSelectSchema } from "./parent.js";');
         expect(code).toContain("children: z.array(z.lazy(() => childSchema)).optional(),");
         expect(code).toContain("parent: z.lazy(() => parentSchema).optional(),");
     });
@@ -221,6 +236,26 @@ describe("generateEntity", () => {
         const code = files.get("thing.ts") ?? "";
 
         expect(code).not.toContain('from "./thing.js"');
+    });
+
+    it("emits a select schema that takes `true` for a scalar", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain("export const thingSelectSchema = z.lazy(() =>");
+        expect(code).toContain("        id: z.literal(true).optional(),");
+        expect(code).toContain("        name: z.literal(true).optional(),");
+    });
+    it("emits a select schema that nests a branch, with `true` allowed", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain(
+            "        parent: z.union([z.literal(true), z.lazy(() => parentSelectSchema)]).optional(),",
+        );
+        expect(code).toContain(
+            "        children: z.union([z.literal(true), z.lazy(() => childSelectSchema)]).optional(),",
+        );
     });
 });
 
@@ -257,5 +292,210 @@ describe("generateEntity standalone", () => {
         const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
 
         expect(thing && generateEntity(thing, byName)).toBe(files.get("thing.ts"));
+    });
+});
+
+/** A `@query` alias per read, over the fixture entity. */
+const QUERIES = `
+/**
+ * @query Thing many
+ */
+export type ListThings = {
+    id?: ThingId;
+    name?: string;
+    createdFrom?: Date;
+};
+
+/**
+ * @query Thing one
+ */
+export type GetThing = {
+    id: ThingId;
+};
+`.trim();
+
+describe("buildZodModel queries", () => {
+    it("maps each @query alias to a schema named after it", () => {
+        const { model } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const names = model.queries.map((query) => query.schemaName).sort();
+
+        expect(names).toEqual(["getThingSchema", "listThingsSchema"]);
+    });
+
+    it("records the entity each query reads", () => {
+        const { model } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const listThings = model.queries.find((query) => query.name === "ListThings");
+
+        expect(listThings?.entity).toBe("Thing");
+    });
+
+    it("resolves arguments through primitives, keywords, and Date", () => {
+        const { model } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const listThings = model.queries.find((query) => query.name === "ListThings");
+
+        expect(listThings?.fields).toEqual([
+            { name: "id", expression: 'primitives.brandedIdSchema<"ThingId">().optional()' },
+            { name: "name", expression: "z.string().optional()" },
+            { name: "createdFrom", expression: "z.date().optional()" },
+        ]);
+        expect(listThings?.usesPrimitives).toBe(true);
+    });
+
+    it("keeps a required argument required", () => {
+        const { model } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const getThing = model.queries.find((query) => query.name === "GetThing");
+
+        expect(getThing?.fields).toEqual([
+            { name: "id", expression: 'primitives.brandedIdSchema<"ThingId">()' },
+        ]);
+    });
+
+    it("reports arguments whose type it cannot map", () => {
+        const bad = "/** @query Thing many */\nexport type Bad = { weird: Promise<string> };";
+        const { diagnostics } = generate({ domain: { Thing: THING, Bad: bad } });
+
+        expect(messages(diagnostics)).toContain("`Bad`: unsupported arguments `{ weird: Promise<string> }`");
+    });
+});
+
+describe("generateQueryFile", () => {
+    it("groups an entity's queries into one file", () => {
+        const { files } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+
+        expect(code).toContain("export const getThingSchema = z.strictObject(");
+        expect(code).toContain("export const listThingsSchema = z.strictObject(");
+    });
+    it("imports the primitives module it references", () => {
+        const { files } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+
+        expect(code).toContain('import * as primitives from "../primitives.js";');
+    });
+
+    it("emits one schema per query with `select` added", () => {
+        const { files } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+
+        expect(code).toContain("export const getThingSchema = z.strictObject({");
+        expect(code).toContain("    select: thingSelectSchema,");
+        expect(code).toContain("export const listThingsSchema = z.strictObject({");
+        expect(code).toContain('import { thingSelectSchema } from "../thing.js";');
+    });
+
+    it("re-exports every query file from a barrel", () => {
+        const { files } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const code = files.get(join("queries", "index.ts")) ?? "";
+
+        expect(code).toContain('export * from "./thingQueries.js";');
+    });
+
+    it("re-exports the queries barrel from the root index", () => {
+        const { files } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const code = files.get("index.ts") ?? "";
+
+        expect(code).toContain('export * from "./queries/index.js";');
+    });
+
+    it("evaluates to a working args schema", () => {
+        const { model } = generate({ domain: { Thing: THING, ThingQueries: QUERIES } });
+        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
+        const code = generateQueryFile("Thing", model.queries, byName);
+        const require = createRequire(import.meta.url);
+        const z = zodStub();
+        const exportedCode = ts.transpileModule(code, {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
+        const stubRequire = (id: string) => {
+            if (id === "zod") {
+                return { z };
+            }
+            if (id === "../primitives.js") {
+                return { brandedIdSchema: () => z.string() };
+            }
+            if (id === "../thing.js") {
+                return { thingSelectSchema: z.strictObject({}) };
+            }
+            return require(id);
+        };
+        new Function("exports", "require", exportedCode)(exports, stubRequire);
+
+        expect(exports.listThingsSchema?.safeParse({ select: {} }).success).toBe(true);
+        expect(exports.getThingSchema?.safeParse({ id: "x", select: {} }).success).toBe(true);
+        expect(exports.getThingSchema?.safeParse({ select: {} }).success).toBe(false);
+        expect(exports.getThingSchema?.safeParse({ id: "x" }).success).toBe(false);
+    });
+});
+
+describe("select schemas", () => {
+    /** Transpile an entity module and run it, stubbing the modules it imports. */
+    function loadEntity(fileName: string): Record<string, { safeParse: (value: unknown) => { success: boolean } }> {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get(fileName) ?? "";
+        const require = createRequire(import.meta.url);
+        const z = zodStub();
+        const scalar = z.string();
+        const stubRequire = (id: string) => {
+            if (id === "zod") {
+                return { z };
+            }
+            if (id === "./primitives.js") {
+                return {
+                    brandedIdSchema: () => scalar,
+                    moneySchema: scalar,
+                    versionSchema: z.bigint(),
+                    languageSchema: scalar,
+                };
+            }
+            if (id === "./child.js" || id === "./parent.js") {
+                return {
+                    childSchema: z.object({}),
+                    parentSchema: z.object({}),
+                    childSelectSchema: z.strictObject({ id: z.literal(true).optional() }),
+                    parentSelectSchema: z.strictObject({ id: z.literal(true).optional() }),
+                };
+            }
+            return require(id);
+        };
+        const exportedCode = ts.transpileModule(code, {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
+        new Function("exports", "require", exportedCode)(exports, stubRequire);
+        return exports;
+    }
+
+    it("accepts `true` on a scalar field", () => {
+        const exports = loadEntity("thing.ts");
+
+        expect(exports.thingSelectSchema?.safeParse({ name: true }).success).toBe(true);
+    });
+
+    it("rejects an unknown field", () => {
+        const exports = loadEntity("thing.ts");
+
+        expect(exports.thingSelectSchema?.safeParse({ nope: true }).success).toBe(false);
+    });
+
+    it("accepts `true` on a branch, meaning its scalars", () => {
+        const exports = loadEntity("thing.ts");
+
+        expect(exports.thingSelectSchema?.safeParse({ parent: true }).success).toBe(true);
+        expect(exports.thingSelectSchema?.safeParse({ children: true }).success).toBe(true);
+    });
+
+    it("rejects a non-object on a branch", () => {
+        const exports = loadEntity("thing.ts");
+
+        expect(exports.thingSelectSchema?.safeParse({ parent: 5 }).success).toBe(false);
+    });
+
+    it("validates an entity with no branches", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("child.ts") ?? "";
+
+        expect(code).toContain("export const childSelectSchema = z.lazy(() =>");
+        expect(code).toContain("        thingId: z.literal(true).optional(),");
     });
 });

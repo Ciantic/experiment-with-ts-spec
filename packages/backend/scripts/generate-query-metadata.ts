@@ -145,7 +145,7 @@ export function renderQueryModule(
                 ? `Promise<Selected<${entity}, S> | undefined>`
                 : `Promise<Selected<${entity}, S>[]>`;
         lines.push(
-            `    ${lowerFirst(method.name)}<S extends Selection<${entity}>>(args: ${method.name}, opts: { select: S }): ${returns};`,
+            `    ${lowerFirst(method.name)}<S extends Selection<${entity}>>(opts: ${method.name} & { select: S }): ${returns};`,
         );
     }
     lines.push("}");
@@ -158,11 +158,13 @@ export function renderQueryModule(
     for (const method of sorted) {
         const call = method.cardinality === "one" ? "resolveOne" : "resolveMany";
         lines.push(
-            `        ${lowerFirst(method.name)}: <S extends Selection<${entity}>>(args: ${method.name}, opts: { select: S }) =>`,
+            `        ${lowerFirst(method.name)}: <S extends Selection<${entity}>>(opts: ${method.name} & { select: S }) => {`,
         );
+        lines.push("            const { select, ...args } = opts;");
         lines.push(
-            `            resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args as Record<string, unknown>, opts),`,
+            `            return resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args, { select });`,
         );
+        lines.push("        },");
     }
     lines.push("    };");
     lines.push("}");

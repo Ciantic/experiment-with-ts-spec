@@ -23,3 +23,22 @@ export const invoiceRowPatchSchema = invoiceRowSchema.partial().required({
     id: true,
     version: true,
 });
+
+/** A `select` over InvoiceRow: `true` for a scalar, a nested select for a branch. */
+export const invoiceRowSelectSchema = z.lazy(() =>
+    z.strictObject({
+        id: z.literal(true).optional(),
+        invoiceId: z.literal(true).optional(),
+        description: z.literal(true).optional(),
+        quantity: z.literal(true).optional(),
+        unit: z.literal(true).optional(),
+        unitPrice: z.literal(true).optional(),
+        taxRate: z.literal(true).optional(),
+        netAmount: z.literal(true).optional(),
+        taxAmount: z.literal(true).optional(),
+        totalAmount: z.literal(true).optional(),
+        createdAt: z.literal(true).optional(),
+        updatedAt: z.literal(true).optional(),
+        version: z.literal(true).optional(),
+    }),
+);

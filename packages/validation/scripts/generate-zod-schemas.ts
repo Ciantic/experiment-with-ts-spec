@@ -5,9 +5,11 @@ import { Project } from "ts-morph";
 import { DEFAULT_SPEC_GLOB, SPEC_GLOB } from "spec/scripts/spec-model.js";
 import {
     buildZodModel,
+    lowerFirst,
     type ZodEntity,
     type ZodModel,
     type ZodPrimitive,
+    type ZodQuery,
 } from "./zod-model.ts";
 
 export type { Diagnostic } from "./zod-model.ts";
@@ -29,6 +31,64 @@ function entityImport(entity: ZodEntity): string {
     return `./${entity.fileName.replace(/\.ts$/, ".js")}`;
 }
 
+/** The directory holding the generated query schemas, under the output root. */
+const QUERIES_DIR = "queries";
+
+/** The barrel re-exporting every query schema, inside {@link QUERIES_DIR}. */
+const QUERIES_INDEX = join(QUERIES_DIR, "index.ts");
+
+/** The file for one entity's queries, e.g. `Invoice` -> `queries/invoiceQueries.ts`. */
+export function queryFileName(entity: string): string {
+    return join(QUERIES_DIR, `${lowerFirst(entity)}Queries.ts`);
+}
+
+/** Render one entity's query schema module: args and options schemas per `@query` alias. */
+export function generateQueryFile(
+    entity: string,
+    queries: ZodQuery[],
+    entitiesByName: Map<string, ZodEntity>,
+): string {
+    const lines: string[] = [HEADER, 'import { z } from "zod";'];
+    const entitySchema = entitiesByName.get(entity);
+    if (entitySchema) {
+        lines.push(
+            `import { ${entitySchema.selectName} } from "../${entitySchema.fileName.replace(/\.ts$/, ".js")}";`,
+        );
+    }
+    if (queries.some((query) => query.usesPrimitives)) {
+        lines.push('import * as primitives from "../primitives.js";');
+    }
+    const dependencies = new Set(queries.flatMap((query) => query.dependencies));
+    for (const dependency of [...dependencies].sort((a, b) => a.localeCompare(b))) {
+        const target = entitiesByName.get(dependency);
+        if (target) {
+            lines.push(`import { ${target.schemaName} } from "../${target.fileName.replace(/\.ts$/, ".js")}";`);
+        }
+    }
+
+    for (const query of [...queries].sort((a, b) => a.name.localeCompare(b.name))) {
+        lines.push("");
+        lines.push(`export const ${query.schemaName} = z.strictObject({`);
+        for (const field of query.fields) {
+            lines.push(`    ${field.name}: ${field.expression},`);
+        }
+        // The read's one argument carries the filters and the selection together.
+        lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
+        lines.push("});");
+    }
+    return lines.join("\n") + "\n";
+}
+
+/** Render the barrel that re-exports every query schema module. */
+export function generateQueriesIndex(queries: ZodQuery[]): string {
+    const lines = [HEADER];
+    const entities = [...new Set(queries.map((query) => query.entity))].sort((a, b) => a.localeCompare(b));
+    for (const entity of entities) {
+        lines.push(`export * from "./${lowerFirst(entity)}Queries.js";`);
+    }
+    return lines.join("\n") + "\n";
+}
+
 /** Render `primitives.ts`: one schema per primitive, a factory for a generic primitive. */
 export function generatePrimitives(primitives: ZodPrimitive[]): string {
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
@@ -45,7 +105,7 @@ export function generatePrimitives(primitives: ZodPrimitive[]): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render one entity module: its schema and its patch schema. */
+/** Render one entity module: its schema, its patch schema, and its `select` schema. */
 export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>): string {
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
     if (entity.usesPrimitives) {
@@ -54,7 +114,9 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     for (const dependency of entity.dependencies) {
         const target = byName.get(dependency);
         if (target) {
-            lines.push(`import { ${target.schemaName} } from "${entityImport(target)}";`);
+            lines.push(
+                `import { ${target.schemaName}, ${target.selectName} } from "${entityImport(target)}";`,
+            );
         }
     }
 
@@ -78,6 +140,24 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     }
     lines.push("});");
 
+    lines.push("");
+    lines.push(`/** A \`select\` over ${entity.name}: \`true\` for a scalar, a nested select for a branch. */`);
+    lines.push(`export const ${entity.selectName} = z.lazy(() =>`);
+    lines.push("    z.strictObject({");
+    for (const field of entity.selectFields) {
+        if (field.target === undefined) {
+            lines.push(`        ${field.name}: z.literal(true).optional(),`);
+            continue;
+        }
+        const target = byName.get(field.target);
+        const targetSelect = target ? target.selectName : "z.never()";
+        lines.push(
+            `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetSelect})]).optional(),`,
+        );
+    }
+    lines.push("    }),");
+    lines.push(");");
+
     return lines.join("\n") + "\n";
 }
 
@@ -87,10 +167,13 @@ export function generateIndex(model: ZodModel): string {
     for (const entity of model.entities) {
         lines.push(`export * from "${entityImport(entity)}";`);
     }
+    if (model.queries.length > 0) {
+        lines.push('export * from "./queries/index.js";');
+    }
     return lines.join("\n") + "\n";
 }
 
-/** Render every generated file, keyed by file name (including the barrel). */
+/** Render every generated file, keyed by file name (including the barrels). */
 export function generateZodSchemas(model: ZodModel): Map<string, string> {
     const files = new Map<string, string>();
     files.set(PRIMITIVES_FILE, generatePrimitives(model.primitives));
@@ -98,6 +181,21 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     for (const entity of model.entities) {
         files.set(entity.fileName, generateEntity(entity, byName));
     }
+
+    // Queries are grouped by the entity they read, so one file holds that entity's args schemas.
+    const byEntity = new Map<string, ZodQuery[]>();
+    for (const query of model.queries) {
+        const group = byEntity.get(query.entity) ?? [];
+        group.push(query);
+        byEntity.set(query.entity, group);
+    }
+    for (const [entity, queries] of byEntity) {
+        files.set(queryFileName(entity), generateQueryFile(entity, queries, byName));
+    }
+    if (model.queries.length > 0) {
+        files.set(QUERIES_INDEX, generateQueriesIndex(model.queries));
+    }
+
     files.set(INDEX_FILE, generateIndex(model));
     return files;
 }
@@ -125,9 +223,10 @@ function main(): void {
     }
 
     const files = generateZodSchemas(model);
-    mkdirSync(outDir, { recursive: true });
     for (const [name, content] of files) {
-        writeFileSync(join(outDir, name), content);
+        const target = join(outDir, name);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content);
     }
     console.log(`wrote ${files.size} files to ${outDir}`);
 }

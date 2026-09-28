@@ -99,6 +99,21 @@ describe("renderQueryModule", () => {
         expect(code).toContain("resolver.resolveOne<Invoice, S>(db, \"invoice\"");
     });
 
+    it("takes one argument: the args plus the selection", () => {
+        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+
+        expect(code).toContain("getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S })");
+        expect(code).toContain("listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S })");
+    });
+
+    it("splits the argument back into filters and a selection for the resolver", () => {
+        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+
+        expect(code).toContain("const { select, ...args } = opts;");
+        expect(code).toContain('resolver.resolveOne<Invoice, S>(db, "invoice", args, { select })');
+        expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice", args, { select })');
+    });
+
     it("returns a list for `many` and an optional row for `one`", () => {
         const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
 

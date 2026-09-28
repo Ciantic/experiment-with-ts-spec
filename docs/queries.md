@@ -13,6 +13,8 @@ hand-written resolver turns a selection into SQL. See "Why the resolver is hand-
 - `packages/backend/src/postgres/db/queries/` — generated: `model.ts` (metadata),
   `<entity>Queries.ts` (interface + factory), `index.ts` (barrel).
 - `packages/backend/src/postgres/db/resolvers.ts` — the reader. Hand-written.
+- `packages/validation/src/queries/` — generated `@query` argument schemas. See
+  `docs/validation.md`.
 
 - `pnpm generate:queries` — writes the generated modules.
 - `pnpm generate:queries --out <dir>` — writes elsewhere. A missing directory is created.
@@ -107,29 +109,37 @@ From the alias above and a `@query Invoice one` `GetInvoice`, the generator emit
 
 ```ts
 export interface InvoiceQueries {
-    getInvoice<S extends Selection<Invoice>>(args: GetInvoice, opts: { select: S }): Promise<Selected<Invoice, S> | undefined>;
-    listInvoices<S extends Selection<Invoice>>(args: ListInvoices, opts: { select: S }): Promise<Selected<Invoice, S>[]>;
+    getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined>;
+    listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]>;
 }
 
 const resolver = createResolver(queryModel);
 
 export function invoiceQueries(db: SqlExecutor): InvoiceQueries {
     return {
-        getInvoice: <S extends Selection<Invoice>>(args, opts) =>
-            resolver.resolveOne<Invoice, S>(db, "invoice", args as Record<string, unknown>, opts),
-        listInvoices: <S extends Selection<Invoice>>(args, opts) =>
-            resolver.resolveMany<Invoice, S>(db, "invoice", args as Record<string, unknown>, opts),
+        getInvoice: <S extends Selection<Invoice>>(opts: GetInvoice & { select: S }) => {
+            const { select, ...args } = opts;
+            return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
+        },
+        listInvoices: <S extends Selection<Invoice>>(opts: ListInvoices & { select: S }) => {
+            const { select, ...args } = opts;
+            return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
+        },
     };
 }
 ```
 
+A read takes **one argument**: the `@query` alias's fields are the filters, and
+`select` is intersected in by the generator. The factory then splits it back
+apart for the resolver, whose signature keeps filters and projection explicit.
+
 A call site narrows exactly:
 
 ```ts
-const [invoice] = await invoiceQueries(db).listInvoices(
-    { customerId },
-    { select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } } },
-);
+const [invoice] = await invoiceQueries(db).listInvoices({
+    customerId,
+    select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
+});
 // invoice.rows![0].totalAmount  ✓
 // invoice.rows![0].taxAmount    ✗  not selected
 // invoice.notes                 ✗  not selected

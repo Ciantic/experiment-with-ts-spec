@@ -19,3 +19,18 @@ export const sellerPatchSchema = sellerSchema.partial().required({
     id: true,
     version: true,
 });
+
+/** A `select` over Seller: `true` for a scalar, a nested select for a branch. */
+export const sellerSelectSchema = z.lazy(() =>
+    z.strictObject({
+        id: z.literal(true).optional(),
+        name: z.literal(true).optional(),
+        businessId: z.literal(true).optional(),
+        eInvoiceAddress: z.literal(true).optional(),
+        eInvoiceOperator: z.literal(true).optional(),
+        language: z.literal(true).optional(),
+        createdAt: z.literal(true).optional(),
+        updatedAt: z.literal(true).optional(),
+        version: z.literal(true).optional(),
+    }),
+);

@@ -6,3 +6,4 @@ export * from "./invoiceRow.js";
 export * from "./invoiceSent.js";
 export * from "./invoiceSentRow.js";
 export * from "./seller.js";
+export * from "./queries/index.js";
