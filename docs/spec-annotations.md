@@ -12,9 +12,9 @@ Field tags:
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
 - `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
 - `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
-- `@relation <Entity>` — the field holds an entity object, not a scalar. Emits a foreign key column named `<field>Id`.
-- `@children <Entity>` — the field holds a child collection. Not a column; the child table carries the foreign key.
-- `@inlined <Entity>` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key.
+- `@relation` — the field holds a single related entity, stored as a foreign key column named `<field>Id`. A bare marker: the entity is the field type, which must be an interface.
+- `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
+- `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
 - `@unique` — the column is unique.
 - `@version` — the optimistic-lock column. Omitted on insert (the `@default`
   supplies the first revision) and written on update as the caller's
@@ -59,6 +59,14 @@ checked as unions of string literals, `@primitive` types must declare `@zod` and
 tag outside the five is reported. A field never carries a type tag; an alias
 never carries a field or interface tag.
 
+`@relation`, `@children`, and `@inlined` are bare markers, like `@generated`:
+they take no value. The entity and the cardinality both come from the field
+type, so `owner?: Owner` with `@relation` links to `Owner`, and `rows?: Row[]`
+with `@children` makes `Row` the child. This removes a second source of truth
+that could disagree with the type — a tag naming an entity other than the
+field's is not expressible. `@relation` and `@inlined` must be on a single
+entity, `@children` on an array of one, and the three are mutually exclusive.
+
 `@generated` and `@computed` replace the earlier `@readonly`, which conflated the
 two. The distinction matters because they produce different column behaviour:
 `id` is assigned once and never recomputed, whereas `totalAmount` is a function
@@ -73,10 +81,10 @@ arrives is a separate decision — a client-supplied column, a `@default`, or a
 ## `@inlined`
 
 ```
-@inlined Customer
+@inlined
 ```
 
-An `@inlined <Entity>` field is an entity reference that is *copied* rather than
+An `@inlined` field is an entity reference that is *copied* rather than
 *linked*. Instead of a `<field>Id uuid references …` column, the target entity's
 scalar fields are flattened into columns on the same table, prefixed with the
 field name:

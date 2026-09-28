@@ -87,8 +87,8 @@ a live company record.
 - **The routing override is not persisted.** An override on `sendInvoice` is not
   written back to `Customer`, so the next send needs it again. The same holds for
   the `language` override.
-- **The inlined parties leak their language.** `@inlined Customer` and
-  `@inlined Seller` flatten every scalar field, so `customerLanguage` and
+- **The inlined parties leak their language.** `@inlined` on the customer and
+  seller fields flatten every scalar field, so `customerLanguage` and
   `sellerLanguage` land on `invoice_sent` next to its own `language` column. See
   `docs/invoice-snapshotting.md`.
 - **The delivery records nothing.** Neither `Invoice` nor `InvoiceSent` carries a

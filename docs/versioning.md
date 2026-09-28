@@ -179,7 +179,7 @@ caller cannot build a patch that omits the precondition.
   `Promise<void>` and reading is deliberately not generated
   (`docs/repositories.md`), so `createCustomer` does not tell the caller that the
   row is now at version `0`. Learning it takes a `RETURNING` or a read path.
-- **`@inlined Customer` leaks `customerVersion`.** Inlining flattens every scalar
+- **`@inlined` leaks `customerVersion`.** Inlining flattens every scalar
   field, so `invoice_sent` gains a nullable `customerVersion int8` — the
   customer's revision at send time, alongside the `customerCreatedAt` and
   `customerUpdatedAt` that already leak. There is no per-field opt-out.

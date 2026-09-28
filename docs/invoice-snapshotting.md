@@ -15,9 +15,10 @@ closes that gap by copying both parties at send time.
 
 ## Shape
 
-- `invoice_sent` copies the header and inlines both parties. `@inlined Customer`
-  becomes `customerId`, `customerName`, `customerEmail`, … columns on the same
-  table, with no foreign key; `@inlined Seller` does the same for the issuer.
+- `invoice_sent` copies the header and inlines both parties. `@inlined` on
+  `customer` becomes `customerId`, `customerName`, `customerEmail`, … columns on
+  the same table, with no foreign key; `@inlined` on `seller` does the same for
+  the issuer.
 - `invoice_sent_row` copies the line items.
 - `invoiceId` links back to the draft, for traceability. It is the only foreign
   key out of the snapshot.
@@ -86,8 +87,8 @@ consequences:
   `customer?: Customer`, so every inlined customer column is nullable. A sent
   invoice with no customer is representable; requiring one is a separate
   constraint.
-- **The snapshot inherits the parties' timestamps and language.** `@inlined
-  Customer` and `@inlined Seller` flatten every scalar field, so
+- **The snapshot inherits the parties' timestamps and language.** `@inlined` on
+  the two parties flattens every scalar field, so
   `customerCreatedAt`, `customerUpdatedAt`, `sellerCreatedAt`,
   `sellerUpdatedAt`, `customerLanguage`, and `sellerLanguage` land on
   `invoice_sent` too. See `docs/timestamps.md` and `docs/invoice-sending.md`.

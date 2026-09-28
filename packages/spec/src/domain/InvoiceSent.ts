@@ -56,7 +56,7 @@ export interface InvoiceSent {
      * The customer details as they were at send time.
      * 
      * @fieldName Customer
-     * @inlined Customer
+     * @inlined
      * @widget select
      */
     customer?: Customer;
@@ -65,7 +65,7 @@ export interface InvoiceSent {
      * The seller details as they were at send time.
      * 
      * @fieldName Seller
-     * @inlined Seller
+     * @inlined
      * @widget select
      */
     seller?: Seller;
@@ -130,7 +130,7 @@ export interface InvoiceSent {
      * The line items that make up the invoice.
      * 
      * @fieldName Rows
-     * @children InvoiceSentRow
+     * @children
      * @widget table
      */
     rows: InvoiceSentRow[];

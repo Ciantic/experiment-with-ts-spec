@@ -301,17 +301,38 @@ function lintProperty(
         report("@default is missing its expression", defaultTag);
     }
 
-    // @inlined names the entity to flatten and conflicts with the relation tags.
+    // The branch tags are bare markers on an entity-typed field: @relation (foreign key),
+    // @children (child collection), @inlined (flattened snapshot). The entity is the field type.
+    const relationTag = (tags.get("relation") ?? [])[0];
+    const childrenTag = (tags.get("children") ?? [])[0];
     const inlinedTag = (tags.get("inlined") ?? [])[0];
-    if (inlinedTag) {
-        if (!(inlinedTag.getCommentText() ?? "").trim()) {
-            report("@inlined is missing its <Entity>", inlinedTag);
+    const branchTags = [
+        relationTag ? { tag: relationTag, name: "relation" } : undefined,
+        childrenTag ? { tag: childrenTag, name: "children" } : undefined,
+        inlinedTag ? { tag: inlinedTag, name: "inlined" } : undefined,
+    ].filter((entry): entry is { tag: JSDocTag; name: string } => entry !== undefined);
+
+    for (const { tag, name } of branchTags) {
+        if ((tag.getCommentText() ?? "").trim()) {
+            report(`@${name} takes no value; the entity comes from the field type`, tag);
         }
-        if ((tags.get("relation") ?? []).length > 0) {
-            report("@inlined and @relation are mutually exclusive", inlinedTag);
+    }
+    const firstBranch = branchTags[0];
+    if (firstBranch) {
+        for (const current of branchTags.slice(1)) {
+            report(`@${firstBranch.name} and @${current.name} are mutually exclusive`, current.tag);
         }
-        if ((tags.get("children") ?? []).length > 0) {
-            report("@inlined and @children are mutually exclusive", inlinedTag);
+    }
+
+    const typeNode = property.getTypeNode();
+    const isArray = typeNode !== undefined && Node.isArrayTypeNode(typeNode);
+    for (const { tag, name } of branchTags) {
+        const wantsArray = name === "children";
+        if (wantsArray && !isArray) {
+            report("@children must be on an array field, such as `rows?: InvoiceRow[]`", tag);
+        }
+        if (!wantsArray && isArray) {
+            report(`@${name} must be on a single entity field, not an array`, tag);
         }
     }
 

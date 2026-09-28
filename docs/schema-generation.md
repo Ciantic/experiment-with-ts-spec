@@ -54,9 +54,9 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - A field named `id` is the primary key and is always `not null`.
 - A field whose type is named `<Entity>Id` (other than `id`) is a foreign key to
   that entity's table, inline `references`.
-- `@relation <Entity>` on an entity-typed field emits a `<field>Id uuid` column
+- `@relation` on an entity-typed field emits a `<field>Id uuid` column
   referencing that entity, nullable when the field is optional.
-- `@children <Entity>` is skipped; the child table owns the foreign key.
+- `@children` on an array field is skipped; the child table owns the foreign key.
 - `@unique` adds a `unique` constraint.
 - `@default <expression>` appends `default <expression>`. The column is `not null`
   even when the field is optional, and the repository generators leave the column

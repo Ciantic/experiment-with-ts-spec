@@ -96,9 +96,12 @@ export interface Tags {
     widget?: string;
     generated: boolean;
     computed?: ComputedTag;
-    relation?: string;
-    children?: string;
-    inlined?: string;
+    /** The field holds a single related entity, stored as a foreign key. */
+    relation: boolean;
+    /** The field holds a child collection; the child table carries the foreign key. */
+    children: boolean;
+    /** The field holds an entity whose scalar fields are flattened into snapshot columns. */
+    inlined: boolean;
     unique: boolean;
     default?: string;
     version: boolean;
@@ -195,6 +198,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
         byName: new Map(),
         generated: false,
+        relation: false,
+        children: false,
+        inlined: false,
         unique: false,
         version: false,
         formula: false,
@@ -220,13 +226,13 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (value !== undefined) tags.widget ??= value;
                     break;
                 case "relation":
-                    if (value !== undefined) tags.relation ??= value;
+                    tags.relation = true;
                     break;
                 case "children":
-                    if (value !== undefined) tags.children ??= value;
+                    tags.children = true;
                     break;
                 case "inlined":
-                    if (value !== undefined) tags.inlined ??= value;
+                    tags.inlined = true;
                     break;
                 case "default":
                     if (value !== undefined) tags.default ??= value;

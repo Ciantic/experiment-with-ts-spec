@@ -298,25 +298,9 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`createdAt`: @default is missing its expression"]);
     });
 
-    it("accepts @inlined naming an entity", () => {
+    it("accepts @inlined as a bare marker", () => {
         const findings = lintSourceText(
             `export interface Inlined {
-                /**
-                 * @fieldName Customer
-                 * @widget select
-                 * @inlined Customer
-                 */
-                customer?: Customer;
-            }`,
-            formulaNames,
-        );
-
-        expect(findings).toEqual([]);
-    });
-
-    it("reports @inlined without an entity", () => {
-        const findings = lintSourceText(
-            `export interface Bare {
                 /**
                  * @fieldName Customer
                  * @widget select
@@ -327,7 +311,47 @@ describe("lintSourceText", () => {
             formulaNames,
         );
 
-        expect(messages(findings)).toEqual(["`customer`: @inlined is missing its <Entity>"]);
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts @relation and @children on the right shapes", () => {
+        const findings = lintSourceText(
+            `export interface Branches {
+                /**
+                 * @fieldName Customer
+                 * @widget select
+                 * @relation
+                 */
+                customer?: Customer;
+                /**
+                 * @fieldName Rows
+                 * @widget table
+                 * @children
+                 */
+                rows?: InvoiceRow[];
+            }`,
+            formulaNames,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a value on a branch marker", () => {
+        const findings = lintSourceText(
+            `export interface Valued {
+                /**
+                 * @fieldName Customer
+                 * @widget select
+                 * @inlined Customer
+                 */
+                customer?: Customer;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`customer`: @inlined takes no value; the entity comes from the field type",
+        ]);
     });
 
     it("rejects @inlined together with @relation", () => {
@@ -336,15 +360,53 @@ describe("lintSourceText", () => {
                 /**
                  * @fieldName Customer
                  * @widget select
-                 * @inlined Customer
-                 * @relation Customer
+                 * @relation
+                 * @inlined
                  */
                 customer?: Customer;
             }`,
             formulaNames,
         );
 
-        expect(messages(findings)).toEqual(["`customer`: @inlined and @relation are mutually exclusive"]);
+        expect(messages(findings)).toEqual(["`customer`: @relation and @inlined are mutually exclusive"]);
+    });
+
+    it("rejects @relation together with @children", () => {
+        const findings = lintSourceText(
+            `export interface Both {
+                /**
+                 * @fieldName Rows
+                 * @widget table
+                 * @relation
+                 * @children
+                 */
+                rows?: InvoiceRow[];
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`rows`: @relation and @children are mutually exclusive",
+            "`rows`: @relation must be on a single entity field, not an array",
+        ]);
+    });
+
+    it("rejects @children on a single entity", () => {
+        const findings = lintSourceText(
+            `export interface Bad {
+                /**
+                 * @fieldName Rows
+                 * @widget table
+                 * @children
+                 */
+                rows?: InvoiceRow;
+            }`,
+            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`rows`: @children must be on an array field, such as `rows?: InvoiceRow[]`",
+        ]);
     });
 
     it("accepts @version on a Version field", () => {

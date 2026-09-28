@@ -419,17 +419,36 @@ export function buildSpecTables(
                 continue;
             }
 
+            // A branch tag carries no entity of its own, so the type must supply one.
+            const branchName = tags.relation
+                ? "relation"
+                : tags.children
+                    ? "children"
+                    : tags.inlined
+                        ? "inlined"
+                        : undefined;
+            if (branchName && !resolved.entity) {
+                report(
+                    property.declaration,
+                    `\`${fieldName}\`: @${branchName} needs an entity type, found \`${typeNode.getText()}\``,
+                );
+                continue;
+            }
+
             if (resolved.isArray) {
                 if (!tags.children) {
                     report(
                         property.declaration,
-                        `\`${fieldName}\`: array fields need @children <Entity> and are not columns`,
+                        `\`${fieldName}\`: array fields need @children and are not columns`,
                     );
                     continue;
                 }
-                const childTable = entityTableName(tags.children);
+                const childTable = resolved.entity ? entityTableName(resolved.entity) : undefined;
                 if (!childTable) {
-                    report(property.declaration, `\`${fieldName}\`: @children ${tags.children} has no interface`);
+                    report(
+                        property.declaration,
+                        `\`${fieldName}\`: @children needs an array of an entity, found \`${typeNode.getText()}\``,
+                    );
                     continue;
                 }
                 // The child's foreign-key column is resolved once every table is built.
@@ -439,24 +458,24 @@ export function buildSpecTables(
 
             if (resolved.entity) {
                 if (tags.inlined) {
-                    inlineColumns(property, fieldName, tags.inlined, notNull, table);
+                    inlineColumns(property, fieldName, resolved.entity, notNull, table);
                     continue;
                 }
                 if (!tags.relation) {
                     report(
                         property.declaration,
-                        `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation ${resolved.entity}`,
+                        `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation`,
                     );
                     continue;
                 }
-                const targetTable = entityTableName(tags.relation);
+                const targetTable = entityTableName(resolved.entity);
                 if (!targetTable) {
-                    report(property.declaration, `\`${fieldName}\`: @relation ${tags.relation} has no interface`);
+                    report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
                     continue;
                 }
                 table.columns.push({
                     name: `${fieldName}Id`,
-                    sqlType: primaryKeySqlType(tags.relation),
+                    sqlType: primaryKeySqlType(resolved.entity),
                     notNull,
                     primaryKey: false,
                     unique: false,

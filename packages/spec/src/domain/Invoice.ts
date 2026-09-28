@@ -45,7 +45,7 @@ export interface Invoice {
      * The customer this invoice is issued to.
      * 
      * @fieldName Customer
-     * @relation Customer
+     * @relation
      * @widget select
      */
     customer?: Customer;
@@ -54,7 +54,7 @@ export interface Invoice {
      * The seller this invoice is issued by.
      * 
      * @fieldName Seller
-     * @relation Seller
+     * @relation
      * @widget select
      */
     seller?: Seller;
@@ -114,7 +114,7 @@ export interface Invoice {
      * The line items that make up the invoice.
      * 
      * @fieldName Rows
-     * @children InvoiceRow
+     * @children
      * @widget table
      */
     rows?: InvoiceRow[];

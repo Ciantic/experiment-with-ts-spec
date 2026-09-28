@@ -131,7 +131,7 @@ issued, and an `updatedAt` on a document that is not supposed to change states a
 contradiction the model should not express.
 
 They do inherit `customerCreatedAt` and `customerUpdatedAt`, because
-`@inlined Customer` flattens *every* scalar field of the target. Those are the
+`@inlined` flattens *every* scalar field of the target. Those are the
 customer's timestamps as of send time — correct snapshot behaviour, but audit
 columns about the customer rather than the invoice. There is no per-field opt-out
 from `@inlined`.

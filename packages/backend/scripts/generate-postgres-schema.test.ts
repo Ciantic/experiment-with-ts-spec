@@ -111,7 +111,7 @@ describe("generateSchema output", () => {
                 Owner: "export interface Owner { id: Version; }",
                 Thing: `export interface Thing {
                     id: GUID;
-                    /** @relation Owner */
+                    /** @relation */
                     owner: Owner;
                 }`,
             },
@@ -221,7 +221,7 @@ describe("generateSchema types", () => {
                 Owner: "export interface Owner { id: GUID; }",
                 Thing: `export interface Thing {
                     id: GUID;
-                    /** @relation Owner */
+                    /** @relation */
                     owner?: Owner;
                 }`,
             },
@@ -237,7 +237,7 @@ describe("generateSchema types", () => {
                 Owner: "export interface Owner { id: GUID; }",
                 Thing: `export interface Thing {
                     id: GUID;
-                    /** @relation Owner */
+                    /** @relation */
                     owner: Owner;
                 }`,
             },
@@ -252,7 +252,7 @@ describe("generateSchema types", () => {
                 Row: "export interface Row { id: GUID; parentId: ParentId; }",
                 Parent: `export interface Parent {
                     id: GUID;
-                    /** @children Row */
+                    /** @children */
                     rows: Row[];
                 }`,
             },
@@ -273,7 +273,7 @@ describe("generateSchema @inlined", () => {
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @inlined Owner
+                     * @inlined
                      */
                     owner?: Owner;
                 }`,
@@ -294,7 +294,7 @@ describe("generateSchema @inlined", () => {
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @inlined Owner
+                     * @inlined
                      */
                     owner?: Owner;
                 }`,
@@ -311,7 +311,7 @@ describe("generateSchema @inlined", () => {
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @inlined Owner
+                     * @inlined
                      */
                     owner: Owner;
                 }`,
@@ -330,7 +330,7 @@ describe("generateSchema @inlined", () => {
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @inlined Branch
+                     * @inlined
                      */
                     branch?: Branch;
                 }`,
@@ -340,21 +340,20 @@ describe("generateSchema @inlined", () => {
         expect(messages(diagnostics)).toContain("`Branch.leaf`: @inlined only inlines scalar fields");
     });
 
-    it("reports @inlined pointing at an unknown entity", () => {
+    it("reports @inlined on a field that is not an entity", () => {
         const { diagnostics } = generate({
             domain: {
-                Owner: owner,
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @inlined Missing
+                     * @inlined
                      */
-                    owner?: Owner;
+                    note: string;
                 }`,
             },
         });
 
-        expect(messages(diagnostics)).toContain("`owner`: @inlined Missing has no interface");
+        expect(messages(diagnostics)).toContain("`note`: @inlined needs an entity type, found `string`");
     });
 });
 
@@ -392,7 +391,7 @@ describe("generateSchema diagnostics", () => {
             },
         });
 
-        expect(messages(diagnostics)).toContain("`owner`: `Owner` is an entity; add @relation Owner");
+        expect(messages(diagnostics)).toContain("`owner`: `Owner` is an entity; add @relation");
     });
 
     it("reports an array field without @children", () => {
@@ -403,7 +402,7 @@ describe("generateSchema diagnostics", () => {
             },
         });
 
-        expect(messages(diagnostics)).toContain("`rows`: array fields need @children <Entity> and are not columns");
+        expect(messages(diagnostics)).toContain("`rows`: array fields need @children and are not columns");
     });
 
     it("reports an interface without a primary key", () => {
@@ -422,19 +421,18 @@ describe("generateSchema diagnostics", () => {
         expect(messages(diagnostics)).toContain("`data`: unsupported type `unknown`");
     });
 
-    it("reports @relation pointing at an unknown entity", () => {
+    it("reports @relation on a field that is not an entity", () => {
         const { diagnostics } = generate({
             domain: {
-                Owner: "export interface Owner { id: GUID; }",
                 Thing: `export interface Thing {
                     id: GUID;
-                    /** @relation Missing */
-                    owner: Owner;
+                    /** @relation */
+                    count: number;
                 }`,
             },
         });
 
-        expect(messages(diagnostics)).toContain("`owner`: @relation Missing has no interface");
+        expect(messages(diagnostics)).toContain("`count`: @relation needs an entity type, found `number`");
     });
 });
 

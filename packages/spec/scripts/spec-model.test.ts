@@ -57,7 +57,7 @@ describe("parseSpec tags", () => {
     it("decodes field tags once", () => {
         const { interfaces } = parse({
             "Thing.ts": thing(
-                "    /**\n     * @fieldName Label\n     * @widget text\n     * @relation Owner\n     */",
+                "    /**\n     * @fieldName Label\n     * @widget text\n     * @relation\n     */",
                 "owner?: Owner;",
             ),
         });
@@ -66,7 +66,7 @@ describe("parseSpec tags", () => {
 
         expect(tags?.fieldName).toBe("Label");
         expect(tags?.widget).toBe("text");
-        expect(tags?.relation).toBe("Owner");
+        expect(tags?.relation).toBe(true);
     });
 
     it("decodes a bare marker as a boolean", () => {

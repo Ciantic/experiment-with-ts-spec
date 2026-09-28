@@ -163,9 +163,9 @@ at the call site and are not the same storage:
 
 | Nested field | Annotation | Storage | SQL |
 | --- | --- | --- | --- |
-| `Invoice.rows` | `@children InvoiceRow` | child table, FK `invoiceId` | join |
-| `Invoice.customer` | `@relation Customer` | FK `customerId` | join to the **live** row |
-| `InvoiceSent.customer` | `@inlined Customer` | flattened `customerName`, `customerEmail`, … | no join, prefix columns |
+| `Invoice.rows` | `@children` | child table, FK `invoiceId` | join |
+| `Invoice.customer` | `@relation` | FK `customerId` | join to the **live** row |
+| `InvoiceSent.customer` | `@inlined` | flattened `customerName`, `customerEmail`, … | no join, prefix columns |
 
 An inlined branch is not a join: its columns are already on the row. The
 freshness differs too — a relation reads the current record, an inlined value is
