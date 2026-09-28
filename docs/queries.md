@@ -10,9 +10,9 @@ hand-written resolver turns a selection into SQL. See "Why the resolver is hand-
 - `packages/spec/src/queries/<Entity>Queries.ts` — the `@query`-annotated argument
   aliases. Hand-written.
 - `packages/backend/scripts/generate-query-metadata.ts` — the generator.
-- `packages/backend/src/postgres/db/queries/` — generated: `model.ts` (metadata),
+- `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `<entity>Queries.ts` (interface + factory), `index.ts` (barrel).
-- `packages/backend/src/postgres/db/resolvers.ts` — the reader. Hand-written.
+- `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/validation/src/queries/` — generated `@query` argument schemas. See
   `docs/validation.md`.
 
@@ -197,7 +197,7 @@ they are reached through their branch. A scalar foreign key such as
 
 ## The resolver reads one query per branch
 
-`resolveOne`/`resolveMany` (`packages/backend/src/postgres/db/resolvers.ts`) build
+`resolveOne`/`resolveMany` (`packages/backend/src/db/resolvers.ts`) build
 the SQL at run time from `queryModel` plus the selection:
 
 - **Scalars** — projected into the root query.

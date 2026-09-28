@@ -1,7 +1,7 @@
 # Repositories
 
 `packages/backend/scripts/generate-repositories.ts` writes one CRUD module per
-domain entity into `packages/backend/src/postgres/db/repositories/`.
+domain entity into `packages/backend/src/db/repositories/`.
 
 - `pnpm generate:repositories` — writes the repository modules and their barrel.
 - `pnpm generate:repositories --out <dir>` — writes elsewhere. A missing directory is created.
@@ -29,7 +29,7 @@ not generated, because their shape is a product decision rather than a mapping
 of the spec. Hand-written read contracts live in `packages/spec/src/queries/`;
 see `docs/queries.md`.
 
-`SqlExecutor` (`src/postgres/db/sql-executor.ts`) is the whole database surface:
+`SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
 `query(sql, parameters?)`. Both PGlite and `pg` satisfy it, so the generated
 modules never import a driver, and `pg` stays an optional dependency. A test
 asserts that PGlite actually satisfies the interface, so the structural type

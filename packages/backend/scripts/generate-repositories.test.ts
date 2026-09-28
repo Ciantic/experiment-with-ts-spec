@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ts } from "ts-morph";
 import { createPglite } from "../src/postgres/pglite-setup.js";
-import type { SqlExecutor } from "../src/postgres/db/sql-executor.js";
+import type { SqlExecutor } from "../src/db/sql-executor.js";
 import { generateIndex, generateRepositories, generateRepository } from "./generate-repositories.js";
 import type { Column, Table } from "./postgres-model.js";
 
