@@ -8,13 +8,13 @@ import { queryModel } from "./model.js";
 const resolver = createResolver(queryModel);
 
 /** List `Invoice` rows, filtered by the `@queryfilter` fields, combined with and. */
-export function listInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id"> & { select: S }): Promise<Selected<Invoice, S>[]> {
+export function listInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S }): Promise<Selected<Invoice, S>[]> {
     const { select, ...args } = opts;
     return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
 }
 
 /** Get the first `Invoice` row matching at least one `@queryfilter` field. */
-export function getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: AtLeastOne<Filters<Invoice, "id">> & { select: S }): Promise<Selected<Invoice, S> | undefined> {
+export function getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: AtLeastOne<Filters<Invoice, "id" | "customerId" | "sellerId">> & { select: S }): Promise<Selected<Invoice, S> | undefined> {
     const { select, ...args } = opts;
     return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
 }

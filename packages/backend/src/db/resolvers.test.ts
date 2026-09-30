@@ -20,6 +20,7 @@ interface InvoiceRow {
 interface Invoice {
     id: string;
     number: string;
+    customerId?: string;
     totalAmount: string;
     customer?: Customer;
     rows?: InvoiceRow[];
@@ -38,7 +39,7 @@ const model: QueryModel = {
         invoice: {
             name: "invoice",
             key: "id",
-            fields: { id: "id", number: "number", totalAmount: "totalAmount" },
+            fields: { id: "id", number: "number", customerId: "customerId", totalAmount: "totalAmount" },
             relations: {
                 customer: { kind: "relation", table: "customer", column: "customerId" },
                 rows: { kind: "children", table: "invoice_row", column: "invoiceId" },

@@ -12,7 +12,7 @@ export async function createInvoice(db: SqlExecutor, rows: Invoice[]): Promise<v
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.number, row.customer?.id, row.seller?.id, row.language, row.issueDate, row.dueDate, row.netAmount, row.taxAmount, row.totalAmount, row.notes];
+        const values = [row.id, row.number, row.customerId, row.sellerId, row.language, row.issueDate, row.dueDate, row.netAmount, row.taxAmount, row.totalAmount, row.notes];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::text" + ")");
@@ -27,7 +27,7 @@ export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Prom
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.number ?? null, row.customer?.id ?? null, row.seller?.id ?? null, row.language ?? null, row.issueDate ?? null, row.dueDate ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null, row.notes ?? null, row.version];
+        const values = [row.id, row.number ?? null, row.customerId ?? null, row.sellerId ?? null, row.language ?? null, row.issueDate ?? null, row.dueDate ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null, row.notes ?? null, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::text" + ", " + "$" + (offset + 12) + "::int8" + ")");

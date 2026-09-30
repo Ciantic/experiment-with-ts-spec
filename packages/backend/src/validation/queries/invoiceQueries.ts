@@ -5,11 +5,13 @@ import * as primitives from "../primitives.js";
 
 export const listInvoiceSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
+    customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
+    sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     select: invoiceSelectSchema,
 });
 
 /** The same filters, with at least one of them named. */
 export const getInvoiceSchema = listInvoiceSchema.refine(
-    (value) => value.id !== undefined,
+    (value) => value.id !== undefined || value.customerId !== undefined || value.sellerId !== undefined,
     { message: "getInvoice needs at least one filter" },
 );

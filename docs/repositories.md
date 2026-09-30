@@ -100,8 +100,9 @@ type mapping feeds both the DDL and the repositories, so a repository cannot
 name a column the schema does not have.
 
 The column value is read through the accessor recorded on the model, so an
-inlined optional customer is written as `row.customer?.id`, and a relation field
-as `row.customer?.id`, without the generator special-casing either.
+inlined optional customer is written as `row.customer?.name`, without the
+generator special-casing it. A relation contributes no column of its own: its
+`<field>Id` field is an ordinary column, read as `row.customerId`.
 
 A column with a database default (`@default`) is left to the database and never
 appears in a generated `insert`. That covers both timestamps: the default fills

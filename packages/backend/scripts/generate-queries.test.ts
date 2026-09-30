@@ -53,11 +53,11 @@ const tables = new Map([
 ]);
 
 describe("buildQueryModel", () => {
-    it("keeps scalar fields and drops branch columns", () => {
+    it("keeps scalar fields and drops inlined columns", () => {
         const model = buildQueryModel(tables);
         const fields = model.tables.invoice?.fields ?? {};
 
-        expect(Object.keys(fields)).toEqual(["id", "number", "totalAmount"]);
+        expect(Object.keys(fields)).toEqual(["id", "number", "customerId", "totalAmount"]);
     });
 
     it("records the primary key", () => {

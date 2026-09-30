@@ -8,7 +8,9 @@ import { sellerSchema, sellerSelectSchema } from "./seller.js";
 export const invoiceSchema = z.object({
     id: primitives.brandedIdSchema<"InvoiceId">(),
     number: z.string().optional(),
+    customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
     customer: z.lazy(() => customerSchema).optional(),
+    sellerId: primitives.brandedIdSchema<"SellerId">().optional(),
     seller: z.lazy(() => sellerSchema).optional(),
     language: primitives.languageSchema.optional(),
     issueDate: z.date().optional(),
@@ -34,7 +36,9 @@ export const invoiceSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
         number: z.literal(true).optional(),
+        customerId: z.literal(true).optional(),
         customer: z.union([z.literal(true), z.lazy(() => customerSelectSchema)]).optional(),
+        sellerId: z.literal(true).optional(),
         seller: z.union([z.literal(true), z.lazy(() => sellerSelectSchema)]).optional(),
         language: z.literal(true).optional(),
         issueDate: z.literal(true).optional(),

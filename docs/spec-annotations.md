@@ -12,7 +12,7 @@ Field tags:
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
 - `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
 - `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
-- `@relation` — the field holds a single related entity, stored as a foreign key column named `<field>Id`. A bare marker: the entity is the field type, which must be an interface.
+- `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through a `<field>Id` field the interface also declares. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
 - `@unique` — the column is unique.
@@ -74,6 +74,42 @@ it is presentation metadata telling a UI not to offer the field. How the value
 arrives is a separate decision — a client-supplied column, a `@default`, or a
 `@computed` trigger. The timestamps show two of those spellings; see
 `docs/timestamps.md`.
+
+## `@relation`
+
+A `@relation` field is *navigation*: it names the entity on the other side of a
+foreign key. The key itself is an ordinary field the interface declares,
+named `<field>Id`:
+
+```ts
+/**
+ * @fieldName Customer
+ * @relation
+ * @widget select
+ */
+customer?: Customer;
+
+/**
+ * @fieldName Customer ID
+ * @generated
+ * @widget text
+ */
+customerId?: CustomerId;
+```
+
+The alternative — the tag synthesizing the column — would put one fact in two
+places: the tag's entity and the key field's type could disagree. Here the
+generator joins the two fields by name, and a mismatch is a diagnostic rather
+than a silent second column. Either half alone is also a diagnostic: a
+`@relation` without its `<field>Id` field, or a `<field>Id` field whose type
+references a table other than the relation's.
+
+Nullability lives on the `<field>Id` field, so a required relation needs a
+required key; the relation field's own optionality does not matter to the DDL.
+The key is a normal scalar field: it is selectable, and it takes `@queryfilter`
+like any other, which is how a read filters by a relation. The `@relation` field
+itself may not carry `@queryfilter`; filtering on the related record's *columns*
+is not implemented.
 
 ## `@inlined`
 
@@ -305,3 +341,8 @@ Gotchas:
   on a branch field (a `@relation`/`@children`/`@inlined` marker), on `id`, and
   on a value, but it does not resolve the field's type: the generated read types
   the filter from the field's own type, so a non-scalar would surface there.
+- **`@relation` and its `<field>Id` field are paired by the generator, not the
+  linter.** The linter checks tags; the cross-field rule is enforced when the
+  table model is built, so the diagnostic comes from `pnpm generate` with a file
+  and line, the same way `@children` without a foreign key does. See
+  `docs/schema-generation.md`.

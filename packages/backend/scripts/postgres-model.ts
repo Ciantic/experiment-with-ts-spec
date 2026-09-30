@@ -214,6 +214,17 @@ export function buildSpecTables(
         });
     };
 
+    /** Report a problem with a branch field, pointing at the field's declaration when it can be found. */
+    const reportField = (table: Table, fieldName: string, message: string) => {
+        const spec = interfaces.get(table.interfaceName);
+        const property = spec?.properties.find((candidate) => candidate.name === fieldName);
+        if (property) {
+            report(property.declaration, `\`${fieldName}\`: ${message}`);
+        } else if (spec) {
+            report(spec.declaration, `\`${fieldName}\`: ${message}`);
+        }
+    };
+
     /** The SQL type of an entity's primary key, read from its own `id` field rather than assumed. */
     const pkTypeInProgress = new Set<string>();
     function primaryKeySqlType(entity: string): string {
@@ -475,20 +486,9 @@ export function buildSpecTables(
                     report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
                     continue;
                 }
-                table.columns.push({
-                    name: `${fieldName}Id`,
-                    sqlType: primaryKeySqlType(resolved.entity),
-                    notNull,
-                    primaryKey: false,
-                    unique: false,
-                    references: { table: targetTable, column: "id" },
-                    read: notNull ? `${fieldName}.id` : `${fieldName}?.id`,
-                });
-                table.relations.set(fieldName, {
-                    kind: "relation",
-                    table: targetTable,
-                    column: `${fieldName}Id`,
-                });
+                // @relation navigates through the `<field>Id` field the interface declares; it adds no
+                // column of its own. The pair is joined once every table's columns exist.
+                table.relations.set(fieldName, { kind: "relation", table: targetTable });
                 continue;
             }
 
@@ -582,26 +582,43 @@ export function buildSpecTables(
         }
     }
 
-    /** Resolve each `@children` relation's foreign-key column once every table's columns exist. */
+    /** Point each branch at a declaration that already exists: a relation at its `<field>Id` foreign
+     * key, a child collection at the child's foreign key. */
     const byTableName = new Map<string, Table>();
     for (const table of tables.values()) {
         byTableName.set(table.name, table);
     }
     for (const table of tables.values()) {
         for (const [fieldName, relation] of table.relations) {
-            if (relation.kind !== "children" || !relation.table) {
+            if (!relation.table) {
+                continue;
+            }
+            // @relation never adds a column: it requires a `<field>Id` field to navigate through.
+            if (relation.kind === "relation") {
+                const column = table.columns.find((candidate) => candidate.name === `${fieldName}Id`);
+                if (!column) {
+                    reportField(table, fieldName, `@relation needs the \`${fieldName}Id\` field`);
+                    continue;
+                }
+                const referenced = column.references?.table;
+                if (referenced !== relation.table) {
+                    reportField(
+                        table,
+                        fieldName,
+                        `@relation targets \`${relation.table}\`, but \`${fieldName}Id\` references \`${referenced ?? "nothing"}\``,
+                    );
+                    continue;
+                }
+                relation.column = column.name;
+                continue;
+            }
+            if (relation.kind !== "children") {
                 continue;
             }
             const child = byTableName.get(relation.table);
             const foreignKey = child?.columns.find((column) => column.references?.table === table.name);
             if (!foreignKey) {
-                const spec = interfaces.get(table.interfaceName);
-                if (spec) {
-                    report(
-                        spec.declaration,
-                        `\`${fieldName}\`: @children ${relation.table} has no foreign key to ${table.name}`,
-                    );
-                }
+                reportField(table, fieldName, `@children ${relation.table} has no foreign key to ${table.name}`);
                 continue;
             }
             relation.column = foreignKey.name;

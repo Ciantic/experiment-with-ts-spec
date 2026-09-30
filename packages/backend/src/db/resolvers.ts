@@ -132,16 +132,7 @@ function inlinedTargets(columns: Record<string, string>, value: unknown): string
 
 /** The physical column an argument of the given name filters, or undefined when it is not filterable. */
 function columnForArgument(meta: QueryTable, name: string): string | undefined {
-    const field = meta.fields[name];
-    if (field !== undefined) {
-        return field;
-    }
-    for (const relation of Object.values(meta.relations)) {
-        if (relation.kind === "relation" && relation.column === name) {
-            return name;
-        }
-    }
-    return undefined;
+    return meta.fields[name];
 }
 
 /** A WHERE clause and its positional parameters. */

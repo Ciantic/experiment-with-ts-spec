@@ -44,7 +44,8 @@ Everything else resolves through the alias tree:
   constraint listing the values.
 - An open union (`Unit`, `Currency`, which end in `string & {}`) → plain `text`,
   no CHECK, because the value set is deliberately not closed.
-- An entity type → a foreign key column, via `@relation`.
+- An entity type → not a column; `@relation` navigates through the entity's own
+  `<field>Id` field.
 - An array of entities → not a column, via `@children`.
 
 Unresolvable types are reported as diagnostics and no SQL is produced.
@@ -54,8 +55,11 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - A field named `id` is the primary key and is always `not null`.
 - A field whose type is named `<Entity>Id` (other than `id`) is a foreign key to
   that entity's table, inline `references`.
-- `@relation` on an entity-typed field emits a `<field>Id uuid` column
-  referencing that entity, nullable when the field is optional.
+- `@relation` on an entity-typed field adds no column of its own. It navigates
+  through a `<field>Id` field the interface must also declare; that field is the
+  foreign key, so its type sets the column type and its optionality the
+  nullability. Either field without the other, or an id field pointing at
+  another table, is a diagnostic.
 - `@children` on an array field is skipped; the child table owns the foreign key.
 - `@unique` adds a `unique` constraint.
 - `@default <expression>` appends `default <expression>`. The column is `not null`
@@ -145,7 +149,8 @@ triggers and constraints against PGlite is the missing layer.
   `"hours" | (string & {})` is misread as closed and gets a CHECK over just the
   literal members.
 - A field whose type is an entity must carry `@relation`; the referenced entity
-  must itself be an interface in the spec.
+  must itself be an interface in the spec, and the interface must declare the
+  matching `<field>Id` field.
 
 Gotchas found by running the DDL:
 

@@ -111,6 +111,7 @@ describe("generateSchema output", () => {
                 Owner: "export interface Owner { id: Version; }",
                 Thing: `export interface Thing {
                     id: GUID;
+                    ownerId: OwnerId;
                     /** @relation */
                     owner: Owner;
                 }`,
@@ -221,6 +222,7 @@ describe("generateSchema types", () => {
                 Owner: "export interface Owner { id: GUID; }",
                 Thing: `export interface Thing {
                     id: GUID;
+                    ownerId?: OwnerId;
                     /** @relation */
                     owner?: Owner;
                 }`,
@@ -237,6 +239,7 @@ describe("generateSchema types", () => {
                 Owner: "export interface Owner { id: GUID; }",
                 Thing: `export interface Thing {
                     id: GUID;
+                    ownerId: OwnerId;
                     /** @relation */
                     owner: Owner;
                 }`,
@@ -244,6 +247,23 @@ describe("generateSchema types", () => {
         });
 
         expect(sql).toContain('"ownerId" uuid not null references "owner"("id")');
+    });
+
+    it("emits one column for @relation and its declared id field, not two", () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Owner: "export interface Owner { id: GUID; }",
+                Thing: `export interface Thing {
+                    id: GUID;
+                    ownerId?: OwnerId;
+                    /** @relation */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(diagnostics).toEqual([]);
+        expect(sql.split('"ownerId"')).toHaveLength(2);
     });
 
     it("skips a child collection and emits no column for it", () => {
@@ -392,6 +412,40 @@ describe("generateSchema diagnostics", () => {
         });
 
         expect(messages(diagnostics)).toContain("`owner`: `Owner` is an entity; add @relation");
+    });
+
+    it("reports @relation without a matching id field", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Owner: "export interface Owner { id: GUID; }",
+                Thing: `export interface Thing {
+                    id: GUID;
+                    /** @relation */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual(["`owner`: @relation needs the `ownerId` field"]);
+    });
+
+    it("reports @relation whose id field references another table", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Owner: "export interface Owner { id: GUID; }",
+                Other: "export interface Other { id: GUID; }",
+                Thing: `export interface Thing {
+                    id: GUID;
+                    ownerId?: OtherId;
+                    /** @relation */
+                    owner?: Owner;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`owner`: @relation targets `owner`, but `ownerId` references `other`",
+        ]);
     });
 
     it("reports an array field without @children", () => {

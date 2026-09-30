@@ -182,7 +182,7 @@ describe("generateRepository", () => {
         expect(code).toContain("const values = [row.id, row.customer?.name];");
     });
 
-    it("reads a relation field through its id for an insert, and coalesces it for a patch", () => {
+    it("reads each column through its recorded accessor, and coalesces it for a patch", () => {
         const code = generateRepository(
             table("invoice", "Invoice", [
                 column("id", { sqlType: "uuid", primaryKey: true }),

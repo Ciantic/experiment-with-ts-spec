@@ -30,7 +30,7 @@ There is no query alias to write. The generator walks the entities and emits
 ```ts
 export function listInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
-    opts: Filters<Invoice, "id"> & { select: S },
+    opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
 ): Promise<Selected<Invoice, S>[]> {
     const { select, ...args } = opts;
     return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
@@ -38,7 +38,7 @@ export function listInvoice<S extends Selection<Invoice>>(
 
 export function getInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
-    opts: AtLeastOne<Filters<Invoice, "id">> & { select: S },
+    opts: AtLeastOne<Filters<Invoice, "id" | "customerId" | "sellerId">> & { select: S },
 ): Promise<Selected<Invoice, S> | undefined> {
     const { select, ...args } = opts;
     return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
@@ -98,8 +98,8 @@ named `id`; a generator reads the tag and never the name. Because the default is
 the only spelling, writing `@queryfilter` on `id` is a lint finding.
 
 A field without `@queryfilter` is not filterable. Branch fields
-(`@relation`/`@children`/`@inlined`) may not carry it; filtering by a relation is
-not implemented.
+(`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
+through its `<field>Id` field, which is a scalar like any other.
 
 ### Filters are sets, combined with `and`
 
@@ -230,9 +230,11 @@ rows:     { kind: "children", table: "invoice_row", column: "invoiceId" }
 snapshot: { kind: "inlined", table: "customer", columns: { name: "customerName" } }
 ```
 
-Relation and inlined columns are excluded from the table's selectable `fields`;
-they are reached through their branch. A scalar foreign key such as
-`InvoiceRow.invoiceId` stays a field, because it is a real spec field.
+Relation and inlined columns are not the same here. Inlined columns are excluded
+from the table's selectable `fields`, because the spec never declares them. A
+relation's foreign key *is* excluded from nothing: it is the `<field>Id` field
+the interface declares, so `Invoice.customerId` is a selectable field and — with
+`@queryfilter` — an ordinary filter. `InvoiceRow.invoiceId` is the same thing.
 
 ## The resolver reads one query per branch
 
@@ -250,11 +252,11 @@ all parents at that level; nested branches recurse the same way, one query per
 branch per level. The resolver holds no domain knowledge — it only reads
 `queryModel`, so a new entity and `@queryfilter` field need no resolver change.
 
-Arguments filter by set membership: the generated filters are scalar fields
-(`id`), and the resolver also accepts a relation's foreign-key column
-(`customerId`) if a future annotation emits one. An unknown filter field throws
-rather than silently dropping a clause, as does a non-array value. `String`,
-`Date`, and `decimal` values pass through unchanged.
+Arguments filter by set membership: the generated filters are the scalar fields
+that carry `@queryfilter` (plus `id`), and a relation's `<field>Id` field is one
+of them. An unknown filter field throws rather than silently dropping a clause,
+as does a non-array value. `String`, `Date`, and `decimal` values pass through
+unchanged.
 
 A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
@@ -315,8 +317,9 @@ middle ground if the args logic grows past equality.
 ## Deliberately not implemented
 
 - **Set and range filters.** Set membership only; see the gotcha above.
-- **Relation filters.** `@queryfilter` is scalar-only, so `listInvoice` cannot
-  filter by a relation's foreign key today.
+- **Filters on a branch.** `@queryfilter` is scalar-only, so `listInvoice`
+  cannot filter on a related record's columns, such as `customer.name`. The
+  foreign key is a scalar field, so `customerId` is filterable.
 - **A row at most, not exactly one.** `resolveOne` fetches every match and takes
   the first; a `limit 1` would need a per-read contract the generator does not
   have.

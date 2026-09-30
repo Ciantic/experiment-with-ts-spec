@@ -27,6 +27,8 @@ export const queryModel: QueryModel = {
             "fields": {
                 "id": "id",
                 "number": "number",
+                "customerId": "customerId",
+                "sellerId": "sellerId",
                 "language": "language",
                 "issueDate": "issueDate",
                 "dueDate": "dueDate",

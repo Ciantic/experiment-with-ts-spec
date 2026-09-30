@@ -2,9 +2,9 @@ import type { BrandedId } from "../primitives/BrandedId.js";
 import type { Language } from "../primitives/Language.js";
 import type { Money } from "../primitives/Money.js";
 import type { Version } from "../primitives/Version.js";
-import type { Customer } from "./Customer.js";
+import type { Customer, CustomerId } from "./Customer.js";
 import type { InvoiceRow } from "./InvoiceRow.js";
-import type { Seller } from "./Seller.js";
+import type { Seller, SellerId } from "./Seller.js";
 
 /** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;
@@ -42,6 +42,16 @@ export interface Invoice {
     number?: string;
 
     /**
+     * The identifier of the customer this invoice is issued to.
+     * 
+     * @fieldName Customer ID
+     * @queryfilter
+     * @generated
+     * @widget text
+     */
+    customerId?: CustomerId;
+
+    /**
      * The customer this invoice is issued to.
      * 
      * @fieldName Customer
@@ -49,6 +59,16 @@ export interface Invoice {
      * @widget select
      */
     customer?: Customer;
+
+    /**
+     * The identifier of the seller this invoice is issued by.
+     * 
+     * @fieldName Seller ID
+     * @queryfilter
+     * @generated
+     * @widget text
+     */
+    sellerId?: SellerId;
 
     /**
      * The seller this invoice is issued by.
