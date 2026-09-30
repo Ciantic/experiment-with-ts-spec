@@ -1,8 +1,8 @@
 /** Unit tests for the server route renderer, driven by self-contained fixtures. See docs/testing.md. */
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.js";
-import { buildRestModel } from "./rest-model.js";
-import { renderRoutesModule } from "./generate-rest-api.js";
+import type { Column, Table } from "./postgres-model.ts";
+import { buildRestModel } from "./rest-model.ts";
+import { renderRoutesModule } from "./generate-rest-api.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
@@ -12,7 +12,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.js`,
+        importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations: new Map(),
         sameRowAssignments: [],
@@ -40,7 +40,7 @@ describe("renderRoutesModule", () => {
     it("emits a typed route table", () => {
         const code = render();
 
-        expect(code).toContain('import type { Route } from "./router.js";');
+        expect(code).toContain('import type { Route } from "./router.ts";');
         expect(code).toContain("export const routes: Route[] = [");
     });
 
@@ -87,9 +87,9 @@ describe("renderRoutesModule", () => {
     it("imports every generated piece from its barrel", () => {
         const code = render();
 
-        expect(code).toContain('from "../db/queries/index.js"');
-        expect(code).toContain('from "../db/repositories/index.js"');
-        expect(code).toContain('from "../validation/index.js"');
+        expect(code).toContain('from "../db/queries/index.ts"');
+        expect(code).toContain('from "../db/repositories/index.ts"');
+        expect(code).toContain('from "../validation/index.ts"');
     });
 
     it("emits no getter for an entity that cannot name a row", () => {
@@ -102,7 +102,7 @@ describe("renderRoutesModule", () => {
     });
 
     it("names every import once, sorted", () => {
-        const queries = render().match(/import \{ ([^}]+) \} from "\.\.\/db\/queries\/index\.js"/)?.[1] ?? "";
+        const queries = render().match(/import \{ ([^}]+) \} from "\.\.\/db\/queries\/index\.ts"/)?.[1] ?? "";
         const names = queries.split(", ");
 
         expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));

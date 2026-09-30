@@ -47,9 +47,9 @@ values, all of which are domain decisions rather than code behaviour.
 
 - **Do not import the real spec into a unit test.** Use an in-memory project with
   a fixture glob, or the test becomes a domain test by accident.
-- **Node cannot resolve `.js` specifiers to `.ts`.** Scripts run by plain `node`
-  must read `packages/spec/` with ts-morph instead of importing it. Vitest resolves `.js`
-  to `.ts` fine, so this only affects the scripts.
+- **Name the real file extension in imports.** `node` runs the TypeScript
+  directly and resolves only `.ts` specifiers; `allowImportingTsExtensions` lets
+  TypeScript accept them, and Vitest resolves them too.
 - **Tag placement matters in fixtures.** JSDoc on the same line as a field is not
   attached to the node. Inline `/** @unique */ f: string;` is silently ignored;
   it must be its own line.

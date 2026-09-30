@@ -1,10 +1,10 @@
-import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Money } from "../primitives/Money.js";
-import type { Quantity } from "../primitives/Quantity.js";
-import type { TaxRate } from "../primitives/TaxRate.js";
-import type { Unit } from "../primitives/Unit.js";
-import type { Version } from "../primitives/Version.js";
-import type { InvoiceId } from "./Invoice.js";
+import type { BrandedId } from "../primitives/BrandedId.ts";
+import type { Money } from "../primitives/Money.ts";
+import type { Quantity } from "../primitives/Quantity.ts";
+import type { TaxRate } from "../primitives/TaxRate.ts";
+import type { Unit } from "../primitives/Unit.ts";
+import type { Version } from "../primitives/Version.ts";
+import type { InvoiceId } from "./Invoice.ts";
 
 /** The unique identifier for an invoice row. */
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;

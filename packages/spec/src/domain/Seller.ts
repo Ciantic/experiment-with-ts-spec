@@ -1,8 +1,8 @@
-import type { BrandedId } from "../primitives/BrandedId.js";
-import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.js";
-import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.js";
-import type { Language } from "../primitives/Language.js";
-import type { Version } from "../primitives/Version.js";
+import type { BrandedId } from "../primitives/BrandedId.ts";
+import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.ts";
+import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.ts";
+import type { Language } from "../primitives/Language.ts";
+import type { Version } from "../primitives/Version.ts";
 
 /** The unique identifier for a seller. */
 export type SellerId = BrandedId<"SellerId">;

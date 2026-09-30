@@ -6,7 +6,7 @@
  * server's route table and `generate-rest-client.ts` into the SDK, so neither
  * generator may re-derive a path. See docs/rest-api.md.
  */
-import { lowerFirst } from "spec/scripts/spec-model.js";
+import { lowerFirst } from "spec/scripts/spec-model.ts";
 import type { Table } from "./postgres-model.ts";
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
@@ -32,7 +32,7 @@ export interface RestEntity {
     entity: string;
     /** The lower-cased module name, e.g. `invoice`. */
     module: string;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.js`. */
+    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
     /** The collection path, e.g. `/invoice`, taken from the `@table` name. */
     path: string;

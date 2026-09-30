@@ -6,9 +6,9 @@
  */
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { SqlExecutor } from "../db/sql-executor.js";
-import { routes } from "./routes.js";
-import { createRouter, type HttpResponse } from "./router.js";
+import type { SqlExecutor } from "../db/sql-executor.ts";
+import { routes } from "./routes.ts";
+import { createRouter, type HttpResponse } from "./router.ts";
 
 /** The largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000;

@@ -11,7 +11,7 @@ import {
     parseSpec,
     type Diagnostic,
     type SpecInterface,
-} from "spec/scripts/spec-model.js";
+} from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
 

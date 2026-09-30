@@ -1,7 +1,7 @@
 /** Unit tests for generateSchema, driven by self-contained fixtures. */
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { generateSchema, type Diagnostic } from "./generate-postgres-schema.js";
+import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
 const FORMULAS_FILE = "fixtures/postgres/formulas.ts";

@@ -1,11 +1,11 @@
 /** Unit tests for the query generator, driven by self-contained fixtures. See docs/testing.md. */
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.js";
+import type { Column, Table } from "./postgres-model.ts";
 import {
     buildQueryModel,
     generateQueries,
     renderQueryModule,
-} from "./generate-queries.js";
+} from "./generate-queries.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
@@ -20,7 +20,7 @@ function table(
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.js`,
+        importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations,
         sameRowAssignments: [],
@@ -150,8 +150,8 @@ describe("generateQueries", () => {
     it("re-exports every module from the barrel", () => {
         const code = generateQueries(tables).get("index.ts") ?? "";
 
-        expect(code).toContain('export * from "./model.js";');
-        expect(code).toContain('export * from "./invoiceQueries.js";');
-        expect(code).toContain('export * from "./sellerQueries.js";');
+        expect(code).toContain('export * from "./model.ts";');
+        expect(code).toContain('export * from "./invoiceQueries.ts";');
+        expect(code).toContain('export * from "./sellerQueries.ts";');
     });
 });

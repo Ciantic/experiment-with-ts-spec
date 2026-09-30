@@ -132,7 +132,7 @@ export interface SpecInterface {
     /** The `@table` value, or the snake_cased interface name. */
     tableName: string;
     filePath: string;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.js`. */
+    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
     declaration: InterfaceDeclaration;
     properties: SpecProperty[];
@@ -181,7 +181,7 @@ export function lowerFirst(name: string): string {
 
 /** The module specifier that imports a spec source file, honouring the package's exports map. */
 export function specImportSpecifier(sourceFile: string): string {
-    const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile).replace(/\.ts$/, ".js");
+    const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile);
     return `spec/${relativeToSrc}`;
 }
 

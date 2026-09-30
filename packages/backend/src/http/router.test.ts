@@ -1,8 +1,8 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
 import { parse as decode, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import type { SqlExecutor } from "../db/sql-executor.js";
-import { createRouter, type Route, type RouteInput } from "./router.js";
+import type { SqlExecutor } from "../db/sql-executor.ts";
+import { createRouter, type Route, type RouteInput } from "./router.ts";
 
 /** A schema stand-in that accepts any argument; the router test is not about Zod. */
 const accepts: RouteInput = {

@@ -112,7 +112,7 @@ export function generateRepository(table: Table): string {
     const lines: string[] = [];
     lines.push(HEADER);
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
-    lines.push('import type { SqlExecutor } from "../sql-executor.js";');
+    lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push("");
     lines.push(requiredComment);
     lines.push(`export type ${entity}Patch = Partial<${entity}> & Required<Pick<${entity}, ${requiredKeys}>>;`);
@@ -148,7 +148,7 @@ export function generateRepository(table: Table): string {
 export function generateIndex(tables: Table[]): string {
     const lines = [HEADER];
     for (const table of [...tables].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName))) {
-        lines.push(`export * from "./${fileName(table.interfaceName).replace(/\.ts$/, ".js")}";`);
+        lines.push(`export * from "./${fileName(table.interfaceName)}";`);
     }
     return lines.join("\n") + "\n";
 }

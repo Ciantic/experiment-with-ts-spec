@@ -1,5 +1,5 @@
 import type { $brand } from "zod";
-import type { Decimal } from "./Decimal.js";
+import type { Decimal } from "./Decimal.ts";
 
 /**
  * A count of units. A `Decimal` refined with its own brand. See docs/primitives.md.

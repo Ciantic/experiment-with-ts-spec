@@ -7,7 +7,7 @@
  * and a response carry real `Date` and `bigint` values and need no wire schema.
  */
 import { parse as decode, stringify as encode } from "devalue";
-import type { SqlExecutor } from "../db/sql-executor.js";
+import type { SqlExecutor } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";

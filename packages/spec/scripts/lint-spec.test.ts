@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { lintProject, lintSourceText, readFormulaNames, type Finding } from "./lint-spec.js";
+import { lintProject, lintSourceText, readFormulaNames, type Finding } from "./lint-spec.ts";
 
 /** The real union types, so `formula=` checks resolve as they do in the CLI. */
 function realFormulaNames(): Set<string> {

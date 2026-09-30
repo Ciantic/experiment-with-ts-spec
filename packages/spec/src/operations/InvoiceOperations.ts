@@ -1,7 +1,7 @@
-import type { Invoice } from "../domain/Invoice.js";
-import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.js";
-import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.js";
-import type { Language } from "../primitives/Language.js";
+import type { Invoice } from "../domain/Invoice.ts";
+import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.ts";
+import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.ts";
+import type { Language } from "../primitives/Language.ts";
 
 /**
  * An electronic invoice serialization format: these known formats plus any

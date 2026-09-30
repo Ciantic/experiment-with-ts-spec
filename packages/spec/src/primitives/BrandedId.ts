@@ -1,5 +1,5 @@
 import type { $brand } from "zod";
-import type { GUID } from "./GUID.js";
+import type { GUID } from "./GUID.ts";
 
 /**
  * A GUID that is nominally distinct for each `Name`. See docs/primitives.md.

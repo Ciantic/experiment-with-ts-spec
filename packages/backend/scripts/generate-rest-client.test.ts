@@ -8,10 +8,10 @@
  * cannot disagree about the wire.
  */
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.js";
-import { buildRestModel } from "./rest-model.js";
-import { generateRestClient, renderClientModule } from "./generate-rest-client.js";
-import { renderRoutesModule } from "./generate-rest-api.js";
+import type { Column, Table } from "./postgres-model.ts";
+import { buildRestModel } from "./rest-model.ts";
+import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
+import { renderRoutesModule } from "./generate-rest-api.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
@@ -21,7 +21,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.js`,
+        importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations: new Map(),
         sameRowAssignments: [],
@@ -121,8 +121,8 @@ describe("generateRestClient", () => {
     it("re-exports the transport and every entity from the barrel", () => {
         const files = generateRestClient(model);
 
-        expect(files.get("index.ts")).toContain('export * from "./http.js";');
-        expect(files.get("index.ts")).toContain('export * from "./widget.js";');
+        expect(files.get("index.ts")).toContain('export * from "./http.ts";');
+        expect(files.get("index.ts")).toContain('export * from "./widget.ts";');
         expect(files.has("widget.ts")).toBe(true);
     });
 

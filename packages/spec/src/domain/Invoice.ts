@@ -1,10 +1,10 @@
-import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Language } from "../primitives/Language.js";
-import type { Money } from "../primitives/Money.js";
-import type { Version } from "../primitives/Version.js";
-import type { Customer, CustomerId } from "./Customer.js";
-import type { InvoiceRow } from "./InvoiceRow.js";
-import type { Seller, SellerId } from "./Seller.js";
+import type { BrandedId } from "../primitives/BrandedId.ts";
+import type { Language } from "../primitives/Language.ts";
+import type { Money } from "../primitives/Money.ts";
+import type { Version } from "../primitives/Version.ts";
+import type { Customer, CustomerId } from "./Customer.ts";
+import type { InvoiceRow } from "./InvoiceRow.ts";
+import type { Seller, SellerId } from "./Seller.ts";
 
 /** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;

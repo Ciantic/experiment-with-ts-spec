@@ -25,6 +25,10 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
+
+    // Nothing is emitted: node runs the TypeScript directly, so `.ts` specifiers are allowed.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
   },
   // The root holds no sources; packages own their file lists.
   "files": []

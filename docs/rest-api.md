@@ -90,7 +90,7 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `../validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.js` | `spec/*` and `./http.js` |
+| May import | `../validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*` and `./http.ts` |
 | Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the

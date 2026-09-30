@@ -6,7 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Project } from "ts-morph";
-import { lowerFirst } from "spec/scripts/spec-model.js";
+import { lowerFirst } from "spec/scripts/spec-model.ts";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
@@ -83,7 +83,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
 /** Render the metadata module the resolver is constructed with. */
 export function renderQueryModelModule(model: QueryModelData): string {
     const lines: string[] = [HEADER];
-    lines.push('import type { QueryModel } from "../resolvers.js";');
+    lines.push('import type { QueryModel } from "../resolvers.ts";');
     lines.push("");
     lines.push(`export const queryModel: QueryModel = ${JSON.stringify(model, null, 4)};`);
     return lines.join("\n") + "\n";
@@ -106,12 +106,12 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     lines.push(
         filters.length > 0
-            ? 'import type { AtLeastOne, Filters, Selection, Selected } from "../selection.js";'
-            : 'import type { Selection, Selected } from "../selection.js";',
+            ? 'import type { AtLeastOne, Filters, Selection, Selected } from "../selection.ts";'
+            : 'import type { Selection, Selected } from "../selection.ts";',
     );
-    lines.push('import type { SqlExecutor } from "../sql-executor.js";');
-    lines.push('import { createResolver } from "../resolvers.js";');
-    lines.push('import { queryModel } from "./model.js";');
+    lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
+    lines.push('import { createResolver } from "../resolvers.ts";');
+    lines.push('import { queryModel } from "./model.ts";');
     lines.push("");
     lines.push("const resolver = createResolver(queryModel);");
     lines.push("");
@@ -158,9 +158,9 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
     }
 
-    const lines = [HEADER, `export * from "./${MODEL_FILE.replace(/\.ts$/, ".js")}";`];
+    const lines = [HEADER, `export * from "./${MODEL_FILE}";`];
     for (const table of entities) {
-        lines.push(`export * from "./${queryFileName(table.interfaceName).replace(/\.ts$/, ".js")}";`);
+        lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
     }
     files.set(INDEX_FILE, lines.join("\n") + "\n");
     return files;

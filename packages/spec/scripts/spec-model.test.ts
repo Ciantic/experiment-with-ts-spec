@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, parseSpec, readTags } from "./spec-model.js";
+import { SPEC_SRC_ROOT, parseSpec, readTags } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -33,7 +33,7 @@ describe("parseSpec interfaces", () => {
     it("maps a source file back to its package import specifier", () => {
         const { interfaces } = parse({ "Thing.ts": "export interface Thing { id: string; }" });
 
-        expect(interfaces.get("Thing")?.importSpecifier).toBe("spec/fixtures/Thing.js");
+        expect(interfaces.get("Thing")?.importSpecifier).toBe("spec/fixtures/Thing.ts");
     });
 
     it("collects the interface's properties with their option flags", () => {

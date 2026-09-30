@@ -67,7 +67,7 @@ function messages(diagnostics: Diagnostic[]): string[] {
 
 /** A field that resolves to an entity, a primitive, and an open-union alias. */
 const THING = `
-import type { BrandedId } from "./primitives.js";
+import type { BrandedId } from "./primitives.ts";
 
 /** The identifier of a thing. */
 export type ThingId = BrandedId<"ThingId">;
@@ -193,7 +193,7 @@ describe("generateEntity", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("thing.ts") ?? "";
 
-        expect(code).toContain('import * as primitives from "./primitives.js";');
+        expect(code).toContain('import * as primitives from "./primitives.ts";');
         expect(code).toContain('id: primitives.brandedIdSchema<"ThingId">(),');
         expect(code).toContain("amount: primitives.moneySchema.optional(),");
     });
@@ -210,8 +210,8 @@ describe("generateEntity", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("thing.ts") ?? "";
 
-        expect(code).toContain('import { childSchema, childSelectSchema } from "./child.js";');
-        expect(code).toContain('import { parentSchema, parentSelectSchema } from "./parent.js";');
+        expect(code).toContain('import { childSchema, childSelectSchema } from "./child.ts";');
+        expect(code).toContain('import { parentSchema, parentSelectSchema } from "./parent.ts";');
         expect(code).toContain("children: z.array(z.lazy(() => childSchema)).optional(),");
         expect(code).toContain("parent: z.lazy(() => parentSchema).optional(),");
     });
@@ -235,7 +235,7 @@ describe("generateEntity", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("thing.ts") ?? "";
 
-        expect(code).not.toContain('from "./thing.js"');
+        expect(code).not.toContain('from "./thing.ts"');
     });
 
     it("emits a select schema that takes `true` for a scalar", () => {
@@ -264,9 +264,9 @@ describe("generateIndex", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("index.ts") ?? "";
 
-        expect(code).toContain('export * from "./primitives.js";');
-        expect(code).toContain('export * from "./child.js";');
-        expect(code).toContain('export * from "./thing.js";');
+        expect(code).toContain('export * from "./primitives.ts";');
+        expect(code).toContain('export * from "./child.ts";');
+        expect(code).toContain('export * from "./thing.ts";');
     });
 });
 
@@ -338,7 +338,7 @@ describe("generateQueryFile", () => {
         expect(code).toContain("export const listThingSchema = z.strictObject({");
         expect(code).toContain('    id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
         expect(code).toContain("    select: thingSelectSchema,");
-        expect(code).toContain('import { thingSelectSchema } from "../thing.js";');
+        expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
 
     it("emits a get schema that requires at least one filter", () => {
@@ -364,21 +364,21 @@ describe("generateQueryFile", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get(join("queries", "thingQueries.ts")) ?? "";
 
-        expect(code).toContain('import * as primitives from "../primitives.js";');
+        expect(code).toContain('import * as primitives from "../primitives.ts";');
     });
 
     it("re-exports every query file from a barrel", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get(join("queries", "index.ts")) ?? "";
 
-        expect(code).toContain('export * from "./thingQueries.js";');
+        expect(code).toContain('export * from "./thingQueries.ts";');
     });
 
     it("re-exports the queries barrel from the root index", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get("index.ts") ?? "";
 
-        expect(code).toContain('export * from "./queries/index.js";');
+        expect(code).toContain('export * from "./queries/index.ts";');
     });
 
     it("evaluates to a working args schema", () => {
@@ -396,10 +396,10 @@ describe("generateQueryFile", () => {
             if (id === "zod") {
                 return { z };
             }
-            if (id === "../primitives.js") {
+            if (id === "../primitives.ts") {
                 return { brandedIdSchema: () => z.string() };
             }
-            if (id === "../thing.js") {
+            if (id === "../thing.ts") {
                 return { thingSelectSchema: z.strictObject({}) };
             }
             return require(id);
@@ -427,7 +427,7 @@ describe("select schemas", () => {
             if (id === "zod") {
                 return { z };
             }
-            if (id === "./primitives.js") {
+            if (id === "./primitives.ts") {
                 return {
                     brandedIdSchema: () => scalar,
                     moneySchema: scalar,
@@ -435,7 +435,7 @@ describe("select schemas", () => {
                     languageSchema: scalar,
                 };
             }
-            if (id === "./child.js" || id === "./parent.js") {
+            if (id === "./child.ts" || id === "./parent.ts") {
                 return {
                     childSchema: z.object({}),
                     parentSchema: z.object({}),

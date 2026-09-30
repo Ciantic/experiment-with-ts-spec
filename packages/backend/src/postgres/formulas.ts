@@ -1,7 +1,7 @@
 // Postgres fragments for `@computed` columns. See docs/spec-annotations.md.
-import type { InvoiceFormula } from "spec/domain/Invoice.js";
-import type { RowFormula } from "spec/domain/InvoiceRow.js";
-import type { TimestampFormula } from "spec/domain/Timestamp.js";
+import type { InvoiceFormula } from "spec/domain/Invoice.ts";
+import type { RowFormula } from "spec/domain/InvoiceRow.ts";
+import type { TimestampFormula } from "spec/domain/Timestamp.ts";
 
 /** Same-row expressions for `invoice_row`, assigned in this order. See docs/schema-generation.md. */
 export const rowFormulas: Record<RowFormula, string> = {

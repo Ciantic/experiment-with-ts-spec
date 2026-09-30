@@ -1,7 +1,7 @@
 /** Unit tests for the REST model, driven by self-contained fixtures. See docs/testing.md. */
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.js";
-import { buildRestModel } from "./rest-model.js";
+import type { Column, Table } from "./postgres-model.ts";
+import { buildRestModel } from "./rest-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
@@ -11,7 +11,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.js`,
+        importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations: new Map(),
         sameRowAssignments: [],
@@ -44,7 +44,7 @@ describe("buildRestModel", () => {
 
         expect(widget?.path).toBe("/widget");
         expect(widget?.module).toBe("widget");
-        expect(widget?.importSpecifier).toBe("spec/domain/Widget.js");
+        expect(widget?.importSpecifier).toBe("spec/domain/Widget.ts");
     });
 
     it("exposes a read, a write, and a delete for every entity", () => {

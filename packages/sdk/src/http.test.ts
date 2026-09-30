@@ -1,7 +1,7 @@
 /** Unit tests for the hand-written transport, over a stub `fetch`. See docs/testing.md. */
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import { createHttpClient, HttpError } from "./http.js";
+import { createHttpClient, HttpError } from "./http.ts";
 
 interface Recorded {
     url: string;

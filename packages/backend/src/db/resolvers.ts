@@ -5,8 +5,8 @@
  * into SQL. A branch costs one extra query, batched over every parent — there is
  * no JSON aggregation.
  */
-import type { Selection, Selected } from "./selection.js";
-import type { SqlExecutor } from "./sql-executor.js";
+import type { Selection, Selected } from "./selection.ts";
+import type { SqlExecutor } from "./sql-executor.ts";
 
 /** How a branch field of a table reaches another table. */
 export interface QueryRelation {

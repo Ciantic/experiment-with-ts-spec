@@ -259,9 +259,8 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 `packages/backend/scripts/generate-postgres-schema.ts` implements steps 2 and 3
 for `storage=stored`. See `docs/schema-generation.md`.
 
-It reads `packages/backend/src/postgres/formulas.ts` with ts-morph rather than importing it, because
-the spec imports use `.js` extensions that plain `node` cannot resolve to `.ts`
-files.
+It reads `packages/backend/src/postgres/formulas.ts` with ts-morph rather than importing it, so the
+generator reads the registries as data and never executes backend code.
 
 ## Saying what, not how
 

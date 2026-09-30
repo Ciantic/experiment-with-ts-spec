@@ -1,5 +1,5 @@
 import type { $brand } from "zod";
-import type { Decimal } from "./Decimal.js";
+import type { Decimal } from "./Decimal.ts";
 
 /**
  * A tax rate as a fraction, so 25.5% is "0.255". See docs/primitives.md.

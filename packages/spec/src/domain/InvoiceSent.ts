@@ -1,10 +1,10 @@
-import type { BrandedId } from "../primitives/BrandedId.js";
-import type { Language } from "../primitives/Language.js";
-import type { Money } from "../primitives/Money.js";
-import type { Customer } from "./Customer.js";
-import type { InvoiceId } from "./Invoice.js";
-import type { InvoiceSentRow } from "./InvoiceSentRow.js";
-import type { Seller } from "./Seller.js";
+import type { BrandedId } from "../primitives/BrandedId.ts";
+import type { Language } from "../primitives/Language.ts";
+import type { Money } from "../primitives/Money.ts";
+import type { Customer } from "./Customer.ts";
+import type { InvoiceId } from "./Invoice.ts";
+import type { InvoiceSentRow } from "./InvoiceSentRow.ts";
+import type { Seller } from "./Seller.ts";
 
 /** The unique identifier for a sent invoice. */
 export type InvoiceSentId = BrandedId<"InvoiceSentId">;

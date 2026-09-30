@@ -1,8 +1,8 @@
 /** Unit tests for the read resolver, driven by hand-built metadata and PGlite. See docs/testing.md. */
 import { beforeAll, describe, expect, it } from "vitest";
-import { createPglite } from "../postgres/pglite-setup.js";
-import type { SqlExecutor } from "./sql-executor.js";
-import { createResolver, type QueryModel } from "./resolvers.js";
+import { createPglite } from "../postgres/pglite-setup.ts";
+import type { SqlExecutor } from "./sql-executor.ts";
+import { createResolver, type QueryModel } from "./resolvers.ts";
 
 /** Fixture entities, so the tests do not read the real spec. */
 interface Customer {

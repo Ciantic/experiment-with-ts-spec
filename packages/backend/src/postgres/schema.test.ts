@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteParsers } from "./pglite-setup.js";
+import { createPgliteParsers } from "./pglite-setup.ts";
 
 const sql = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
 
