@@ -209,6 +209,9 @@ importers:
 
   packages/backend:
     dependencies:
+      devalue:
+        specifier: ^5.3.2
+        version: 5.9.4
       spec:
         specifier: workspace:*
         version: link:../spec
@@ -225,6 +228,22 @@ importers:
       ts-morph:
         specifier: ^28.0.0
         version: 28.0.0
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
+
+  packages/sdk:
+    dependencies:
+      devalue:
+        specifier: ^5.3.2
+        version: 5.9.4
+      spec:
+        specifier: workspace:*
+        version: link:../spec
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
@@ -413,6 +432,9 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
+
+  devalue@5.9.4:
+    resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -769,6 +791,8 @@ snapshots:
   code-block-writer@13.0.3: {}
 
   detect-libc@2.1.2: {}
+
+  devalue@5.9.4: {}
 
   es-module-lexer@2.3.2: {}
 

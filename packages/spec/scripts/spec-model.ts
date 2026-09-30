@@ -169,6 +169,16 @@ export function snakeCase(name: string): string {
     return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
+/** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
+export function lowerFirst(name: string): string {
+    // A leading run of capitals is an acronym: lowercase all of it, not just the first letter.
+    const acronym = name.match(/^[A-Z]+(?=[A-Z][a-z]|$)/);
+    if (acronym) {
+        return acronym[0].toLowerCase() + name.slice(acronym[0].length);
+    }
+    return name.charAt(0).toLowerCase() + name.slice(1);
+}
+
 /** The module specifier that imports a spec source file, honouring the package's exports map. */
 export function specImportSpecifier(sourceFile: string): string {
     const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile).replace(/\.ts$/, ".js");

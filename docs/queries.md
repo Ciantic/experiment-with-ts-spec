@@ -6,9 +6,10 @@ a matching `get<Entity>`. A generator emits the typed functions and the physical
 model; one hand-written resolver turns a selection into SQL. See "Why the
 resolver is hand-written".
 
-- `packages/backend/src/db/selection.ts` — `Selection`/`Selected` (the
+- `packages/spec/src/selection.ts` — `Selection`/`Selected` (the
   column-limiting types) and `Filters`/`AtLeastOne` (the filter arguments).
-  Hand-written.
+  Hand-written. It sits in the spec because the generated REST client shares it;
+  `packages/backend/src/db/selection.ts` re-exports it. See `docs/rest-api.md`.
 - `packages/backend/scripts/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `<entity>Queries.ts` (a `list<Entity>` and maybe a `get<Entity>` per entity),
@@ -295,9 +296,11 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
   `InvoiceRow.invoiceId` is a scalar alias, not a `@relation`, so today's
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
-- **`selection.ts` is backend-only.** The spec no longer carries read types; the
-  resolver and the generated modules import `Selection`/`Selected` from
-  `packages/backend/src/db/selection.ts`.
+- **The read types are in the spec, the reader is not.** `Selection`,
+  `Selected`, `Filters`, and `AtLeastOne` are pure types with no query in them, so
+  they live in `packages/spec/src/selection.ts` and both the backend and the
+  generated REST client import them from there. The SQL, the resolver, and the
+  metadata stay in the backend.
 
 ## Why the resolver is hand-written
 

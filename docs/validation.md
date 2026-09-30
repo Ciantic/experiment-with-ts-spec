@@ -122,7 +122,7 @@ pulling in a write schema, and `--out` still writes below the given directory.
 `select` is not a fixed shape: a caller picks any subset of fields and nests
 into branches. So it is validated against a generated per-entity schema,
 `<name>SelectSchema`, that mirrors `Selection<E>` in
-`packages/backend/src/db/selection.ts`:
+`packages/spec/src/selection.ts`:
 
 ```typescript
 export const invoiceSelectSchema = z.lazy(() =>

@@ -14,7 +14,8 @@ runs, in order:
 1. `pnpm run lint` — the linters. Today that is `lint:spec`, which validates the
    `@` annotations in `packages/spec/`.
 2. `pnpm run generate` — `generate:schema`, `generate:repositories`,
-   `generate:queries`, and `generate:validation` in `packages/backend`.
+   `generate:queries`, `generate:validation`, `generate:rest-api`, and
+   `generate:rest-client` in `packages/backend`.
 3. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -38,11 +39,15 @@ The order is load-bearing:
   input.
 
 `pnpm run generate` runs the schema generator before the repository generator,
-then the query generator, and the validation generator last. All of them read the
+then the query generator, the validation generator, and the two REST generators
+last. All of them read the
 spec through `packages/spec/scripts/spec-model.ts`: the backend maps it to columns
 in `packages/backend/scripts/postgres-model.ts`, the query generator reads the
 `@queryfilter` annotations, and the validation generator maps it to Zod schemas in
-`packages/backend/scripts/zod-model.ts`. None reads another's output, so the
+`packages/backend/scripts/zod-model.ts`. The REST pair shares
+`packages/backend/scripts/rest-model.ts`, and the API generator references the
+validation schemas by name, which is why it runs after them. None reads another's
+output, so the
 order between them is presentational — it mirrors the order the artifacts appear
 in the repository.
 

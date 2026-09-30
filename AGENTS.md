@@ -2,6 +2,7 @@
 
 - `packages/spec/` — TypeScript interfaces that form the definition of the application.
 - `packages/backend/` — Postgres schema, generated repositories, result mapping, and generated Zod schemas for the spec.
+- `packages/sdk/` — generated type-safe REST client, plus the hand-written transport.
 
 # Scripts
 

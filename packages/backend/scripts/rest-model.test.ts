@@ -1,0 +1,122 @@
+/** Unit tests for the REST model, driven by self-contained fixtures. See docs/testing.md. */
+import { describe, expect, it } from "vitest";
+import type { Column, Table } from "./postgres-model.js";
+import { buildRestModel } from "./rest-model.js";
+
+function column(name: string, extras: Partial<Column> = {}): Column {
+    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
+}
+
+function table(name: string, interfaceName: string, columns: Column[]): Table {
+    return {
+        name,
+        interfaceName,
+        importSpecifier: `spec/domain/${interfaceName}.js`,
+        columns,
+        relations: new Map(),
+        sameRowAssignments: [],
+        rollups: new Map(),
+    };
+}
+
+const filterable = table("widget", "Widget", [
+    column("id", { primaryKey: true, queryFilter: true }),
+    column("size", { queryFilter: true }),
+    column("version", { version: true }),
+]);
+
+const unfilterable = table("marker", "Marker", [column("id", { primaryKey: true })]);
+
+const tables = new Map([
+    ["Widget", filterable],
+    ["Marker", unfilterable],
+]);
+
+describe("buildRestModel", () => {
+    it("keys every entity by its interface name and orders them", () => {
+        const model = buildRestModel(tables);
+
+        expect(model.entities.map((entity) => entity.entity)).toEqual(["Marker", "Widget"]);
+    });
+
+    it("takes the collection path from the table name", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+
+        expect(widget?.path).toBe("/widget");
+        expect(widget?.module).toBe("widget");
+        expect(widget?.importSpecifier).toBe("spec/domain/Widget.js");
+    });
+
+    it("exposes a read, a write, and a delete for every entity", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+
+        expect(widget?.operations.map((operation) => operation.kind)).toEqual([
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete",
+        ]);
+    });
+
+    it("reads with GET and writes with the method each call means", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+
+        expect(widget?.operations).toContainEqual({
+            kind: "list",
+            method: "GET",
+            path: "/widget/query",
+            source: "query",
+        });
+        expect(widget?.operations).toContainEqual({
+            kind: "get",
+            method: "GET",
+            path: "/widget/get",
+            source: "query",
+        });
+        expect(widget?.operations).toContainEqual({
+            kind: "create",
+            method: "POST",
+            path: "/widget",
+            source: "body",
+        });
+        expect(widget?.operations).toContainEqual({
+            kind: "update",
+            method: "PATCH",
+            path: "/widget",
+            source: "body",
+        });
+        expect(widget?.operations).toContainEqual({
+            kind: "delete",
+            method: "DELETE",
+            path: "/widget",
+            source: "query",
+        });
+    });
+
+    it("encodes every call that carries no row data into the query string", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+        const byKind = new Map(widget?.operations.map((operation) => [operation.kind, operation]));
+
+        expect(byKind.get("list")?.source).toBe("query");
+        expect(byKind.get("get")?.source).toBe("query");
+        expect(byKind.get("delete")?.source).toBe("query");
+        expect(byKind.get("create")?.source).toBe("body");
+        expect(byKind.get("update")?.source).toBe("body");
+    });
+
+    it("omits the getter when nothing can name a row", () => {
+        const marker = buildRestModel(tables).entities.find((entity) => entity.entity === "Marker");
+
+        expect(marker?.filters).toEqual([]);
+        expect(marker?.operations.map((operation) => operation.kind)).not.toContain("get");
+    });
+
+    it("records the filter fields, the key, and the version fields", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+
+        expect(widget?.filters).toEqual(["id", "size"]);
+        expect(widget?.key).toBe("id");
+        expect(widget?.versionFields).toEqual(["version"]);
+    });
+});

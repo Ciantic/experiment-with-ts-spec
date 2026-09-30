@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Project } from "ts-morph";
+import { lowerFirst } from "spec/scripts/spec-model.js";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
@@ -36,11 +37,6 @@ interface QueryTableData {
 /** QueryModel as plain data, matching the resolver's `QueryModel`. */
 interface QueryModelData {
     tables: Record<string, QueryTableData>;
-}
-
-/** Invoice -> invoice. */
-function lowerFirst(name: string): string {
-    return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 /** The module file for an entity, e.g. `Invoice` -> `invoiceQueries.ts`. */

@@ -7,6 +7,7 @@ import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNod
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    lowerFirst,
     parseSpec,
     type Diagnostic,
     type SpecInterface,
@@ -14,7 +15,7 @@ import {
 
 export type { Diagnostic };
 
-export { DEFAULT_SPEC_GLOB, SPEC_GLOB };
+export { DEFAULT_SPEC_GLOB, SPEC_GLOB, lowerFirst };
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
@@ -107,16 +108,6 @@ const KEYWORD_SCHEMAS: Record<string, string> = {
 const BUILTIN_REFERENCES: Record<string, string> = {
     Date: "z.date()",
 };
-
-/** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
-export function lowerFirst(name: string): string {
-    // A leading run of capitals is an acronym: lowercase all of it, not just the first letter.
-    const acronym = name.match(/^[A-Z]+(?=[A-Z][a-z]|$)/);
-    if (acronym) {
-        return acronym[0].toLowerCase() + name.slice(acronym[0].length);
-    }
-    return name.charAt(0).toLowerCase() + name.slice(1);
-}
 
 /** Invoice -> invoiceSchema. */
 function schemaName(name: string): string {
