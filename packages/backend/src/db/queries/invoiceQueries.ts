@@ -13,7 +13,7 @@ export function listInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts:
     return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
 }
 
-/** Get the first `Invoice` row matching at least one `@queryfilter` field. */
+/** Get the first `Invoice` row matching every given filter; at least one is required. */
 export function getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: AtLeastOne<Filters<Invoice, "id" | "customerId" | "sellerId">> & { select: S }): Promise<Selected<Invoice, S> | undefined> {
     const { select, ...args } = opts;
     return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });

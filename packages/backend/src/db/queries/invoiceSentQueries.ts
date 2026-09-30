@@ -13,7 +13,7 @@ export function listInvoiceSent<S extends Selection<InvoiceSent>>(db: SqlExecuto
     return resolver.resolveMany<InvoiceSent, S>(db, "invoice_sent", args, { select });
 }
 
-/** Get the first `InvoiceSent` row matching at least one `@queryfilter` field. */
+/** Get the first `InvoiceSent` row matching every given filter; at least one is required. */
 export function getInvoiceSent<S extends Selection<InvoiceSent>>(db: SqlExecutor, opts: AtLeastOne<Filters<InvoiceSent, "id">> & { select: S }): Promise<Selected<InvoiceSent, S> | undefined> {
     const { select, ...args } = opts;
     return resolver.resolveOne<InvoiceSent, S>(db, "invoice_sent", args, { select });

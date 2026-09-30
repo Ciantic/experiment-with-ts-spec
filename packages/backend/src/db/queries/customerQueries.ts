@@ -13,7 +13,7 @@ export function listCustomer<S extends Selection<Customer>>(db: SqlExecutor, opt
     return resolver.resolveMany<Customer, S>(db, "customer", args, { select });
 }
 
-/** Get the first `Customer` row matching at least one `@queryfilter` field. */
+/** Get the first `Customer` row matching every given filter; at least one is required. */
 export function getCustomer<S extends Selection<Customer>>(db: SqlExecutor, opts: AtLeastOne<Filters<Customer, "id">> & { select: S }): Promise<Selected<Customer, S> | undefined> {
     const { select, ...args } = opts;
     return resolver.resolveOne<Customer, S>(db, "customer", args, { select });

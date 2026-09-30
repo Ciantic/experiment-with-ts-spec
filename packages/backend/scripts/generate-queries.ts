@@ -132,7 +132,7 @@ export function renderQueryModule(entity: string, table: Table): string {
     // A getter needs something to name a row with, so it exists only when a filter does.
     if (filters.length > 0) {
         lines.push("");
-        lines.push(`/** Get the first \`${entity}\` row matching at least one \`@queryfilter\` field. */`);
+        lines.push(`/** Get the first \`${entity}\` row matching every given filter; at least one is required. */`);
         lines.push(
             `export function get${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: AtLeastOne<Filters<${entity}, ${filterKeys(filters)}>> & { select: S }): Promise<Selected<${entity}, S> | undefined> {`,
         );
