@@ -80,6 +80,19 @@ function quote(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
 }
 
+/** The alias a root query gives its table. */
+const TABLE_ALIAS = quote("t");
+
+/** The alias a to-one branch's foreign-key column is projected under. */
+function foreignKeyAlias(field: string): string {
+    return `__fk_${field}`;
+}
+
+/** The alias an inlined column is projected under. */
+function inlinedAlias(field: string, target: string): string {
+    return `__in_${field}_${target}`;
+}
+
 /** The `rows` array from a driver result, whatever else it carries. */
 function rowsOf(result: unknown): Record<string, unknown>[] {
     if (result !== null && typeof result === "object" && "rows" in result) {
@@ -133,208 +146,281 @@ function columnForArgument(meta: QueryTable, name: string): string | undefined {
     return undefined;
 }
 
-/** Build a resolver bound to a table model. The generated functions call this once. */
-export function createResolver(model: QueryModel): Resolver {
-    async function fetch(
-        db: SqlExecutor,
-        table: string,
-        selection: Record<string, unknown>,
-        filter: FetchFilter,
-    ): Promise<FetchedRow[]> {
-        const meta = model.tables[table];
-        if (!meta) {
-            throw new Error(`no query metadata for table \`${table}\``);
-        }
+/** A WHERE clause and its positional parameters. */
+interface FilterSql {
+    /** The clause including a leading ` where `, or "" when nothing filters. */
+    where: string;
+    params: unknown[];
+}
 
-        const alias = quote("t");
-        const selects: string[] = [];
-        const params: unknown[] = [];
-        const where: string[] = [];
+/** A branch to load with one batched query. */
+interface Branch {
+    field: string;
+    relation: QueryRelation;
+    /** The nested selection as written; `true` means every scalar of the branch. */
+    nested: unknown;
+}
 
-        const scalars: string[] = [];
-        const inlined: { field: string; relation: QueryRelation }[] = [];
-        const toOne: { field: string; relation: QueryRelation }[] = [];
-        const toMany: { field: string; relation: QueryRelation }[] = [];
+/** A selection split into its select list, scalars, inlined columns, and branches. */
+interface Projection {
+    /** Select-list expressions, aliased to the result keys. */
+    columns: string[];
+    /** Scalar fields, copied from the row under their own name. */
+    scalars: string[];
+    /** Inlined branches, each with the targets projected from this table's own row. */
+    inlined: { field: string; targets: string[] }[];
+    toOne: Branch[];
+    toMany: Branch[];
+}
 
-        for (const [field, value] of Object.entries(selection)) {
-            const relation = meta.relations[field];
-            if (!relation) {
-                const column = meta.fields[field];
-                if (column === undefined) {
-                    throw new Error(`unknown field \`${field}\` on \`${table}\``);
-                }
-                selects.push(`${alias}.${quote(column)} as ${quote(field)}`);
-                scalars.push(field);
-                continue;
+/** Push values as positional parameters and return their `$n` placeholders. */
+function placeholders(params: unknown[], values: unknown[]): string {
+    return values
+        .map((value) => {
+            params.push(value);
+            return `$${params.length}`;
+        })
+        .join(", ");
+}
+
+/** Split a selection into the select list, the scalars, the inlined columns, and the branches. */
+function planProjection(table: string, meta: QueryTable, selection: Record<string, unknown>): Projection {
+    const columns: string[] = [];
+    const scalars: string[] = [];
+    const inlined: Projection["inlined"] = [];
+    const toOne: Branch[] = [];
+    const toMany: Branch[] = [];
+
+    for (const [field, nested] of Object.entries(selection)) {
+        const relation = meta.relations[field];
+        if (!relation) {
+            const column = meta.fields[field];
+            if (column === undefined) {
+                throw new Error(`unknown field \`${field}\` on \`${table}\``);
             }
-            if (relation.kind === "inlined") {
-                inlined.push({ field, relation });
-            } else if (relation.kind === "relation") {
-                if (!relation.column) {
-                    throw new Error(`relation \`${table}.${field}\` has no foreign-key column`);
-                }
-                // The key is read only to join the branch; it is not part of the result.
-                selects.push(`${alias}.${quote(relation.column)} as ${quote(`__fk_${field}`)}`);
-                toOne.push({ field, relation });
-            } else {
-                if (!relation.column) {
-                    throw new Error(`children \`${table}.${field}\` has no foreign-key column`);
-                }
-                toMany.push({ field, relation });
-            }
+            columns.push(`${TABLE_ALIAS}.${quote(column)} as ${quote(field)}`);
+            scalars.push(field);
+            continue;
         }
-
-        // The key is always selected so rows can be mapped; a nested fetch also reads the matched column.
-        selects.push(`${alias}.${quote(meta.key)} as ${quote(KEY_ALIAS)}`);
-        const matchColumn = filter.kind === "match" && filter.column !== meta.key ? filter.column : undefined;
-        if (matchColumn !== undefined) {
-            selects.push(`${alias}.${quote(matchColumn)} as ${quote(MATCH_ALIAS)}`);
-        }
-
-        // An inlined branch is columns on this row, so it is projected, never joined.
-        const projected: Record<string, string[]> = {};
-        for (const { field, relation } of inlined) {
-            const columns = relation.columns ?? {};
+        if (relation.kind === "inlined") {
+            const map = relation.columns ?? {};
             const targets: string[] = [];
-            for (const target of inlinedTargets(columns, selection[field])) {
-                const column = columns[target];
+            for (const target of inlinedTargets(map, nested)) {
+                const column = map[target];
                 if (column === undefined) {
                     throw new Error(`inlined \`${table}.${field}\` has no column for \`${target}\``);
                 }
-                selects.push(`${alias}.${quote(column)} as ${quote(`__in_${field}_${target}`)}`);
+                columns.push(`${TABLE_ALIAS}.${quote(column)} as ${quote(inlinedAlias(field, target))}`);
                 targets.push(target);
             }
-            projected[field] = targets;
+            inlined.push({ field, targets });
+            continue;
         }
-
-        if (filter.kind === "args") {
-            for (const [name, value] of Object.entries(filter.args)) {
-                if (value === undefined) {
-                    continue;
-                }
-                const inField = filter.inFilters?.[name];
-                if (inField !== undefined) {
-                    if (!Array.isArray(value)) {
-                        throw new Error(`set filter \`${name}\` on \`${table}\` needs an array`);
-                    }
-                    const column = columnForArgument(meta, inField);
-                    if (column === undefined) {
-                        throw new Error(`unknown filter field \`${inField}\` on \`${table}\``);
-                    }
-                    const values = distinct(value);
-                    if (values.length === 0) {
-                        where.push("false");
-                        continue;
-                    }
-                    const placeholders = values.map((item) => {
-                        params.push(item);
-                        return `$${params.length}`;
-                    });
-                    where.push(`${alias}.${quote(column)} in (${placeholders.join(", ")})`);
-                    continue;
-                }
-                if (Array.isArray(value)) {
-                    throw new Error(`filter \`${name}\` on \`${table}\` is an array; annotate it with @in`);
-                }
-                const column = columnForArgument(meta, name);
-                if (column === undefined) {
-                    throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
-                }
-                params.push(value);
-                where.push(`${alias}.${quote(column)} = $${params.length}`);
+        if (relation.kind === "relation") {
+            if (!relation.column) {
+                throw new Error(`relation \`${table}.${field}\` has no foreign-key column`);
             }
-        } else {
-            if (filter.values.length === 0) {
-                return [];
-            }
-            const placeholders = filter.values.map((value) => {
-                params.push(value);
-                return `$${params.length}`;
-            });
-            where.push(`${alias}.${quote(filter.column)} in (${placeholders.join(", ")})`);
+            columns.push(`${TABLE_ALIAS}.${quote(relation.column)} as ${quote(foreignKeyAlias(field))}`);
+            toOne.push({ field, relation, nested });
+            continue;
         }
-
-        const filterSql = where.length > 0 ? ` where ${where.join(" and ")}` : "";
-        const sql = `select ${selects.join(", ")} from ${quote(meta.name)} as ${alias}${filterSql}`;
-        const rows = rowsOf(await db.query(sql, params));
-
-        const fetched: FetchedRow[] = rows.map((row) => {
-            const value: Record<string, unknown> = {};
-            for (const field of scalars) {
-                value[field] = row[field];
-            }
-            for (const { field } of inlined) {
-                const nested: Record<string, unknown> = {};
-                for (const target of projected[field] ?? []) {
-                    nested[target] = row[`__in_${field}_${target}`];
-                }
-                value[field] = nested;
-            }
-            return {
-                key: row[KEY_ALIAS],
-                match: matchColumn === undefined ? row[KEY_ALIAS] : row[MATCH_ALIAS],
-                value,
-            };
-        });
-
-        // A to-one branch: one batched query for every distinct foreign key.
-        for (const { field, relation } of toOne) {
-            const targetName = relation.table ?? "";
-            const target = model.tables[targetName];
-            if (!target) {
-                throw new Error(`relation \`${table}.${field}\` targets unknown table \`${targetName}\``);
-            }
-            const keys = distinct(rows.map((row) => row[`__fk_${field}`]));
-            const related = await fetch(db, targetName, normalizeSelection(target, selection[field]), {
-                kind: "match",
-                column: target.key,
-                values: keys,
-            });
-            const byKey = new Map(related.map((item) => [item.key, item.value]));
-            fetched.forEach((item, index) => {
-                const foreignKey = rows[index]?.[`__fk_${field}`];
-                item.value[field] =
-                    foreignKey === null || foreignKey === undefined ? undefined : byKey.get(foreignKey);
-            });
+        if (!relation.column) {
+            throw new Error(`children \`${table}.${field}\` has no foreign-key column`);
         }
-
-        // A to-many branch: one batched query for every distinct parent key, then group in memory.
-        for (const { field, relation } of toMany) {
-            const targetName = relation.table ?? "";
-            const target = model.tables[targetName];
-            if (!target || !relation.column) {
-                throw new Error(`children \`${table}.${field}\` targets unknown table \`${targetName}\``);
-            }
-            const keys = distinct(rows.map((row) => row[KEY_ALIAS]));
-            const related = await fetch(db, targetName, normalizeSelection(target, selection[field]), {
-                kind: "match",
-                column: relation.column,
-                values: keys,
-            });
-            const groups = new Map<unknown, Record<string, unknown>[]>();
-            for (const item of related) {
-                const group = groups.get(item.match);
-                if (group) {
-                    group.push(item.value);
-                } else {
-                    groups.set(item.match, [item.value]);
-                }
-            }
-            for (const item of fetched) {
-                item.value[field] = groups.get(item.key) ?? [];
-            }
-        }
-
-        return fetched;
+        toMany.push({ field, relation, nested });
     }
 
+    return { columns, scalars, inlined, toOne, toMany };
+}
+
+/** The select list: the projection's columns, the row key, and the matched column when it differs. */
+function selectList(meta: QueryTable, projection: Projection, matchColumn: string | undefined): string {
+    const columns = [...projection.columns, `${TABLE_ALIAS}.${quote(meta.key)} as ${quote(KEY_ALIAS)}`];
+    if (matchColumn !== undefined) {
+        columns.push(`${TABLE_ALIAS}.${quote(matchColumn)} as ${quote(MATCH_ALIAS)}`);
+    }
+    return columns.join(", ");
+}
+
+/** One argument's clause: an `@in` set, or equality on a scalar or foreign-key column. */
+function argumentClause(
+    table: string,
+    meta: QueryTable,
+    name: string,
+    value: unknown,
+    inField: string | undefined,
+    params: unknown[],
+): string[] {
+    if (inField !== undefined) {
+        if (!Array.isArray(value)) {
+            throw new Error(`set filter \`${name}\` on \`${table}\` needs an array`);
+        }
+        const column = columnForArgument(meta, inField);
+        if (column === undefined) {
+            throw new Error(`unknown filter field \`${inField}\` on \`${table}\``);
+        }
+        const values = distinct(value);
+        if (values.length === 0) {
+            return ["false"];
+        }
+        return [`${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`];
+    }
+    if (Array.isArray(value)) {
+        throw new Error(`filter \`${name}\` on \`${table}\` is an array; annotate it with @in`);
+    }
+    const column = columnForArgument(meta, name);
+    if (column === undefined) {
+        throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
+    }
+    params.push(value);
+    return [`${TABLE_ALIAS}.${quote(column)} = $${params.length}`];
+}
+
+/** Build the WHERE clause for a fetch, or undefined when the filter cannot match anything. */
+function buildFilter(table: string, meta: QueryTable, filter: FetchFilter): FilterSql | undefined {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (filter.kind === "match") {
+        if (filter.values.length === 0) {
+            return undefined;
+        }
+        clauses.push(`${TABLE_ALIAS}.${quote(filter.column)} in (${placeholders(params, filter.values)})`);
+    } else {
+        for (const [name, value] of Object.entries(filter.args)) {
+            if (value === undefined) {
+                continue;
+            }
+            clauses.push(...argumentClause(table, meta, name, value, filter.inFilters?.[name], params));
+        }
+    }
+
+    return { where: clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "", params };
+}
+
+/** Shape one raw row into its key, the value its filter matched, and the projected fields. */
+function mapRow(projection: Projection, row: Record<string, unknown>, matchColumn: string | undefined): FetchedRow {
+    const value: Record<string, unknown> = {};
+    for (const field of projection.scalars) {
+        value[field] = row[field];
+    }
+    for (const { field, targets } of projection.inlined) {
+        const nested: Record<string, unknown> = {};
+        for (const target of targets) {
+            nested[target] = row[inlinedAlias(field, target)];
+        }
+        value[field] = nested;
+    }
+    return {
+        key: row[KEY_ALIAS],
+        match: matchColumn === undefined ? row[KEY_ALIAS] : row[MATCH_ALIAS],
+        value,
+    };
+}
+
+/** Attach each to-one branch: one batched query for every distinct foreign key. */
+async function attachToOne(
+    model: QueryModel,
+    db: SqlExecutor,
+    table: string,
+    branches: Branch[],
+    rows: Record<string, unknown>[],
+    fetched: FetchedRow[],
+): Promise<void> {
+    for (const { field, relation, nested } of branches) {
+        const targetName = relation.table ?? "";
+        const target = model.tables[targetName];
+        if (!target) {
+            throw new Error(`relation \`${table}.${field}\` targets unknown table \`${targetName}\``);
+        }
+        const keys = distinct(rows.map((row) => row[foreignKeyAlias(field)]));
+        const related = await fetchRows(model, db, targetName, normalizeSelection(target, nested), {
+            kind: "match",
+            column: target.key,
+            values: keys,
+        });
+        const byKey = new Map(related.map((item) => [item.key, item.value]));
+        fetched.forEach((item, index) => {
+            const foreignKey = rows[index]?.[foreignKeyAlias(field)];
+            item.value[field] = foreignKey === null || foreignKey === undefined ? undefined : byKey.get(foreignKey);
+        });
+    }
+}
+
+/** Attach each to-many branch: one batched query for every distinct parent key, grouped in memory. */
+async function attachToMany(
+    model: QueryModel,
+    db: SqlExecutor,
+    table: string,
+    branches: Branch[],
+    rows: Record<string, unknown>[],
+    fetched: FetchedRow[],
+): Promise<void> {
+    for (const { field, relation, nested } of branches) {
+        const targetName = relation.table ?? "";
+        const target = model.tables[targetName];
+        if (!target || !relation.column) {
+            throw new Error(`children \`${table}.${field}\` targets unknown table \`${targetName}\``);
+        }
+        const keys = distinct(rows.map((row) => row[KEY_ALIAS]));
+        const related = await fetchRows(model, db, targetName, normalizeSelection(target, nested), {
+            kind: "match",
+            column: relation.column,
+            values: keys,
+        });
+        const groups = new Map<unknown, Record<string, unknown>[]>();
+        for (const item of related) {
+            const group = groups.get(item.match);
+            if (group) {
+                group.push(item.value);
+            } else {
+                groups.set(item.match, [item.value]);
+            }
+        }
+        for (const item of fetched) {
+            item.value[field] = groups.get(item.key) ?? [];
+        }
+    }
+}
+
+/** Read one table, then attach its branches. A branch recurses here with a `match` filter. */
+async function fetchRows(
+    model: QueryModel,
+    db: SqlExecutor,
+    table: string,
+    selection: Record<string, unknown>,
+    filter: FetchFilter,
+): Promise<FetchedRow[]> {
+    const meta = model.tables[table];
+    if (!meta) {
+        throw new Error(`no query metadata for table \`${table}\``);
+    }
+
+    const projection = planProjection(table, meta, selection);
+    const matchColumn = filter.kind === "match" && filter.column !== meta.key ? filter.column : undefined;
+    const built = buildFilter(table, meta, filter);
+    if (built === undefined) {
+        return [];
+    }
+
+    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}`;
+    const rows = rowsOf(await db.query(sql, built.params));
+    const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
+
+    await attachToOne(model, db, table, projection.toOne, rows, fetched);
+    await attachToMany(model, db, table, projection.toMany, rows, fetched);
+    return fetched;
+}
+
+/** Build a resolver bound to a table model. The generated functions call this once. */
+export function createResolver(model: QueryModel): Resolver {
     async function resolveMany<E, S extends Selection<E>>(
         db: SqlExecutor,
         table: string,
         args: Record<string, unknown>,
         opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]> {
-        const rows = await fetch(db, table, opts.select as Record<string, unknown>, {
+        const rows = await fetchRows(model, db, table, opts.select as Record<string, unknown>, {
             kind: "args",
             args,
             inFilters: opts.inFilters,
