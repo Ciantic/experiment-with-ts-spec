@@ -8,6 +8,7 @@
   "exports": {
     "./domain/*.ts": "./src/domain/*.ts",
     "./primitives/*.ts": "./src/primitives/*.ts",
+    "./mockdata/*.ts": "./mockdata/*.ts",
     "./selection.ts": "./src/selection.ts",
     "./scripts/*.ts": "./scripts/*.ts",
     "./package.json": "./package.json"
