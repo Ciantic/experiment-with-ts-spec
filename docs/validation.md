@@ -1,21 +1,23 @@
 # Validation
 
-`packages/validation/scripts/generate-zod-schemas.ts` turns the domain models in
-`packages/spec/src/domain` into Zod schemas, written to `packages/validation/src`.
-A schema is what validates a value at the boundary — an HTTP body, a job
-payload — against the same annotations the database schema and the repositories
-are generated from.
+`packages/backend/scripts/generate-zod-schemas.ts` turns the domain models in
+`packages/spec/src/domain` into Zod schemas, written to
+`packages/backend/src/validation`. A schema is what validates a value at the
+boundary — an HTTP body, a job payload — against the same annotations the
+database schema and the repositories are generated from.
 
 ## Output
 
-- `src/primitives.ts` — one schema per `@primitive` alias, from its `@zod` tag.
-- `src/<entity>.ts` — one module per domain interface, exporting `<name>Schema`,
-  `<name>PatchSchema`, and `<name>SelectSchema`.
-- `src/queries/<entity>Queries.ts` — one module per entity a `@query` reads,
-  exporting a `<name>Schema` per query alias.
-- `src/queries/index.ts` — the barrel re-exporting every query module.
-- `src/index.ts` — the barrel re-exporting the primitives, every entity, and the
-  queries barrel.
+- `packages/backend/src/validation/primitives.ts` — one schema per `@primitive`
+  alias, from its `@zod` tag.
+- `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
+  exporting `<name>Schema`, `<name>PatchSchema`, and `<name>SelectSchema`.
+- `packages/backend/src/validation/queries/<entity>Queries.ts` — one module per
+  entity a `@query` reads, exporting a `<name>Schema` per query alias.
+- `packages/backend/src/validation/queries/index.ts` — the barrel re-exporting
+  every query module.
+- `packages/backend/src/validation/index.ts` — the barrel re-exporting the
+  primitives, every entity, and the queries barrel.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -89,7 +91,8 @@ entity's select schema added as a field. The arguments resolve like an entity's
 fields, with the same primitives, keywords, `Date` mapping, and `.optional()`
 for a `?` field. One `<name>Schema` is emitted per alias: `@query Invoice many`
 on `ListInvoices` yields `listInvoicesSchema` in
-`src/queries/invoiceQueries.ts`, grouped by the entity the query reads.
+`packages/backend/src/validation/queries/invoiceQueries.ts`, grouped by the
+entity the query reads.
 
 `@in` is a backend operator annotation (`docs/spec-annotations.md`): the schema
 sees only the argument's type, so `ids: InvoiceId[]` validates as
@@ -144,9 +147,10 @@ is about the value shape, so it follows the type.
 
 Select schemas are generated for **every** entity, not only those a `@query`
 reads, because a select nests into targets that may have no read of their own.
-They live in the entity module next to `<name>Schema`, so `src/index.ts` already
-re-exports them. A query's args schema references the one for the entity it
-reads, so validating a read validates its selection too.
+They live in the entity module next to `<name>Schema`, so
+`packages/backend/src/validation/index.ts` already re-exports them. A query's
+args schema references the one for the entity it reads, so validating a read
+validates its selection too.
 
 ## Annotations
 
@@ -158,13 +162,13 @@ reported as a diagnostic.
 
 ## Commands
 
-- `pnpm generate:validation` — writes `packages/validation/src`.
+- `pnpm generate:validation` — writes `packages/backend/src/validation`.
 - `pnpm generate:validation --out <path>` — writes elsewhere. A missing directory is created.
-- `pnpm run generate` — runs it after the schema and repository generators.
+- `pnpm run generate` — runs it after the schema, repository, and query generators.
 
 ## Validation
 
-- `packages/validation/scripts/generate-zod-schemas.test.ts` drives the mapper
+- `packages/backend/scripts/generate-zod-schemas.test.ts` drives the mapper
   and the renderer with self-contained fixtures, never the real spec. It also
   evaluates `primitives.ts` against Zod to prove the emitted schemas parse.
 - `pnpm run typecheck` compiles the generated `src`, so a schema that does not

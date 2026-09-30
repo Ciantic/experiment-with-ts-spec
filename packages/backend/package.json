@@ -12,10 +12,12 @@
     "generate:schema": "node scripts/generate-postgres-schema.ts",
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
     "generate:repositories": "node scripts/generate-repositories.ts",
-    "generate:queries": "node scripts/generate-query-metadata.ts"
+    "generate:queries": "node scripts/generate-query-metadata.ts",
+    "generate:validation": "node scripts/generate-zod-schemas.ts"
   },
   "dependencies": {
-    "spec": "workspace:*"
+    "spec": "workspace:*",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

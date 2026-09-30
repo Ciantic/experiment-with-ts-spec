@@ -13,8 +13,8 @@ hand-written resolver turns a selection into SQL. See "Why the resolver is hand-
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `<entity>Queries.ts` (one function per read), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
-- `packages/validation/src/queries/` — generated `@query` argument schemas. See
-  `docs/validation.md`.
+- `packages/backend/src/validation/queries/` — generated `@query` argument
+  schemas. See `docs/validation.md`.
 
 - `pnpm generate:queries` — writes the generated modules.
 - `pnpm generate:queries --out <dir>` — writes elsewhere. A missing directory is created.
