@@ -275,16 +275,23 @@ function buildFilter(table: string, meta: QueryTable, filter: FetchFilter): Filt
     return { where: clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "", params };
 }
 
+/** Copy a projected field unless it is `null`, matching the optional spec. See docs/queries.md. */
+function copyField(target: Record<string, unknown>, field: string, value: unknown): void {
+    if (value !== null && value !== undefined) {
+        target[field] = value;
+    }
+}
+
 /** Shape one raw row into its key, the value its filter matched, and the projected fields. */
 function mapRow(projection: Projection, row: Record<string, unknown>, matchColumn: string | undefined): FetchedRow {
     const value: Record<string, unknown> = {};
     for (const field of projection.scalars) {
-        value[field] = row[field];
+        copyField(value, field, row[field]);
     }
     for (const { field, targets } of projection.inlined) {
         const nested: Record<string, unknown> = {};
         for (const target of targets) {
-            nested[target] = row[inlinedAlias(field, target)];
+            copyField(nested, target, row[inlinedAlias(field, target)]);
         }
         value[field] = nested;
     }
@@ -319,7 +326,7 @@ async function attachToOne(
         const byKey = new Map(related.map((item) => [item.key, item.value]));
         fetched.forEach((item, index) => {
             const foreignKey = rows[index]?.[foreignKeyAlias(field)];
-            item.value[field] = foreignKey === null || foreignKey === undefined ? undefined : byKey.get(foreignKey);
+            copyField(item.value, field, byKey.get(foreignKey));
         });
     }
 }

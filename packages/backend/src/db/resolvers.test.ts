@@ -22,6 +22,7 @@ interface Invoice {
     number: string;
     customerId?: string;
     totalAmount: string;
+    notes?: string;
     customer?: Customer;
     rows?: InvoiceRow[];
     snapshot?: { name: string; email: string };
@@ -39,7 +40,7 @@ const model: QueryModel = {
         invoice: {
             name: "invoice",
             key: "id",
-            fields: { id: "id", number: "number", customerId: "customerId", totalAmount: "totalAmount" },
+            fields: { id: "id", number: "number", customerId: "customerId", totalAmount: "totalAmount", notes: "notes" },
             relations: {
                 customer: { kind: "relation", table: "customer", column: "customerId" },
                 rows: { kind: "children", table: "invoice_row", column: "invoiceId" },
@@ -79,6 +80,7 @@ beforeAll(async () => {
             number text not null,
             "customerId" text references customer(id),
             "totalAmount" text not null,
+            notes text,
             "snapshotName" text,
             "snapshotEmail" text
         );
@@ -91,10 +93,11 @@ beforeAll(async () => {
         insert into customer values
             ('c1', 'Acme', 'a@example.com'),
             ('c2', 'Beta', 'b@example.com');
-        insert into invoice ("id", "number", "customerId", "totalAmount", "snapshotName", "snapshotEmail") values
-            ('i1', 'INV-1', 'c1', '100', 'Acme AS', 'old@example.com'),
-            ('i2', 'INV-2', 'c2', '200', 'Beta AS', 'beta@example.com'),
-            ('i3', 'INV-3', 'c1', '300', 'Acme AS', 'old@example.com');
+        insert into invoice ("id", "number", "customerId", "totalAmount", "snapshotName", "snapshotEmail", "notes") values
+            ('i1', 'INV-1', 'c1', '100', 'Acme AS', 'old@example.com', 'first'),
+            ('i2', 'INV-2', 'c2', '200', 'Beta AS', 'beta@example.com', null),
+            ('i3', 'INV-3', 'c1', '300', null, null, null),
+            ('i4', 'INV-4', null, '400', null, null, null);
         insert into invoice_row ("id", "invoiceId", "description", "amount") values
             ('r1', 'i1', 'Widget', '50'),
             ('r2', 'i1', 'Gadget', '50'),
@@ -108,8 +111,29 @@ describe("resolveMany", () => {
         const select = { id: true, number: true } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select });
 
-        expect(rows).toHaveLength(3);
+        expect(rows).toHaveLength(4);
         expect(rows[0]).toEqual({ id: "i1", number: "INV-1" });
+    });
+
+    it("omits a selected scalar whose column is null", async () => {
+        const select = { id: true, notes: true } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1", "i2"] }, { select });
+
+        expect(rows).toEqual([{ id: "i1", notes: "first" }, { id: "i2" }]);
+    });
+
+    it("omits a null inlined target", async () => {
+        const select = { id: true, snapshot: { name: true, email: true } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i4"] }, { select });
+
+        expect(rows).toEqual([{ id: "i4", snapshot: {} }]);
+    });
+
+    it("omits a to-one relation whose foreign key is null", async () => {
+        const select = { id: true, customer: { name: true } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i4"] }, { select });
+
+        expect(rows).toEqual([{ id: "i4" }]);
     });
 
     it("reads an inlined branch from the same row, with no extra query", async () => {

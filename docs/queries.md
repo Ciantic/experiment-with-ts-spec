@@ -248,6 +248,10 @@ the SQL at run time from `queryModel` plus the selection:
   foreign key, attached back by key.
 - **`@children`** — one batched `where child.fk in (…)`, grouped in memory.
 
+A projected scalar is copied only when its column is not `null`, and a to-one
+branch whose foreign key is `null` is left out. A `null` column and an absent
+key therefore look the same on the wire, matching the optional spec fields.
+
 There is **no JSON aggregation**. A branch costs one extra query, batched over
 all parents at that level; nested branches recurse the same way, one query per
 branch per level. The resolver holds no domain knowledge — it only reads
@@ -269,9 +273,10 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
 ## Gotchas
 
 - **Every selected key is optional.** All spec fields are optional, so
-  `Selected<Invoice, { number: true }>` is `{ number?: string }`; an absent key
-  and a selected-but-null value are indistinguishable. Selection narrows the type
-  only — the runtime object simply lacks the key.
+  `Selected<Invoice, { number: true }>` is `{ number?: string }`. A `null` column
+  is omitted rather than carried as `null`, so a value is present only when the
+  column has one: selection narrows the type, and the runtime object lacks a key
+  it did not select or that was `null`.
 - **`true` on a branch selects scalars only.** It does not recurse into nested
   branches, so a default selection cannot fan out into unbounded joins.
 - **A filter reads columns the selection may omit.** `select` governs the
