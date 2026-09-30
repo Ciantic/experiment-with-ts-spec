@@ -1,7 +1,7 @@
 /**
  * Generate the query metadata and per-entity query modules from `@query` aliases.
  * See docs/queries.md. The resolver itself is hand-written: this emits the model it
- * reads and the typed factories that call it.
+ * reads and the typed functions that call it.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -122,7 +122,7 @@ function renderArgsImports(methods: QuerySpec[]): string[] {
         .map(([specifier, names]) => `import type { ${[...names].sort().join(", ")} } from "${specifier}";`);
 }
 
-/** Render one entity's query interface and its factory. */
+/** Render one entity's query functions. */
 export function renderQueryModule(
     entity: string,
     tableName: string,
@@ -130,7 +130,6 @@ export function renderQueryModule(
     methods: QuerySpec[],
 ): string {
     const sorted = [...methods].sort((a, b) => a.name.localeCompare(b.name));
-    const factory = `${lowerFirst(entity)}Queries`;
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity} } from "${entityImport}";`);
     lines.push(...renderArgsImports(sorted));
@@ -140,29 +139,13 @@ export function renderQueryModule(
     lines.push('import { queryModel } from "./model.js";');
     lines.push("");
 
-    lines.push(`export interface ${entity}Queries {`);
+    lines.push("const resolver = createResolver(queryModel);");
     for (const method of sorted) {
+        const call = method.cardinality === "one" ? "resolveOne" : "resolveMany";
         const returns =
             method.cardinality === "one"
                 ? `Promise<Selected<${entity}, S> | undefined>`
                 : `Promise<Selected<${entity}, S>[]>`;
-        lines.push(
-            `    ${lowerFirst(method.name)}<S extends Selection<${entity}>>(opts: ${method.name} & { select: S }): ${returns};`,
-        );
-    }
-    lines.push("}");
-    lines.push("");
-
-    lines.push("const resolver = createResolver(queryModel);");
-    lines.push("");
-    lines.push(`export function ${factory}(db: SqlExecutor): ${entity}Queries {`);
-    lines.push("    return {");
-    for (const method of sorted) {
-        const call = method.cardinality === "one" ? "resolveOne" : "resolveMany";
-        lines.push(
-            `        ${lowerFirst(method.name)}: <S extends Selection<${entity}>>(opts: ${method.name} & { select: S }) => {`,
-        );
-        lines.push("            const { select, ...args } = opts;");
         const filterEntries = Object.entries(method.inFilters ?? {}).map(
             ([argument, field]) => `${JSON.stringify(argument)}: ${JSON.stringify(field)}`,
         );
@@ -170,13 +153,16 @@ export function renderQueryModule(
             filterEntries.length > 0
                 ? `{ select, inFilters: { ${filterEntries.join(", ")} } }`
                 : "{ select }";
+        lines.push("");
         lines.push(
-            `            return resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args, ${options});`,
+            `export function ${lowerFirst(method.name)}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${method.name} & { select: S }): ${returns} {`,
         );
-        lines.push("        },");
+        lines.push("    const { select, ...args } = opts;");
+        lines.push(
+            `    return resolver.${call}<${entity}, S>(db, ${JSON.stringify(tableName)}, args, ${options});`,
+        );
+        lines.push("}");
     }
-    lines.push("    };");
-    lines.push("}");
     return lines.join("\n") + "\n";
 }
 

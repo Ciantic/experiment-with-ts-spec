@@ -41,7 +41,7 @@ type FetchFilter =
     | { kind: "args"; args: Record<string, unknown>; inFilters?: Record<string, string> | undefined }
     | { kind: "match"; column: string; values: unknown[] };
 
-/** What a read selects and filters on, as the generated factory passes it. */
+/** What a read selects and filters on, as the generated function passes it. */
 export interface ResolveOptions<E, S extends Selection<E>> {
     select: S;
     /** Set-membership arguments from `@in`: argument name -> the field it matches. See docs/queries.md. */
@@ -55,7 +55,7 @@ interface FetchedRow {
     value: Record<string, unknown>;
 }
 
-/** The interface a generated factory satisfies, over one entity. */
+/** The interface a generated query function is built on, over one entity. */
 export interface Resolver {
     resolveMany<E, S extends Selection<E>>(
         db: SqlExecutor,
@@ -133,7 +133,7 @@ function columnForArgument(meta: QueryTable, name: string): string | undefined {
     return undefined;
 }
 
-/** Build a resolver bound to a table model. The generated factory calls this once. */
+/** Build a resolver bound to a table model. The generated functions call this once. */
 export function createResolver(model: QueryModel): Resolver {
     async function fetch(
         db: SqlExecutor,

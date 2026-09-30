@@ -6,27 +6,19 @@ import type { SqlExecutor } from "../sql-executor.js";
 import { createResolver } from "../resolvers.js";
 import { queryModel } from "./model.js";
 
-export interface InvoiceQueries {
-    getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined>;
-    getInvoices<S extends Selection<Invoice>>(opts: GetInvoices & { select: S }): Promise<Selected<Invoice, S>[]>;
-    listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]>;
-}
-
 const resolver = createResolver(queryModel);
 
-export function invoiceQueries(db: SqlExecutor): InvoiceQueries {
-    return {
-        getInvoice: <S extends Selection<Invoice>>(opts: GetInvoice & { select: S }) => {
-            const { select, ...args } = opts;
-            return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
-        },
-        getInvoices: <S extends Selection<Invoice>>(opts: GetInvoices & { select: S }) => {
-            const { select, ...args } = opts;
-            return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select, inFilters: { "ids": "id" } });
-        },
-        listInvoices: <S extends Selection<Invoice>>(opts: ListInvoices & { select: S }) => {
-            const { select, ...args } = opts;
-            return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
-        },
-    };
+export function getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined> {
+    const { select, ...args } = opts;
+    return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
+}
+
+export function getInvoices<S extends Selection<Invoice>>(db: SqlExecutor, opts: GetInvoices & { select: S }): Promise<Selected<Invoice, S>[]> {
+    const { select, ...args } = opts;
+    return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select, inFilters: { "ids": "id" } });
+}
+
+export function listInvoices<S extends Selection<Invoice>>(db: SqlExecutor, opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]> {
+    const { select, ...args } = opts;
+    return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
 }

@@ -98,20 +98,26 @@ describe("buildQueryModel", () => {
 });
 
 describe("renderQueryModule", () => {
-    it("emits the interface and factory for the entity", () => {
+    it("emits one exported function per query, with no interface", () => {
         const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
 
-        expect(code).toContain("export interface InvoiceQueries {");
-        expect(code).toContain("export function invoiceQueries(db: SqlExecutor): InvoiceQueries {");
+        expect(code).toContain("export function getInvoice<");
+        expect(code).toContain("export function listInvoices<");
+        expect(code).not.toContain("export interface");
+        expect(code).not.toContain("invoiceQueries(");
         expect(code).toContain("resolver.resolveMany<Invoice, S>(db, \"invoice\"");
         expect(code).toContain("resolver.resolveOne<Invoice, S>(db, \"invoice\"");
     });
 
-    it("takes one argument: the args plus the selection", () => {
+    it("takes db first and the args plus the selection second", () => {
         const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
 
-        expect(code).toContain("getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S })");
-        expect(code).toContain("listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S })");
+        expect(code).toContain(
+            "getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: GetInvoice & { select: S })",
+        );
+        expect(code).toContain(
+            "listInvoices<S extends Selection<Invoice>>(db: SqlExecutor, opts: ListInvoices & { select: S })",
+        );
     });
 
     it("splits the argument back into filters and a selection for the resolver", () => {
@@ -142,7 +148,7 @@ describe("renderQueryModule", () => {
         expect(code).not.toContain("inFilters");
     });
 
-    it("sorts methods by name", () => {
+    it("sorts functions by name", () => {
         const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
         const getIndex = code.indexOf("getInvoice<S extends");
         const listIndex = code.indexOf("listInvoices<S extends");

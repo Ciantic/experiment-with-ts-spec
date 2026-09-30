@@ -47,7 +47,7 @@ Type tags:
   a primitive does not require editing the backend. `@primitive` types must
   carry it. See `docs/primitives.md`.
 - `@query <Entity> [one|many]` — declares one read. The alias's object type is
-  the query's arguments; the alias name becomes the method name and the entity
+  the query's arguments; the alias name becomes the function name and the entity
   becomes the source table. `one` returns a single row or `undefined`, `many` a
   list, with `many` the default. Applied to a type alias under
   `packages/spec/src/queries/`, not to a field or interface. See

@@ -349,7 +349,7 @@ export interface SpecQueryArgument {
 
 /** A `@query`-annotated alias: the arguments of one read. See docs/queries.md. */
 export interface SpecQuery {
-    /** The alias name, which becomes the method name. */
+    /** The alias name, which becomes the function name. */
     name: string;
     /** The entity `@query` names. */
     entity: string;

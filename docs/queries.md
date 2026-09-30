@@ -2,7 +2,7 @@
 
 Reading is a product decision, not a mapping of the spec. `packages/spec/src/queries/`
 holds the query **arguments** as `@query`-annotated type aliases; a generator turns
-those into the typed read interfaces and their wiring in the backend; one
+those into the typed read functions and their wiring in the backend; one
 hand-written resolver turns a selection into SQL. See "Why the resolver is hand-written".
 
 - `packages/spec/src/queries/selection.ts` — `Selection`/`Selected`, the
@@ -11,7 +11,7 @@ hand-written resolver turns a selection into SQL. See "Why the resolver is hand-
   aliases. Hand-written.
 - `packages/backend/scripts/generate-query-metadata.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
-  `<entity>Queries.ts` (interface + factory), `index.ts` (barrel).
+  `<entity>Queries.ts` (one function per read), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/validation/src/queries/` — generated `@query` argument schemas. See
   `docs/validation.md`.
@@ -46,9 +46,9 @@ is not.
 ```
 
 A `@query <Entity> [one|many]` alias declares one read. Its name becomes the
-method name (first letter lower-cased); its object type is the arguments. `one`
+function name (first letter lower-cased); its object type is the arguments. `one`
 returns `Selected<…> | undefined`, `many` a list, with `many` the default. The
-namespace and method are separate: the tag's entity is the source table, the
+namespace and function are separate: the tag's entity is the source table, the
 alias name the operation.
 
 ```ts
@@ -105,38 +105,32 @@ decimal.
 
 ## A query, generated
 
-From the alias above and a `@query Invoice one` `GetInvoice`, the generator emits:
+From the alias above and a `@query Invoice one` `GetInvoice`, the generator emits one
+exported function per read:
 
 ```ts
-export interface InvoiceQueries {
-    getInvoice<S extends Selection<Invoice>>(opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined>;
-    listInvoices<S extends Selection<Invoice>>(opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]>;
-}
-
 const resolver = createResolver(queryModel);
 
-export function invoiceQueries(db: SqlExecutor): InvoiceQueries {
-    return {
-        getInvoice: <S extends Selection<Invoice>>(opts: GetInvoice & { select: S }) => {
-            const { select, ...args } = opts;
-            return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
-        },
-        listInvoices: <S extends Selection<Invoice>>(opts: ListInvoices & { select: S }) => {
-            const { select, ...args } = opts;
-            return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
-        },
-    };
+export function getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: GetInvoice & { select: S }): Promise<Selected<Invoice, S> | undefined> {
+    const { select, ...args } = opts;
+    return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
+}
+
+export function listInvoices<S extends Selection<Invoice>>(db: SqlExecutor, opts: ListInvoices & { select: S }): Promise<Selected<Invoice, S>[]> {
+    const { select, ...args } = opts;
+    return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
 }
 ```
 
-A read takes **one argument**: the `@query` alias's fields are the filters, and
-`select` is intersected in by the generator. The factory then splits it back
-apart for the resolver, whose signature keeps filters and projection explicit.
+A read takes **two arguments**: the executor `db` first, then the `@query` alias's
+fields as the filters, with `select` intersected in by the generator. The function
+then splits the filters back apart for the resolver, whose signature keeps filters
+and projection explicit.
 
 A call site narrows exactly:
 
 ```ts
-const [invoice] = await invoiceQueries(db).listInvoices({
+const [invoice] = await listInvoices(db, {
     customerId,
     select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
 });
@@ -157,13 +151,13 @@ new `@query` alias and a new entity flow through with no generator edit.
 
 | Artifact | Source |
 | --- | --- |
-| `<Entity>Queries` interface + factory | generated |
+| `<Entity>Queries` functions | generated |
 | `queryModel` (tables, fields, branches) | generated |
 | `resolveOne` / `resolveMany` | hand-written, once |
 
 `queryModel` is the physical model: for each table its key, its scalar fields,
 and a descriptor per branch (see below). The resolver reads that data plus the
-runtime `args`/`select`, and builds the SQL. The generated factories carry no
+runtime `args`/`select`, and builds the SQL. The generated functions carry no
 logic — they name a table as a string and delegate.
 
 ## Selecting a branch means three different things
@@ -236,7 +230,7 @@ export type GetInvoices = {
 
 The argument is `ids` and the field it matches is `id`; the two are independent,
 so a set argument reads well while the annotation names the column. The generated
-factory carries the mapping to the resolver as `inFilters`, so a set argument
+function carries the mapping to the resolver as `inFilters`, so a set argument
 needs no resolver change per query.
 
 A filter value is a scalar: a keyword, `Date`, or a named type that is not an
@@ -283,7 +277,7 @@ rather than at run time.
 The SELECT depends on the runtime `select` object, and the WHERE on the runtime
 `args`; neither is known at build time, so a generator cannot emit the SQL the
 way `generate-repositories.ts` emits an INSERT. What the generator *can* emit is
-mechanical: the interface, the factory, and the physical model. The interpreter
+mechanical: the per-query functions and the physical model. The interpreter
 is written once, holds no domain names, and reads generated data — which is what
 `AGENTS.md` asks for. Generating a resolver per entity would copy identical
 logic N times.
