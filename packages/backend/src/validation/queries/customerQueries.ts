@@ -3,16 +3,13 @@ import { z } from "zod";
 import { customerSelectSchema } from "../customer.js";
 import * as primitives from "../primitives.js";
 
-export const getCustomerSchema = z.strictObject({
-    id: primitives.brandedIdSchema<"CustomerId">(),
+export const listCustomerSchema = z.strictObject({
+    id: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
     select: customerSelectSchema,
 });
 
-export const getCustomersSchema = z.strictObject({
-    ids: z.array(primitives.brandedIdSchema<"CustomerId">()),
-    select: customerSelectSchema,
-});
-
-export const listCustomersSchema = z.strictObject({
-    select: customerSelectSchema,
-});
+/** The same filters, with at least one of them named. */
+export const getCustomerSchema = listCustomerSchema.refine(
+    (value) => value.id !== undefined,
+    { message: "getCustomer needs at least one filter" },
+);

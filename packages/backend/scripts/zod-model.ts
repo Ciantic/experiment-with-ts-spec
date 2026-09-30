@@ -8,7 +8,6 @@ import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     parseSpec,
-    readQueries,
     type Diagnostic,
     type SpecInterface,
 } from "spec/scripts/spec-model.js";
@@ -50,7 +49,7 @@ export interface ZodEntity {
     selectFields: ZodSelectField[];
 }
 
-/** One field of a `select`, mirroring `Selection` in `spec/queries/selection.ts`. */
+/** One field of a `select`, mirroring `Selection` in `../src/db/selection.ts`. */
 export interface ZodSelectField {
     name: string;
     /** The entity a branch selects into; undefined for a scalar field. */
@@ -75,18 +74,16 @@ export interface ZodModel {
     diagnostics: Diagnostic[];
 }
 
-/** A `@query` alias, rendered as a `<name>Schema` over its single argument. */
+/** The generated `list` schema for one entity: its `@queryfilter` sets plus `select`. */
 export interface ZodQuery {
-    /** The alias name, e.g. `GetInvoice`. */
-    name: string;
-    /** The entity the query reads, which groups the generated files and supplies `select`. */
+    /** The entity the read lists, which groups the generated file and supplies `select`. */
     entity: string;
     schemaName: string;
-    /** The argument fields, without `select`; the renderer adds the entity's select schema. */
+    /** The filter fields, all optional sets; the renderer adds the entity's select schema. */
     fields: ZodField[];
-    /** Entity names the arguments reference, so the file imports their schemas. */
+    /** Entity names the filters reference, so the file imports their schemas. */
     dependencies: string[];
-    /** True when an argument resolves through a primitive schema. */
+    /** True when a filter resolves through a primitive schema. */
     usesPrimitives: boolean;
 }
 
@@ -426,32 +423,38 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
     }
     entities.sort((a, b) => a.name.localeCompare(b.name));
 
-    // A `@query` alias is the read's single argument: its fields are the filters, and the
-    // renderer adds `select` from the entity the query reads. The object type is written by hand.
+    // Every entity gets a `list` read: its `@queryfilter` fields are the optional filters, and
+    // the renderer adds `select` from the entity itself. The resolvers already read the columns.
     const queries: ZodQuery[] = [];
-    for (const query of readQueries(project, aliasGlob)) {
-        const typeNode = query.declaration.getTypeNode();
-        const typeLiteral = typeNode?.asKind(SyntaxKind.TypeLiteral);
-        if (!typeLiteral) {
-            report(query.declaration, `\`${query.name}\`: @query arguments must be an object type literal`);
-            continue;
-        }
+    for (const spec of interfaces.values()) {
         const context: ResolveContext = { dependencies: new Set(), usesPrimitives: false };
-        const fields = resolveObjectFields(typeLiteral, context);
-        if (fields === undefined) {
-            report(query.declaration, `\`${query.name}\`: unsupported arguments \`${typeLiteral.getText()}\``);
-            continue;
+        const fields: ZodField[] = [];
+        for (const property of spec.properties) {
+            if (!property.tags.queryfilter) {
+                continue;
+            }
+            const typeNode = property.declaration.getTypeNode();
+            if (!typeNode) {
+                report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+                continue;
+            }
+            const resolved = resolveTypeNode(typeNode, context);
+            if (resolved === undefined) {
+                report(property.declaration, `\`${property.name}\`: unsupported filter type \`${typeNode.getText()}\``);
+                continue;
+            }
+            fields.push({ name: property.name, expression: `z.array(${resolved}).optional()` });
         }
+        context.dependencies.delete(spec.name);
         queries.push({
-            name: query.name,
-            entity: query.entity,
-            schemaName: schemaName(query.name),
+            entity: spec.name,
+            schemaName: `${lowerFirst(`list${spec.name}`)}Schema`,
             fields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
         });
     }
-    queries.sort((a, b) => a.name.localeCompare(b.name));
+    queries.sort((a, b) => a.entity.localeCompare(b.entity));
 
     return { primitives, entities, queries, diagnostics };
 }

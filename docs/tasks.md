@@ -40,8 +40,8 @@ The order is load-bearing:
 `pnpm run generate` runs the schema generator before the repository generator,
 then the query generator, and the validation generator last. All of them read the
 spec through `packages/spec/scripts/spec-model.ts`: the backend maps it to columns
-in `packages/backend/scripts/postgres-model.ts`, the query generator additionally
-reads the `@query` aliases, and the validation generator maps it to Zod schemas in
+in `packages/backend/scripts/postgres-model.ts`, the query generator reads the
+`@queryfilter` annotations, and the validation generator maps it to Zod schemas in
 `packages/backend/scripts/zod-model.ts`. None reads another's output, so the
 order between them is presentational — it mirrors the order the artifacts appear
 in the repository.

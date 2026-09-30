@@ -5,7 +5,7 @@
  * into SQL. A branch costs one extra query, batched over every parent — there is
  * no JSON aggregation.
  */
-import type { Selection, Selected } from "spec/queries/selection.js";
+import type { Selection, Selected } from "./selection.js";
 import type { SqlExecutor } from "./sql-executor.js";
 
 /** How a branch field of a table reaches another table. */
@@ -38,14 +38,12 @@ export interface QueryModel {
 
 /** What a fetch selects and filters on: root arguments, or a column matched against parent keys. */
 type FetchFilter =
-    | { kind: "args"; args: Record<string, unknown>; inFilters?: Record<string, string> | undefined }
+    | { kind: "args"; args: Record<string, unknown> }
     | { kind: "match"; column: string; values: unknown[] };
 
 /** What a read selects and filters on, as the generated function passes it. */
 export interface ResolveOptions<E, S extends Selection<E>> {
     select: S;
-    /** Set-membership arguments from `@in`: argument name -> the field it matches. See docs/queries.md. */
-    inFilters?: Record<string, string>;
 }
 
 /** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
@@ -242,38 +240,26 @@ function selectList(meta: QueryTable, projection: Projection, matchColumn: strin
     return columns.join(", ");
 }
 
-/** One argument's clause: an `@in` set, or equality on a scalar or foreign-key column. */
+/** One argument's clause: a set, `column in (…)`. See docs/queries.md. */
 function argumentClause(
     table: string,
     meta: QueryTable,
     name: string,
     value: unknown,
-    inField: string | undefined,
     params: unknown[],
-): string[] {
-    if (inField !== undefined) {
-        if (!Array.isArray(value)) {
-            throw new Error(`set filter \`${name}\` on \`${table}\` needs an array`);
-        }
-        const column = columnForArgument(meta, inField);
-        if (column === undefined) {
-            throw new Error(`unknown filter field \`${inField}\` on \`${table}\``);
-        }
-        const values = distinct(value);
-        if (values.length === 0) {
-            return ["false"];
-        }
-        return [`${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`];
-    }
-    if (Array.isArray(value)) {
-        throw new Error(`filter \`${name}\` on \`${table}\` is an array; annotate it with @in`);
+): string {
+    if (!Array.isArray(value)) {
+        throw new Error(`filter \`${name}\` on \`${table}\` must be an array`);
     }
     const column = columnForArgument(meta, name);
     if (column === undefined) {
         throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
     }
-    params.push(value);
-    return [`${TABLE_ALIAS}.${quote(column)} = $${params.length}`];
+    const values = distinct(value);
+    if (values.length === 0) {
+        return "false";
+    }
+    return `${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`;
 }
 
 /** Build the WHERE clause for a fetch, or undefined when the filter cannot match anything. */
@@ -291,7 +277,7 @@ function buildFilter(table: string, meta: QueryTable, filter: FetchFilter): Filt
             if (value === undefined) {
                 continue;
             }
-            clauses.push(...argumentClause(table, meta, name, value, filter.inFilters?.[name], params));
+            clauses.push(argumentClause(table, meta, name, value, params));
         }
     }
 
@@ -423,7 +409,6 @@ export function createResolver(model: QueryModel): Resolver {
         const rows = await fetchRows(model, db, table, opts.select as Record<string, unknown>, {
             kind: "args",
             args,
-            inFilters: opts.inFilters,
         });
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }

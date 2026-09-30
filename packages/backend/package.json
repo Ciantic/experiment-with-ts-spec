@@ -12,7 +12,7 @@
     "generate:schema": "node scripts/generate-postgres-schema.ts",
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
     "generate:repositories": "node scripts/generate-repositories.ts",
-    "generate:queries": "node scripts/generate-query-metadata.ts",
+    "generate:queries": "node scripts/generate-queries.ts",
     "generate:validation": "node scripts/generate-zod-schemas.ts"
   },
   "dependencies": {

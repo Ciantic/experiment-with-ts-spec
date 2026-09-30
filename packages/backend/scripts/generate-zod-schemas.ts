@@ -40,7 +40,7 @@ export function queryFileName(entity: string): string {
     return join(QUERIES_DIR, `${lowerFirst(entity)}Queries.ts`);
 }
 
-/** Render one entity's query schema module: args and options schemas per `@query` alias. */
+/** Render one entity's query schema module: the `list` filters and `select`. */
 export function generateQueryFile(
     entity: string,
     queries: ZodQuery[],
@@ -64,7 +64,7 @@ export function generateQueryFile(
         }
     }
 
-    for (const query of [...queries].sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const query of queries) {
         lines.push("");
         lines.push(`export const ${query.schemaName} = z.strictObject({`);
         for (const field of query.fields) {
@@ -73,6 +73,17 @@ export function generateQueryFile(
         // The read's one argument carries the filters and the selection together.
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
         lines.push("});");
+
+        // A getter needs a filter to name a row, so the schema requires at least one of them.
+        if (query.fields.length > 0) {
+            const named = query.fields.map((field) => `value.${field.name} !== undefined`).join(" || ");
+            lines.push("");
+            lines.push(`/** The same filters, with at least one of them named. */`);
+            lines.push(`export const get${entity}Schema = ${query.schemaName}.refine(`);
+            lines.push(`    (value) => ${named},`);
+            lines.push(`    { message: "get${entity} needs at least one filter" },`);
+            lines.push(");");
+        }
     }
     return lines.join("\n") + "\n";
 }

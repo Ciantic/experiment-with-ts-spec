@@ -13,7 +13,7 @@ database schema and the repositories are generated from.
 - `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
   exporting `<name>Schema`, `<name>PatchSchema`, and `<name>SelectSchema`.
 - `packages/backend/src/validation/queries/<entity>Queries.ts` — one module per
-  entity a `@query` reads, exporting a `<name>Schema` per query alias.
+  entity, exporting `<name>Schema` for its `list` read.
 - `packages/backend/src/validation/queries/index.ts` — the barrel re-exporting
   every query module.
 - `packages/backend/src/validation/index.ts` — the barrel re-exporting the
@@ -85,30 +85,34 @@ field — without hardcoding a column list.
 
 ## Query schemas
 
-A `@query` alias declares a read's arguments (`docs/queries.md`). A read takes
-one argument — its filters plus `select` — so the schema is that object with the
-entity's select schema added as a field. The arguments resolve like an entity's
-fields, with the same primitives, keywords, `Date` mapping, and `.optional()`
-for a `?` field. One `<name>Schema` is emitted per alias: `@query Invoice many`
-on `ListInvoices` yields `listInvoicesSchema` in
-`packages/backend/src/validation/queries/invoiceQueries.ts`, grouped by the
-entity the query reads.
-
-`@in` is a backend operator annotation (`docs/spec-annotations.md`): the schema
-sees only the argument's type, so `ids: InvoiceId[]` validates as
-`z.array(…)` and the tag needs no handling here.
+Every entity gets a generated `list` read, and every entity with a `@queryfilter`
+field also gets a `get` (`docs/queries.md`) — which is every entity, since `id`
+is a filter by default — so every entity gets two schemas. A read takes one
+argument — its filters plus `select` — so the schema is
+that object with the entity's select schema added as a field. The filters come
+from the entity's `@queryfilter` fields, resolved like any other field (the same
+primitives, keywords, and `Date` mapping) and always validated as a set:
+`z.array(…)`. The schema is named after the read: `Invoice` yields
+`listInvoiceSchema` and `getInvoiceSchema` in
+`packages/backend/src/validation/queries/invoiceQueries.ts`.
 
 ```typescript
-export const getInvoiceSchema = z.strictObject({
-    id: primitives.brandedIdSchema<"InvoiceId">(),
+export const listInvoiceSchema = z.strictObject({
+    id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     select: invoiceSelectSchema,
 });
 
-export const listInvoicesSchema = z.strictObject({
-    customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
-    select: invoiceSelectSchema,
-});
+/** The same filters, with at least one of them named. */
+export const getInvoiceSchema = listInvoiceSchema.refine(
+    (value) => value.id !== undefined,
+    { message: "getInvoice needs at least one filter" },
+);
 ```
+
+A `list` filter is optional; a `get` must name one, which mirrors the generated
+types: `Filters<…>` for `list`, `AtLeastOne<Filters<…>>` for `get`. `get` is
+built by refining the `list` schema, so the two cannot drift apart, and an entity
+with no filter gets only the `list` schema.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.
@@ -118,7 +122,7 @@ pulling in a write schema, and `--out` still writes below the given directory.
 `select` is not a fixed shape: a caller picks any subset of fields and nests
 into branches. So it is validated against a generated per-entity schema,
 `<name>SelectSchema`, that mirrors `Selection<E>` in
-`packages/spec/src/queries/selection.ts`:
+`packages/backend/src/db/selection.ts`:
 
 ```typescript
 export const invoiceSelectSchema = z.lazy(() =>
@@ -145,17 +149,17 @@ that resolves to an interface is a branch. The `@relation` / `@children` /
 `@inlined` tags only say how the branch is stored (`docs/queries.md`); selection
 is about the value shape, so it follows the type.
 
-Select schemas are generated for **every** entity, not only those a `@query`
-reads, because a select nests into targets that may have no read of their own.
-They live in the entity module next to `<name>Schema`, so
+Select schemas are generated for **every** entity, because a select nests into
+targets that may have no filters of their own. They live in the entity module
+next to `<name>Schema`, so
 `packages/backend/src/validation/index.ts` already re-exports them. A query's
 args schema references the one for the entity it reads, so validating a read
 validates its selection too.
 
 ## Annotations
 
-The generator reads only type-level annotations: `@primitive`, `@zod`, `@query`,
-and the `@version` field tag. It never names a domain type. The parsing and tag
+The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
+`@queryfilter` (which `spec-model.ts` defaults on `id`). It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.

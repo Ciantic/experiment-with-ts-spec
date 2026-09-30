@@ -146,65 +146,60 @@ describe("resolveMany", () => {
 
     it("treats `true` on a branch as all of its scalar fields", async () => {
         const select = { number: true, rows: true } as const;
-        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i2" }, { select });
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i2"] }, { select });
 
         expect(rows[0]?.rows).toEqual([{ id: "r3", description: "Thing", amount: "200" }]);
     });
 
-    it("filters by a scalar argument", async () => {
+    it("matches a set argument against a scalar field", async () => {
         const select = { number: true } as const;
-        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i3" }, { select });
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i3"] }, { select });
 
         expect(rows).toEqual([{ number: "INV-3" }]);
     });
 
-    it("filters by a foreign-key argument", async () => {
+    it("matches a set argument against a foreign-key field", async () => {
         const select = { id: true } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(
             db,
             "invoice",
-            { customerId: "c1" },
+            { customerId: ["c1"] },
             { select },
         );
 
         expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
     });
 
-    it("matches a set argument against the field named by the in-filter", async () => {
+    it("combines two filters with and", async () => {
         const select = { id: true } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(
             db,
             "invoice",
-            { ids: ["i1", "i3"] },
-            { select, inFilters: { ids: "id" } },
+            { id: ["i1", "i2"], customerId: ["c1"] },
+            { select },
         );
 
-        expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
+        expect(rows.map((row) => row.id)).toEqual(["i1"]);
     });
 
     it("returns nothing for an empty set", async () => {
         const select = { id: true } as const;
-        const rows = await resolver.resolveMany<Invoice, typeof select>(
-            db,
-            "invoice",
-            { ids: [] },
-            { select, inFilters: { ids: "id" } },
-        );
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: [] }, { select });
 
         expect(rows).toEqual([]);
     });
 
-    it("rejects an array argument without an in-filter", async () => {
+    it("rejects a non-array filter", async () => {
         const select = { id: true } as const;
 
         await expect(
-            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { ids: ["i1"] }, { select }),
-        ).rejects.toThrow("filter `ids` on `invoice` is an array; annotate it with @in");
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i1" }, { select }),
+        ).rejects.toThrow("filter `id` on `invoice` must be an array");
     });
 
     it("returns nothing for a filter that matches no rows", async () => {
         const select = { number: true } as const;
-        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "nope" }, { select });
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["nope"] }, { select });
 
         expect(rows).toEqual([]);
     });
@@ -213,7 +208,7 @@ describe("resolveMany", () => {
         const select = { number: true } as const;
 
         await expect(
-            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { nonsense: 1 }, { select }),
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { nonsense: [1] }, { select }),
         ).rejects.toThrow("unknown filter field `nonsense` on `invoice`");
     });
 });
@@ -221,14 +216,14 @@ describe("resolveMany", () => {
 describe("resolveOne", () => {
     it("returns the first matching row", async () => {
         const select = { number: true, totalAmount: true } as const;
-        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: "i1" }, { select });
+        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: ["i1"] }, { select });
 
         expect(row).toEqual({ number: "INV-1", totalAmount: "100" });
     });
 
     it("returns undefined when nothing matches", async () => {
         const select = { number: true } as const;
-        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: "nope" }, { select });
+        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: ["nope"] }, { select });
 
         expect(row).toBeUndefined();
     });

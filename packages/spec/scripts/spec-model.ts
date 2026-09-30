@@ -5,7 +5,6 @@
 import { dirname, join, relative as relativePath } from "node:path";
 import {
     Node,
-    SyntaxKind,
     type InterfaceDeclaration,
     type JSDoc,
     type JSDocTag,
@@ -38,24 +37,21 @@ export const FIELD_TAGS = [
     "unique",
     "default",
     "version",
+    "queryfilter",
 ] as const;
 
 /** Tags an interface may carry. */
 export const INTERFACE_TAGS = ["table"] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype", "query"] as const;
-
-/** Tags a `@query` argument member may carry. See docs/queries.md. */
-export const QUERY_ARG_TAGS = ["in"] as const;
+export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype"] as const;
 
 /** Every tag this model recognises. */
-export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS, ...QUERY_ARG_TAGS] as const;
+export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
 
 export type FieldTag = (typeof FIELD_TAGS)[number];
 export type InterfaceTag = (typeof INTERFACE_TAGS)[number];
 export type TypeTag = (typeof TYPE_TAGS)[number];
-export type QueryArgTag = (typeof QUERY_ARG_TAGS)[number];
 export type Tag = (typeof TAGS)[number];
 
 /** Retired tags, mapped to the advice a linter reports in their place. */
@@ -116,10 +112,8 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
     pgtype?: string;
-    /** The `@query` value: a target entity and a cardinality, e.g. `Invoice many`. See docs/queries.md. */
-    query?: string;
-    /** The `@in` value on a query argument: the field a set of values is matched against. See docs/queries.md. */
-    in?: string;
+    /** The field may be an equality filter of its entity's generated `list` read. See docs/queries.md. */
+    queryfilter: boolean;
 }
 
 /** A field of a spec interface. */
@@ -212,6 +206,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         version: false,
         formula: false,
         primitive: false,
+        queryfilter: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -253,11 +248,8 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "pgtype":
                     if (value !== undefined) tags.pgtype ??= value;
                     break;
-                case "query":
-                    if (value !== undefined) tags.query ??= value;
-                    break;
-                case "in":
-                    if (value !== undefined) tags.in ??= value;
+                case "queryfilter":
+                    tags.queryfilter = true;
                     break;
                 case "generated":
                     tags.generated = true;
@@ -334,91 +326,6 @@ export function readFormulaNames(project: Project, specGlob = SPEC_GLOB): Set<st
     return names;
 }
 
-/** The cardinality of a `@query`: one row, or a list. */
-export type QueryCardinality = "one" | "many";
-
-/** One member of a `@query` alias's object type: an argument, with its tags. */
-export interface SpecQueryArgument {
-    name: string;
-    optional: boolean;
-    /** The argument type as written, e.g. `InvoiceId[]`. */
-    typeText: string;
-    declaration: PropertySignature;
-    tags: Tags;
-}
-
-/** A `@query`-annotated alias: the arguments of one read. See docs/queries.md. */
-export interface SpecQuery {
-    /** The alias name, which becomes the function name. */
-    name: string;
-    /** The entity `@query` names. */
-    entity: string;
-    cardinality: QueryCardinality;
-    filePath: string;
-    /** The module specifier that imports the args alias, e.g. `spec/queries/InvoiceQueries.js`. */
-    importSpecifier: string;
-    declaration: TypeAliasDeclaration;
-    /** The object-literal members of the alias, in declaration order. */
-    arguments: SpecQueryArgument[];
-}
-
-/** Split a `@query` value into its entity and cardinality; cardinality defaults to `many`. */
-export function parseQueryTag(value: string): { entity: string; cardinality: QueryCardinality } {
-    const parts = value.trim().split(/\s+/);
-    return {
-        entity: parts[0] ?? "",
-        cardinality: parts[1] === "one" ? "one" : "many",
-    };
-}
-
-/** Read every `@query`-annotated alias under `spec/`, statically. */
-export function readQueries(project: Project, specGlob = SPEC_GLOB): SpecQuery[] {
-    const queries: SpecQuery[] = [];
-    for (const sourceFile of project.getSourceFiles(specGlob)) {
-        for (const declaration of sourceFile.getTypeAliases()) {
-            const value = readTags(declaration).query;
-            if (value === undefined) {
-                continue;
-            }
-            const { entity, cardinality } = parseQueryTag(value);
-            const filePath = sourceFile.getFilePath();
-            queries.push({
-                name: declaration.getName(),
-                entity,
-                cardinality,
-                filePath,
-                importSpecifier: specImportSpecifier(filePath),
-                declaration,
-                arguments: readQueryArguments(declaration),
-            });
-        }
-    }
-    return queries;
-}
-
-/** The object-literal members of a `@query` alias, decoded with their tags. */
-export function readQueryArguments(declaration: TypeAliasDeclaration): SpecQueryArgument[] {
-    const arguments_: SpecQueryArgument[] = [];
-    const typeLiteral = declaration.getTypeNode()?.asKind(SyntaxKind.TypeLiteral);
-    if (!typeLiteral) {
-        return arguments_;
-    }
-    for (const member of typeLiteral.getMembers()) {
-        const property = member.asKind(SyntaxKind.PropertySignature);
-        if (!property) {
-            continue;
-        }
-        arguments_.push({
-            name: property.getName(),
-            optional: property.hasQuestionToken(),
-            typeText: property.getTypeNode()?.getText() ?? "",
-            declaration: property,
-            tags: readTags(property),
-        });
-    }
-    return arguments_;
-}
-
 /** Parse the spec into interfaces, aliases, and the formula vocabulary. */
 export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
     const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
@@ -459,13 +366,21 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 filePath,
                 importSpecifier: specImportSpecifier(filePath),
                 declaration,
-                properties: declaration.getProperties().map((property) => ({
-                    name: property.getName(),
-                    optional: property.hasQuestionToken(),
-                    typeText: property.getTypeNode()?.getText() ?? "",
-                    declaration: property,
-                    tags: readTags(property),
-                })),
+                properties: declaration.getProperties().map((property) => {
+                    const tags = readTags(property);
+                    // `id` is the primary key every entity has, so it is always a filter; writing
+                    // the tag on it is redundant. The linter reports that rather than ignoring it.
+                    if (property.getName() === "id") {
+                        tags.queryfilter = true;
+                    }
+                    return {
+                        name: property.getName(),
+                        optional: property.hasQuestionToken(),
+                        typeText: property.getTypeNode()?.getText() ?? "",
+                        declaration: property,
+                        tags,
+                    };
+                }),
             });
         }
     }

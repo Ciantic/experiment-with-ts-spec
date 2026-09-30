@@ -25,9 +25,9 @@ see "Patching" below.
 Every function takes an array and returns nothing. **Reading is not part of a
 repository.** There is no `getById`, no list, no query builder. Those belong to
 whatever reads the data — a projection, a report, a view — and are deliberately
-not generated, because their shape is a product decision rather than a mapping
-of the spec. Hand-written read contracts live in `packages/spec/src/queries/`;
-see `docs/queries.md`.
+not part of a repository, because their shape is a product decision rather than
+a mapping of the spec. Reads are generated separately from the entities in
+`packages/backend/src/db/queries/`; see `docs/queries.md`.
 
 `SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
 `query(sql, parameters?)`. Both PGlite and `pg` satisfy it, so the generated
@@ -144,8 +144,8 @@ patch column sets separately; see `docs/versioning.md`.
 
 ## Deliberately not implemented
 
-- **Queries.** Hand-written read contracts live in `packages/spec/src/queries/`,
-  not in a repository; see `docs/queries.md`.
+- **Queries.** Reads are generated from the entities in
+  `packages/backend/src/db/queries/`, not in a repository; see `docs/queries.md`.
 - **Upsert and full-row replacement.** `update` is a patch; there is no "write
   exactly this object" variant, and no insert-or-update.
 - **Cascade delete** for `@children`. A child table's foreign key has no

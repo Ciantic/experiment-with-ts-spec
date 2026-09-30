@@ -3,17 +3,13 @@ import { z } from "zod";
 import { invoiceSelectSchema } from "../invoice.js";
 import * as primitives from "../primitives.js";
 
-export const getInvoiceSchema = z.strictObject({
-    id: primitives.brandedIdSchema<"InvoiceId">(),
+export const listInvoiceSchema = z.strictObject({
+    id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     select: invoiceSelectSchema,
 });
 
-export const getInvoicesSchema = z.strictObject({
-    ids: z.array(primitives.brandedIdSchema<"InvoiceId">()),
-    select: invoiceSelectSchema,
-});
-
-export const listInvoicesSchema = z.strictObject({
-    customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
-    select: invoiceSelectSchema,
-});
+/** The same filters, with at least one of them named. */
+export const getInvoiceSchema = listInvoiceSchema.refine(
+    (value) => value.id !== undefined,
+    { message: "getInvoice needs at least one filter" },
+);

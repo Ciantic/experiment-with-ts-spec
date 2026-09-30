@@ -5,8 +5,7 @@ import {
     buildQueryModel,
     generateQueries,
     renderQueryModule,
-    type QuerySpec,
-} from "./generate-query-metadata.js";
+} from "./generate-queries.js";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
@@ -33,7 +32,7 @@ const invoice = table(
     "invoice",
     "Invoice",
     [
-        column("id", { primaryKey: true }),
+        column("id", { primaryKey: true, queryFilter: true }),
         column("number"),
         column("customerId", { references: { table: "customer", column: "id" } }),
         column("customerName"),
@@ -46,29 +45,12 @@ const invoice = table(
     ]),
 );
 
-const tables = new Map([["Invoice", invoice]]);
+const seller = table("seller", "Seller", [column("id", { primaryKey: true })]);
 
-const listInvoices: QuerySpec = {
-    name: "ListInvoices",
-    entity: "Invoice",
-    cardinality: "many",
-    importSpecifier: "spec/queries/InvoiceQueries.js",
-};
-
-const getInvoice: QuerySpec = {
-    name: "GetInvoice",
-    entity: "Invoice",
-    cardinality: "one",
-    importSpecifier: "spec/queries/InvoiceQueries.js",
-};
-
-const getInvoices: QuerySpec = {
-    name: "GetInvoices",
-    entity: "Invoice",
-    cardinality: "many",
-    importSpecifier: "spec/queries/InvoiceQueries.js",
-    inFilters: { ids: "id" },
-};
+const tables = new Map([
+    ["Invoice", invoice],
+    ["Seller", seller],
+]);
 
 describe("buildQueryModel", () => {
     it("keeps scalar fields and drops branch columns", () => {
@@ -98,76 +80,78 @@ describe("buildQueryModel", () => {
 });
 
 describe("renderQueryModule", () => {
-    it("emits one exported function per query, with no interface", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+    it("emits one exported list function, with no interface", () => {
+        const code = renderQueryModule("Invoice", invoice);
 
-        expect(code).toContain("export function getInvoice<");
-        expect(code).toContain("export function listInvoices<");
+        expect(code).toContain("export function listInvoice<");
         expect(code).not.toContain("export interface");
-        expect(code).not.toContain("invoiceQueries(");
-        expect(code).toContain("resolver.resolveMany<Invoice, S>(db, \"invoice\"");
-        expect(code).toContain("resolver.resolveOne<Invoice, S>(db, \"invoice\"");
+        expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice"');
     });
 
-    it("takes db first and the args plus the selection second", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+    it("takes db first and the filter sets plus the selection second", () => {
+        const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain(
-            "getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: GetInvoice & { select: S })",
-        );
-        expect(code).toContain(
-            "listInvoices<S extends Selection<Invoice>>(db: SqlExecutor, opts: ListInvoices & { select: S })",
+            'listInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id"> & { select: S })',
         );
     });
 
-    it("splits the argument back into filters and a selection for the resolver", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+    it("splits the filters back apart for the resolver", () => {
+        const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain("const { select, ...args } = opts;");
-        expect(code).toContain('resolver.resolveOne<Invoice, S>(db, "invoice", args, { select })');
         expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice", args, { select })');
     });
 
-    it("returns a list for `many` and an optional row for `one`", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
+    it("returns a list", () => {
+        const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain("Promise<Selected<Invoice, S>[]>");
+    });
+
+    it("emits a getter that requires at least one filter", () => {
+        const code = renderQueryModule("Invoice", invoice);
+
+        expect(code).toContain("export function getInvoice<");
+        expect(code).toContain(
+            'getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: AtLeastOne<Filters<Invoice, "id">> & { select: S })',
+        );
         expect(code).toContain("Promise<Selected<Invoice, S> | undefined>");
+        expect(code).toContain('resolver.resolveOne<Invoice, S>(db, "invoice", args, { select })');
     });
 
-    it("passes `@in` filters to the resolver", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [getInvoices]);
+    it("leaves the filters out when the entity marks none", () => {
+        const code = renderQueryModule("Seller", seller);
 
-        expect(code).toContain('inFilters: { "ids": "id" }');
+        expect(code).toContain("listSeller<S extends Selection<Seller>>(db: SqlExecutor, opts: { select: S })");
+        expect(code).not.toContain("Filters<");
     });
 
-    it("omits inFilters when there are none", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices]);
+    it("emits no getter when the entity marks no filter", () => {
+        const code = renderQueryModule("Seller", seller);
 
-        expect(code).toContain("args, { select })");
-        expect(code).not.toContain("inFilters");
-    });
-
-    it("sorts functions by name", () => {
-        const code = renderQueryModule("Invoice", "invoice", "spec/domain/Invoice.js", [listInvoices, getInvoice]);
-        const getIndex = code.indexOf("getInvoice<S extends");
-        const listIndex = code.indexOf("listInvoices<S extends");
-
-        expect(getIndex).toBeGreaterThan(-1);
-        expect(getIndex).toBeLessThan(listIndex);
+        expect(code).not.toContain("getSeller");
+        expect(code).not.toContain("AtLeastOne");
     });
 });
 
 describe("generateQueries", () => {
     it("emits the model, one module per entity, and a barrel", () => {
-        const files = generateQueries(tables, [listInvoices, getInvoice]);
+        const files = generateQueries(tables);
 
-        expect([...files.keys()].sort()).toEqual(["index.ts", "invoiceQueries.ts", "model.ts"]);
+        expect([...files.keys()].sort()).toEqual([
+            "index.ts",
+            "invoiceQueries.ts",
+            "model.ts",
+            "sellerQueries.ts",
+        ]);
     });
 
-    it("throws when a query names an entity with no table", () => {
-        const orphan: QuerySpec = { ...listInvoices, entity: "Nope" };
+    it("re-exports every module from the barrel", () => {
+        const code = generateQueries(tables).get("index.ts") ?? "";
 
-        expect(() => generateQueries(tables, [orphan])).toThrow("@query Nope has no table");
+        expect(code).toContain('export * from "./model.js";');
+        expect(code).toContain('export * from "./invoiceQueries.js";');
+        expect(code).toContain('export * from "./sellerQueries.js";');
     });
 });
