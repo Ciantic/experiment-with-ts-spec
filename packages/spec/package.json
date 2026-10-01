@@ -20,6 +20,7 @@
     "lint:spec": "node scripts/lint-spec.ts"
   },
   "dependencies": {
+    "effect": "^4.0.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

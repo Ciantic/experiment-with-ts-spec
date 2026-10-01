@@ -235,6 +235,31 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
 
+  packages/backend-effect:
+    dependencies:
+      '@effect/sql-pglite':
+        specifier: ^4.0.0
+        version: 4.0.0(effect@4.0.0)
+      effect:
+        specifier: ^4.0.0
+        version: 4.0.0
+      spec:
+        specifier: workspace:*
+        version: link:../spec
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      ts-morph:
+        specifier: ^28.0.0
+        version: 28.0.0
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
+
   packages/sdk:
     dependencies:
       devalue:
@@ -253,6 +278,9 @@ importers:
 
   packages/spec:
     dependencies:
+      effect:
+        specifier: ^4.0.0
+        version: 4.0.0
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -268,6 +296,11 @@ importers:
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
 
 packages:
+
+  '@effect/sql-pglite@4.0.0':
+    resolution: {integrity: sha512-BTlCPSipKMHZJEoJ94rR4f8Gx8cv8tLpZeHc3sajg2ko/2GY8s6CyycSra3Z6GLFUhcivRTYQ9Zc5LThz64qfQ==}
+    peerDependencies:
+      effect: ^4.0.0
 
   '@electric-sql/pglite@0.5.8':
     resolution: {integrity: sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q==}
@@ -438,6 +471,9 @@ packages:
 
   devalue@5.9.4:
     resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
+
+  effect@4.0.0:
+    resolution: {integrity: sha512-ooc1TG5t+FfzgYnFz2ff6BBKyZ7EwBRVXC7c4RhQUAD6/TZ2gTXXMeb4WX7a19ozQo4J73/QW+S00YAIresoMQ==}
 
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
@@ -691,6 +727,11 @@ packages:
 
 snapshots:
 
+  '@effect/sql-pglite@4.0.0(effect@4.0.0)':
+    dependencies:
+      '@electric-sql/pglite': 0.5.8
+      effect: 4.0.0
+
   '@electric-sql/pglite@0.5.8': {}
 
   '@jridgewell/resolve-uri@3.1.2': {}
@@ -796,6 +837,8 @@ snapshots:
   detect-libc@2.1.2: {}
 
   devalue@5.9.4: {}
+
+  effect@4.0.0: {}
 
   es-module-lexer@2.3.2: {}
 

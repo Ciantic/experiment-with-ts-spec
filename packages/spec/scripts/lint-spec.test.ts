@@ -511,7 +511,7 @@ describe("type-level tags", () => {
         expect(messages(findings)).toEqual(["`Thing`: @primitive takes no value"]);
     });
 
-    it("requires @zod and @pgtype on a @primitive type", () => {
+    it("requires a schema tag and @pgtype on a @primitive type", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
@@ -521,9 +521,35 @@ describe("type-level tags", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`Thing`: @primitive requires @zod",
+            "`Thing`: @primitive requires @zod or @effect",
             "`Thing`: @primitive requires @pgtype",
         ]);
+    });
+
+    it("accepts a @primitive type carrying its @effect schema and @pgtype", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgtype uuid
+             * @effect Schema.String.check(Schema.isUUID())
+             */
+            export type ThingId = string;`,
+            new Set(),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports @effect without a schema expression", () => {
+        const findings = lintSourceText(
+            `/**
+             * @effect
+             */
+            export type Thing = string;`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @effect is missing its schema expression"]);
     });
 
     it("requires @pgtype on a @primitive type", () => {

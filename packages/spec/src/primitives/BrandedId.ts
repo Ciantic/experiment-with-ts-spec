@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 import type { GUID } from "./GUID.ts";
 
 /**
@@ -7,5 +7,6 @@ import type { GUID } from "./GUID.ts";
  * @primitive
  * @pgtype uuid
  * @zod z.uuid().brand<Name>()
+ * @effect Schema.String.check(Schema.isUUID()).pipe(Schema.brand<Name>(name as never))
  */
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+export type BrandedId<Name extends string> = GUID & Brand<Name>;

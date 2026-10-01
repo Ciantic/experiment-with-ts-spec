@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 
 /**
  * A Finnish e-invoice address (verkkolaskuosoite / OVT): a routing address such
@@ -8,5 +8,6 @@ import type { $brand } from "zod";
  * @primitive
  * @pgtype text
  * @zod z.string().brand<"EInvoiceAddress">()
+ * @effect Schema.String.pipe(Schema.brand("EInvoiceAddress"))
  */
-export type EInvoiceAddress = string & $brand<"EInvoiceAddress">;
+export type EInvoiceAddress = string & Brand<"EInvoiceAddress">;

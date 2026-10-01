@@ -40,11 +40,16 @@ Type tags:
 - `@primitive` — a bare marker on a type alias that identifies it as a scalar
   value type rather than an entity. Applied to the aliases in
   `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
-  `@zod` and `@pgtype`; the marker itself takes no value. See `docs/primitives.md`.
+  `@pgtype` and at least one schema tag (`@zod` or `@effect`); the marker itself
+  takes no value. See `docs/primitives.md`.
 - `@zod <expression>` — the type's Zod schema, written verbatim and never
   evaluated by the spec, such as `z.uuid()` or
   `z.uuid().brand<"Something">()`. It is what gives a primitive a runtime
   counterpart to its compile-time brand. At most one per type alias.
+- `@effect <expression>` — the type's `effect/schema`, written verbatim and
+  never evaluated by the spec, such as `Schema.String.check(Schema.isUUID())` or
+  `Schema.String.pipe(Schema.brand("Something"))`. The counterpart of `@zod`
+  for the Effect backend. At most one per type alias.
 - `@pgtype <sql-type>` — the storage type a generator maps the alias to, such as
   `uuid` or `decimal`. The spec declares *what* the value is stored as; a
   generator reads the tag rather than knowing the domain type by name, so adding
@@ -52,9 +57,10 @@ Type tags:
   carry it. See `docs/primitives.md`.
 
 Type tags sit on a type alias and are validated as a group: `@formula` types are
-checked as unions of string literals, `@primitive` types must declare `@zod` and
-`@pgtype`, and any tag outside the four is reported. A field never carries a type
-tag; an alias never carries a field or interface tag.
+checked as unions of string literals, `@primitive` types must declare `@pgtype`
+and at least one schema tag (`@zod` or `@effect`), and any tag outside the five
+is reported. A field never carries a type tag; an alias never carries a field or
+interface tag.
 
 `@relation`, `@children`, and `@inlined` are bare markers, like `@generated`:
 they take no value. The entity and the cardinality both come from the field

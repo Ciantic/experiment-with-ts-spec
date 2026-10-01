@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 import type { Decimal } from "./Decimal.ts";
 
 /**
@@ -7,5 +7,6 @@ import type { Decimal } from "./Decimal.ts";
  * @primitive
  * @pgtype decimal
  * @zod z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"TaxRate">()
+ * @effect Schema.String.check(Schema.isPattern(/^-?\d+(\.\d+)?$/)).pipe(Schema.brand("Decimal"), Schema.brand("TaxRate"))
  */
-export type TaxRate = Decimal & $brand<"TaxRate">;
+export type TaxRate = Decimal & Brand<"TaxRate">;

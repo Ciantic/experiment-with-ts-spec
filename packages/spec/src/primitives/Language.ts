@@ -5,6 +5,7 @@
  * @primitive
  * @pgtype text
  * @zod z.enum(["fi", "sv", "en"]).or(z.string())
+ * @effect Schema.Union([Schema.Literals(["fi", "sv", "en"]), Schema.String])
  */
 export type Language =
     | "fi"

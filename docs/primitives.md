@@ -5,16 +5,17 @@ entities live in `packages/spec/src/domain/`.
 
 ## Annotations
 
-Every alias in this folder carries three type-level tags, described in
-`docs/spec-annotations.md`:
+Every alias in this folder carries the type-level tags described in
+`docs/spec-annotations.md`. A branded alias carries one schema tag per backend:
 
 ```typescript
 /**
  * @primitive
  * @pgtype uuid
  * @zod z.uuid().brand<Name>()
+ * @effect Schema.String.check(Schema.isUUID()).pipe(Schema.brand<Name>(name as never))
  */
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+export type BrandedId<Name extends string> = GUID & Brand<Name>;
 ```
 
 - `@primitive` marks the alias as a scalar value type, not an entity. It is a
@@ -27,12 +28,16 @@ export type BrandedId<Name extends string> = GUID & $brand<Name>;
   consumes; the schema is never evaluated in this package. It is what gives a
   brand that exists only in the type system a runtime counterpart that can
   validate a value at the boundary.
+- `@effect` is the type's `effect/schema`, written verbatim — the counterpart of
+  `@zod` for the Effect backend. Like `@zod`, it is text a generator consumes and
+  is never evaluated in this package.
 
-Zod is a **type-only** dependency: `$brand` is imported with `import type`, so it
-is erased at runtime and `packages/spec/` still ships no executable code. Because
-the schema expression and the type must agree on the *same* `$brand` symbol, the
-workspace must resolve a single copy of Zod — two copies declare two
-`unique symbol`s and the brands silently stop matching.
+Zod and Effect are **type-only** dependencies: `$brand` and `Brand.Brand` are
+imported with `import type`, so both are erased at runtime and `packages/spec/`
+still ships no executable code. Each brand is a phantom property keyed by a
+module-private `unique symbol`, so the workspace must resolve a single copy of
+each library — two copies of Zod (or of Effect) declare two `unique symbol`s and
+the brands silently stop matching.
 
 Each schema stays self-contained. `Money`, `Quantity`, and `TaxRate` each write
 out the decimal string shape and then apply their brands rather than importing
@@ -41,10 +46,11 @@ out the decimal string shape and then apply their brands rather than importing
 The schema mirrors the alias:
 
 - A **branded** alias (`Email`, `Decimal`, `Money`, `Version`, `BrandedId`) gets
-  the matching `.brand<…>()`. The brand is the whole point of the alias, so the
-  schema must reproduce it. `Money` refines `Decimal`, so its schema chains the
-  base brand first, `.brand<"Decimal">().brand<"Money">()`, and
-  `z.infer<typeof moneySchema>` is then assignable to `Money` with no cast.
+  the matching `.brand<…>()` (Zod) and `Schema.brand(…)` (Effect). The brand is
+  the whole point of the alias, so each schema must reproduce it. `Money` refines
+  `Decimal`, so its schema chains the base brand first,
+  `.brand<"Decimal">().brand<"Money">()`, and each library's inferred type is
+  then assignable to `Money` with no cast.
 - A **closed** union gets `z.enum([...])`.
 - An **open** union (`Unit`, `Currency`, `Language`, `EInvoiceOperator`) gets
   `z.enum([...]).or(z.string())`, not a brand — the alias is a plain string with
@@ -56,32 +62,45 @@ alias does not have, so the runtime schema and the compile-time type disagree.
 
 ## Branding
 
-Brands come from Zod (`$brand`), not a hand-rolled property:
+Every brand is the shared helper in `src/primitives/Brand.ts`, which is the union
+of the two libraries' brands:
 
 ```typescript
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+import type { Brand as EffectBrand } from "effect";
+import type { $brand } from "zod";
+
+/** A nominal brand a spec primitive carries. */
+export type Brand<Name extends string> = $brand<Name> | EffectBrand.Brand<Name>;
 ```
 
-`$brand<T>` is a phantom property keyed by a module-private `unique symbol`, so
-it exists only in the type, never at runtime, and cannot collide with a real
-property. It is what separates `InvoiceId` from `InvoiceRowId`. A plain alias
-(`type InvoiceId = GUID`) would not: aliases are structurally interchangeable, so
-the compiler could not catch an invoice id passed where a row id was expected.
-`Decimal` brands `string` the same way.
+A primitive then reads cleanly as the underlying type intersected with a brand:
 
-Using Zod's brand rather than a local `{ readonly __brand: … }` has two payoffs:
+```typescript
+export type BrandedId<Name extends string> = GUID & Brand<Name>;
+export type Decimal = string & Brand<"Decimal">;
+```
 
-- **The schema and the type agree.** `z.infer<typeof x>` produces `$brand<…>`, so
-  a parsed value is already the spec type — no cast between a `__brand` and a
-  `$brand` spelling.
-- **Brands accumulate.** `$brand`'s payload is a mapped object, so intersecting
-  two brands yields `{ Decimal: true; Money: true }`, not `never`. A shared
-  property name with a literal type would collapse on intersection; the mapped
-  form does not. That is why the old types split `__decimal` from `__brand`; with
-  `$brand` the split is unnecessary.
+`$brand<T>` (Zod) and `Brand.Brand<T>` (Effect) are each a phantom property keyed
+by a module-private `unique symbol`, so a brand exists only in the type, never at
+runtime, and cannot collide with a real property. It is what separates `InvoiceId`
+from `InvoiceRowId`: a plain alias (`type InvoiceId = GUID`) would not, because
+aliases are structurally interchangeable and the compiler could not catch an
+invoice id passed where a row id was expected.
 
-Cost: values must be cast at the boundary where they are constructed or parsed,
-because nothing produces a branded value on its own.
+The helper is a **union of both brands** so that a value branded by *either*
+backend is assignable to the spec type. `z.infer<typeof x>` produces `$brand<…>`
+and `Schema.Schema.Type<typeof x>` produces `Brand.Brand<…>`; each matches one arm
+of the union, so a parsed value is already the spec type with no cast, whichever
+generator produced it. Because the two brands are keyed by *different* required
+symbols, the union does not collapse: `InvoiceId` is still not a `CustomerId`, and
+the intersecting brands of `Money = Decimal & Money` still accumulate.
+
+The cost is a second brand vocabulary: the spec depends on both Zod and Effect
+(type-only), and a value may in principle carry one library's brand for `Decimal`
+and the other's for `Money`. Both are erased at runtime, so only the compiler sees
+them. When `packages/backend` (Zod) is retired in favour of
+`packages/backend-effect`, the helper collapses to a single alias and the union
+disappears.
 
 ## Open literal unions
 
@@ -111,11 +130,11 @@ the equivalent spelling if that comes up.
 Every numeric value in the model is a decimal carried as a string:
 
 ```typescript
-export type Decimal = string & $brand<"Decimal">;
+export type Decimal = string & Brand<"Decimal">;
 
-export type Money = Decimal & $brand<"Money">;
-export type Quantity = Decimal & $brand<"Quantity">;
-export type TaxRate = Decimal & $brand<"TaxRate">;
+export type Money = Decimal & Brand<"Money">;
+export type Quantity = Decimal & Brand<"Quantity">;
+export type TaxRate = Decimal & Brand<"TaxRate">;
 ```
 
 Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
@@ -149,10 +168,11 @@ scale convention per field, and mixed two representations in one model.
 
 Gotchas:
 
-- **Keep one copy of Zod in the workspace.** `$brand` is a `unique symbol`
-  declared per module, so a second resolved copy makes its brands mutually
-  unassignable — the same silent failure the old `__brand` literal-collapse had.
-  Deduplication is what keeps `z.infer` and the spec types in step.
+- **Keep one copy of each brand library in the workspace.** `$brand` and
+  `Brand.Brand` are `unique symbol`s declared per module, so a second resolved
+  copy of Zod (or of Effect) makes its brands mutually unassignable — the same
+  silent failure the old `__brand` literal-collapse had. Deduplication is what
+  keeps `z.infer`, `Schema.Schema.Type`, and the spec types in step.
 - **Branding is not validation.** Nothing checks that the string parses as a
   number. Parsing and rounding are the caller's job.
 - **Construction needs a cast.** Nothing produces a branded value on its own, so
@@ -169,7 +189,7 @@ Gotchas:
 `Version` is the one numeric primitive that is not a `Decimal`:
 
 ```typescript
-export type Version = bigint & $brand<"Version">;
+export type Version = bigint & Brand<"Version">;
 ```
 
 It is an optimistic-lock counter. `bigint` rather than `number` because the

@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 
 /**
  * A monotonic record revision, used as an optimistic-lock precondition. See docs/versioning.md.
@@ -6,5 +6,6 @@ import type { $brand } from "zod";
  * @primitive
  * @pgtype int8
  * @zod z.bigint().brand<"Version">()
+ * @effect Schema.BigInt.pipe(Schema.brand("Version"))
  */
-export type Version = bigint & $brand<"Version">;
+export type Version = bigint & Brand<"Version">;

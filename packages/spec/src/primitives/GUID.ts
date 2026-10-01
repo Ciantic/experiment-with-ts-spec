@@ -4,5 +4,6 @@
  * @primitive
  * @pgtype uuid
  * @zod z.uuid()
+ * @effect Schema.String.check(Schema.isUUID())
  */
 export type GUID = string;

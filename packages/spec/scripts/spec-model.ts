@@ -44,7 +44,7 @@ export const FIELD_TAGS = [
 export const INTERFACE_TAGS = ["table"] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype"] as const;
+export const TYPE_TAGS = ["formula", "primitive", "zod", "effect", "pgtype"] as const;
 
 /** Every tag this model recognises. */
 export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
@@ -110,6 +110,8 @@ export interface Tags {
     formula: boolean;
     primitive: boolean;
     zod?: string;
+    /** The alias's `effect/schema` expression. Declared by the spec, consumed by a generator. */
+    effect?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
     pgtype?: string;
     /** The field may be an equality filter of its entity's generated `list` read. See docs/queries.md. */
@@ -254,6 +256,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
+                    break;
+                case "effect":
+                    if (value !== undefined) tags.effect ??= value;
                     break;
                 case "pgtype":
                     if (value !== undefined) tags.pgtype ??= value;

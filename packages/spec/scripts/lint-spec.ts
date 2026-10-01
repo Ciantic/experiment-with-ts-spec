@@ -50,6 +50,9 @@ const PRIMITIVE_TAG = "primitive";
 /** The tag that carries a type's Zod schema expression, e.g. `z.uuid().brand<"InvoiceId">`. */
 const ZOD_TAG = "zod";
 
+/** The tag that carries a type's `effect/schema` expression, e.g. `Schema.String.check(Schema.isUUID())`. */
+const EFFECT_TAG = "effect";
+
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */
 const PG_TYPE_TAG = "pgtype";
 
@@ -59,7 +62,7 @@ export interface Finding {
     message: string;
 }
 
-/** Check the tags on a type alias: `@formula`, `@primitive`, and `@zod`. */
+/** Check the tags on a type alias: `@formula`, `@primitive`, `@zod`, and `@effect`. */
 function lintTypeAlias(
     declaration: TypeAliasDeclaration,
     filePath: string,
@@ -104,6 +107,7 @@ function lintTypeAlias(
     // @primitive is a bare marker; its type must carry the matching @zod schema and @pgtype storage type.
     const primitiveTag = (tags.get(PRIMITIVE_TAG) ?? [])[0];
     const zodTag = (tags.get(ZOD_TAG) ?? [])[0];
+    const effectTag = (tags.get(EFFECT_TAG) ?? [])[0];
     const pgtypeTag = (tags.get(PG_TYPE_TAG) ?? [])[0];
     if (primitiveTag && (primitiveTag.getCommentText() ?? "").trim()) {
         report(`@${PRIMITIVE_TAG} takes no value`, primitiveTag);
@@ -111,11 +115,14 @@ function lintTypeAlias(
     if (zodTag && !(zodTag.getCommentText() ?? "").trim()) {
         report(`@${ZOD_TAG} is missing its schema expression`, zodTag);
     }
+    if (effectTag && !(effectTag.getCommentText() ?? "").trim()) {
+        report(`@${EFFECT_TAG} is missing its schema expression`, effectTag);
+    }
     if (pgtypeTag && !(pgtypeTag.getCommentText() ?? "").trim()) {
         report(`@${PG_TYPE_TAG} is missing its storage type`, pgtypeTag);
     }
-    if (primitiveTag && !zodTag) {
-        report(`@${PRIMITIVE_TAG} requires @${ZOD_TAG}`, primitiveTag);
+    if (primitiveTag && !zodTag && !effectTag) {
+        report(`@${PRIMITIVE_TAG} requires @${ZOD_TAG} or @${EFFECT_TAG}`, primitiveTag);
     }
     if (primitiveTag && !pgtypeTag) {
         report(`@${PRIMITIVE_TAG} requires @${PG_TYPE_TAG}`, primitiveTag);

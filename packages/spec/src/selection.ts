@@ -6,10 +6,10 @@
  * server on the shape of a read, and the client may import nothing from the
  * backend. See docs/rest-api.md.
  */
-import type { $brand } from "zod";
+import type { Brand } from "./primitives/Brand.ts";
 
 /** A leaf column: a keyword, a branded primitive, a `Date`, or a union of those. */
-type Scalar<T> = NonNullable<T> extends string | number | boolean | bigint | Date | $brand<any>
+type Scalar<T> = NonNullable<T> extends string | number | boolean | bigint | Date | Brand<any>
     ? true
     : false;
 

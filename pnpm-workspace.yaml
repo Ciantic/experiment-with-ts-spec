@@ -1,2 +1,5 @@
 packages:
   - packages/*
+minimumReleaseAgeExclude:
+  - effect@4.0.0
+  - '@effect/sql-pglite@4.0.0'

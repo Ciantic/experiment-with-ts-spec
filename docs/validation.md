@@ -6,6 +6,11 @@
 boundary — an HTTP body, a job payload — against the same annotations the
 database schema and the repositories are generated from.
 
+The Effect v4 port of this generator — `effect/schema` instead of Zod, in
+`packages/backend-effect/` — is described in `docs/validation-effect.md`. It
+shares this generator's design and reads the same `@primitive` annotations,
+via `@effect` rather than `@zod`.
+
 ## Output
 
 - `packages/backend/src/validation/primitives.ts` — one schema per `@primitive`

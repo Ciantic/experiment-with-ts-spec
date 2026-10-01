@@ -6,6 +6,7 @@
  * @primitive
  * @pgtype text
  * @zod z.enum(["maventa", "apix", "op", "basware"]).or(z.string())
+ * @effect Schema.Union([Schema.Literals(["maventa", "apix", "op", "basware"]), Schema.String])
  */
 export type EInvoiceOperator =
     | "maventa"
