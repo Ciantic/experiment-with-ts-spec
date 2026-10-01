@@ -152,12 +152,12 @@ A scalar is selected with `true`; a branch (a child collection or a relation) is
 selected either with `true` — every scalar of the branch — or with a nested
 `Selection`. Properties not named are absent from the result, not `undefined`.
 
-What counts as a scalar is decided by `Scalar`, which reads the zod `$brand`
+What counts as a scalar is decided by `Scalar`, which reads the `Brand`
 that `@primitive` already puts on every primitive:
 
 ```ts
 type Scalar<T> =
-    NonNullable<T> extends string | number | boolean | bigint | Date | $brand<any> ? true : false;
+    NonNullable<T> extends string | number | boolean | bigint | Date | Brand<any> ? true : false;
 ```
 
 The brand is load-bearing. A structural `extends object` test cannot tell a
@@ -293,10 +293,10 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
 - **Filters come only from `@queryfilter`, plus `id`.** A field without the tag
   is not filterable, `id` is a filter without it, and a branch field may not
   carry it; filtering by a relation is not implemented.
-- **The zod `$brand` is an internal.** `Scalar` imports it from `zod`; the
-  backend already depends on zod for the generated validation schemas. If that
-  import ever moves, the fallback is separate `select` (scalars) and `with`
-  (branches) keys, which needs no brand but reads worse.
+- **The brand is an internal.** `Scalar` reads the spec's `Brand` alias, whose
+  only dependency is a type-only Zod import. The fallback, if that ever moves, is
+  separate `select` (scalars) and `with` (branches) keys, which needs no brand
+  but reads worse.
 - **A branch `true` on an entity with no relations is safe; a cycle is not.**
   `InvoiceRow.invoiceId` is a scalar alias, not a `@relation`, so today's
   recursion terminates. A `@relation` back to the parent would need a depth cap

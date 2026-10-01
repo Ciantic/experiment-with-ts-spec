@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 import type { GUID } from "./GUID.ts";
 
 /**
@@ -8,4 +8,4 @@ import type { GUID } from "./GUID.ts";
  * @pgtype uuid
  * @zod z.uuid().brand<Name>()
  */
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+export type BrandedId<Name extends string> = GUID & Brand<Name>;

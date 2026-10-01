@@ -18,7 +18,7 @@ note in `docs/timestamps.md`.
 ## The primitive
 
 ```ts
-export type Version = bigint & $brand<"Version">;
+export type Version = bigint & Brand<"Version">;
 ```
 
 `packages/spec/src/primitives/Version.ts`. This is a deliberate exception to

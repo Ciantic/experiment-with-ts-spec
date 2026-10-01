@@ -156,7 +156,7 @@ and it carries the `q` parameter as well as the bodies.
   parse JSON, ok means decode.
 
 The reason to prefer it over a wire schema per entity is that `Date` and `bigint`
-survive as themselves. `version` is `bigint & $brand`, `issueDate` is a `Date`,
+survive as themselves. `version` is `bigint & Brand`, `issueDate` is a `Date`,
 and the amounts are branded strings; a JSON encoding would need an ISO-string
 `z.iso.datetime().transform(…)` and a digit-string `BigInt` conversion, which
 changes the schema's output type and fights `Selected<E, S>` at the edge. With

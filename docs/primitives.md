@@ -14,7 +14,7 @@ Every alias in this folder carries three type-level tags, described in
  * @pgtype uuid
  * @zod z.uuid().brand<Name>()
  */
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+export type BrandedId<Name extends string> = GUID & Brand<Name>;
 ```
 
 - `@primitive` marks the alias as a scalar value type, not an entity. It is a
@@ -28,11 +28,12 @@ export type BrandedId<Name extends string> = GUID & $brand<Name>;
   brand that exists only in the type system a runtime counterpart that can
   validate a value at the boundary.
 
-Zod is a **type-only** dependency: `$brand` is imported with `import type`, so it
-is erased at runtime and `packages/spec/` still ships no executable code. Because
-the schema expression and the type must agree on the *same* `$brand` symbol, the
-workspace must resolve a single copy of Zod — two copies declare two
-`unique symbol`s and the brands silently stop matching.
+Zod is a **type-only** dependency: `Brand` — the spec's alias for Zod's `$brand`
+— is imported with `import type`, so it is erased at runtime and `packages/spec/`
+still ships no executable code. Because the schema expression and the type must
+agree on the *same* brand symbol, the workspace must resolve a single copy of
+Zod — two copies declare two `unique symbol`s and the brands silently stop
+matching.
 
 Each schema stays self-contained. `Money`, `Quantity`, and `TaxRate` each write
 out the decimal string shape and then apply their brands rather than importing
@@ -56,24 +57,30 @@ alias does not have, so the runtime schema and the compile-time type disagree.
 
 ## Branding
 
-Brands come from Zod (`$brand`), not a hand-rolled property:
+Brands come from Zod, surfaced in the spec as `Brand`, not a hand-rolled
+property:
 
 ```typescript
-export type BrandedId<Name extends string> = GUID & $brand<Name>;
+export type Brand<Name extends string> = $brand<Name>;
+
+export type BrandedId<Name extends string> = GUID & Brand<Name>;
 ```
 
-`$brand<T>` is a phantom property keyed by a module-private `unique symbol`, so
-it exists only in the type, never at runtime, and cannot collide with a real
-property. It is what separates `InvoiceId` from `InvoiceRowId`. A plain alias
+`Brand<T>` (Zod's `$brand<T>`) is a phantom property keyed by a module-private
+`unique symbol`, so it exists only in the type, never at runtime, and cannot
+collide with a real property. It is the single place the spec reaches for Zod's
+brand; every branded primitive imports it from
+`packages/spec/src/primitives/Brand.ts` rather than `$brand` directly. It is what
+separates `InvoiceId` from `InvoiceRowId`. A plain alias
 (`type InvoiceId = GUID`) would not: aliases are structurally interchangeable, so
 the compiler could not catch an invoice id passed where a row id was expected.
 `Decimal` brands `string` the same way.
 
 Using Zod's brand rather than a local `{ readonly __brand: … }` has two payoffs:
 
-- **The schema and the type agree.** `z.infer<typeof x>` produces `$brand<…>`, so
-  a parsed value is already the spec type — no cast between a `__brand` and a
-  `$brand` spelling.
+- **The schema and the type agree.** `z.infer<typeof x>` produces `$brand<…>`,
+  which is exactly what `Brand<…>` aliases — a parsed value is already the spec
+  type, with no cast between a `__brand` and a `$brand` spelling.
 - **Brands accumulate.** `$brand`'s payload is a mapped object, so intersecting
   two brands yields `{ Decimal: true; Money: true }`, not `never`. A shared
   property name with a literal type would collapse on intersection; the mapped
@@ -111,11 +118,11 @@ the equivalent spelling if that comes up.
 Every numeric value in the model is a decimal carried as a string:
 
 ```typescript
-export type Decimal = string & $brand<"Decimal">;
+export type Decimal = string & Brand<"Decimal">;
 
-export type Money = Decimal & $brand<"Money">;
-export type Quantity = Decimal & $brand<"Quantity">;
-export type TaxRate = Decimal & $brand<"TaxRate">;
+export type Money = Decimal & Brand<"Money">;
+export type Quantity = Decimal & Brand<"Quantity">;
+export type TaxRate = Decimal & Brand<"TaxRate">;
 ```
 
 Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
@@ -149,7 +156,7 @@ scale convention per field, and mixed two representations in one model.
 
 Gotchas:
 
-- **Keep one copy of Zod in the workspace.** `$brand` is a `unique symbol`
+- **Keep one copy of Zod in the workspace.** Zod's brand is a `unique symbol`
   declared per module, so a second resolved copy makes its brands mutually
   unassignable — the same silent failure the old `__brand` literal-collapse had.
   Deduplication is what keeps `z.infer` and the spec types in step.
@@ -169,7 +176,7 @@ Gotchas:
 `Version` is the one numeric primitive that is not a `Decimal`:
 
 ```typescript
-export type Version = bigint & $brand<"Version">;
+export type Version = bigint & Brand<"Version">;
 ```
 
 It is an optimistic-lock counter. `bigint` rather than `number` because the

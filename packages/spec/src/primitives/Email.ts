@@ -1,4 +1,4 @@
-import type { $brand } from "zod";
+import type { Brand } from "./Brand.ts";
 
 /**
  * An email address.
@@ -7,4 +7,4 @@ import type { $brand } from "zod";
  * @pgtype text
  * @zod z.email().brand<"Email">()
  */
-export type Email = string & $brand<"Email">;
+export type Email = string & Brand<"Email">;
