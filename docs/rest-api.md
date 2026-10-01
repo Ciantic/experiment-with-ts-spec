@@ -4,6 +4,9 @@ The database layer is exposed over HTTP, and a type-safe client is generated fro
 the same spec. Nothing about the surface is written by hand except the two
 halves that must not be generated: the router and the transport.
 
+The Effect v4 port — the same surface served on `effect/http`, in
+`packages/backend-effect/` — is described in `docs/rest-api-effect.md`.
+
 - `packages/backend/scripts/rest-model.ts` — the shared model. Paths, methods,
   filters, and the operations each entity exposes. Hand-written.
 - `packages/backend/scripts/generate-rest-api.ts` — the server generator.

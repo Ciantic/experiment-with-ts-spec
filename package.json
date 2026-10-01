@@ -17,9 +17,12 @@
     "generate:validation": "pnpm --filter backend run generate:validation",
     "generate:rest-api": "pnpm --filter backend run generate:rest-api",
     "generate:rest-client": "pnpm --filter backend run generate:rest-client",
-    "generate:effect": "pnpm run generate:effect:schema && pnpm run generate:effect:validation",
+    "generate:effect": "pnpm run generate:effect:schema && pnpm run generate:effect:validation && pnpm run generate:effect:repositories && pnpm run generate:effect:queries && pnpm run generate:effect:routes",
     "generate:effect:schema": "pnpm --filter backend-effect run generate:schema",
     "generate:effect:validation": "pnpm --filter backend-effect run generate:validation",
+    "generate:effect:repositories": "pnpm --filter backend-effect run generate:repositories",
+    "generate:effect:queries": "pnpm --filter backend-effect run generate:queries",
+    "generate:effect:routes": "pnpm --filter backend-effect run generate:routes",
     "build": "pnpm -r --if-present run build",
     "check": "pnpm run lint && pnpm run generate && pnpm run build"
   },

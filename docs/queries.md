@@ -6,6 +6,10 @@ a matching `get<Entity>`. A generator emits the typed functions and the physical
 model; one hand-written resolver turns a selection into SQL. See "Why the
 resolver is hand-written".
 
+The Effect v4 port — the same reads returning an `Effect` that requires
+`SqlClient`, in `packages/backend-effect/` — is described in
+`docs/queries-effect.md`.
+
 - `packages/spec/src/selection.ts` — `Selection`/`Selected` (the
   column-limiting types) and `Filters`/`AtLeastOne` (the filter arguments).
   Hand-written. It sits in the spec because the generated REST client shares it;

@@ -13,10 +13,14 @@
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
     "generate:validation": "node scripts/generate-schemas.ts",
     "generate:repositories": "node scripts/generate-repositories.ts",
-    "generate:queries": "node scripts/generate-queries.ts"
+    "generate:queries": "node scripts/generate-queries.ts",
+    "generate:routes": "node scripts/generate-routes.ts",
+    "example:server": "node src/main.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "^4.0.0",
     "@effect/sql-pglite": "^4.0.0",
+    "devalue": "^5.3.2",
     "effect": "^4.0.0",
     "spec": "workspace:*"
   },

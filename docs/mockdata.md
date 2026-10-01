@@ -10,6 +10,11 @@ client has something to read without a fixture being written per test.
 - `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
+In `packages/backend-effect/` the same data seeds the Effect server:
+`src/mock/seed.ts` exports `seedMockData`, an `Effect` requiring `SqlClient`, and
+`src/main.ts` builds the layers and starts the server. See
+`docs/rest-api-effect.md`.
+
 `mockTables` is ordered so foreign keys resolve: customers and sellers, then
 invoices and their rows, then sent invoices and their rows. `seedMockData`
 walks it in that order.

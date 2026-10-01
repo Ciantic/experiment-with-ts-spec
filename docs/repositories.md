@@ -3,6 +3,10 @@
 `packages/backend/scripts/generate-repositories.ts` writes one CRUD module per
 domain entity into `packages/backend/src/db/repositories/`.
 
+The Effect v4 port — the same repositories returning an `Effect` that requires
+`SqlClient`, in `packages/backend-effect/` — is described in
+`docs/repositories-effect.md`.
+
 - `pnpm generate:repositories` — writes the repository modules and their barrel.
 - `pnpm generate:repositories --out <dir>` — writes elsewhere. A missing directory is created.
 
