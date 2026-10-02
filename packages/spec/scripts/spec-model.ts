@@ -4,7 +4,6 @@
  */
 import { dirname, join, relative as relativePath } from "node:path";
 import {
-    Node,
     type InterfaceDeclaration,
     type JSDoc,
     type JSDocTag,
@@ -31,6 +30,11 @@ export const FIELD_TAGS = [
     "widget",
     "generated",
     "computed",
+    "createdAt",
+    "updatedAt",
+    "pgvirtual",
+    "pgtrigger",
+    "pgrollup",
     "relation",
     "children",
     "inlined",
@@ -46,7 +50,7 @@ export const FIELD_TAGS = [
 export const INTERFACE_TAGS = ["table"] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["formula", "primitive", "zod", "pgtype"] as const;
+export const TYPE_TAGS = ["primitive", "zod", "pgtype"] as const;
 
 /** Every tag this model recognises. */
 export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
@@ -61,15 +65,16 @@ export const RETIRED_TAGS = new Map<string, string>([
     ["readonly", "use @generated for system-assigned fields or @computed for derived fields"],
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
+    ["formula", "put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup"],
 ]);
 
 /** Widget hints a field may carry. */
 export const WIDGETS = ["text", "number", "date", "select", "table", "textarea"] as const;
 export type Widget = (typeof WIDGETS)[number];
 
-/** Storage modes a `@computed` field may carry. */
-export const STORAGE_MODES = ["generated", "stored", "derived"] as const;
-export type StorageMode = (typeof STORAGE_MODES)[number];
+/** The Postgres realization of a `@computed` field, one tag per field. See docs/spec-annotations.md. */
+export const COMPUTED_KINDS = ["pgvirtual", "pgtrigger", "pgrollup"] as const;
+export type ComputedKind = (typeof COMPUTED_KINDS)[number];
 
 /** The sort directions an `@queryorderby default …` may name. */
 export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
@@ -96,18 +101,8 @@ export interface Diagnostic {
     message: string;
 }
 
-/** The `key=value` parameters on a tag comment such as `storage=stored formula=rowNetAmount`. */
+/** The `key=value` parameters on a tag comment, such as `default asc`. */
 export type TagParameters = Map<string, string>;
-
-/** A decoded `@computed` tag. */
-export interface ComputedTag {
-    /** The `storage=` value, if any. */
-    storage: string | undefined;
-    /** The `formula=` value, if any. */
-    formula: string | undefined;
-    /** Every parameter on the tag, so a linter can report the ones it does not know. */
-    parameters: TagParameters;
-}
 
 /** The tags on a declaration, decoded once so consumers never walk JSDoc themselves. */
 export interface Tags {
@@ -116,7 +111,18 @@ export interface Tags {
     fieldName?: string;
     widget?: string;
     generated: boolean;
-    computed?: ComputedTag;
+    /** The field is derived; the database owns it, so a create never supplies it. */
+    computed: boolean;
+    /** The field holds the row's creation moment; the database supplies it. See docs/timestamps.md. */
+    createdAt: boolean;
+    /** The field holds the row's last-write moment; the database maintains it. See docs/timestamps.md. */
+    updatedAt: boolean;
+    /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
+    pgvirtual?: string;
+    /** The before insert/update statement that maintains a `@computed` field, using `NEW.`. */
+    pgtrigger?: string;
+    /** The child-change statement that maintains an aggregated `@computed` field, using `NEW.`. */
+    pgrollup?: string;
     /** The field holds a single related entity, stored as a foreign key. */
     relation: boolean;
     /** The field holds a child collection; the child table carries the foreign key. */
@@ -127,7 +133,6 @@ export interface Tags {
     default?: string;
     version: boolean;
     table?: string;
-    formula: boolean;
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
@@ -168,16 +173,12 @@ export interface SpecTypeAlias {
     filePath: string;
     declaration: TypeAliasDeclaration;
     tags: Tags;
-    /** String-literal members of a `@formula` alias, in declaration order. */
-    formulaNames: string[];
 }
 
 /** The parsed spec. */
 export interface SpecModel {
     interfaces: Map<string, SpecInterface>;
     aliases: Map<string, SpecTypeAlias>;
-    /** Every name declared by a `@formula` alias: the valid `formula=` values. */
-    formulaNames: Set<string>;
 }
 
 /** Inputs to {@link parseSpec}. */
@@ -195,13 +196,18 @@ export function snakeCase(name: string): string {
 
 /** True when a create writes the field, rather than the database owning it. See docs/repositories.md. */
 export function isInsertable(property: SpecProperty): boolean {
+    const tags = property.tags;
     // A `@default` column is left to the database on insert.
-    if (property.tags.default !== undefined) {
+    if (tags.default !== undefined) {
         return false;
     }
-    // A stored computation belongs to the trigger, so it is the caller's only while the column is
+    // The clock tags and a virtual generated column are the database's entirely.
+    if (tags.createdAt || tags.updatedAt || tags.pgvirtual !== undefined) {
+        return false;
+    }
+    // A computed column arrives from a trigger, so it is the caller's only while the column is
     // required: a nullable one may be left out and derived from the rows that follow.
-    if (property.tags.computed) {
+    if (tags.computed) {
         return !property.optional;
     }
     return true;
@@ -270,12 +276,14 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
         byName: new Map(),
         generated: false,
+        computed: false,
+        createdAt: false,
+        updatedAt: false,
         relation: false,
         children: false,
         inlined: false,
         unique: false,
         version: false,
-        formula: false,
         primitive: false,
         queryfilter: false,
     };
@@ -350,23 +358,27 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "version":
                     tags.version = true;
                     break;
-                case "formula":
-                    tags.formula = true;
-                    break;
                 case "primitive":
                     tags.primitive = true;
                     break;
-                case "computed": {
-                    if (!tags.computed) {
-                        const parameters = parseParameters(tag);
-                        tags.computed = {
-                            storage: parameters.get("storage"),
-                            formula: parameters.get("formula"),
-                            parameters,
-                        };
-                    }
+                case "computed":
+                    tags.computed = true;
                     break;
-                }
+                case "createdAt":
+                    tags.createdAt = true;
+                    break;
+                case "updatedAt":
+                    tags.updatedAt = true;
+                    break;
+                case "pgvirtual":
+                    if (value !== undefined) tags.pgvirtual ??= value;
+                    break;
+                case "pgtrigger":
+                    if (value !== undefined) tags.pgtrigger ??= value;
+                    break;
+                case "pgrollup":
+                    if (value !== undefined) tags.pgrollup ??= value;
+                    break;
                 default:
                     break;
             }
@@ -376,53 +388,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     return tags;
 }
 
-/** The members of a type, unwrapping a single-member alias that has no union node. */
-export function typeMembers(declaration: TypeAliasDeclaration): Node[] {
-    const typeNode = declaration.getTypeNode();
-    if (!typeNode) {
-        return [];
-    }
-    return Node.isUnionTypeNode(typeNode) ? typeNode.getTypeNodes() : [typeNode];
-}
-
-/** The string-literal members of a type, in declaration order. */
-export function formulaNamesIn(declaration: TypeAliasDeclaration): string[] {
-    const names: string[] = [];
-    for (const member of typeMembers(declaration)) {
-        if (!Node.isLiteralTypeNode(member)) {
-            continue;
-        }
-        const literal = member.getLiteral();
-        if (Node.isStringLiteral(literal)) {
-            names.push(literal.getLiteralText());
-        }
-    }
-    return names;
-}
-
-/** Read formula names from every `@formula`-annotated type under `spec/`, statically. */
-export function readFormulaNames(project: Project, specGlob = SPEC_GLOB): Set<string> {
-    const names = new Set<string>();
-    for (const sourceFile of project.getSourceFiles(specGlob)) {
-        for (const declaration of sourceFile.getTypeAliases()) {
-            if (!readTags(declaration).formula) {
-                continue;
-            }
-            for (const name of formulaNamesIn(declaration)) {
-                names.add(name);
-            }
-        }
-    }
-    return names;
-}
-
-/** Parse the spec into interfaces, aliases, and the formula vocabulary. */
+/** Parse the spec into interfaces and aliases. */
 export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
     const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
     const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
     const interfaces = new Map<string, SpecInterface>();
     const aliases = new Map<string, SpecTypeAlias>();
-    const formulaNames = new Set<string>();
 
     for (const sourceFile of project.getSourceFiles(aliasGlob)) {
         const filePath = sourceFile.getFilePath();
@@ -434,14 +405,8 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 filePath,
                 declaration,
                 tags,
-                formulaNames: formulaNamesIn(declaration),
             };
             aliases.set(alias.name, alias);
-            if (tags.formula) {
-                for (const name of alias.formulaNames) {
-                    formulaNames.add(name);
-                }
-            }
         }
     }
 
@@ -475,5 +440,5 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
         }
     }
 
-    return { interfaces, aliases, formulaNames };
+    return { interfaces, aliases };
 }

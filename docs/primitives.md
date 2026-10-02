@@ -166,7 +166,7 @@ Gotchas:
   values are cast at the boundary where they are parsed or received.
 - **Do not do arithmetic in JS without parsing.** `"1.5" * 2` coerces to a number
   and loses the guarantee; use a decimal library or let SQL compute it.
-- **Rounding lives in the SQL, not the type.** `round(..., 2)` in the formula is
+- **Rounding lives in the SQL, not the type.** `round(..., 2)` in the expression is
   what fixes the scale of a stored amount. See `docs/schema-generation.md`.
 - **There is no currency on amounts.** See `docs/spec-annotations.md` for the
   multi-currency work that was deferred.

@@ -126,9 +126,10 @@ The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
 `<Entity>Patch` type is rendered from it into the same module, so the repository
 type taking it, the client sending it, and the wire schema accepting it all
 permit exactly the same fields. A nullable `@computed` value is on the
-list because a `before insert or update` trigger derives it: the update does not
-name the column, so accepting one would be accepting a field that does nothing
-(`docs/repositories.md`).
+list because a `before insert or update` trigger derives it, and a `@pgvirtual`
+value is on it whether nullable or not because Postgres refuses the write: the
+update does not name the column, so accepting one would be accepting a field that
+does nothing (`docs/repositories.md`).
 
 ## Insert schemas
 

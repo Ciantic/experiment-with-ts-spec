@@ -66,8 +66,7 @@ export interface Seller {
      * The moment the seller record was created.
      * 
      * @fieldName Created at
-     * @generated
-     * @default now()
+     * @createdAt
      * @widget date
      */
     createdAt?: Date;
@@ -76,8 +75,7 @@ export interface Seller {
      * The moment the seller record was last updated.
      * 
      * @fieldName Updated at
-     * @computed storage=stored formula=now
-     * @default now()
+     * @updatedAt
      * @widget date
      */
     updatedAt?: Date;

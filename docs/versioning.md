@@ -212,6 +212,7 @@ caller cannot build a patch that omits the precondition.
 4. `packages/backend/scripts/generate-repositories.ts` omits the column on insert
    and writes it on update.
 5. `packages/spec/scripts/lint-spec.ts` requires `@version` on a `Version` field,
-   at most one per interface, exclusive with `@generated` and `@computed`.
+   at most one per interface, exclusive with `@generated`, `@computed`,
+   `@createdAt`, and `@updatedAt`.
 
 See `docs/timestamps.md` for the trigger-and-default pattern this column follows.

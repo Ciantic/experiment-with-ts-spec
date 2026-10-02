@@ -81,16 +81,25 @@ describe("parseSpec tags", () => {
         expect(tags?.version).toBe(false);
     });
 
-    it("parses computed parameters", () => {
+    it("decodes @computed as a bare marker", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @computed storage=stored formula=rowNet\n     */", "net: Decimal;"),
+            "Thing.ts": thing("    /**\n     * @computed\n     * @pgtrigger NEW.\"net\" := NEW.\"q\" * NEW.\"p\"\n     */", "net: Decimal;"),
         });
 
-        const computed = interfaces.get("Thing")?.properties[0]?.tags.computed;
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
-        expect(computed?.storage).toBe("stored");
-        expect(computed?.formula).toBe("rowNet");
-        expect([...computed!.parameters.keys()]).toEqual(["storage", "formula"]);
+        expect(tags?.computed).toBe(true);
+        expect(tags?.pgtrigger).toBe('NEW."net" := NEW."q" * NEW."p"');
+        expect(tags?.pgvirtual).toBeUndefined();
+        expect(tags?.pgrollup).toBeUndefined();
+    });
+
+    it("decodes the clock tags and the virtual expression", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @computed\n     * @pgvirtual \"net\" + \"tax\"\n     */", "total?: Decimal;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgvirtual).toBe('"net" + "tax"');
     });
 
     it("keeps duplicate tags in the raw map", () => {
@@ -176,17 +185,25 @@ describe("parseSpec tags", () => {
     });
 });
 
-describe("parseSpec formulas", () => {
-    it("collects names from @formula aliases only", () => {
-        const { formulaNames } = parse({
-            "InvoiceRow.ts": [
-                "/**\n * @formula\n */",
-                'export type RowFormula = "rowNet" | "rowTax";',
-                'export type NotAFormula = "other";',
+describe("parseSpec clock tags", () => {
+    it("decodes @createdAt and @updatedAt as bare markers", () => {
+        const { interfaces } = parse({
+            "Thing.ts": [
+                "export interface Thing {",
+                "    /**\n     * @createdAt\n     */",
+                "    madeAt?: Date;",
+                "    /**\n     * @updatedAt\n     */",
+                "    changedAt?: Date;",
+                "}",
             ].join("\n"),
         });
 
-        expect([...formulaNames].sort()).toEqual(["rowNet", "rowTax"]);
+        const properties = interfaces.get("Thing")?.properties ?? [];
+
+        expect(properties[0]?.tags.createdAt).toBe(true);
+        expect(properties[0]?.tags.updatedAt).toBe(false);
+        expect(properties[1]?.tags.updatedAt).toBe(true);
+        expect(properties[1]?.tags.createdAt).toBe(false);
     });
 });
 
@@ -210,12 +227,21 @@ describe("patch field rules", () => {
         expect(omitted("    /**\n     * @version\n     * @default 0\n     */", "version?: number;")).toEqual([]);
     });
 
-    it("refuses a nullable stored computation the trigger derives", () => {
-        expect(omitted("    /**\n     * @computed storage=stored formula=rowNet\n     */", "net?: Money;")).toEqual(["net"]);
+    it("refuses a nullable computation the trigger derives", () => {
+        expect(omitted('    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net?: Money;")).toEqual(["net"]);
     });
 
-    it("keeps a required stored computation, which the caller alone can supply", () => {
-        expect(omitted("    /**\n     * @computed storage=stored formula=rowNet\n     */", "net: Money;")).toEqual([]);
+    it("keeps a required trigger computation, which the caller alone can supply", () => {
+        expect(omitted('    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net: Money;")).toEqual([]);
+    });
+
+    it("refuses a virtual generated column even when the field is required", () => {
+        expect(omitted('    /**\n     * @computed\n     * @pgvirtual "net" + "tax"\n     */', "total: Money;")).toEqual(["total"]);
+    });
+
+    it("refuses the clock fields the database owns", () => {
+        expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual(["madeAt"]);
+        expect(omitted("    /**\n     * @updatedAt\n     */", "changedAt?: Date;")).toEqual(["changedAt"]);
     });
 
     it("refuses a relation, which is written through the target's own repository", () => {

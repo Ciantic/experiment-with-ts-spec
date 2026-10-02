@@ -10,13 +10,6 @@ import type { InvoiceId } from "./Invoice.ts";
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 
 /**
- * Same-row formulas available to `invoice_row` fields.
- *
- * @formula
- */
-export type RowFormula = "rowNetAmount" | "rowTaxAmount" | "rowTotalAmount";
-
-/**
  * A single line item on an invoice.
  * 
  * @table invoice_row
@@ -84,7 +77,8 @@ export interface InvoiceRow {
      * The net amount for this row, before taxes.
      * 
      * @fieldName Net amount
-     * @computed storage=stored formula=rowNetAmount
+     * @computed
+     * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
      * @widget number
      */
     netAmount?: Money;
@@ -93,7 +87,8 @@ export interface InvoiceRow {
      * The tax amount for this row.
      * 
      * @fieldName Tax amount
-     * @computed storage=stored formula=rowTaxAmount
+     * @computed
+     * @pgtrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
      * @widget number
      */
     taxAmount?: Money;
@@ -102,7 +97,8 @@ export interface InvoiceRow {
      * The total amount for this row, including taxes.
      * 
      * @fieldName Total amount
-     * @computed storage=stored formula=rowTotalAmount
+     * @computed
+     * @pgtrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
      * @widget number
      */
     totalAmount?: Money;
@@ -111,8 +107,7 @@ export interface InvoiceRow {
      * The moment the row was created.
      * 
      * @fieldName Created at
-     * @generated
-     * @default now()
+     * @createdAt
      * @widget date
      */
     createdAt?: Date;
@@ -121,8 +116,7 @@ export interface InvoiceRow {
      * The moment the row was last updated.
      * 
      * @fieldName Updated at
-     * @computed storage=stored formula=now
-     * @default now()
+     * @updatedAt
      * @widget date
      */
     updatedAt?: Date;

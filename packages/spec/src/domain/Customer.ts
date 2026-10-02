@@ -82,8 +82,7 @@ export interface Customer {
      * The moment the customer record was created.
      * 
      * @fieldName Created at
-     * @generated
-     * @default now()
+     * @createdAt
      * @widget date
      */
     createdAt?: Date;
@@ -92,8 +91,7 @@ export interface Customer {
      * The moment the customer record was last updated.
      * 
      * @fieldName Updated at
-     * @computed storage=stored formula=now
-     * @default now()
+     * @updatedAt
      * @widget date
      */
     updatedAt?: Date;

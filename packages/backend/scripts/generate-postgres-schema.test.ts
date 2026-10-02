@@ -4,12 +4,9 @@ import { Project } from "ts-morph";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
-const FORMULAS_FILE = "fixtures/postgres/formulas.ts";
-const EMPTY_FORMULAS = "export const rowFormulas = {} as const;\nexport const invoiceFormulas = {} as const;";
 
 interface Fixture {
     domain: Record<string, string>;
-    formulas?: string;
 }
 
 /** Primitive aliases a fixture field can reference, each declaring its own Postgres type. */
@@ -50,8 +47,7 @@ function generate(fixture: Fixture) {
     for (const [name, text] of Object.entries(fixture.domain)) {
         project.createSourceFile(`fixtures/domain/${name}.ts`, text);
     }
-    project.createSourceFile(FORMULAS_FILE, fixture.formulas ?? EMPTY_FORMULAS);
-    return generateSchema(project, { specGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB, formulasFile: FORMULAS_FILE });
+    return generateSchema(project, { specGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB });
 }
 
 function messages(diagnostics: Diagnostic[]): string[] {
@@ -491,28 +487,27 @@ describe("generateSchema diagnostics", () => {
 });
 
 describe("generateSchema triggers", () => {
-    const rowFormulas = [
-        "export const rowFormulas = {",
-        "    rowNet: 'round(NEW.\"a\" * NEW.\"b\")::bigint',",
-        "    rowTax: 'NEW.\"net\" * 2',",
-        "    rowTotal: 'NEW.\"net\" + NEW.\"tax\"',",
-        "} as const;",
-        "export const invoiceFormulas = {} as const;",
-    ].join("\n");
-
     it("emits a before trigger assigning computed fields in interface order", () => {
         const { sql } = generate({
-            formulas: rowFormulas,
             domain: {
                 Thing: `export interface Thing {
                     id: GUID;
                     a: Decimal;
                     b: Decimal;
-                    /** @computed storage=stored formula=rowNet */
+                    /**
+                     * @computed
+                     * @pgtrigger NEW."net" := round(NEW."a" * NEW."b")::bigint
+                     */
                     net: Decimal;
-                    /** @computed storage=stored formula=rowTax */
+                    /**
+                     * @computed
+                     * @pgtrigger NEW."tax" := NEW."net" * 2
+                     */
                     tax: Decimal;
-                    /** @computed storage=stored formula=rowTotal */
+                    /**
+                     * @computed
+                     * @pgtrigger NEW."total" := NEW."net" + NEW."tax"
+                     */
                     total: Decimal;
                 }`,
             },
@@ -530,21 +525,23 @@ describe("generateSchema triggers", () => {
         expect(tax).toBeLessThan(total);
     });
 
-    it("reads every registry regardless of its name", () => {
-        // The generator keys fragments by formula name only, so the registry variable is irrelevant.
+    it("normalises a trailing semicolon on a trigger statement", () => {
         const { sql } = generate({
-            formulas: "export const anything = { doubled: 'NEW.\"a\" * 2' } as const;",
             domain: {
                 Thing: `export interface Thing {
                     id: GUID;
                     a: Decimal;
-                    /** @computed storage=stored formula=doubled */
-                    twice: Decimal;
+                    /**
+                     * @computed
+                     * @pgtrigger NEW."net" := NEW."a" * 2;
+                     */
+                    net: Decimal;
                 }`,
             },
         });
 
-        expect(sql).toContain('NEW."twice" := NEW."a" * 2;');
+        expect(sql).toContain('NEW."net" := NEW."a" * 2;');
+        expect(sql).not.toContain('NEW."net" := NEW."a" * 2;;');
     });
 
     it("emits no trigger for a table without computed fields", () => {
@@ -554,22 +551,14 @@ describe("generateSchema triggers", () => {
     });
 
     it("emits after triggers that maintain a cross-table aggregate", () => {
-        const formulas = [
-            "export const rowFormulas = {} as const;",
-            "export const invoiceFormulas = {",
-            "    parentNet: {",
-            "        childNew: 'update \"parent\" set \"net\" = 1 where \"id\" = NEW.\"parentId\";',",
-            "        childOld: 'update \"parent\" set \"net\" = 0 where \"id\" = OLD.\"parentId\";',",
-            "    },",
-            "} as const;",
-        ].join("\n");
-
         const { sql } = generate({
-            formulas,
             domain: {
                 Parent: `export interface Parent {
                     id: GUID;
-                    /** @computed storage=stored formula=parentNet */
+                    /**
+                     * @computed
+                     * @pgrollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     */
                     net: Decimal;
                 }`,
                 Child: "export interface Child { id: GUID; parentId: ParentId; }",
@@ -580,26 +569,25 @@ describe("generateSchema triggers", () => {
         expect(sql).toContain('after insert or update on "child"');
         expect(sql).toContain('create function "child_rollup_parent_unset"() returns trigger as $$');
         expect(sql).toContain('after delete on "child"');
+        // The delete variant is generated from the NEW. statement rather than written twice.
+        expect(sql).toContain('where "id" = OLD."parentId";');
         expect(sql).toContain("return null;");
     });
 
     it("groups several aggregate fields into one trigger function per child table", () => {
-        const formulas = [
-            "export const rowFormulas = {} as const;",
-            "export const invoiceFormulas = {",
-            "    net: { childNew: 'update \"parent\" set \"net\" = 1;', childOld: 'update \"parent\" set \"net\" = 0;' },",
-            "    tax: { childNew: 'update \"parent\" set \"tax\" = 1;', childOld: 'update \"parent\" set \"tax\" = 0;' },",
-            "} as const;",
-        ].join("\n");
-
         const { sql } = generate({
-            formulas,
             domain: {
                 Parent: `export interface Parent {
                     id: GUID;
-                    /** @computed storage=stored formula=net */
+                    /**
+                     * @computed
+                     * @pgrollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     */
                     net: Decimal;
-                    /** @computed storage=stored formula=tax */
+                    /**
+                     * @computed
+                     * @pgrollup update "parent" set "tax" = 1 where "id" = NEW."parentId"
+                     */
                     tax: Decimal;
                 }`,
                 Child: "export interface Child { id: GUID; parentId: ParentId; }",
@@ -610,6 +598,47 @@ describe("generateSchema triggers", () => {
         expect(declarations).toBe(1);
         expect(sql).toContain('set "net" =');
         expect(sql).toContain('set "tax" =');
+    });
+});
+
+describe("generateSchema @pgvirtual", () => {
+    it("emits a virtual generated column with the expression verbatim", () => {
+        const { sql } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    net: Decimal;
+                    tax: Decimal;
+                    /**
+                     * @computed
+                     * @pgvirtual "net" + "tax"
+                     */
+                    total: Decimal;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"total" decimal generated always as ("net" + "tax") virtual');
+    });
+
+    it("does not put a generated column in the table's compute trigger", () => {
+        const { sql } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    id: GUID;
+                    net: Decimal;
+                    tax: Decimal;
+                    /**
+                     * @computed
+                     * @pgvirtual "net" + "tax"
+                     */
+                    total: Decimal;
+                }`,
+            },
+        });
+
+        expect(sql).not.toContain("create function");
+        expect(sql).not.toContain('NEW."total"');
     });
 });
 
@@ -685,20 +714,15 @@ describe("generateSchema defaults", () => {
         expect(sql).not.toContain("default");
     });
 
-    it("emits both a default and a trigger assignment when a field carries both tags", () => {
-        const formula = "export const timestampFormulas = { now: 'now()' } as const;";
+    it("emits both a default and a trigger assignment for @updatedAt", () => {
         const { sql } = generate({
-            formulas: [
-                "export const rowFormulas = {} as const;",
-                "export const invoiceFormulas = {} as const;",
-                formula,
-            ].join("\n"),
             domain: {
                 Thing: `export interface Thing {
                     id: GUID;
                     /**
-                     * @computed storage=stored formula=now
-                     * @default now()
+                     * @fieldName Updated at
+                     * @widget date
+                     * @updatedAt
                      */
                     updatedAt?: Date;
                 }`,
@@ -711,27 +735,41 @@ describe("generateSchema defaults", () => {
     });
 });
 
-describe("generateSchema timestamp formulas", () => {
-    const formulas = [
-        "export const rowFormulas = {} as const;",
-        "export const invoiceFormulas = {} as const;",
-        "export const timestampFormulas = { now: 'now()' } as const;",
-    ].join("\n");
+describe("generateSchema clock tags", () => {
+    const stamped = `export interface Thing {
+        id: GUID;
+        /**
+         * @fieldName Created at
+         * @widget date
+         * @createdAt
+         */
+        createdAt?: Date;
+        /**
+         * @fieldName Updated at
+         * @widget date
+         * @updatedAt
+         */
+        updatedAt?: Date;
+    }`;
 
-    it("assigns a timestamp formula in the table's before trigger", () => {
-        const { sql } = generate({
-            formulas,
-            domain: {
-                Thing: `export interface Thing {
-                    id: GUID;
-                    /** @computed storage=stored formula=now */
-                    updatedAt: Date;
-                }`,
-            },
-        });
+    it("defaults @createdAt without touching the trigger", () => {
+        const { sql } = generate({ domain: { Thing: stamped } });
+
+        expect(sql).toContain('"createdAt" timestamptz not null default now()');
+        expect(sql).not.toContain('NEW."createdAt"');
+    });
+
+    it("assigns @updatedAt in the table's before trigger", () => {
+        const { sql } = generate({ domain: { Thing: stamped } });
 
         expect(sql).toContain('create function "thing_compute"() returns trigger as $$');
         expect(sql).toContain('NEW."updatedAt" := now();');
         expect(sql).toContain('before insert or update on "thing"');
+    });
+
+    it("emits no compute trigger for a table without a clock field", () => {
+        const { sql } = generate({ domain: { Thing: "export interface Thing { id: GUID; }" } });
+
+        expect(sql).not.toContain("_compute");
     });
 });

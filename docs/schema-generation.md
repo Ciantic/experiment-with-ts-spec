@@ -66,9 +66,13 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   even when the field is optional, and the repository generators leave the column
   out of their statements. It may accompany `@computed`, where the default applies
   to the insert path and the trigger to every write.
+- `@createdAt`/`@updatedAt` append `default now()`; see `docs/timestamps.md`.
+- `@computed @pgvirtual <expression>` appends
+  `generated always as (<expression>) virtual`. The column is never written by
+  the repository.
 
 Columns are named exactly as the fields, quoted camelCase, matching the
-fragments in `packages/backend/src/postgres/formulas.ts`. There is no name mapping.
+expressions in the spec tags. There is no name mapping.
 
 ## Ordering
 
@@ -78,19 +82,18 @@ would then need manual reordering or deferred constraints.
 
 ## Triggers
 
-Same-row `@computed storage=stored` fields become one `before insert or update`
-trigger per table, assigning in interface field order. Order matters: on
-`invoice_row` the assignments are `netAmount`, `taxAmount`, `totalAmount`, and
-each reads the previous one, so Postgres would reject them as a generated column.
+`@computed @pgtrigger` fields become one `before insert or update` trigger per
+table, assigning in interface field order. `@updatedAt` contributes its
+`NEW."updatedAt" := now();` to the same trigger, after the fields. Order matters:
+on `invoice_row` the assignments are `netAmount`, `taxAmount`, `totalAmount`, and
+each reads the previous one, so they cannot be virtual columns.
 
-The expressions are plpgsql statements, so every reference to a column of the
-row being written must be `NEW`-qualified. An unqualified `"quantity"` is a
-plpgsql error (`column "quantity" does not exist`), not an implicit `NEW` lookup.
-This only surfaced once the DDL was run against a real Postgres.
-
-`@computed storage=stored formula=now` (the `updatedAt` fields) resolves through
-`timestampFormulas` rather than `rowFormulas`/`invoiceFormulas`, and emits
-`NEW."updatedAt" := now();` in the same before trigger. See `docs/timestamps.md`.
+The statements are plpgsql, so every reference to a column of the row being
+written must be `NEW`-qualified. An unqualified `"quantity"` is a plpgsql error
+(`column "quantity" does not exist`), not an implicit `NEW` lookup. This only
+surfaced once the DDL was run against a real Postgres. A virtual column's
+expression is the opposite: it is a SQL expression, so it must *not* be
+`NEW`-qualified, and the linter does not check which form a field used.
 
 A `@version` column gets its own `before update` trigger, separate from the
 `_compute` trigger: it raises on a version mismatch and increments the column.
@@ -101,16 +104,19 @@ It is `before update` only, since there is no `OLD` on insert, and it fires afte
 Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or
 update` and `after delete` triggers on the child table, which `update` the
-parent with a fresh `sum`. The statements live in `invoiceFormulas` in
-`packages/backend/src/postgres/formulas.ts` as `childNew` and `childOld`.
+parent with a fresh `sum`. An `@pgrollup` statement is written once with `NEW.`;
+the generator emits the `after delete` variant by substituting `OLD.`, and
+attaches it to every child table whose foreign key points at the parent.
 
-The invoice total is not part of that update. Writing `netAmount` and `taxAmount`
-fires the invoice's own before-update trigger, which recomputes `totalAmount`.
-So the two mechanisms chain, and the chain is load-bearing.
+The invoice total is not part of that update. It is a virtual generated column
+over `"netAmount" + "taxAmount"`, so it recomputes on read. The rollup's `update`
+does fire the invoice's before-update trigger, which refreshes `updatedAt`; the
+two mechanisms chain, and the chain is load-bearing for the clock.
 
-Known constraint: the aggregate fragments hardcode the foreign key column
-`"invoiceId"`. A second child table aggregating into `invoice` would need its own
-statements.
+Known constraint: the aggregate statements hardcode the foreign key column
+`"invoiceId"`. A second child table with a different key column would need its
+own statement, which is why `@pgrollup` is written per parent field rather than
+shared by name.
 
 ## Validation
 
@@ -119,7 +125,7 @@ Two test files:
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — the generator's
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. `generateSchema` takes
-  `{ specGlob, formulasFile }` so a fixture can be generated from its own files.
+  `{ specGlob, aliasGlob }` so a fixture can be generated from its own files.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the committed file
   executes in Postgres.
 
@@ -195,7 +201,7 @@ Gotchas:
   `pg` instance would type-check it.
 - **Everything numeric is `decimal`.** Amounts, quantities, and tax rates share
   one type, so the drivers return strings for all of them, matching the `Decimal`
-  brand. Rounding to two decimals is in the formula (`round(..., 2)`), not in the
+  brand. Rounding to two decimals is in the expression (`round(..., 2)`), not in the
   column type, so a stored amount's scale is defined in one place.
 - **Only the OIDs listed in each file are remapped.** Anything else delegates to
   the driver's own parser.
@@ -205,7 +211,8 @@ Gotchas:
 
 ## Deliberately not implemented
 
-- **Views for `storage=derived`.** Accepted as a tag value, not emitted.
+- **Views for a derived read-time projection.** Nothing emits a view; the spec's
+  computed fields use virtual generated columns or triggers instead.
 - **Migrations.** Only full `create` statements are produced; there is no diffing
   against an existing database.
 - **Defaults and sequences.** `id` is `uuid not null` with no default, so the

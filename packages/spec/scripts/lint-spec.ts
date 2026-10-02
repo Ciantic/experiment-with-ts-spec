@@ -9,25 +9,20 @@ import {
 } from "ts-morph";
 import {
     COMPARE_OPERATORS,
+    COMPUTED_KINDS,
     DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
     RETIRED_TAGS,
     SPEC_GLOB,
-    STORAGE_MODES,
     TYPE_TAGS,
     WIDGETS,
-    formulaNamesIn,
     isCompareOperator,
     isOrderDirection,
     parseParameters,
-    readFormulaNames,
     readTags,
-    typeMembers,
+    type ComputedKind,
 } from "./spec-model.ts";
-
-// Re-exported so the model's formula discovery and the linter have one entry point.
-export { readFormulaNames };
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
 const ALLOWED_TAGS = new Set<string>(FIELD_TAGS);
@@ -40,12 +35,6 @@ const ALLOWED_TYPE_TAGS = new Set<string>(TYPE_TAGS);
 
 /** Widget hints a field may carry. */
 const ALLOWED_WIDGETS = new Set<string>(WIDGETS);
-
-/** Storage modes a @computed field may carry. */
-const ALLOWED_STORAGE = new Set<string>(STORAGE_MODES);
-
-/** The type-level tag that marks a union as the set of valid `formula=` names. */
-const FORMULA_TAG = "formula";
 
 /** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
 const PRIMITIVE_TAG = "primitive";
@@ -62,7 +51,7 @@ export interface Finding {
     message: string;
 }
 
-/** Check the tags on a type alias: `@formula`, `@primitive`, and `@zod`. */
+/** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgtype`. */
 function lintTypeAlias(
     declaration: TypeAliasDeclaration,
     filePath: string,
@@ -84,23 +73,6 @@ function lintTypeAlias(
             for (const tag of instances) {
                 report(`@${tagName} appears more than once`, tag);
             }
-        }
-    }
-
-    if (tags.has(FORMULA_TAG)) {
-        const names = formulaNamesIn(declaration);
-        if (names.length === 0) {
-            findings.push({
-                filePath,
-                line: declaration.getStartLineNumber(),
-                message: `\`${name}\`: @formula type must declare at least one string literal`,
-            });
-        } else if (names.length !== typeMembers(declaration).length) {
-            findings.push({
-                filePath,
-                line: declaration.getStartLineNumber(),
-                message: `\`${name}\`: @formula type members must all be string literals`,
-            });
         }
     }
 
@@ -163,6 +135,20 @@ export function lintInterface(
         });
     }
 
+    // An entity records one creation moment and one last-write moment.
+    for (const clock of ["createdAt", "updatedAt"] as const) {
+        const clocked = declaration
+            .getProperties()
+            .filter((property) => readTags(property)[clock]);
+        for (const property of clocked.slice(1)) {
+            findings.push({
+                filePath,
+                line: property.getStartLineNumber(),
+                message: `\`${name}\`: @${clock} may appear on at most one field`,
+            });
+        }
+    }
+
     // At most one ordering field may declare the entity default; otherwise it is ambiguous.
     const defaultOrdered = declaration
         .getProperties()
@@ -179,7 +165,6 @@ export function lintInterface(
 function lintProperty(
     property: PropertySignature,
     filePath: string,
-    formulaNames: Set<string>,
     findings: Finding[],
 ): void {
     const fieldName = property.getName();
@@ -261,34 +246,78 @@ function lintProperty(
     const computedTag = computedTags[0];
     if (computedTag) {
         const parameters = parseParameters(computedTag);
-        const storage = parameters.get("storage");
-        const formula = parameters.get("formula");
-
-        if (!storage) {
-            report("@computed is missing storage=", computedTag);
-        } else if (!ALLOWED_STORAGE.has(storage)) {
+        if (parameters.size > 0) {
             report(
-                `storage=\`${storage}\` is not one of: ${[...ALLOWED_STORAGE].join(", ")}`,
+                `@computed takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
                 computedTag,
             );
         }
+    }
 
-        if (!formula) {
-            report("@computed is missing formula=", computedTag);
-        } else if (!formulaNames.has(formula)) {
-            report(`formula=\`${formula}\` is not declared by any @formula type in spec/`, computedTag);
+    // One mechanism tag per computed field says how Postgres materializes it. See docs/spec-annotations.md.
+    const mechanismTags = COMPUTED_KINDS.map((name) => ({ name, tag: (tags.get(name) ?? [])[0] })).filter(
+        (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
+    );
+
+    for (const { name, tag } of mechanismTags) {
+        if (!(tag.getCommentText() ?? "").trim()) {
+            report(`@${name} is missing its expression`, tag);
         }
-
-        for (const key of parameters.keys()) {
-            if (key !== "storage" && key !== "formula") {
-                report(`@computed has unknown parameter \`${key}=\``, computedTag);
-            }
+        if (computedTags.length === 0) {
+            report(`@${name} requires @computed`, tag);
+        }
+    }
+    const firstMechanism = mechanismTags[0];
+    if (firstMechanism) {
+        for (const current of mechanismTags.slice(1)) {
+            report(`@${firstMechanism.name} and @${current.name} are mutually exclusive`, current.tag);
         }
     }
 
+    // A rollup statement is written once for the child change and mirrored for the child removal,
+    // so the generator substitutes NEW -> OLD; spelling OLD here would make that partial.
+    const rollupTag = (tags.get("pgrollup") ?? [])[0];
+    if (rollupTag && (rollupTag.getCommentText() ?? "").includes("OLD.")) {
+        report("@pgrollup is written with NEW.; the delete variant is generated from it", rollupTag);
+    }
+
+    // The clock tags are self-contained: the database owns the column, so they exclude every
+    // other ownership tag and must sit on a `Date` field. See docs/timestamps.md.
+    const createdAtTag = (tags.get("createdAt") ?? [])[0];
+    const updatedAtTag = (tags.get("updatedAt") ?? [])[0];
+    for (const { name, tag } of [
+        { name: "createdAt", tag: createdAtTag },
+        { name: "updatedAt", tag: updatedAtTag },
+    ]) {
+        if (!tag) {
+            continue;
+        }
+        if ((tag.getCommentText() ?? "").trim()) {
+            report(`@${name} takes no value`, tag);
+        }
+        if (generatedTags.length > 0) {
+            report(`@${name} and @generated are mutually exclusive`, tag);
+        }
+        if (computedTags.length > 0) {
+            report(`@${name} and @computed are mutually exclusive`, tag);
+        }
+        if (tags.get("default") !== undefined) {
+            report(`@${name} supplies its own default; drop @default`, tag);
+        }
+        for (const { name: mechanism } of mechanismTags) {
+            report(`@${name} and @${mechanism} are mutually exclusive`, tag);
+        }
+        const typeText = property.getTypeNode()?.getText();
+        if (typeText !== "Date") {
+            report(`@${name} must be on a \`Date\` field, found \`${typeText ?? "unknown"}\``, tag);
+        }
+    }
+    if (createdAtTag && updatedAtTag) {
+        report("@createdAt and @updatedAt are mutually exclusive", updatedAtTag);
+    }
+
     // @default carries a SQL expression the database uses when the column is omitted.
-    // It may accompany @computed: a before trigger runs after defaults are applied,
-    // so the two agree on insert where they overlap (see docs/timestamps.md).
+    // A before trigger runs after defaults are applied, so the two agree on insert where they overlap.
     const defaultTag = (tags.get("default") ?? [])[0];
     if (defaultTag && !(defaultTag.getCommentText() ?? "").trim()) {
         report("@default is missing its expression", defaultTag);
@@ -353,6 +382,12 @@ function lintProperty(
         if (computedTags.length > 0) {
             report("@version and @computed are mutually exclusive", versionTag);
         }
+        if (createdAtTag) {
+            report("@version and @createdAt are mutually exclusive", versionTag);
+        }
+        if (updatedAtTag) {
+            report("@version and @updatedAt are mutually exclusive", versionTag);
+        }
         const typeText = property.getTypeNode()?.getText();
         if (typeText !== "Version") {
             report(`@version must be on a \`Version\` field, found \`${typeText ?? "unknown"}\``, versionTag);
@@ -403,7 +438,6 @@ function lintProperty(
 /** Lint an in-memory source string, for tests and one-off checks. */
 export function lintSourceText(
     text: string,
-    formulaNames: Set<string>,
     filePath = "fixture.ts",
 ): Finding[] {
     const project = new Project({ useInMemoryFileSystem: true });
@@ -412,7 +446,7 @@ export function lintSourceText(
     for (const declaration of sourceFile.getInterfaces()) {
         lintInterface(declaration, filePath, findings);
         for (const property of declaration.getProperties()) {
-            lintProperty(property, filePath, formulaNames, findings);
+            lintProperty(property, filePath, findings);
         }
     }
     for (const declaration of sourceFile.getTypeAliases()) {
@@ -437,7 +471,6 @@ export function lintProject(
     const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
     const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
     const findings: Finding[] = [];
-    const formulaNames = readFormulaNames(project, aliasGlob);
     let interfaces = 0;
     let properties = 0;
 
@@ -457,7 +490,7 @@ export function lintProject(
             lintInterface(declaration, filePath, findings);
             for (const property of declaration.getProperties()) {
                 properties += 1;
-                lintProperty(property, filePath, formulaNames, findings);
+                lintProperty(property, filePath, findings);
             }
         }
     }
@@ -467,11 +500,6 @@ export function lintProject(
 
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    const formulaNames = readFormulaNames(project);
-
-    if (formulaNames.size === 0) {
-        console.error("warning: no formula names found; annotate a type under spec/ with @formula");
-    }
 
     const { findings, interfaces, properties } = lintProject(project);
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);

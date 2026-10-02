@@ -7,8 +7,9 @@ Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
 - `Invoice` — `createdAt`, `updatedAt`
 - `InvoiceRow` — `createdAt`, `updatedAt`
 
-Both are supplied by the database. They are annotated differently because their
-lifecycles differ, not for symmetry.
+Both are supplied by the database through a single tag each, rather than through
+`@generated`/`@computed` plus `@default`. The tags are self-contained because the
+pairing of default and trigger is fixed and easy to get wrong by hand.
 
 ## `createdAt` — a database default
 
@@ -17,14 +18,13 @@ lifecycles differ, not for symmetry.
  * The moment the customer record was created.
  *
  * @fieldName Created at
- * @generated
- * @default now()
+ * @createdAt
  * @widget date
  */
 createdAt?: Date;
 ```
 
-`@default <expression>` writes the expression into the column:
+`@createdAt` writes a column default:
 
 ```sql
 "createdAt" timestamptz not null default now()
@@ -33,10 +33,10 @@ createdAt?: Date;
 Three things follow:
 
 - **The field is optional.** The database fills it, so a caller need not supply
-  one. `@default` also forces the column `not null` even when the field is
-  optional — the default guarantees a value, so a nullable column would be a lie.
-- **The repository does not write it.** A column with a database default is
-  excluded from the generated `insert` and `update`.
+  one. The tag also forces the column `not null` even when the field is optional
+  — the default guarantees a value, so a nullable column would be a lie.
+- **The repository does not write it.** The tag excludes the column from the
+  generated `insert` and `update`.
 - **It is set once.** A default only applies when a column is omitted, and the
   repository always omits it, so `createdAt` is never rewritten by an update.
 
@@ -47,18 +47,17 @@ Three things follow:
  * The moment the customer record was last updated.
  *
  * @fieldName Updated at
- * @computed storage=stored formula=now
- * @default now()
+ * @updatedAt
  * @widget date
  */
 updatedAt?: Date;
 ```
 
-`updatedAt` carries both tags, because the two answer different questions:
+`@updatedAt` emits both halves, because the two answer different questions:
 
-- **`@default now()` is the insert path.** On insert there is no previous write
-  to preserve, so the value is simply now(). The column default states that.
-- **`@computed storage=stored` is the update path.** Postgres has no
+- **The column default is the insert path.** On insert there is no previous write
+  to preserve, so the value is simply now().
+- **The trigger is the update path.** Postgres has no
   `ON UPDATE CURRENT_TIMESTAMP` (that is MySQL), so a column default cannot
   express "refresh on every write" — it fires only on insert. The trigger does.
 
@@ -97,13 +96,14 @@ It is not, for two reasons:
   `ALTER TABLE ... ADD COLUMN ... DEFAULT now()` backfills existing rows. Without
   the default, those paths would either fail `not null` or leave a stale value.
 
-The redundancy is cheap and self-consistent, so both are kept. The default
-documents the column's guarantee at the schema level; the trigger maintains it.
+The redundancy is cheap and self-consistent, so `@updatedAt` emits both. The
+default documents the column's guarantee at the schema level; the trigger
+maintains it.
 
-`now()` is a `TimestampFormula` in `packages/spec/src/domain/Timestamp.ts`, and
-the SQL behind the name lives in `timestampFormulas` in
-`packages/backend/src/postgres/formulas.ts` — the same split as every other
-formula (see `docs/spec-annotations.md`).
+`now()` is written by the generator: the clock tags are the only place the
+spec declares a timestamp, so there is no expression to name and no registry to
+consult. That is why `packages/spec/src/domain/Timestamp.ts` and its
+`TimestampFormula` union no longer exist — see `docs/spec-annotations.md`.
 
 `updatedAt` is optional for the same reason `createdAt` is: the column has a
 default, so the repository never writes it and the caller never supplies it.
@@ -118,10 +118,10 @@ left a real hole: the invoice rollup triggers run
 An application-assigned column was not part of those statements, so editing an
 `invoice_row` changed an invoice without touching its `updatedAt`.
 
-The invoice's own `before update` trigger closes that hole. The rollup's `update`
-fires it, which recomputes `totalAmount` and refreshes `updatedAt`. The two
-mechanisms chain, and the chain is load-bearing — the same property the amounts
-already depend on.
+The invoice's own `before update` trigger closes that hole: the rollup's `update`
+fires it, which refreshes `updatedAt`. The rollup and the clock tag chain, and
+the chain is load-bearing. (The invoice's `totalAmount` is a virtual generated
+column, so it needs no place in that trigger at all — it recomputes on read.)
 
 ## Why not the snapshots
 
@@ -138,12 +138,13 @@ from `@inlined`.
 
 ## Gotchas
 
-- **`@default` may accompany `@computed`.** The default covers the insert path,
-  the trigger covers every write; on insert they agree. The linter accepts the
-  pair. A default on a column with no trigger is also fine — that is `createdAt`.
+- **A clock tag is exclusive with `@default`.** `@createdAt`/`@updatedAt` supply
+  `default now()` themselves, so writing `@default` beside one is a lint finding.
+  `@default` on its own is still valid, and a `@computed` field may carry one.
 - **The default expression is written verbatim.** `@default now()` becomes
-  `default now()`. It is SQL, not a formula name, so it is not validated against
-  `timestampFormulas` and a typo surfaces when the DDL runs, not at lint time.
+  `default now()`. It is SQL, not a formula name, so it is not validated and a
+  typo surfaces when the DDL runs, not at lint time. The clock tags are the
+  exception: their `now()` comes from the generator, not from a tag value.
 - **A defaulted column is invisible to the repository.** Excluding it is the
   point, but it means the generated `insert` cannot set it even deliberately.
   Writing one requires raw SQL. This applies to both timestamps.

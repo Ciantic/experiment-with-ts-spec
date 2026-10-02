@@ -5,7 +5,6 @@ import { Project } from "ts-morph";
 import { lowerFirst } from "spec/scripts/spec-model.ts";
 import {
     BACKEND_PACKAGE_ROOT,
-    DEFAULT_FORMULAS_FILE,
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     buildSpecTables,
@@ -163,7 +162,6 @@ function main(): void {
     const { tables, diagnostics } = buildSpecTables(project, {
         specGlob: DEFAULT_SPEC_GLOB,
         aliasGlob: SPEC_GLOB,
-        formulasFile: DEFAULT_FORMULAS_FILE,
     });
 
     for (const diagnostic of diagnostics) {

@@ -29,7 +29,7 @@ values, all of which are domain decisions rather than code behaviour.
 
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
   `generateSchema` with self-contained fixtures. `generateSchema` takes
-  `{ specGlob, formulasFile }` precisely so a test never has to touch the real spec.
+  `{ specGlob, aliasGlob }` precisely so a test never has to touch the real spec.
 - `packages/validation/scripts/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.

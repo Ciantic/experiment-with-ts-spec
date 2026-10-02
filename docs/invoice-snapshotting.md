@@ -8,7 +8,7 @@ copying an entity come from the `@inlined` tag — see `docs/spec-annotations.md
 
 An issued invoice is a legal document: what the customer received must not change
 when some referenced record does. The draft already freezes amounts
-(`storage=stored`, see `docs/spec-annotations.md`), but a live `@relation
+(`@pgtrigger`, see `docs/spec-annotations.md`), but a live `@relation
 Customer` still re-renders every past invoice when an address or a VAT number is
 edited. The same holds for `Seller`, the company that issued it. `InvoiceSent`
 closes that gap by copying both parties at send time.
@@ -61,15 +61,14 @@ Two consequences worth naming:
 The snapshot copies values; it does not recompute them from the draft. Two
 consequences:
 
-- `invoice_sent_row` reuses `rowFormulas`, so its amounts are still rounded by
-  SQL. The inputs are copied too, so recomputing reproduces the sent values.
-- `invoice_sent`'s totals are plain columns, copied from the draft. The aggregate
-  fragments in `invoiceFormulas` (in `packages/backend/src/postgres/formulas.ts`) cannot be reused:
-  they hardcode the child key
-  `"invoiceId"` and `update "invoice"`, so a rollup would target the wrong table
-  and column. A dedicated `invoiceSentFormulas` registry, spelling
-  `"invoiceSentId"` and `update "invoice_sent"`, is the fix when the totals need
-  to be maintained in SQL rather than copied.
+- `invoice_sent_row` repeats the row amounts' `@pgtrigger` statements, so they
+  are still rounded by SQL. The inputs are copied too, so recomputing reproduces
+  the sent values.
+- `invoice_sent`'s totals are plain columns, copied from the draft. Its own
+  `@pgrollup` statements would have to hardcode the child key `"invoiceSentId"`
+  and `update "invoice_sent"`, so the invoice's statements cannot be reused; the
+  totals are copied instead, and a rollup is the fix when they need to be
+  maintained in SQL.
 
 ## Gotchas
 

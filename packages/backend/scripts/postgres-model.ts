@@ -3,7 +3,7 @@
  * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the SQL mapping.
  * See docs/schema-generation.md.
  */
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { Node, SyntaxKind, type Project } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
@@ -22,10 +22,7 @@ export type { Diagnostic };
 
 /** This package's root, so paths do not depend on the current working directory. */
 export const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
-
 export { DEFAULT_SPEC_GLOB, SPEC_GLOB };
-
-export const DEFAULT_FORMULAS_FILE = join(BACKEND_PACKAGE_ROOT, "src/postgres/formulas.ts");
 
 /** Input paths, overridable so tests can generate from fixtures. */
 export interface GenerateOptions {
@@ -33,7 +30,6 @@ export interface GenerateOptions {
     specGlob?: string;
     /** Where type aliases (including primitives) are read from; defaults to every spec file. */
     aliasGlob?: string;
-    formulasFile?: string;
 }
 
 /** TypeScript primitives to Postgres types. Names match pg-unified-mapping, not the canonical aliases. */
@@ -49,16 +45,6 @@ const BUILTIN_TYPES: Record<string, string> = {
     Date: "timestamptz",
 };
 
-/** One formula fragment, whatever registry it came from. See docs/spec-annotations.md. */
-export interface FormulaEntry {
-    /** An expression the generator wraps as `NEW."field" := <expr>;`. */
-    expression?: string;
-    /** A complete `NEW."field" := …;` statement, emitted verbatim. */
-    sameRow?: string;
-    childNew?: string;
-    childOld?: string;
-}
-
 /** A column generated from a domain field. `read` is the accessor the repository generator emits. */
 export interface Column {
     name: string;
@@ -70,6 +56,8 @@ export interface Column {
     references?: { table: string; column: string };
     /** A database column default, written verbatim; the repository does not write the column. */
     default?: string;
+    /** A virtual generated column's expression, written verbatim without `NEW.`; the database owns the value. */
+    generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
     /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
@@ -117,82 +105,9 @@ interface TypeResolution {
     isArray?: boolean;
 }
 
-/** Quote an identifier, matching the fragments in formulas.ts. */
+/** Quote an identifier, matching the tags in the spec. */
 export function quote(name: string): string {
     return `"${name}"`;
-}
-
-/** Read a string or template literal's text. */
-function readStringValue(node: Node): string | undefined {
-    if (Node.isNoSubstitutionTemplateLiteral(node) || Node.isStringLiteral(node)) {
-        return node.getLiteralText();
-    }
-    return undefined;
-}
-
-/** Read every registry exported by `formulas.ts`, keyed by formula name, without importing it. */
-export function readFormulas(project: Project, formulasFile = DEFAULT_FORMULAS_FILE): Map<string, FormulaEntry> {
-    const formulas = new Map<string, FormulaEntry>();
-    const sourceFile = project.getSourceFile(formulasFile);
-    if (!sourceFile) {
-        return formulas;
-    }
-
-    // Every registry is a top-level object literal, regardless of the name it is bound to.
-    for (const declaration of sourceFile.getVariableDeclarations()) {
-        const initializer = declaration.getInitializer();
-        if (!initializer) {
-            continue;
-        }
-        // A registry is `as const` or annotated, so the literal may sit behind an AsExpression.
-        const literal = Node.isAsExpression(initializer)
-            ? initializer.getExpressionIfKind(SyntaxKind.ObjectLiteralExpression)
-            : initializer.asKind(SyntaxKind.ObjectLiteralExpression);
-        if (!literal) {
-            continue;
-        }
-
-        for (const property of literal.getProperties()) {
-            if (!Node.isPropertyAssignment(property)) {
-                continue;
-            }
-            const key = unquote(property.getName());
-            const value = property.getInitializer();
-            // A string value is a same-row expression; an object value carries named statements.
-            const text = value ? readStringValue(value) : undefined;
-            if (text !== undefined) {
-                formulas.set(key, { expression: text });
-                continue;
-            }
-            const nested = value?.asKind(SyntaxKind.ObjectLiteralExpression);
-            if (!nested) {
-                continue;
-            }
-            const entry: FormulaEntry = {};
-            for (const inner of nested.getProperties()) {
-                if (!Node.isPropertyAssignment(inner)) {
-                    continue;
-                }
-                const innerKey = unquote(inner.getName());
-                const innerValue = inner.getInitializer();
-                const innerText = innerValue ? readStringValue(innerValue) : undefined;
-                if (innerText === undefined) {
-                    continue;
-                }
-                if (innerKey === "sameRow" || innerKey === "childNew" || innerKey === "childOld") {
-                    entry[innerKey] = innerText;
-                }
-            }
-            formulas.set(key, entry);
-        }
-    }
-
-    return formulas;
-}
-
-/** Strip the quotes ts-morph keeps on a string-literal property name. */
-function unquote(name: string): string {
-    return name.replace(/^["']|["']$/g, "");
 }
 
 function stripSemicolon(text: string): string {
@@ -211,9 +126,7 @@ export function buildSpecTables(
 ): { tables: Map<string, Table>; diagnostics: Diagnostic[] } {
     const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
     const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
-    const formulasFile = options.formulasFile ?? DEFAULT_FORMULAS_FILE;
     const diagnostics: Diagnostic[] = [];
-    const formulas = readFormulas(project, formulasFile);
     const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
     const tables = new Map<string, Table>();
 
@@ -510,7 +423,8 @@ export function buildSpecTables(
             const isPrimaryKey = fieldName === "id";
             const isForeignKey = !isPrimaryKey && (typeNode.getText().endsWith("Id") ?? false);
             // A default makes the column not null even when the field is optional: the database fills it.
-            const defaultValue = tags.default;
+            // The clock tags supply their own default, so they make the column not null the same way.
+            const defaultValue = tags.default ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
             const column: Column = {
                 name: fieldName,
                 sqlType: resolved.sqlType ?? "text",
@@ -537,6 +451,9 @@ export function buildSpecTables(
             if (defaultValue !== undefined) {
                 column.default = defaultValue;
             }
+            if (tags.pgvirtual !== undefined) {
+                column.generatedExpression = stripSemicolon(tags.pgvirtual);
+            }
             if (tags.version) {
                 column.version = true;
             }
@@ -555,16 +472,12 @@ export function buildSpecTables(
 
             table.columns.push(column);
 
-            const formula = tags.computed?.formula;
-            if (!formula) {
-                continue;
+            // A trigger statement maintains the field on every write; the clock tag contributes its own.
+            if (tags.pgtrigger !== undefined) {
+                table.sameRowAssignments.push(stripSemicolon(tags.pgtrigger) + ";");
             }
-            const entry = formulas.get(formula);
-            // A string fragment is an expression to wrap; a `sameRow` fragment is a whole statement.
-            if (entry?.expression !== undefined) {
-                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := ${stripSemicolon(entry.expression)};`);
-            } else if (entry?.sameRow !== undefined) {
-                table.sameRowAssignments.push(stripSemicolon(entry.sameRow) + ";");
+            if (tags.updatedAt) {
+                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := now();`);
             }
         }
 
@@ -582,14 +495,13 @@ export function buildSpecTables(
             continue;
         }
         for (const property of spec.properties) {
-            const formula = property.tags.computed?.formula;
-            if (!formula) {
+            const rollupStatement = property.tags.pgrollup;
+            if (rollupStatement === undefined) {
                 continue;
             }
-            const entry = formulas.get(formula);
-            if (!entry?.childNew || !entry.childOld) {
-                continue;
-            }
+            // One statement is written for the child change and mirrored for the child removal.
+            const newStatement = stripSemicolon(rollupStatement) + ";";
+            const oldStatement = newStatement.replaceAll("NEW.", "OLD.");
             for (const child of tables.values()) {
                 const hasForeignKey = child.columns.some(
                     (column) => column.references?.table === parentTable.name,
@@ -601,8 +513,8 @@ export function buildSpecTables(
                     newStatements: [],
                     oldStatements: [],
                 };
-                rollup.newStatements.push(entry.childNew);
-                rollup.oldStatements.push(entry.childOld);
+                rollup.newStatements.push(newStatement);
+                rollup.oldStatements.push(oldStatement);
                 parentTable.rollups.set(child.name, rollup);
             }
         }

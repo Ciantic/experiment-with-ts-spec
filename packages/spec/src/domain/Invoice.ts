@@ -10,13 +10,6 @@ import type { Seller, SellerId } from "./Seller.ts";
 export type InvoiceId = BrandedId<"InvoiceId">;
 
 /**
- * Invoice-level formulas: one same-row total plus two cross-table aggregates.
- *
- * @formula
- */
-export type InvoiceFormula = "invoiceNetAmount" | "invoiceTaxAmount" | "invoiceTotalAmount";
-
-/**
  * An invoice.
  * 
  * @table invoice
@@ -108,7 +101,8 @@ export interface Invoice {
      * The net amount of the invoice, before taxes.
      * 
      * @fieldName Net amount
-     * @computed storage=stored formula=invoiceNetAmount
+     * @computed
+     * @pgrollup update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
      * @widget number
      */
     netAmount?: Money;
@@ -117,7 +111,8 @@ export interface Invoice {
      * The tax amount of the invoice.
      * 
      * @fieldName Tax amount
-     * @computed storage=stored formula=invoiceTaxAmount
+     * @computed
+     * @pgrollup update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
      * @widget number
      */
     taxAmount?: Money;
@@ -126,7 +121,8 @@ export interface Invoice {
      * The total amount of the invoice, including taxes.
      * 
      * @fieldName Total amount
-     * @computed storage=stored formula=invoiceTotalAmount
+     * @computed
+     * @pgvirtual "netAmount" + "taxAmount"
      * @widget number
      */
     totalAmount?: Money;
@@ -152,8 +148,7 @@ export interface Invoice {
      * The moment the invoice draft was created.
      * 
      * @fieldName Created at
-     * @generated
-     * @default now()
+     * @createdAt
      * @queryorderby default asc
      * @widget date
      */
@@ -163,8 +158,7 @@ export interface Invoice {
      * The moment the invoice draft was last updated.
      * 
      * @fieldName Updated at
-     * @computed storage=stored formula=now
-     * @default now()
+     * @updatedAt
      * @queryorderby
      * @widget date
      */

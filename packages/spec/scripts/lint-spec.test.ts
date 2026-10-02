@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { lintProject, lintSourceText, readFormulaNames, type Finding } from "./lint-spec.ts";
-
-/** The real union types, so `formula=` checks resolve as they do in the CLI. */
-function realFormulaNames(): Set<string> {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    return readFormulaNames(project);
-}
+import { lintProject, lintSourceText, type Finding } from "./lint-spec.ts";
 
 /** Format findings as `field: message` for concise assertions. */
 function messages(findings: Finding[]): string[] {
@@ -14,7 +8,6 @@ function messages(findings: Finding[]): string[] {
 }
 
 describe("lintSourceText", () => {
-    const formulaNames = new Set(["rowNetAmount"]);
 
     it("accepts a field with a valid tag set", () => {
         const findings = lintSourceText(
@@ -26,7 +19,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -43,7 +35,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -61,7 +52,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`label`: @nonsense is not a recognised tag"]);
@@ -76,7 +66,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -89,7 +78,6 @@ describe("lintSourceText", () => {
             `export interface Bare {
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`label`: missing @fieldName", "`label`: missing @widget"]);
@@ -104,7 +92,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`label`: @fieldName is empty"]);
@@ -117,11 +104,10 @@ describe("lintSourceText", () => {
                  * @fieldName Label
                  * @widget number
                  * @generated
-                 * @computed storage=stored formula=rowNetAmount
+                 * @computed
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`label`: @generated and @computed are mutually exclusive"]);
@@ -137,81 +123,110 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`label`: @generated takes no parameters, found: storage="]);
     });
 
-    it("requires storage= and formula= on @computed", () => {
+    it("rejects parameters on @computed", () => {
         const findings = lintSourceText(
             `export interface Missing {
                 /**
                  * @fieldName Label
                  * @widget number
+                 * @computed storage=stored
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @computed takes no parameters, found: storage=",
+        ]);
+    });
+
+    it("requires @computed on a mechanism tag", () => {
+        const findings = lintSourceText(
+            `export interface Orphan {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`label`: @pgtrigger requires @computed"]);
+    });
+
+    it("rejects two mechanism tags on one field", () => {
+        const findings = lintSourceText(
+            `export interface Both {
+                /**
+                 * @fieldName Label
+                 * @widget number
                  * @computed
+                 * @pgvirtual "net" + "tax"
+                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @computed is missing storage=",
-            "`label`: @computed is missing formula=",
+            "`label`: @pgvirtual and @pgtrigger are mutually exclusive",
         ]);
     });
 
-    it("rejects an unknown storage mode", () => {
+    it("requires an expression on a mechanism tag", () => {
         const findings = lintSourceText(
-            `export interface BadStorage {
+            `export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
-                 * @computed storage=cached formula=rowNetAmount
+                 * @computed
+                 * @pgvirtual
                  */
                 label: string;
             }`,
-            formulaNames,
+        );
+
+        expect(messages(findings)).toEqual(["`label`: @pgvirtual is missing its expression"]);
+    });
+
+    it("rejects OLD. in a @pgrollup statement, which the generator mirrors", () => {
+        const findings = lintSourceText(
+            `export interface Rollup {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgrollup update "t" set "n" = OLD."n" where "id" = NEW."id"
+                 */
+                label: string;
+            }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: storage=`cached` is not one of: generated, stored, derived",
+            "`label`: @pgrollup is written with NEW.; the delete variant is generated from it",
         ]);
     });
 
-    it("rejects an undefined formula", () => {
+    it("accepts a complete @computed field", () => {
         const findings = lintSourceText(
-            `export interface BadFormula {
+            `export interface Ok {
                 /**
                  * @fieldName Label
                  * @widget number
-                 * @computed storage=stored formula=doesNotExist
+                 * @computed
+                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
                  */
-                label: string;
+                label: number;
             }`,
-            formulaNames,
         );
 
-        expect(messages(findings)).toEqual([
-            "`label`: formula=`doesNotExist` is not declared by any @formula type in spec/",
-        ]);
-    });
-
-    it("rejects an unknown @computed parameter", () => {
-        const findings = lintSourceText(
-            `export interface ExtraParam {
-                /**
-                 * @fieldName Label
-                 * @widget number
-                 * @computed storage=stored formula=rowNetAmount precision=2
-                 */
-                label: string;
-            }`,
-            formulaNames,
-        );
-
-        expect(messages(findings)).toEqual(["`label`: @computed has unknown parameter `precision=`"]);
+        expect(findings).toEqual([]);
     });
 
     it("rejects a duplicated tag", () => {
@@ -224,7 +239,6 @@ describe("lintSourceText", () => {
                  */
                 label: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -242,7 +256,6 @@ describe("lintSourceText", () => {
                  */
                 note: string;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -259,7 +272,6 @@ describe("lintSourceText", () => {
                  */
                 createdAt?: Date;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -269,17 +281,98 @@ describe("lintSourceText", () => {
         const findings = lintSourceText(
             `export interface DefaultedComputed {
                 /**
-                 * @fieldName Updated at
-                 * @widget date
-                 * @computed storage=stored formula=rowNetAmount
-                 * @default now()
+                 * @fieldName Net amount
+                 * @widget number
+                 * @computed
+                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
+                 * @default 0
                  */
-                updatedAt?: Date;
+                net?: Money;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
+    });
+
+    it("accepts @createdAt on a Date field", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @createdAt
+                 */
+                createdAt?: Date;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a clock tag on a non-Date field", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Created at
+                 * @widget number
+                 * @createdAt
+                 */
+                createdAt?: number;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`createdAt`: @createdAt must be on a `Date` field, found `number`",
+        ]);
+    });
+
+    it("rejects a clock tag combined with @computed", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Updated at
+                 * @widget date
+                 * @updatedAt
+                 * @computed
+                 */
+                updatedAt?: Date;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`updatedAt`: @updatedAt and @computed are mutually exclusive"]);
+    });
+
+    it("rejects @default on a clock field", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @createdAt
+                 * @default now()
+                 */
+                createdAt?: Date;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`createdAt`: @createdAt supplies its own default; drop @default",
+        ]);
+    });
+
+    it("rejects a clock tag with a value", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @createdAt now()
+                 */
+                createdAt?: Date;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`createdAt`: @createdAt takes no value"]);
     });
 
     it("reports @default without an expression", () => {
@@ -292,7 +385,6 @@ describe("lintSourceText", () => {
                  */
                 createdAt?: Date;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`createdAt`: @default is missing its expression"]);
@@ -308,7 +400,6 @@ describe("lintSourceText", () => {
                  */
                 customer?: Customer;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -330,7 +421,6 @@ describe("lintSourceText", () => {
                  */
                 rows?: InvoiceRow[];
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -346,7 +436,6 @@ describe("lintSourceText", () => {
                  */
                 customer?: Customer;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -365,7 +454,6 @@ describe("lintSourceText", () => {
                  */
                 customer?: Customer;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`customer`: @relation and @inlined are mutually exclusive"]);
@@ -382,7 +470,6 @@ describe("lintSourceText", () => {
                  */
                 rows?: InvoiceRow[];
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -401,7 +488,6 @@ describe("lintSourceText", () => {
                  */
                 rows?: InvoiceRow;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual([
@@ -420,7 +506,6 @@ describe("lintSourceText", () => {
                  */
                 version?: Version;
             }`,
-            formulaNames,
         );
 
         expect(findings).toEqual([]);
@@ -436,7 +521,6 @@ describe("lintSourceText", () => {
                  */
                 version: string;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`version`: @version must be on a `Version` field, found `string`"]);
@@ -453,7 +537,6 @@ describe("lintSourceText", () => {
                  */
                 version?: Version;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`version`: @version and @generated are mutually exclusive"]);
@@ -475,7 +558,6 @@ describe("lintSourceText", () => {
                  */
                 other?: Version;
             }`,
-            formulaNames,
         );
 
         expect(messages(findings)).toEqual(["`Two`: @version may appear on at most one field"]);
@@ -491,7 +573,6 @@ describe("type-level tags", () => {
              * @zod z.uuid().brand<"ThingId">()
              */
             export type ThingId = string & $brand<"ThingId">;`,
-            new Set(),
         );
 
         expect(findings).toEqual([]);
@@ -505,7 +586,6 @@ describe("type-level tags", () => {
              * @zod z.uuid()
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @primitive takes no value"]);
@@ -517,7 +597,6 @@ describe("type-level tags", () => {
              * @primitive
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual([
@@ -533,7 +612,6 @@ describe("type-level tags", () => {
              * @zod z.uuid()
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @primitive requires @pgtype"]);
@@ -545,7 +623,6 @@ describe("type-level tags", () => {
              * @pgtype
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @pgtype is missing its storage type"]);
@@ -557,7 +634,6 @@ describe("type-level tags", () => {
              * @zod
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @zod is missing its schema expression"]);
@@ -572,7 +648,6 @@ describe("type-level tags", () => {
              * @zod z.string()
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual([
@@ -587,7 +662,6 @@ describe("type-level tags", () => {
              * @nonsense
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
@@ -599,7 +673,6 @@ describe("type-level tags", () => {
              * @nonsense
              */
             export type Thing = string;`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
@@ -619,13 +692,13 @@ describe("@queryfilter", () => {
         }`;
 
     it("accepts @queryfilter on a scalar field", () => {
-        const findings = lintSourceText(field("value", ""), new Set());
+        const findings = lintSourceText(field("value", ""));
 
         expect(findings).toEqual([]);
     });
 
     it("rejects @queryfilter with a value", () => {
-        const findings = lintSourceText(field("value", "yes"), new Set());
+        const findings = lintSourceText(field("value", "yes"));
 
         expect(messages(findings)).toEqual(["`value`: @queryfilter takes no value"]);
     });
@@ -641,7 +714,6 @@ describe("@queryfilter", () => {
                  */
                 owner?: Owner;
             }`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual([
@@ -650,7 +722,7 @@ describe("@queryfilter", () => {
     });
 
     it("rejects @queryfilter on id, which is a filter by default", () => {
-        const findings = lintSourceText(field("id", ""), new Set());
+        const findings = lintSourceText(field("id", ""));
 
         expect(messages(findings)).toEqual(["`id`: `id` is a filter by default; drop @queryfilter"]);
     });
@@ -669,18 +741,18 @@ describe("@queryorderby", () => {
         }`;
 
     it("accepts a bare @queryorderby on a scalar field", () => {
-        const findings = lintSourceText(field("value", ""), new Set());
+        const findings = lintSourceText(field("value", ""));
 
         expect(findings).toEqual([]);
     });
 
     it("accepts @queryorderby default asc and desc", () => {
-        expect(lintSourceText(field("value", "default asc"), new Set())).toEqual([]);
-        expect(lintSourceText(field("value", "default desc"), new Set())).toEqual([]);
+        expect(lintSourceText(field("value", "default asc"))).toEqual([]);
+        expect(lintSourceText(field("value", "default desc"))).toEqual([]);
     });
 
     it("rejects an unknown @queryorderby value", () => {
-        const findings = lintSourceText(field("value", "sideways"), new Set());
+        const findings = lintSourceText(field("value", "sideways"));
 
         expect(messages(findings)).toEqual([
             "`value`: @queryorderby takes no value or `default asc|desc`, found `sideways`",
@@ -688,7 +760,7 @@ describe("@queryorderby", () => {
     });
 
     it("rejects `default` with no direction", () => {
-        const findings = lintSourceText(field("value", "default"), new Set());
+        const findings = lintSourceText(field("value", "default"));
 
         expect(messages(findings)).toEqual([
             "`value`: @queryorderby takes no value or `default asc|desc`, found `default`",
@@ -706,7 +778,6 @@ describe("@queryorderby", () => {
                  */
                 owner?: Owner;
             }`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual([
@@ -730,7 +801,6 @@ describe("@queryorderby", () => {
                  */
                 updatedAt?: Date;
             }`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`Two`: @queryorderby default may appear on at most one field"]);
@@ -751,12 +821,12 @@ describe("@where", () => {
     };
 
     it("accepts a list of known operators", () => {
-        expect(lintSourceText(field("gte lte"), new Set())).toEqual([]);
-        expect(lintSourceText(field("eq ne gt gte lt lte"), new Set())).toEqual([]);
+        expect(lintSourceText(field("gte lte"))).toEqual([]);
+        expect(lintSourceText(field("eq ne gt gte lt lte"))).toEqual([]);
     });
 
     it("rejects a bare @where with no operators", () => {
-        const findings = lintSourceText(field(""), new Set());
+        const findings = lintSourceText(field(""));
 
         expect(messages(findings)).toEqual([
             "`value`: @where requires at least one operator, one of: eq, ne, gt, gte, lt, lte",
@@ -764,7 +834,7 @@ describe("@where", () => {
     });
 
     it("rejects an unknown operator", () => {
-        const findings = lintSourceText(field("between"), new Set());
+        const findings = lintSourceText(field("between"));
 
         expect(messages(findings)).toEqual([
             "`value`: @where `between` is not one of: eq, ne, gt, gte, lt, lte",
@@ -782,79 +852,39 @@ describe("@where", () => {
                  */
                 owner?: Owner;
             }`,
-            new Set(),
         );
 
         expect(messages(findings)).toEqual(["`owner`: @where must be on a scalar field, not a @relation field"]);
     });
 });
 
-describe("readFormulaNames", () => {
-    it("discovers names from @formula-annotated types", () => {
-        const names = realFormulaNames();
-
-        expect(names).toContain("rowNetAmount");
-        expect(names).toContain("invoiceTotalAmount");
-    });
-});
-
-describe("lintFormulaType", () => {
-    it("accepts an @formula type of string literals", () => {
+describe("retired @formula", () => {
+    it("points a field-level @formula at the mechanism tags", () => {
         const findings = lintSourceText(
             `/**
              * @formula
              */
-            export type ThingFormula = "a" | "b";`,
-            new Set(),
+            export type RowFormula = "a" | "b";`,
         );
 
-        expect(findings).toEqual([]);
+        expect(messages(findings)).toEqual(["`RowFormula`: @formula is not a recognised type tag"]);
     });
 
-    it("accepts a single-member @formula type", () => {
+    it("reports @formula on a field with its replacement", () => {
         const findings = lintSourceText(
-            `/**
-             * @formula
-             */
-            export type OneFormula = "only";`,
-            new Set(),
-        );
-
-        expect(findings).toEqual([]);
-    });
-
-    it("rejects an @formula type with no string literals", () => {
-        const findings = lintSourceText(
-            `/**
-             * @formula
-             */
-            export type BadFormula = number;`,
-            new Set(),
+            `export interface Thing {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @formula rowNet
+                 */
+                label: string;
+            }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`BadFormula`: @formula type must declare at least one string literal",
+            "`label`: @formula is retired; put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup",
         ]);
-    });
-
-    it("rejects an @formula union with a non-literal member", () => {
-        const findings = lintSourceText(
-            `/**
-             * @formula
-             */
-            export type MixedFormula = "a" | string;`,
-            new Set(),
-        );
-
-        expect(messages(findings)).toEqual([
-            "`MixedFormula`: @formula type members must all be string literals",
-        ]);
-    });
-
-    it("ignores a type without the @formula annotation", () => {
-        const findings = lintSourceText(`export type NotAFormula = "a" | "b";`, new Set());
-
-        expect(findings).toEqual([]);
     });
 });
 

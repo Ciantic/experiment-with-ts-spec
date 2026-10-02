@@ -38,7 +38,7 @@ create table "invoice" (
     "dueDate" timestamptz,
     "netAmount" decimal,
     "taxAmount" decimal,
-    "totalAmount" decimal,
+    "totalAmount" decimal generated always as ("netAmount" + "taxAmount") virtual,
     "notes" text,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
@@ -134,7 +134,6 @@ create trigger "seller_compute" before insert or update on "seller"
 
 create function "invoice_compute"() returns trigger as $$
 begin
-    NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
     NEW."updatedAt" := now();
     return NEW;
 end;

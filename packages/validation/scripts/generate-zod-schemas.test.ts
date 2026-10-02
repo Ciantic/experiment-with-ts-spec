@@ -604,13 +604,15 @@ export interface Marker {
     /**
      * A total the trigger derives.
      *
-     * @computed storage=stored formula=markerTotal
+     * @computed
+     * @pgtrigger NEW."total" := NEW."label"
      */
     total?: Money;
     /**
      * A stored value the insert has to carry.
      *
-     * @computed storage=stored formula=markerRequired
+     * @computed
+     * @pgtrigger NEW."required" := NEW."label"
      */
     required: Money;
 }

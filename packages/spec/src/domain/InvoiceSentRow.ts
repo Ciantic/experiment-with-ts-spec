@@ -76,7 +76,8 @@ export interface InvoiceSentRow {
      * The net amount for this row, before taxes.
      * 
      * @fieldName Net amount
-     * @computed storage=stored formula=rowNetAmount
+     * @computed
+     * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
      * @widget number
      */
     netAmount: Money;
@@ -85,7 +86,8 @@ export interface InvoiceSentRow {
      * The tax amount for this row.
      * 
      * @fieldName Tax amount
-     * @computed storage=stored formula=rowTaxAmount
+     * @computed
+     * @pgtrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
      * @widget number
      */
     taxAmount: Money;
@@ -94,7 +96,8 @@ export interface InvoiceSentRow {
      * The total amount for this row, including taxes.
      * 
      * @fieldName Total amount
-     * @computed storage=stored formula=rowTotalAmount
+     * @computed
+     * @pgtrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
      * @widget number
      */
     totalAmount: Money;

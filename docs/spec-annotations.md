@@ -10,8 +10,32 @@ Field tags:
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
-- `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`. A nullable one is omitted from `<name>InsertSchema`, since the row that fills it arrives later; a required one has no default and must be supplied. See `docs/validation.md`.
-- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
+- `@computed` — derived rather than client-supplied. A bare marker: how Postgres
+  materializes it is a separate mechanism tag, exactly one of `@pgvirtual`,
+  `@pgtrigger`, or `@pgrollup`. A nullable one is omitted from
+  `<name>InsertSchema`, since the row that fills it arrives later; a required one
+  has no default and must be supplied. See `docs/validation.md` and
+  "`@computed` mechanisms".
+- `@pgvirtual <expression>` — the field is a Postgres `generated always as (…)
+  virtual` column, with the expression written verbatim. It may reference only
+  regular columns of its own table: not other generated columns, not other
+  tables, and only immutable functions. Postgres owns the column outright, so a
+  create never writes it and the generator keeps it out of the insert and patch
+  paths.
+- `@pgtrigger <statement>` — the field is assigned by the table's `before insert
+  or update` trigger. The statement is written verbatim with `NEW.` and is emitted
+  in interface field order after the table's clock assignment.
+- `@pgrollup <statement>` — the field aggregates child rows. The statement is
+  written once with `NEW.`; the generator attaches it to `after insert or update`
+  on every table whose foreign key points at this field's table, and emits the
+  `after delete` variant by substituting `OLD.` for `NEW.`.
+- `@createdAt` — the row's creation moment. A bare marker on a `Date` field: the
+  column becomes `not null default now()`, and no create or patch writes it. See
+  `docs/timestamps.md`.
+- `@updatedAt` — the row's last-write moment. A bare marker on a `Date` field: the
+  column becomes `not null default now()`, and every write assigns
+  `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
+- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through a `<field>Id` field the interface also declares. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
@@ -40,11 +64,6 @@ Interface tags:
 
 Type tags:
 
-- `@formula` — marks a union of string literals as a set of valid `formula=`
-  names. Applied to a type alias, not to a field or interface. See
-  "Saying what, not how". `TimestampFormula` is cross-cutting rather than
-  belonging to one entity, so it sits alone in
-  `packages/spec/src/domain/Timestamp.ts`.
 - `@primitive` — a bare marker on a type alias that identifies it as a scalar
   value type rather than an entity. Applied to the aliases in
   `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
@@ -59,10 +78,9 @@ Type tags:
   a primitive does not require editing the backend. `@primitive` types must
   carry it. See `docs/primitives.md`.
 
-Type tags sit on a type alias and are validated as a group: `@formula` types are
-checked as unions of string literals, `@primitive` types must declare `@zod` and
-`@pgtype`, and any tag outside the four is reported. A field never carries a type
-tag; an alias never carries a field or interface tag.
+Type tags sit on a type alias and are validated as a group: `@primitive` types
+must declare `@zod` and `@pgtype`, and any tag outside the three is reported. A
+field never carries a type tag; an alias never carries a field or interface tag.
 
 `@relation`, `@children`, and `@inlined` are bare markers, like `@generated`:
 they take no value. The entity and the cardinality both come from the field
@@ -79,9 +97,8 @@ of other data.
 
 `@generated` says *who* assigns a value, not *how*. On its own it carries no SQL:
 it is presentation metadata telling a UI not to offer the field. How the value
-arrives is a separate decision — a client-supplied column, a `@default`, or a
-`@computed` trigger. The timestamps show two of those spellings; see
-`docs/timestamps.md`.
+arrives is a separate decision — a client-supplied column or a `@default`. The
+clock tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
 ## `@relation`
 
@@ -151,48 +168,72 @@ ignored: an inlined value is data, not a derivation. Non-scalar target fields
 (entity references or child arrays) are a diagnostic; `@inlined` flattens scalars
 only.
 
-## `@computed` parameters
+## `@computed` mechanisms
+
+`@computed` is a bare marker meaning "derived"; exactly one mechanism tag says
+how Postgres materializes it, and the expression is written in the spec rather
+than in a registry:
 
 ```
-@computed storage=stored formula=rowNetAmount
+/**
+ * @fieldName Net amount
+ * @widget number
+ * @computed
+ * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
+ */
 ```
 
-- `storage=` selects the wrapper the expression is embedded in.
-- `formula=` names a member of a type annotated `@formula`, such as `RowFormula`
-  in `packages/spec/src/domain/InvoiceRow.ts` or `InvoiceFormula` in
-  `packages/spec/src/domain/Invoice.ts`. The annotation, not a hardcoded list or
-  location, is what makes a type a set of names. The Postgres SQL behind a name
-  lives in `packages/backend/src/postgres/formulas.ts`; it is never inlined into the tag.
+Three mechanisms, chosen by what the expression needs:
 
-## Storage modes
+- `@pgvirtual` — a `generated always as (…) virtual` column. Cheapest to
+  maintain and impossible to leave stale, but constrained: same-row columns
+  only, immutable functions only, no referencing another generated column, and
+  no index on the result.
+- `@pgtrigger` — a `before insert or update` statement. Freer than a generated
+  column (it may read other columns the trigger assigned earlier in the same
+  pass) and indexable.
+- `@pgrollup` — a cross-table aggregate. The only mechanism that can read another
+  table, and the only one written once for many child tables.
 
-The same expression text is embedded three ways, differing only by wrapper:
+`invoice.totalAmount` is the one `@pgvirtual` field: it is a same-row sum of two
+regular columns. `invoice.netAmount`/`taxAmount` are `@pgrollup` because a sum
+over `invoice_row` cannot be a generated column. The `invoice_row` amounts are
+`@pgtrigger` because `taxAmount` reads `netAmount` and `totalAmount` reads both,
+and a generated column cannot reference another generated column.
 
-- `generated` — `ADD COLUMN ... GENERATED ALWAYS AS (<expr>) STORED`. Recomputed on every write.
-- `stored` — `NEW."x" := <expr>;` inside a `BEFORE` trigger. Recomputed at write time only.
-- `derived` — `SELECT ..., <expr> AS "x" FROM ...` in a view. Recomputed on every read.
+## Why the row amounts are trigger assignments
 
-All amounts in this spec are `storage=stored`.
+The chain is `netAmount`, then `taxAmount`, then `totalAmount`. Two properties of
+generated columns forbid expressing it directly:
 
-## Why amounts are `stored`, not `generated`
+- A generated column's expression may not reference another generated column.
+- A `before` trigger sees `NEW."<generated column>"` as null, so the later
+  assignments could not read `netAmount` even if it were virtual.
 
-An invoice is a legal document. A generated column recomputes on every write, so
-a change in rounding rules or tax logic would silently change a total that was
-already issued. Amounts are computed once, when the invoice is written, then
-frozen. `generated` is the one storage mode that breaks this, and it is
-deliberately unused for money.
+Making the row amounts virtual would mean inlining `round(NEW."quantity" *
+NEW."unitPrice", 2)` into all three expressions. The trigger keeps one
+expression per amount and preserves the order. `@pgtrigger` is what makes that
+choice visible in the spec instead of implicit in the SQL shape.
+
+## Why amounts are stored rather than derived on read
+
+An invoice is a legal document. A value recomputed on every write would change
+silently when rounding or tax rules change, so amounts are computed when the
+invoice is written and then frozen. `@pgvirtual` is used only where the value is
+a pure function of two columns on the same row; nothing that rolls up from other
+tables is virtual.
 
 ## Column naming
 
 Columns are named exactly as the TypeScript fields, quoted camelCase
-(`"unitPrice"`, `"netAmount"`). There is no field-to-column mapping, so the SQL
-fragments and the spec fields use identical identifiers. Changing a field name
-therefore changes a column name — intentional, since it keeps one name in play.
+(`"unitPrice"`, `"netAmount"`). There is no field-to-column mapping, so the tags
+and the spec fields use identical identifiers. Changing a field name therefore
+changes a column name — intentional, since it keeps one name in play.
 
 ## Number representation
 
 Every numeric column is `decimal`, from the `Decimal` brand, which the drivers
-return as a string. Rounding is therefore part of the formula rather than a
+return as a string. Rounding is therefore part of the expression rather than a
 column type:
 
 - `rowNetAmount` is `round(NEW."quantity" * NEW."unitPrice", 2)`, fixing money to
@@ -205,26 +246,23 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 
 ## Gotchas
 
-- **Aggregates cannot be `generated`.** Postgres forbids generated columns from
-  referencing other tables, so `Invoice.netAmount` (a sum over `invoice_row`)
-  can never use `storage=generated`. It is `stored`, written by a trigger.
-- **A generated column cannot read another generated column.** `InvoiceRow.taxAmount`
-  reads `"netAmount"` and `totalAmount` reads both. Under `storage=generated`
-  Postgres would reject this outright. Under `storage=stored` it works, but only
-  because the trigger assigns in order.
+- **An aggregate cannot be `@pgvirtual`.** Postgres forbids a generated column
+  from referencing another table, so `Invoice.netAmount` (a sum over
+  `invoice_row`) must be `@pgrollup`.
+- **A generated column cannot read another generated column,** and a `before`
+  trigger cannot read one either — `NEW."<col>"` is null for a virtual column.
+  The `invoice_row` amounts stay `@pgtrigger` for this reason.
 - **Trigger order is part of the contract.** For `invoice_row`: `netAmount`,
-  then `taxAmount`, then `totalAmount`. Reordering the assignments produces
-  stale values rather than an error.
-- **One aggregate has two child-change spellings.** `Invoice.netAmount`/`taxAmount` are
-  maintained by triggers on `invoice_row`, so `invoiceFormulas` in
-  `packages/backend/src/postgres/formulas.ts` stores a `childNew`
-  statement (for insert/update) and a `childOld` statement (for delete). Both
-  hardcode the foreign key column name `"invoiceId"`, which is why the aggregate
-  fragments only work for a child whose key column has that name. They must be
-  edited together.
-- **The invoice total is not set by the rollup.** The rollups write `netAmount` and
-  `taxAmount` only. That update fires the invoice's own before-update trigger,
-  which recomputes `totalAmount` from the two. Ordering is therefore load-bearing.
+  then `taxAmount`, then `totalAmount`. Reordering the fields produces stale
+  values rather than an error.
+- **A `@pgrollup` statement is written once and mirrored.** The generator emits
+  the `after delete` variant by substituting `OLD.` for `NEW.`, so a statement
+  spelled with `OLD.` is a lint finding. The statements hardcode the foreign key
+  column name `"invoiceId"`, which is why they only work for a child whose key
+  column has that name.
+- **The invoice total is not set by the rollup.** The rollups write `netAmount`
+  and `taxAmount` only; `totalAmount` is virtual, so it recomputes on read. No
+  ordering is load-bearing there, which is the point of choosing `@pgvirtual`.
 - **Currency is not yet modelled.** `Invoice.currency` was removed, so amounts
   currently carry no currency. The doc comments that say "in the invoice
   currency" are forward references to work not yet done.
@@ -233,68 +271,67 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
   and is silently ignored by both the generator and the linter. Use a JSDoc block.
 - **No tag is a valid state.** A client-supplied field carries no `@generated`
   and no `@computed`. Only present tags are validated.
-- **Registry pairing is convention, not enforced.** `Invoice` amounts use
-  `invoiceFormulas` and `InvoiceRow` amounts use `rowFormulas` in
-  `packages/backend/src/postgres/formulas.ts`, but nothing checks the pairing. The
-  generator merges every registry and keys fragments by formula name alone, so a
-  cross-registry `formula=` would pass.
-- **`invoiceTotalAmount` is same-row.** It could live in either registry; it sits
-  in `invoiceFormulas` so all three invoice amounts are maintained in one place.
+- **Virtual columns are indexable only by expression.** Postgres rejects a plain
+  index on a virtual column, so a query that would index one needs the
+  expression index spelled out or the `@pgtrigger` mechanism instead.
 
 ## Deliberately not implemented
 
-- **Views for `storage=derived`.** The mode is accepted and documented, but the
-  generator emits nothing for it.
-- **`storage=generated`.** Rejected in practice: aggregates cross tables and a
-  generated column cannot read another generated column.
+- **Views for a read-time projection.** A derived view would recompute on every
+  read; the mechanisms above cover what the spec needs today, and nothing emits
+  a view.
+- **A cross-table `@pgvirtual`.** Postgres rejects it outright, so no generator
+  support is planned.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. `packages/backend/src/postgres/formulas.ts` would then gain rate-aware expressions,
-  and the rounding/tax ordering (convert-then-tax vs tax-then-convert) would
-  need to be pinned down.
+  in the invoice currency. The `@pgtrigger`/`@pgrollup` expressions would gain
+  rate-aware arithmetic, and the rounding/tax ordering (convert-then-tax vs
+  tax-then-convert) would need to be pinned down.
 - **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
   which is frequently not `issueDate`.
 
 ## Wiring
 
 1. A generator parses the `@` tags from `packages/spec/`.
-2. For each `@computed` field it resolves `formula=` against the registries in
-   `packages/backend/src/postgres/formulas.ts`, keyed by formula name.
-3. It wraps the fragment according to `storage=` and emits DDL: a generated
-   column, a trigger assignment, or a view projection.
+2. For each `@computed` field it reads the mechanism tag off the field itself:
+   `@pgvirtual` becomes a generated column, `@pgtrigger` a `before insert or
+   update` assignment, `@pgrollup` an `after insert or update` and `after
+   delete` pair on each child table.
+3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
+   assignment.
 4. `@generated` fields are emitted as ordinary columns the application populates.
 
-`packages/backend/scripts/generate-postgres-schema.ts` implements steps 2 and 3
-for `storage=stored`. See `docs/schema-generation.md`.
-
-It reads `packages/backend/src/postgres/formulas.ts` with ts-morph rather than importing it, so the
-generator reads the registries as data and never executes backend code.
+`packages/backend/scripts/generate-postgres-schema.ts` implements all of the
+above. See `docs/schema-generation.md`.
 
 ## Saying what, not how
 
-The formula names are the spec's vocabulary; the expressions are one database's
-implementation of it. Splitting them keeps `packages/spec/` free of SQL:
+The mechanism tags are deliberately Postgres-specific, in the same way `@pgtype`
+is: `packages/spec/` names the storage the backend uses rather than describing a
+second, abstract vocabulary that only one backend consumes. The dialect-neutral
+part is `@computed`, which says `this is derived` and drives the insert and patch
+schemas; the `@pg*` tag beside it says how this database materializes it.
 
-- `packages/spec/src/domain/InvoiceRow.ts` declares `RowFormula`, and
-  `packages/spec/src/domain/Invoice.ts` declares `InvoiceFormula`, each a union of
-  the valid `formula=` names annotated `@formula`. Nothing about Postgres appears
-  in either file.
-- `packages/spec/src/domain/Timestamp.ts` declares `TimestampFormula` (`now`),
-  the cross-cutting set used for `updatedAt`. It belongs to no entity, which is
-  why it has its own file.
-- `packages/backend/src/postgres/formulas.ts` maps each name to its SQL fragment, typed
-  `Record<RowFormula, string>`, `Record<InvoiceFormula, …>`, and
-  `Record<TimestampFormula, string>`, so adding a name to the spec fails the
-  type-check until a fragment is written for it.
+That means a different backend needs its own mechanism tags, exactly as it needs
+its own `@pgtype` mapping. There is no name indirection to resolve and no
+registry to keep in step, so a field's expression sits next to the field it
+describes:
 
-The name is the contract a domain field references; the fragment is what the
-Postgres generator emits. A different backend would supply its own fragment file
-against the same spec unions.
+```
+/**
+ * @fieldName Total amount
+ * @computed
+ * @pgvirtual "netAmount" + "taxAmount"
+ * @widget number
+ */
+totalAmount?: Money;
+```
 
-Discovery is by annotation alone. The linter scans `packages/spec/` for
-`@formula`-marked types and reads their string-literal members; it holds no file
-name and no type name. A new formula family is therefore a new `@formula` union
-anywhere under `packages/spec/`, with no tool change.
+Earlier revisions kept the expressions in
+`packages/backend/src/postgres/formulas.ts`, keyed by names declared as
+`@formula` unions in the spec. That split kept SQL out of the spec at the cost of
+a second place to look and a `Record<…>` that could drift. Inlining the
+expression removed the registry, the unions, and the aliasing layer.
 
 ## Linting
 
@@ -304,17 +341,20 @@ interfaces in `packages/spec/` with ts-morph. Run it whenever a tag changes.
 Enforced:
 
 - Tags are limited to the field and interface tags listed above.
-- Retired tags (`@readonly`, `@type`, `@values`) report their replacement.
+- Retired tags (`@readonly`, `@type`, `@values`, `@formula`) report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@generated` and `@computed` are mutually exclusive; `@generated` takes no
-  parameters.
+  parameters and `@computed` takes none either.
+- A mechanism tag (`@pgvirtual`, `@pgtrigger`, `@pgrollup`) requires `@computed`,
+  carries a non-empty expression, and at most one may appear on a field.
+- `@pgrollup` may not contain `OLD.`, which the generator would otherwise
+  substitute twice.
+- `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
+  mutually exclusive with each other and with `@generated`, `@computed`,
+  `@default`, `@version`, and the mechanism tags, and may appear at most once per
+  interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
-- `@version` requires the field type to be `Version`, is exclusive with
-  `@generated` and `@computed`, and may appear on at most one field per
-  interface.
-- `@computed` requires `storage=` (one of `generated`, `stored`, `derived`) and
-  `formula=`, and rejects unknown parameters.
 - `@queryfilter` is a bare marker on a scalar field; a branch field may not
   carry it, and it must not be written on `id`, which is a filter already. See
   `docs/queries.md`.
@@ -323,28 +363,27 @@ Enforced:
   See `docs/queries.md`.
 - `@where` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
-- `formula=` must be a member of an `@formula`-annotated type.
-- An `@formula` type must be a non-empty union of string literals.
 - Tags may not repeat on a field.
 
 Gotchas:
 
-- **Formula names are discovered, not listed.** The linter scans `packages/spec/` for
-  `@formula`-annotated types with ts-morph and reads their string-literal
-  members, so it never loads a module and knows no file or type name. This
-  keeps it runnable under plain `node` type stripping.
-- **`@formula` is a type tag, not a field tag.** It is absent from the field and
-  interface tag sets, so writing it on a field or interface reports "not a
-  recognised tag".
-- **The fragment registries are plain object literals.** The generator's static
-  reader also accepts an `as const` wrapper, since fixtures use one, but the real
-  `packages/backend/src/postgres/formulas.ts` relies on its `Record<…>` annotation instead.
-- **Absence of both tags is valid.** Client-supplied fields legitimately carry
-  neither, so a rule requiring one would flag almost every field.
+- **`@computed` is a bare marker, not a parameter block.** It used to carry
+  `storage=` and `formula=`; both are now lint findings, and the expression sits
+  in the mechanism tag that replaced them.
+- **`@formula` is retired.** It was a type tag marking a union of valid
+  `formula=` names, and the unions and their registry are gone. Writing it on a
+  type alias reports "not a recognised type tag"; on a field it reports the
+  replacement mechanism tags.
+- **Absence of a mechanism tag is valid.** A `@computed` field with no `@pg*`
+  tag is accepted and the generator emits nothing for it. That is the escape
+  hatch for a derivation that is not yet implemented, and it is why the linter
+  does not require a mechanism.
 - **Node 24 runs the script directly.** `node scripts/lint-spec.ts` relies on
   native type stripping; there is no build step and no `tsx`.
-- **Statically decidable only.** The linter checks the tags, not whether a
-  formula is semantically right for its field.
+- **Statically decidable only.** The linter checks the tags, not whether an
+  expression is semantically right for its field, nor whether the SQL is
+  syntactically valid. `pnpm test` executes the generated `schema.sql` in PGlite,
+  which is what catches a malformed expression.
 - **`id` is a filter without a tag.** `spec-model.ts` marks the field named `id`
   as `queryfilter` when it parses an entity, because `id` is the primary key
   every entity has. Writing `@queryfilter` on it is therefore a lint finding,

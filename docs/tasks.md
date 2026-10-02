@@ -55,8 +55,8 @@ in the repository.
 
 The validation generator is the one that lives in the package it writes: it needs
 neither `postgres-model.ts` nor anything else in `packages/backend`. The other
-generators stay in `packages/backend/scripts` because they share the table model
-and the formulas file, including `generate:rest-client`, whose output lands in
+generators stay in `packages/backend/scripts` because they share the table model;
+that includes `generate:rest-client`, whose output lands in
 `packages/sdk`.
 
 ## Why `--if-present`
