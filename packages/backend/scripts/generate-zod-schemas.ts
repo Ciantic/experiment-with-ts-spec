@@ -47,11 +47,6 @@ export function generateQueryFile(
 ): string {
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
     const entitySchema = entitiesByName.get(entity);
-    if (entitySchema) {
-        lines.push(
-            `import { ${entitySchema.selectName} } from "../${entitySchema.fileName}";`,
-        );
-    }
     if (queries.some((query) => query.usesPrimitives)) {
         lines.push('import * as primitives from "../primitives.ts";');
     }
@@ -61,6 +56,35 @@ export function generateQueryFile(
         if (target) {
             lines.push(`import { ${target.schemaName} } from "../${target.fileName}";`);
         }
+    }
+
+    if (entitySchema) {
+        const selectDependencies = new Set(
+            entitySchema.selectFields.flatMap((field) => field.target ? [field.target] : []),
+        );
+        for (const dependency of [...selectDependencies].sort((a, b) => a.localeCompare(b))) {
+            const target = entitiesByName.get(dependency);
+            if (target && dependency !== entity) {
+                lines.push(`import { ${target.querySelectName} } from "./query${target.name}.ts";`);
+            }
+        }
+        lines.push("");
+        lines.push(`/** A \`select\` over ${entity}: \`true\` for a scalar, a nested select for a branch. */`);
+        lines.push(`export const ${entitySchema.querySelectName} = z.lazy(() =>`);
+        lines.push("    z.strictObject({");
+        for (const field of entitySchema.selectFields) {
+            if (field.target === undefined) {
+                lines.push(`        ${field.name}: z.literal(true).optional(),`);
+                continue;
+            }
+            const target = entitiesByName.get(field.target);
+            const targetSelect = target ? target.querySelectName : "z.never()";
+            lines.push(
+                `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetSelect})]).optional(),`,
+            );
+        }
+        lines.push("    }),");
+        lines.push(");");
     }
 
     for (const query of queries) {
@@ -95,7 +119,7 @@ export function generateQueryFile(
             lines.push("    }).optional(),");
         }
         lines.push(...PAGING_FIELDS);
-        lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
+        lines.push(`    select: ${entitySchema ? entitySchema.querySelectName : "z.never()"},`);
         lines.push("});");
     }
     return lines.join("\n") + "\n";
@@ -133,7 +157,7 @@ export function generatePrimitives(primitives: ZodPrimitive[]): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render one entity module: its schema, its patch schema, and its `select` schema. */
+/** Render one entity module: its schema and its patch schema. */
 export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>): string {
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
     if (entity.usesPrimitives) {
@@ -143,7 +167,7 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
         const target = byName.get(dependency);
         if (target) {
             lines.push(
-                `import { ${target.schemaName}, ${target.selectName} } from "${entityImport(target)}";`,
+                `import { ${target.schemaName} } from "${entityImport(target)}";`,
             );
         }
     }
@@ -167,24 +191,6 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
         lines.push(`    ${name}: true,`);
     }
     lines.push("});");
-
-    lines.push("");
-    lines.push(`/** A \`select\` over ${entity.name}: \`true\` for a scalar, a nested select for a branch. */`);
-    lines.push(`export const ${entity.selectName} = z.lazy(() =>`);
-    lines.push("    z.strictObject({");
-    for (const field of entity.selectFields) {
-        if (field.target === undefined) {
-            lines.push(`        ${field.name}: z.literal(true).optional(),`);
-            continue;
-        }
-        const target = byName.get(field.target);
-        const targetSelect = target ? target.selectName : "z.never()";
-        lines.push(
-            `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetSelect})]).optional(),`,
-        );
-    }
-    lines.push("    }),");
-    lines.push(");");
 
     return lines.join("\n") + "\n";
 }

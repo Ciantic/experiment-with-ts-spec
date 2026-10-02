@@ -11,9 +11,10 @@ database schema and the repositories are generated from.
 - `packages/backend/src/validation/primitives.ts` — one schema per `@primitive`
   alias, from its `@zod` tag.
 - `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
-  exporting `<name>Schema`, `<name>PatchSchema`, and `<name>SelectSchema`.
+  exporting `<name>Schema` and `<name>PatchSchema`.
 - `packages/backend/src/validation/queries/query<Entity>.ts` — one module per
-  entity, exporting `<name>Schema` for its `query` read.
+  entity, exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for
+  its `query` read.
 - `packages/backend/src/validation/queries/index.ts` — the barrel re-exporting
   every query module.
 - `packages/backend/src/validation/index.ts` — the barrel re-exporting the
@@ -112,7 +113,7 @@ export const queryInvoiceSchema = z.strictObject({
     }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
-    select: invoiceSelectSchema,
+    select: queryInvoiceSelectSchema,
 });
 ```
 
@@ -135,17 +136,17 @@ pulling in a write schema, and `--out` still writes below the given directory.
 ### Select schemas
 
 `select` is not a fixed shape: a caller picks any subset of fields and nests
-into branches. So it is validated against a generated per-entity schema,
-`<name>SelectSchema`, that mirrors `Selection<E>` in
+into branches. So it is validated against a generated per-query schema,
+`query<name>SelectSchema`, that mirrors `Selection<E>` in
 `packages/spec/src/selection.ts`:
 
 ```typescript
-export const invoiceSelectSchema = z.lazy(() =>
+export const queryInvoiceSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
         totalAmount: z.literal(true).optional(),
-        customer: z.union([z.literal(true), z.lazy(() => customerSelectSchema)]).optional(),
-        rows: z.union([z.literal(true), z.lazy(() => invoiceRowSelectSchema)]).optional(),
+        customer: z.union([z.literal(true), z.lazy(() => queryCustomerSelectSchema)]).optional(),
+        rows: z.union([z.literal(true), z.lazy(() => queryInvoiceRowSelectSchema)]).optional(),
     }),
 );
 ```
@@ -165,11 +166,10 @@ that resolves to an interface is a branch. The `@relation` / `@children` /
 is about the value shape, so it follows the type.
 
 Select schemas are generated for **every** entity, because a select nests into
-targets that may have no filters of their own. They live in the entity module
-next to `<name>Schema`, so
-`packages/backend/src/validation/index.ts` already re-exports them. A query's
-args schema references the one for the entity it reads, so validating a read
-validates its selection too.
+targets that may have no filters of their own. They live in each entity's query
+module next to `query<Entity>Schema`, and are re-exported by the queries barrel.
+A query's args schema references its query-specific select schema, so validating
+a read validates its selection too.
 
 ## Annotations
 

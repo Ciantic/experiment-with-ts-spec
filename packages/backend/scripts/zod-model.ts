@@ -37,8 +37,8 @@ export interface ZodEntity {
     name: string;
     schemaName: string;
     patchName: string;
-    /** The schema validating a `select` over this entity. See docs/queries.md. */
-    selectName: string;
+    /** The schema validating a `select` over this entity's query. See docs/queries.md. */
+    querySelectName: string;
     fileName: string;
     fields: ZodField[];
     /** Entity names a field references, so the file imports their schemas. */
@@ -126,9 +126,9 @@ function schemaName(name: string): string {
     return `${lowerFirst(name)}Schema`;
 }
 
-/** Invoice -> invoiceSelectSchema. */
-export function selectSchemaName(name: string): string {
-    return `${lowerFirst(name)}SelectSchema`;
+/** Invoice -> queryInvoiceSelectSchema. */
+export function querySelectSchemaName(name: string): string {
+    return `query${name}SelectSchema`;
 }
 
 /** Invoice -> invoice.ts. */
@@ -415,7 +415,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             name: spec.name,
             schemaName: schemaName(spec.name),
             patchName: `${lowerFirst(spec.name)}PatchSchema`,
-            selectName: selectSchemaName(spec.name),
+            querySelectName: querySelectSchemaName(spec.name),
             fileName: fileName(spec.name),
             fields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
