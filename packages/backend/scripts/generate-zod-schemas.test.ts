@@ -357,8 +357,7 @@ describe("generateQueryFile", () => {
         expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
         expect(code).toContain("    }).optional(),");
         expect(code).toContain("    order: z.array(");
-        expect(code).toContain('            field: z.enum(["name", "amount"]),');
-        expect(code).toContain('            direction: z.enum(["asc", "desc"]).optional(),');
+        expect(code).toContain('        z.tuple([z.enum(["name", "amount"]), z.enum(["asc", "desc"])]),');
         expect(code).toContain("    select: thingSelectSchema,");
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
@@ -422,17 +421,13 @@ describe("generateQueryFile", () => {
         // A flat filter field and a non-array value are both rejected by the nested strict object.
         expect(exports.queryThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(false);
         expect(exports.queryThingSchema?.safeParse({ filter: { id: "x" }, select: {} }).success).toBe(false);
-        expect(exports.queryThingSchema?.safeParse({ order: [{ field: "name" }], select: {} }).success).toBe(true);
-        expect(
-            exports.queryThingSchema?.safeParse({ order: [{ field: "amount", direction: "desc" }], select: {} })
-                .success,
-        ).toBe(true);
+        expect(exports.queryThingSchema?.safeParse({ order: [["name", "asc"]], select: {} }).success).toBe(true);
+        expect(exports.queryThingSchema?.safeParse({ order: [["amount", "desc"]], select: {} }).success).toBe(true);
         // An unknown field and an unknown direction are both rejected before they reach SQL.
-        expect(exports.queryThingSchema?.safeParse({ order: [{ field: "nope" }], select: {} }).success).toBe(false);
-        expect(
-            exports.queryThingSchema?.safeParse({ order: [{ field: "name", direction: "up" }], select: {} })
-                .success,
-        ).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ order: [["nope", "asc"]], select: {} }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ order: [["name", "up"]], select: {} }).success).toBe(false);
+        // The direction is required, so a one-element clause is rejected.
+        expect(exports.queryThingSchema?.safeParse({ order: [["name"]], select: {} }).success).toBe(false);
     });
 });
 

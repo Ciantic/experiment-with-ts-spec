@@ -101,10 +101,7 @@ export const queryInvoiceSchema = z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     }).optional(),
     order: z.array(
-        z.strictObject({
-            field: z.enum(["createdAt", "updatedAt"]),
-            direction: z.enum(["asc", "desc"]).optional(),
-        }),
+        z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
     select: invoiceSelectSchema,
 });
@@ -114,9 +111,9 @@ Every filter is optional, which mirrors the generated `Filters<…>` type and le
 `queryInvoiceSchema` validate a `query` that names none. The filter is its own
 `z.strictObject`, so a flat filter field or an unknown filter key fails rather
 than being stripped, and a data field named `select` cannot collide with the
-projection. Each `order` clause names a whitelisted field (`z.enum`) and an
-optional direction, so an unknown sort key is a 400 rather than a `500` from the
-resolver. An entity with no `@queryorderby` field gets no `order` key at all.
+projection. Each `order` clause is a `[field, direction]` tuple whose field is
+whitelisted (`z.enum`), so an unknown sort key is a 400 rather than a `500` from
+the resolver. An entity with no `@queryorderby` field gets no `order` key at all.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

@@ -120,19 +120,19 @@ A bare marker on a **scalar** field whitelists it as an ordering key. The
 ```ts
 const invoices = await queryInvoice(db, {
     filter: { customerId: [customerId] },
-    order: [{ field: "createdAt", direction: "desc" }],
+    order: [["createdAt", "desc"]],
     select: { number: true },
 });
 ```
 
-`order` is an array, so several clauses sort with the first breaking ties, each
-column matching SQL `ORDER BY`. A clause that omits `direction` is `asc`. Only
-whitelisted fields may order — an unknown field is a **type error** and, over
-HTTP, a 400 — so a field simply cannot reach the `ORDER BY`.
+`order` is an array of `[field, direction]` tuples, so several clauses sort with
+the first breaking ties, each column matching SQL `ORDER BY`. Only whitelisted
+fields may order — an unknown field is a **type error** and, over HTTP, a 400 —
+so a field simply cannot reach the `ORDER BY`.
 
 ```ts
-/** The ordering of a read: one clause per sort key. See docs/queries.md. */
-export type Order<K extends PropertyKey> = { field: K; direction?: Direction };
+/** The ordering of a read: `[field, direction]` per sort key. See docs/queries.md. */
+export type Order<K extends PropertyKey> = [field: K, direction: Direction];
 export type Direction = "asc" | "desc";
 ```
 
@@ -140,9 +140,7 @@ export type Direction = "asc" | "desc";
 
 `@queryorderby default asc|desc` (at most one field per entity) additionally
 makes that field the **entity default**: a read that names no `order` sorts by
-it. It also gives the field's clauses a default direction, so
-`order: [{ field: "createdAt" }]` uses `desc` if `createdAt` is
-`@queryorderby default desc`.
+it.
 
 ```ts
 /**

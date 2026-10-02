@@ -39,5 +39,5 @@ export type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]
 /** A sort direction. See docs/queries.md. */
 export type Direction = "asc" | "desc";
 
-/** One ordering clause of a read: a whitelisted field and an optional direction. See docs/queries.md. */
-export type Order<K extends PropertyKey> = { field: K; direction?: Direction };
+/** One ordering clause of a read: `[field, direction]` over a whitelisted field. See docs/queries.md. */
+export type Order<K extends PropertyKey> = [field: K, direction: Direction];

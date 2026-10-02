@@ -10,10 +10,7 @@ export const queryInvoiceSchema = z.strictObject({
         sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     }).optional(),
     order: z.array(
-        z.strictObject({
-            field: z.enum(["createdAt", "updatedAt"]),
-            direction: z.enum(["asc", "desc"]).optional(),
-        }),
+        z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
     select: invoiceSelectSchema,
 });

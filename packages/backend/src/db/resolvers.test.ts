@@ -258,7 +258,7 @@ describe("resolveMany ordering", () => {
     it("orders by a whitelisted field", async () => {
         const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
             select,
-            order: [{ field: "number", direction: "desc" }],
+            order: [["number", "desc"]],
         });
 
         expect(rows.map((row) => row.id)).toEqual(["i4", "i3", "i2", "i1"]);
@@ -270,19 +270,10 @@ describe("resolveMany ordering", () => {
         expect(rows.map((row) => row.id)).toEqual(["i1", "i2", "i3", "i4"]);
     });
 
-    it("defaults a clause with no direction to asc", async () => {
-        const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
-            select,
-            order: [{ field: "number" }],
-        });
-
-        expect(rows.map((row) => row.id)).toEqual(["i1", "i2", "i3", "i4"]);
-    });
-
     it("orders by several clauses, the first breaking ties", async () => {
         const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", { customerId: ["c1", "c2"] }, {
             select,
-            order: [{ field: "customerId", direction: "asc" }, { field: "number", direction: "desc" }],
+            order: [["customerId", "asc"], ["number", "desc"]],
         });
 
         expect(rows.map((row) => row.id)).toEqual(["i3", "i1", "i2"]);
@@ -290,7 +281,7 @@ describe("resolveMany ordering", () => {
 
     it("rejects a field that is not orderable", async () => {
         await expect(
-            ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select, order: [{ field: "notes" }] }),
+            ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select, order: [["notes", "asc"]] }),
         ).rejects.toThrow("unknown order field `notes` on `invoice`");
     });
 
@@ -298,7 +289,7 @@ describe("resolveMany ordering", () => {
         await expect(
             ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
                 select,
-                order: [{ field: "number", direction: "up" as never }],
+                order: [["number", "up" as never]],
             }),
         ).rejects.toThrow('order direction for `number` on `invoice` must be "asc" or "desc"');
     });

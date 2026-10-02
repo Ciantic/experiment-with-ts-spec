@@ -77,11 +77,9 @@ export function generateQueryFile(
         // Ordering is whitelisted by `@queryorderby`, so an unknown field fails rather than reaching SQL.
         if (query.orderFields.length > 0) {
             const names = query.orderFields.map((field) => JSON.stringify(field)).join(", ");
+            // A clause is a tuple: `["createdAt", "desc"]`.
             lines.push("    order: z.array(");
-            lines.push("        z.strictObject({");
-            lines.push(`            field: z.enum([${names}]),`);
-            lines.push('            direction: z.enum(["asc", "desc"]).optional(),');
-            lines.push("        }),");
+            lines.push(`        z.tuple([z.enum([${names}]), z.enum(["asc", "desc"])]),`);
             lines.push("    ).optional(),");
         }
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);

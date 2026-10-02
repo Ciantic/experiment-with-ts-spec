@@ -45,11 +45,8 @@ type FetchFilter =
     | { kind: "args"; args: Record<string, unknown> }
     | { kind: "match"; column: string; values: unknown[] };
 
-/** One ordering clause, as a read passes it. See docs/queries.md. */
-export interface OrderClause {
-    field: string;
-    direction?: Direction;
-}
+/** One ordering clause, as a read passes it: `[field, direction]`. See docs/queries.md. */
+export type OrderClause = [field: string, direction: Direction];
 
 /** What a read selects and filters on, as the generated function passes it. */
 export interface ResolveOptions<E, S extends Selection<E>> {
@@ -289,25 +286,31 @@ function copyField(target: Record<string, unknown>, field: string, value: unknow
 
 /**
  * The `order by` clause for a root read, or "" when nothing orders. Only whitelisted fields may
- * order, and a direction is validated because it reaches the SQL; a clause that omits one uses the
- * field's declared default, or `asc`. See docs/queries.md.
+ * order, and a direction is validated because it reaches the SQL. A read that names no ordering
+ * falls back to the entity default. See docs/queries.md.
  */
 function buildOrder(table: string, meta: QueryTable, order: OrderClause[] | undefined): string {
-    const clauses = order && order.length > 0 ? order : meta.defaultOrder ? [meta.defaultOrder] : [];
+    // Normalise the entity default to the same tuple shape, so the loop has one case.
+    const clauses: OrderClause[] =
+        order && order.length > 0
+            ? order
+            : meta.defaultOrder
+                ? [[meta.defaultOrder.field, meta.defaultOrder.direction]]
+                : [];
     if (clauses.length === 0) {
         return "";
     }
     const orderable = new Set(meta.order ?? []);
-    const parts = clauses.map(({ field, direction }) => {
+    const parts = clauses.map(([field, direction]) => {
         const column = meta.fields[field];
         if (column === undefined || !orderable.has(field)) {
             throw new Error(`unknown order field \`${field}\` on \`${table}\``);
         }
-        const resolved = direction ?? (meta.defaultOrder?.field === field ? meta.defaultOrder.direction : "asc");
-        if (resolved !== "asc" && resolved !== "desc") {
+        // A tuple decodes to unchecked values, so the direction is re-checked before it reaches SQL.
+        if (direction !== "asc" && direction !== "desc") {
             throw new Error(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
         }
-        return `${TABLE_ALIAS}.${quote(column)} ${resolved}`;
+        return `${TABLE_ALIAS}.${quote(column)} ${direction}`;
     });
     return ` order by ${parts.join(", ")}`;
 }
