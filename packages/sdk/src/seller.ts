@@ -9,7 +9,7 @@ export type SellerPatch = Partial<Seller> & Required<Pick<Seller, "id" | "versio
 /** Query `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
     http: HttpClient,
-    opts: { filter?: Filters<Seller, "id">; select: S },
+    opts: { filter?: Filters<Seller, "id">; limit?: number; offset?: number; select: S },
 ): Promise<Selected<Seller, S>[]> {
     return http.query<Selected<Seller, S>[]>("GET", "/seller/query", opts);
 }

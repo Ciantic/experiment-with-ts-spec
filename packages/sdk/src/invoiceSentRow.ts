@@ -9,7 +9,7 @@ export type InvoiceSentRowPatch = Partial<InvoiceSentRow> & Required<Pick<Invoic
 /** Query `InvoiceSentRow` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
     http: HttpClient,
-    opts: { filter?: Filters<InvoiceSentRow, "id">; select: S },
+    opts: { filter?: Filters<InvoiceSentRow, "id">; limit?: number; offset?: number; select: S },
 ): Promise<Selected<InvoiceSentRow, S>[]> {
     return http.query<Selected<InvoiceSentRow, S>[]>("GET", "/invoice_sent_row/query", opts);
 }

@@ -37,7 +37,7 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
-/** The `query` options: an optional filter, an optional ordering, and the selection. */
+/** The `query` options: an optional filter, ordering, and paging, plus the selection. */
 function queryOptsType(name: string, filters: string[], order: string[]): string {
     const parts: string[] = [];
     if (filters.length > 0) {
@@ -46,7 +46,7 @@ function queryOptsType(name: string, filters: string[], order: string[]): string
     if (order.length > 0) {
         parts.push(`order?: Order<${filterKeys(order)}>[]`);
     }
-    parts.push("select: S");
+    parts.push("limit?: number", "offset?: number", "select: S");
     return `{ ${parts.join("; ")} }`;
 }
 

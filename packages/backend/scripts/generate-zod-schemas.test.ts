@@ -358,6 +358,8 @@ describe("generateQueryFile", () => {
         expect(code).toContain("    }).optional(),");
         expect(code).toContain("    order: z.array(");
         expect(code).toContain('        z.tuple([z.enum(["name", "amount"]), z.enum(["asc", "desc"])]),');
+        expect(code).toContain("    limit: z.number().int().positive().optional(),");
+        expect(code).toContain("    offset: z.number().int().nonnegative().optional(),");
         expect(code).toContain("    select: thingSelectSchema,");
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
@@ -428,6 +430,11 @@ describe("generateQueryFile", () => {
         expect(exports.queryThingSchema?.safeParse({ order: [["name", "up"]], select: {} }).success).toBe(false);
         // The direction is required, so a one-element clause is rejected.
         expect(exports.queryThingSchema?.safeParse({ order: [["name"]], select: {} }).success).toBe(false);
+        // Paging is bounded before it reaches the SQL.
+        expect(exports.queryThingSchema?.safeParse({ limit: 10, offset: 5, select: {} }).success).toBe(true);
+        expect(exports.queryThingSchema?.safeParse({ limit: 0, select: {} }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ offset: -1, select: {} }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ limit: 1.5, select: {} }).success).toBe(false);
     });
 });
 

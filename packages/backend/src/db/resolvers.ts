@@ -53,6 +53,32 @@ export interface ResolveOptions<E, S extends Selection<E>> {
     select: S;
     /** `| undefined` so a generated call may forward an absent ordering under exactOptionalPropertyTypes. */
     order?: OrderClause[] | undefined;
+    /** The most rows a root read returns; absent means {@link DEFAULT_LIMIT}. See docs/queries.md. */
+    limit?: number | undefined;
+    /** The number of leading rows a root read skips; absent means 0. See docs/queries.md. */
+    offset?: number | undefined;
+}
+
+/** The rows a root read returns when it names no `limit`. See docs/queries.md. */
+export const DEFAULT_LIMIT = 1000;
+
+/** A root read's paging window, already defaulted and validated. */
+interface Page {
+    limit: number;
+    offset: number;
+}
+
+/** Fill in the paging defaults and reject a value that would reach the SQL unchecked. See docs/queries.md. */
+function resolvePage(limit: number | undefined, offset: number | undefined): Page {
+    const resolvedLimit = limit ?? DEFAULT_LIMIT;
+    const resolvedOffset = offset ?? 0;
+    if (!Number.isInteger(resolvedLimit) || resolvedLimit < 1) {
+        throw new Error(`limit must be a positive integer, found \`${String(limit)}\``);
+    }
+    if (!Number.isInteger(resolvedOffset) || resolvedOffset < 0) {
+        throw new Error(`offset must be a non-negative integer, found \`${String(offset)}\``);
+    }
+    return { limit: resolvedLimit, offset: resolvedOffset };
 }
 
 /** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
@@ -408,6 +434,7 @@ async function fetchRows(
     selection: Record<string, unknown>,
     filter: FetchFilter,
     order?: OrderClause[],
+    page?: Page,
 ): Promise<FetchedRow[]> {
     const meta = model.tables[table];
     if (!meta) {
@@ -421,10 +448,22 @@ async function fetchRows(
         return [];
     }
 
-    // Only a root read orders; a batched branch keeps its own order so grouping stays stable.
-    const orderSql = filter.kind === "args" ? buildOrder(table, meta, order) : "";
-    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}${orderSql}`;
-    const rows = rowsOf(await db.query(sql, built.params));
+    // Only a root read orders and pages; a batched branch keeps its own order and is never cut.
+    const root = filter.kind === "args";
+    const orderSql = root ? buildOrder(table, meta, order) : "";
+    const params = [...built.params];
+    let pageSql = "";
+    if (root && page) {
+        params.push(page.limit);
+        pageSql += ` limit $${params.length}`;
+        if (page.offset > 0) {
+            params.push(page.offset);
+            pageSql += ` offset $${params.length}`;
+        }
+    }
+
+    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}${orderSql}${pageSql}`;
+    const rows = rowsOf(await db.query(sql, params));
     const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
 
     await attachToOne(model, db, table, projection.toOne, rows, fetched);
@@ -447,6 +486,7 @@ export function createResolver(model: QueryModel): Resolver {
             opts.select as Record<string, unknown>,
             { kind: "args", args },
             opts.order,
+            resolvePage(opts.limit, opts.offset),
         );
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }

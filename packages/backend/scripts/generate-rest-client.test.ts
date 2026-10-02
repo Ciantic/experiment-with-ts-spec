@@ -81,6 +81,13 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { Filters, Order, Selected, Selection } from "spec/selection.ts";');
     });
 
+    it("gives every read a limit and an offset", () => {
+        const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
+        const code = renderClientModule(markerEntity!);
+
+        expect(code).toContain("limit?: number; offset?: number; select: S");
+    });
+
     it("declares the patch locally, since it cannot import the repository's", () => {
         const code = widgetModule();
 

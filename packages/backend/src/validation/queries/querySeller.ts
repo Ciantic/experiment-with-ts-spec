@@ -7,5 +7,7 @@ export const querySellerSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     }).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
     select: sellerSelectSchema,
 });

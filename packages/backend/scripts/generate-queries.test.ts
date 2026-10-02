@@ -114,7 +114,7 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain(
-            'queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: { filter?: Filters<Invoice, "id">; select: S })',
+            'queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: { filter?: Filters<Invoice, "id">; limit?: number; offset?: number; select: S })',
         );
     });
 
@@ -123,7 +123,7 @@ describe("renderQueryModule", () => {
 
         expect(code).not.toContain("const { select, ...args } = opts;");
         expect(code).toContain(
-            'resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select })',
+            'resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select, limit: opts.limit, offset: opts.offset })',
         );
     });
 
@@ -131,7 +131,7 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Stamped", stamped);
 
         expect(code).toContain(
-            'resolver.resolveMany<Stamped, S>(db, "stamped", opts.filter ?? {}, { select: opts.select, order: opts.order })',
+            'resolver.resolveMany<Stamped, S>(db, "stamped", opts.filter ?? {}, { select: opts.select, order: opts.order, limit: opts.limit, offset: opts.offset })',
         );
     });
 
@@ -144,7 +144,9 @@ describe("renderQueryModule", () => {
     it("leaves the filters out when the entity marks none", () => {
         const code = renderQueryModule("Seller", seller);
 
-        expect(code).toContain("querySeller<S extends Selection<Seller>>(db: SqlExecutor, opts: { select: S })");
+        expect(code).toContain(
+            "querySeller<S extends Selection<Seller>>(db: SqlExecutor, opts: { limit?: number; offset?: number; select: S })",
+        );
         expect(code).not.toContain("Filters<");
     });
 
@@ -167,7 +169,13 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Invoice", invoice);
 
         expect(code).not.toContain("Order<");
-        expect(code).toContain("opts: { filter?: Filters<Invoice, \"id\">; select: S }");
+        expect(code).toContain('opts: { filter?: Filters<Invoice, "id">; limit?: number; offset?: number; select: S }');
+    });
+
+    it("gives every read a limit and an offset", () => {
+        const code = renderQueryModule("Seller", seller);
+
+        expect(code).toContain("limit?: number; offset?: number; select: S");
     });
 });
 

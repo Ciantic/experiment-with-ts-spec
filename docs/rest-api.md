@@ -38,8 +38,9 @@ Which side carries the argument is a field on the model (`source: "query" |
 each applying a rule. The router obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other.
 
-A read returns every matching row; a caller that wants a single row takes the
-first result (`docs/queries.md`).
+A read pages and orders: it returns at most `limit` matching rows (default 1000)
+starting at `offset`, in the `order` the caller names. A caller that wants a
+single row takes the first result (`docs/queries.md`).
 
 A create takes a whole entity and a patch takes `<entity>PatchSchema`, mirroring
 the repository signatures exactly (`docs/repositories.md`). A delete needs only
@@ -108,7 +109,13 @@ narrowing. `db: SqlExecutor` becomes `http: HttpClient` and nothing else changes
 ```typescript
 export function queryInvoice<S extends Selection<Invoice>>(
     http: HttpClient,
-    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; select: S },
+    opts: {
+        filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
+        order?: Order<"createdAt" | "updatedAt">[];
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Promise<Selected<Invoice, S>[]> {
     return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }
@@ -206,8 +213,10 @@ the same path as an empty body.
 - **A patch cannot clear a column.** `coalesce` cannot tell an omitted field from
   a `null` one, so the patch contract carries that limitation over HTTP unchanged
   (`docs/repositories.md`).
-- **A `query` with no filters scans the table.** `queryInvoice(http, { select })`
-  is legal by design. There is no authorization.- **The version precondition is the client's to send.** `update` requires the
+- **A `query` with no filters scans the table, up to `limit`.**
+  `queryInvoice(http, { select })` is legal by design and returns the first 1000
+  rows. There is no authorization.
+- **The version precondition is the client's to send.** `update` requires the
   version the client read; a stale one is a 409 from the trigger, not a silent
   skip.
 - **The server reads no configuration.** `createApiServer(db)` takes the
@@ -227,8 +236,8 @@ the same path as an empty body.
   implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
   entity set, so the generator does not see it. `POST /invoice/send` is
   hand-wired when the operation exists.
-- **Pagination and a limit.** A read returns every matching row; there is no
-  `limit 1`, so a single row is the first result. `order` is supported, but
-  whitelisted by `@queryorderby` (`docs/queries.md`).
+- **Cursor pagination and a total count.** A read pages with `limit`/`offset`
+  (default 1000), and `order` is whitelisted by `@queryorderby`
+  (`docs/queries.md`). There is no keyset cursor and no count of the matches.
 - **A public protocol version.** Client and server ship from one commit, so a
   deployed client and a moved server must be updated together.

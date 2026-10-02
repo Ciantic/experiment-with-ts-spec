@@ -8,6 +8,6 @@ import { queryModel } from "./model.ts";
 const resolver = createResolver(queryModel);
 
 /** Query `Invoice` rows, filtered by the `@queryfilter` fields, combined with and. */
-export function queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; select: S }): Promise<Selected<Invoice, S>[]> {
-    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select, order: opts.order });
+export function queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S }): Promise<Selected<Invoice, S>[]> {
+    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select, order: opts.order, limit: opts.limit, offset: opts.offset });
 }

@@ -7,5 +7,7 @@ export const queryInvoiceRowSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
     }).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
     select: invoiceRowSelectSchema,
 });

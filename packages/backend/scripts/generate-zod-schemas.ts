@@ -82,11 +82,18 @@ export function generateQueryFile(
             lines.push(`        z.tuple([z.enum([${names}]), z.enum(["asc", "desc"])]),`);
             lines.push("    ).optional(),");
         }
+        lines.push(...PAGING_FIELDS);
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
         lines.push("});");
     }
     return lines.join("\n") + "\n";
 }
+
+/** The paging keys every read accepts, validated before they reach the SQL. See docs/queries.md. */
+const PAGING_FIELDS = [
+    "    limit: z.number().int().positive().optional(),",
+    "    offset: z.number().int().nonnegative().optional(),",
+];
 
 /** Render the barrel that re-exports every query schema module. */
 export function generateQueriesIndex(queries: ZodQuery[]): string {

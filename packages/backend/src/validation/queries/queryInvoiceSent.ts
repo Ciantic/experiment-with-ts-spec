@@ -7,5 +7,7 @@ export const queryInvoiceSentSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceSentId">()).optional(),
     }).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
     select: invoiceSentSelectSchema,
 });

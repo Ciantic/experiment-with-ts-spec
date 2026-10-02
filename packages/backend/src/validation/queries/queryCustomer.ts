@@ -7,5 +7,7 @@ export const queryCustomerSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
     }).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
     select: customerSelectSchema,
 });

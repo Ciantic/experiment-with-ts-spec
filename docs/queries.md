@@ -30,9 +30,20 @@ There is no query alias to write. The generator walks the entities and emits
 ```ts
 export function queryInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
-    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; select: S },
+    opts: {
+        filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
+        order?: Order<"createdAt" | "updatedAt">[];
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Promise<Selected<Invoice, S>[]> {
-    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select, order: opts.order });
+    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, {
+        select: opts.select,
+        order: opts.order,
+        limit: opts.limit,
+        offset: opts.offset,
+    });
 }
 ```
 
@@ -40,9 +51,9 @@ No domain name is hardcoded: a new entity flows through with no generator edit.
 `Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `queryCustomer`,
 `queryInvoiceRow`, `queryInvoiceSent`, and `querySeller` the same way.
 
-To read one row, take the first result — there is no `get` and no `limit 1`.
-A filter set that matches several rows yields all of them, in the order the read
-names (or the entity default); a read that names none is database order.
+To read one row, take the first result — there is no `get`. A filter set that
+matches several rows yields them in the order the read names (or the entity
+default), at most `limit` of them, in pages of `offset`.
 
 ## `@queryfilter`
 
@@ -161,6 +172,32 @@ updatedAt?: Date;
 An entity with no `@queryorderby` field takes no `order` (its opts type omits
 the key) and is returned in database order. Ordering is a root-only feature:
 a branch cannot carry `order` any more than it can carry `filter`.
+
+## `limit` and `offset`
+
+Every read pages. `limit` bounds how many rows a read returns and `offset` skips
+leading rows, both applied to the **root** query only — a batched branch is never
+cut, so a parent's children come back whole.
+
+```ts
+const page = await queryInvoice(db, {
+    filter: { customerId: [customerId] },
+    order: [["createdAt", "desc"]],
+    limit: 25,
+    offset: 50,
+    select: { number: true },
+});
+```
+
+`limit` defaults to **1000** and `offset` to **0**, so a read that names neither
+returns the first 1000 matching rows. The default is the resolver's
+`DEFAULT_LIMIT`; pass a larger `limit` to widen the window, or a smaller one to
+want less.
+
+A non-positive `limit` or a negative `offset` is a **type error** and, over
+HTTP, a 400; the resolver re-checks both, because a decoded number reaches the
+SQL unchecked. There is no cursor pagination and no `limit: null` escape hatch:
+`limit` is always a positive integer, the default cap included.
 
 ## Selection
 
@@ -304,10 +341,13 @@ A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
 `@queryfilter` on a branch field, so a filter always names a scalar column.
 
-Ordering is applied the same way: the resolver reads the table's `order`
-whitelist and `defaultOrder` from `queryModel`, refuses a field that is not on
-the list, and validates the direction before it reaches the SQL. Only the root
-query is ordered; a batched branch keeps its own order so grouping stays stable.
+Ordering and paging are applied the same way: the resolver reads the table's
+`order` whitelist and `defaultOrder` from `queryModel`, refuses a field that is
+not on the list, and validates the direction before it reaches the SQL. It
+fills in `limit` (default 1000) and `offset` (default 0) and rejects a value
+that is not a positive integer or a non-negative integer. Only the root query
+is ordered and paged; a batched branch keeps its own order so grouping stays
+stable and is never truncated.
 
 ## Gotchas
 
@@ -339,6 +379,12 @@ query is ordered; a batched branch keeps its own order so grouping stays stable.
 - **Ordering comes only from `@queryorderby`.** A field without the tag cannot
   order, and a direction is `asc` or `desc`. Like a filter, ordering is a root
   concern: a branch field may not carry the tag.
+- **A read is capped by default.** `limit` defaults to 1000, so a filter that
+  matches more rows returns the first 1000 unless the caller asks for more.
+  There is no `limit: null` for "all rows"; a page is always bounded.
+- **`offset` is not a cursor.** A concurrent insert or delete can shift a row
+  across pages between calls. Stable paging over a mutable table needs a keyset
+  cursor, which is not implemented.
 - **The read types are in the spec, the reader is not.** `Selection`,
   `Selected`, `Filters`, and `Order` are pure types with no query in them, so
   they live in `packages/spec/src/selection.ts` and both the backend and the
@@ -366,14 +412,14 @@ middle ground if the args logic grows past equality.
 - **Filters on a branch.** `@queryfilter` is scalar-only, so `queryInvoice`
   cannot filter on a related record's columns, such as `customer.name`. The
   foreign key is a scalar field, so `customerId` is filterable.
-- **A row at most, not exactly one.** There is no `limit 1`; a caller takes the
-  first result, which fetches every match.
-- **Per-branch arguments.** A branch cannot carry `order`/`limit`; `rows:
-  { description: true }` has nowhere to put them. The extension point is to
-  widen a branch from `Selection<E>` to `{ select?: Selection<E>; order?: …;
-  limit?: number }` and recurse into `.select`.
-- **Pagination and a limit at the top level.** No `limit`/`offset`; `order` is
-  the one per-read control, whitelisted by `@queryorderby`.
+- **A row at most, not exactly one.** There is no `limit 1` shorthand; a caller
+  takes the first result, which fetches a whole page.
+- **Per-branch arguments.** A branch cannot carry `order`/`limit`/`offset`;
+  `rows: { description: true }` has nowhere to put them. The extension point is
+  to widen a branch from `Selection<E>` to `{ select?: Selection<E>; order?: …;
+  limit?: number; offset?: number }` and recurse into `.select`.
+- **Cursor pagination and a total count.** `limit`/`offset` page a read, but
+  there is no keyset cursor and no way to ask how many rows matched.
 - **`@projection` generation.** If static read SQL is ever wanted, the hook is a
   `@projection` tag on a `Pick<Entity, "…">` alias, emitting a view or a column
   list. It is not built.

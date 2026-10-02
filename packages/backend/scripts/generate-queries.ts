@@ -144,15 +144,16 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push(
         `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, order)}): Promise<Selected<${entity}, S>[]> {`,
     );
-    const resolverOpts = order.length > 0 ? "{ select: opts.select, order: opts.order }" : "{ select: opts.select }";
+    const resolverOpts =
+        (order.length > 0 ? "order: opts.order, " : "") + "limit: opts.limit, offset: opts.offset";
     lines.push(
-        `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, ${queryArgs(filters)}, ${resolverOpts});`,
+        `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, ${queryArgs(filters)}, { select: opts.select, ${resolverOpts} });`,
     );
     lines.push("}");
     return lines.join("\n") + "\n";
 }
 
-/** The `query` options: an optional filter, an optional ordering, and the selection. */
+/** The `query` options: an optional filter, ordering, and paging, plus the selection. */
 function queryOptsType(entity: string, filters: string[], order: string[]): string {
     const parts: string[] = [];
     if (filters.length > 0) {
@@ -161,7 +162,8 @@ function queryOptsType(entity: string, filters: string[], order: string[]): stri
     if (order.length > 0) {
         parts.push(`order?: Order<${filterKeys(order)}>[]`);
     }
-    parts.push("select: S");
+    // Every read pages: `limit` defaults to the resolver's cap, `offset` to 0.
+    parts.push("limit?: number", "offset?: number", "select: S");
     return `{ ${parts.join("; ")} }`;
 }
 

@@ -103,6 +103,8 @@ export const queryInvoiceSchema = z.strictObject({
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().nonnegative().optional(),
     select: invoiceSelectSchema,
 });
 ```
@@ -113,7 +115,9 @@ Every filter is optional, which mirrors the generated `Filters<…>` type and le
 than being stripped, and a data field named `select` cannot collide with the
 projection. Each `order` clause is a `[field, direction]` tuple whose field is
 whitelisted (`z.enum`), so an unknown sort key is a 400 rather than a `500` from
-the resolver. An entity with no `@queryorderby` field gets no `order` key at all.
+the resolver. `limit` is a positive integer and `offset` a non-negative integer,
+so a bad page is a 400 too. An entity with no `@queryorderby` field gets no
+`order` key at all; every entity gets `limit` and `offset`.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

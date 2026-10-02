@@ -46,12 +46,20 @@ const model: QueryModel = {
                 rows: { kind: "children", table: "invoice_row", column: "invoiceId" },
                 snapshot: { kind: "inlined", columns: { name: "snapshotName", email: "snapshotEmail" } },
             },
+            order: ["id"],
         },
         invoice_row: {
             name: "invoice_row",
             key: "id",
             fields: { id: "id", description: "description", amount: "amount" },
             relations: {},
+        },
+        widget: {
+            name: "widget",
+            key: "id",
+            fields: { id: "id" },
+            relations: {},
+            order: ["id"],
         },
     },
 };
@@ -102,6 +110,9 @@ beforeAll(async () => {
             ('r1', 'i1', 'Widget', '50'),
             ('r2', 'i1', 'Gadget', '50'),
             ('r3', 'i2', 'Thing', '200');
+        -- More rows than the default limit, so the cap is observable.
+        create table widget (id text primary key);
+        insert into widget (id) select 'w' || lpad(n::text, 5, '0') from generate_series(1, 1500) as n;
     `);
     db = pglite;
 });
@@ -292,5 +303,86 @@ describe("resolveMany ordering", () => {
                 order: [["number", "up" as never]],
             }),
         ).rejects.toThrow('order direction for `number` on `invoice` must be "asc" or "desc"');
+    });
+});
+
+describe("resolveMany paging", () => {
+    const select = { id: true } as const;
+    const ids = (rows: { id?: string }[]) => rows.map((row) => row.id);
+
+    it("caps a read that names no limit at the default", async () => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, { select });
+
+        expect(rows).toHaveLength(1000);
+    });
+
+    it("returns at most `limit` rows", async () => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, {
+            select,
+            limit: 3,
+        });
+
+        expect(ids(rows)).toEqual(["w00001", "w00002", "w00003"]);
+    });
+
+    it("raises the cap above the default when `limit` is larger", async () => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, {
+            select,
+            limit: 2000,
+        });
+
+        expect(rows).toHaveLength(1500);
+    });
+
+    it("skips `offset` leading rows", async () => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, {
+            select,
+            order: [["id", "asc"]],
+            limit: 2,
+            offset: 5,
+        });
+
+        expect(ids(rows)).toEqual(["w00006", "w00007"]);
+    });
+
+    it("applies `offset` on its own with the default limit", async () => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, {
+            select,
+            order: [["id", "asc"]],
+            offset: 1495,
+        });
+
+        expect(ids(rows)).toEqual(["w01496", "w01497", "w01498", "w01499", "w01500"]);
+    });
+
+    it("does not page a branch, only the root", async () => {
+        const selectWithRows = { id: true, rows: { id: true } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof selectWithRows>(db, "invoice", {}, {
+            select: selectWithRows,
+            limit: 1,
+            offset: 0,
+            order: [["id", "asc"]],
+        });
+
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.rows).toHaveLength(2);
+    });
+
+    it("rejects a limit that is not a positive integer", async () => {
+        await expect(
+            resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, { select, limit: 0 }),
+        ).rejects.toThrow("limit must be a positive integer, found `0`");
+    });
+
+    it("rejects a step that is not a whole number", async () => {
+        await expect(
+            resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, { select, limit: 2.5 }),
+        ).rejects.toThrow("limit must be a positive integer, found `2.5`");
+    });
+
+    it("rejects a negative offset", async () => {
+        await expect(
+            resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, { select, offset: -1 }),
+        ).rejects.toThrow("offset must be a non-negative integer, found `-1`");
     });
 });
