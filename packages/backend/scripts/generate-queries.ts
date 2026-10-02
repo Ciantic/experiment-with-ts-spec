@@ -34,6 +34,7 @@ interface QueryTableData {
     relations: Record<string, Record<string, unknown>>;
     order?: string[];
     defaultOrder?: { field: string; direction: string };
+    where?: Record<string, string[]>;
 }
 
 /** QueryModel as plain data, matching the resolver's `QueryModel`. */
@@ -90,6 +91,12 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
             }
         }
 
+        // Comparable fields come from `@where`, each with the operators it whitelists.
+        const whereColumns = table.columns.filter((column) => column.where !== undefined);
+        if (whereColumns.length > 0) {
+            data.where = Object.fromEntries(whereColumns.map((column) => [column.name, column.where ?? []]));
+        }
+
         out[table.name] = data;
     }
     return { tables: out };
@@ -114,15 +121,29 @@ function orderFields(table: Table): string[] {
     return table.columns.filter((column) => column.queryOrder !== undefined).map((column) => column.name);
 }
 
+/** The comparable fields with their allowed operators: its `@where` scalar columns. */
+function whereFields(table: Table): { name: string; operators: string[] }[] {
+    return table.columns
+        .filter((column) => column.where !== undefined)
+        .map((column) => ({ name: column.name, operators: column.where ?? [] }));
+}
+
 /** Invoice -> `"id" | "number"`. */
 function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
+}
+
+/** `Where<Invoice, { issueDate: "gte" | "lte" }>`. */
+function whereType(entity: string, fields: { name: string; operators: string[] }[]): string {
+    const entries = fields.map((field) => `${field.name}: ${filterKeys(field.operators)}`);
+    return `Where<${entity}, { ${entries.join("; ")} }>`;
 }
 
 /** Render one entity's query function. */
 export function renderQueryModule(entity: string, table: Table): string {
     const filters = filterFields(table);
     const order = orderFields(table);
+    const where = whereFields(table);
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     const selectionTypes = ["Selection", "Selected"];
@@ -131,6 +152,9 @@ export function renderQueryModule(entity: string, table: Table): string {
     }
     if (order.length > 0) {
         selectionTypes.push("Order");
+    }
+    if (where.length > 0) {
+        selectionTypes.push("Where");
     }
     selectionTypes.sort((a, b) => a.localeCompare(b));
     lines.push(`import type { ${selectionTypes.join(", ")} } from "../selection.ts";`);
@@ -142,10 +166,12 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push("");
     lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`);
     lines.push(
-        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, order)}): Promise<Selected<${entity}, S>[]> {`,
+        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, order, where)}): Promise<Selected<${entity}, S>[]> {`,
     );
     const resolverOpts =
-        (order.length > 0 ? "order: opts.order, " : "") + "limit: opts.limit, offset: opts.offset";
+        (order.length > 0 ? "order: opts.order, " : "") +
+        (where.length > 0 ? "where: opts.where, " : "") +
+        "limit: opts.limit, offset: opts.offset";
     lines.push(
         `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, ${queryArgs(filters)}, { select: opts.select, ${resolverOpts} });`,
     );
@@ -153,14 +179,22 @@ export function renderQueryModule(entity: string, table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** The `query` options: an optional filter, ordering, and paging, plus the selection. */
-function queryOptsType(entity: string, filters: string[], order: string[]): string {
+/** The `query` options: an optional filter, ordering, comparisons, and paging, plus the selection. */
+function queryOptsType(
+    entity: string,
+    filters: string[],
+    order: string[],
+    where: { name: string; operators: string[] }[],
+): string {
     const parts: string[] = [];
     if (filters.length > 0) {
         parts.push(`filter?: Filters<${entity}, ${filterKeys(filters)}>`);
     }
     if (order.length > 0) {
         parts.push(`order?: Order<${filterKeys(order)}>[]`);
+    }
+    if (where.length > 0) {
+        parts.push(`where?: ${whereType(entity, where)}`);
     }
     // Every read pages: `limit` defaults to the resolver's cap, `offset` to 0.
     parts.push("limit?: number", "offset?: number", "select: S");

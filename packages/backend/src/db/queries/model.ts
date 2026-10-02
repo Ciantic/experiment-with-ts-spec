@@ -64,6 +64,12 @@ export const queryModel: QueryModel = {
             "defaultOrder": {
                 "field": "createdAt",
                 "direction": "asc"
+            },
+            "where": {
+                "issueDate": [
+                    "gte",
+                    "lte"
+                ]
             }
         },
         "invoice_row": {

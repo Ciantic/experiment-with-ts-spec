@@ -33,6 +33,8 @@ export interface QueryTable {
     order?: string[];
     /** The entity's default ordering, applied to a root read that names none. See docs/queries.md. */
     defaultOrder?: { field: string; direction: Direction };
+    /** Comparison fields mapped to their allowed operators; absent when the entity marks none. */
+    where?: Record<string, string[]>;
 }
 
 /** Every table the resolver may read, keyed by physical table name. */
@@ -48,6 +50,19 @@ type FetchFilter =
 /** One ordering clause, as a read passes it: `[field, direction]`. See docs/queries.md. */
 export type OrderClause = [field: string, direction: Direction];
 
+/** One field's comparisons, as a read passes them: `{ gte: …, lte: … }`. See docs/queries.md. */
+export type WhereClause = Record<string, Record<string, unknown>>;
+
+/** The SQL operator each comparison maps to. */
+const COMPARISON_SQL: Record<string, string> = {
+    eq: "=",
+    ne: "<>",
+    gt: ">",
+    gte: ">=",
+    lt: "<",
+    lte: "<=",
+};
+
 /** What a read selects and filters on, as the generated function passes it. */
 export interface ResolveOptions<E, S extends Selection<E>> {
     select: S;
@@ -57,6 +72,8 @@ export interface ResolveOptions<E, S extends Selection<E>> {
     limit?: number | undefined;
     /** The number of leading rows a root read skips; absent means 0. See docs/queries.md. */
     offset?: number | undefined;
+    /** Comparison arguments; each field is restricted to its `@where` operators. See docs/queries.md. */
+    where?: WhereClause | undefined;
 }
 
 /** The rows a root read returns when it names no `limit`. See docs/queries.md. */
@@ -281,8 +298,49 @@ function argumentClause(
     return `${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`;
 }
 
+/**
+ * The comparison clauses for a root read, one `column <op> $n` per named operator. A field and an
+ * operator are both checked against the generated whitelist, because the operator reaches the SQL
+ * and the value is parameterized. Several operators on one field AND together, so `gte` + `lte` is
+ * a range. See docs/queries.md.
+ */
+function whereClauses(table: string, meta: QueryTable, where: WhereClause, params: unknown[]): string[] {
+    const clauses: string[] = [];
+    for (const [field, condition] of Object.entries(where)) {
+        if (condition === undefined) {
+            continue;
+        }
+        const column = columnForArgument(meta, field);
+        if (column === undefined) {
+            throw new Error(`unknown where field \`${field}\` on \`${table}\``);
+        }
+        const allowed = meta.where?.[field] ?? [];
+        const parts: string[] = [];
+        for (const [operator, value] of Object.entries(condition)) {
+            if (value === undefined) {
+                continue;
+            }
+            const sqlOperator = COMPARISON_SQL[operator];
+            if (sqlOperator === undefined || !allowed.includes(operator)) {
+                throw new Error(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
+            }
+            params.push(value);
+            parts.push(`${TABLE_ALIAS}.${quote(column)} ${sqlOperator} $${params.length}`);
+        }
+        if (parts.length > 0) {
+            clauses.push(`(${parts.join(" and ")})`);
+        }
+    }
+    return clauses;
+}
+
 /** Build the WHERE clause for a fetch, or undefined when the filter cannot match anything. */
-function buildFilter(table: string, meta: QueryTable, filter: FetchFilter): FilterSql | undefined {
+function buildFilter(
+    table: string,
+    meta: QueryTable,
+    filter: FetchFilter,
+    where?: WhereClause,
+): FilterSql | undefined {
     const clauses: string[] = [];
     const params: unknown[] = [];
 
@@ -297,6 +355,10 @@ function buildFilter(table: string, meta: QueryTable, filter: FetchFilter): Filt
                 continue;
             }
             clauses.push(argumentClause(table, meta, name, value, params));
+        }
+        // Comparisons are a root concern, like `order` and paging; a branch fetch never carries them.
+        if (where) {
+            clauses.push(...whereClauses(table, meta, where, params));
         }
     }
 
@@ -435,6 +497,7 @@ async function fetchRows(
     filter: FetchFilter,
     order?: OrderClause[],
     page?: Page,
+    where?: WhereClause,
 ): Promise<FetchedRow[]> {
     const meta = model.tables[table];
     if (!meta) {
@@ -443,7 +506,7 @@ async function fetchRows(
 
     const projection = planProjection(table, meta, selection);
     const matchColumn = filter.kind === "match" && filter.column !== meta.key ? filter.column : undefined;
-    const built = buildFilter(table, meta, filter);
+    const built = buildFilter(table, meta, filter, where);
     if (built === undefined) {
         return [];
     }
@@ -487,6 +550,7 @@ export function createResolver(model: QueryModel): Resolver {
             { kind: "args", args },
             opts.order,
             resolvePage(opts.limit, opts.offset),
+            opts.where,
         );
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }

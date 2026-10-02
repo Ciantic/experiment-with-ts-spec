@@ -41,3 +41,14 @@ export type Direction = "asc" | "desc";
 
 /** One ordering clause of a read: `[field, direction]` over a whitelisted field. See docs/queries.md. */
 export type Order<K extends PropertyKey> = [field: K, direction: Direction];
+
+/** The comparison operators a `@where` field may name. See docs/queries.md. */
+export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+
+/**
+ * Comparison arguments of a read: `{ issueDate: { gte: …, lte: … } }`. Each field is whitelisted
+ * to the operators `@where` declared for it, and each operator takes one value. See docs/queries.md.
+ */
+export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
+    [K in keyof O & keyof E]?: { [P in NonNullable<O[K]>]?: NonNullable<E[K]> };
+};

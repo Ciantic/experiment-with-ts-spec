@@ -12,6 +12,12 @@ export const queryInvoiceSchema = z.strictObject({
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
+    where: z.strictObject({
+        issueDate: z.strictObject({
+            gte: z.date().optional(),
+            lte: z.date().optional(),
+        }).optional(),
+    }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     select: invoiceSelectSchema,

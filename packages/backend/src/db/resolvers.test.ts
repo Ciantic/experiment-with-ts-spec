@@ -47,6 +47,7 @@ const model: QueryModel = {
                 snapshot: { kind: "inlined", columns: { name: "snapshotName", email: "snapshotEmail" } },
             },
             order: ["id"],
+            where: { number: ["eq", "gte", "lte"] },
         },
         invoice_row: {
             name: "invoice_row",
@@ -57,9 +58,10 @@ const model: QueryModel = {
         widget: {
             name: "widget",
             key: "id",
-            fields: { id: "id" },
+            fields: { id: "id", seq: "seq" },
             relations: {},
-            order: ["id"],
+            order: ["id", "seq"],
+            where: { seq: ["eq", "ne", "gt", "gte", "lt", "lte"] },
         },
     },
 };
@@ -111,8 +113,9 @@ beforeAll(async () => {
             ('r2', 'i1', 'Gadget', '50'),
             ('r3', 'i2', 'Thing', '200');
         -- More rows than the default limit, so the cap is observable.
-        create table widget (id text primary key);
-        insert into widget (id) select 'w' || lpad(n::text, 5, '0') from generate_series(1, 1500) as n;
+        create table widget (id text primary key, seq int not null);
+        insert into widget (id, seq)
+            select 'w' || lpad(n::text, 5, '0'), n from generate_series(1, 1500) as n;
     `);
     db = pglite;
 });
@@ -384,5 +387,79 @@ describe("resolveMany paging", () => {
         await expect(
             resolver.resolveMany<{ id: string }, typeof select>(db, "widget", {}, { select, offset: -1 }),
         ).rejects.toThrow("offset must be a non-negative integer, found `-1`");
+    });
+});
+
+describe("resolveMany where", () => {
+    const select = { id: true } as const;
+    const ids = (rows: { id?: string }[]) => rows.map((row) => row.id);
+    const widget = (condition: Record<string, unknown>, args: Record<string, unknown> = {}) =>
+        resolver.resolveMany<{ id: string }, typeof select>(db, "widget", args, {
+            select,
+            order: [["seq", "asc"]],
+            where: { seq: condition },
+        });
+
+    it("filters with a comparison", async () => {
+        const rows = await widget({ gt: 1498 });
+
+        expect(ids(rows)).toEqual(["w01499", "w01500"]);
+    });
+
+    it("treats several operators on one field as a range", async () => {
+        const rows = await widget({ gte: 4, lte: 6 });
+
+        expect(ids(rows)).toEqual(["w00004", "w00005", "w00006"]);
+    });
+
+    it("filters with ne", async () => {
+        const rows = await widget({ gte: 1, ne: 1 }, { id: ["w00001", "w00002", "w00003"] });
+
+        expect(ids(rows)).toEqual(["w00002", "w00003"]);
+    });
+
+    it("combines a filter set and a comparison with and", async () => {
+        const rows = await widget({ gte: 2 }, { id: ["w00001", "w00002", "w00003"] });
+
+        expect(ids(rows)).toEqual(["w00002", "w00003"]);
+    });
+
+    it("rejects a field that is not comparable", async () => {
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+                select,
+                where: { nonsense: { eq: 1 } },
+            }),
+        ).rejects.toThrow("unknown where field `nonsense` on `invoice`");
+    });
+
+    it("rejects an operator the field does not whitelist", async () => {
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+                select,
+                where: { number: { gt: "INV-1" } },
+            }),
+        ).rejects.toThrow("where operator `gt` is not allowed on `number` of `invoice`");
+    });
+
+    it("rejects an operator that is not a comparison at all", async () => {
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+                select,
+                where: { number: { between: "x" } },
+            }),
+        ).rejects.toThrow("where operator `between` is not allowed on `number` of `invoice`");
+    });
+
+    it("leaves a branch unfiltered by a root comparison", async () => {
+        const selectWithRows = { id: true, rows: { id: true } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof selectWithRows>(db, "invoice", {}, {
+            select: selectWithRows,
+            order: [["id", "asc"]],
+            where: { number: { gte: "INV-2" } },
+        });
+
+        expect(rows.map((row) => row.id)).toEqual(["i2", "i3", "i4"]);
+        expect(rows[0]?.rows).toHaveLength(1);
     });
 });

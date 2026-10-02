@@ -7,6 +7,7 @@ import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNod
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    isCompareOperator,
     lowerFirst,
     parseSpec,
     type Diagnostic,
@@ -75,6 +76,13 @@ export interface ZodModel {
     diagnostics: Diagnostic[];
 }
 
+/** One comparable field: its name, its whitelisted operators, and the schema its values validate against. */
+export interface ZodWhereField {
+    name: string;
+    operators: string[];
+    expression: string;
+}
+
 /** The generated `query` schema for one entity: its `@queryfilter` sets plus `select`. */
 export interface ZodQuery {
     /** The entity the read queries, which groups the generated file and supplies `select`. */
@@ -84,6 +92,8 @@ export interface ZodQuery {
     fields: ZodField[];
     /** The orderable field names, from `@queryorderby`; the renderer validates `order` against them. */
     orderFields: string[];
+    /** The comparable fields, from `@where`; the renderer validates `where` against them. */
+    whereFields: ZodWhereField[];
     /** Entity names the filters reference, so the file imports their schemas. */
     dependencies: string[];
     /** True when a filter resolves through a primitive schema. */
@@ -442,11 +452,30 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         const orderFields = spec.properties
             .filter((property) => property.tags.queryOrderBy !== undefined)
             .map((property) => property.name);
+        const whereFields: ZodWhereField[] = [];
+        for (const property of spec.properties) {
+            const operators = property.tags.where?.filter(isCompareOperator);
+            if (!operators || operators.length === 0) {
+                continue;
+            }
+            const typeNode = property.declaration.getTypeNode();
+            if (!typeNode) {
+                report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+                continue;
+            }
+            const resolved = resolveTypeNode(typeNode, context);
+            if (resolved === undefined) {
+                report(property.declaration, `\`${property.name}\`: unsupported where type \`${typeNode.getText()}\``);
+                continue;
+            }
+            whereFields.push({ name: property.name, operators, expression: resolved });
+        }
         queries.push({
             entity: spec.name,
             schemaName: `query${spec.name}Schema`,
             fields,
             orderFields,
+            whereFields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
         });

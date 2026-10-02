@@ -737,6 +737,58 @@ describe("@queryorderby", () => {
     });
 });
 
+describe("@where", () => {
+    const field = (operators: string) => {
+        const where = operators === "" ? "@where" : `@where ${operators}`;
+        return `export interface Thing {
+            /**
+             * @fieldName Value
+             * ${where}
+             * @widget text
+             */
+            value: string;
+        }`;
+    };
+
+    it("accepts a list of known operators", () => {
+        expect(lintSourceText(field("gte lte"), new Set())).toEqual([]);
+        expect(lintSourceText(field("eq ne gt gte lt lte"), new Set())).toEqual([]);
+    });
+
+    it("rejects a bare @where with no operators", () => {
+        const findings = lintSourceText(field(""), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`value`: @where requires at least one operator, one of: eq, ne, gt, gte, lt, lte",
+        ]);
+    });
+
+    it("rejects an unknown operator", () => {
+        const findings = lintSourceText(field("between"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`value`: @where `between` is not one of: eq, ne, gt, gte, lt, lte",
+        ]);
+    });
+
+    it("rejects @where on a relation field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @where eq
+                 * @widget select
+                 * @relation
+                 */
+                owner?: Owner;
+            }`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`owner`: @where must be on a scalar field, not a @relation field"]);
+    });
+});
+
 describe("readFormulaNames", () => {
     it("discovers names from @formula-annotated types", () => {
         const names = realFormulaNames();

@@ -37,14 +37,28 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
-/** The `query` options: an optional filter, ordering, and paging, plus the selection. */
-function queryOptsType(name: string, filters: string[], order: string[]): string {
+/** `Where<Widget, { size: "gt" | "gte" }>`. */
+function whereType(name: string, fields: { name: string; operators: string[] }[]): string {
+    const entries = fields.map((field) => `${field.name}: ${filterKeys(field.operators)}`);
+    return `Where<${name}, { ${entries.join("; ")} }>`;
+}
+
+/** The `query` options: an optional filter, ordering, comparisons, and paging, plus the selection. */
+function queryOptsType(
+    name: string,
+    filters: string[],
+    order: string[],
+    where: { name: string; operators: string[] }[],
+): string {
     const parts: string[] = [];
     if (filters.length > 0) {
         parts.push(`filter?: Filters<${name}, ${filterKeys(filters)}>`);
     }
     if (order.length > 0) {
         parts.push(`order?: Order<${filterKeys(order)}>[]`);
+    }
+    if (where.length > 0) {
+        parts.push(`where?: ${whereType(name, where)}`);
     }
     parts.push("limit?: number", "offset?: number", "select: S");
     return `{ ${parts.join("; ")} }`;
@@ -90,6 +104,9 @@ export function renderClientModule(entity: RestEntity): string {
     if (entity.orderFields.length > 0) {
         selectionTypes.push("Order");
     }
+    if (entity.whereFields.length > 0) {
+        selectionTypes.push("Where");
+    }
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
     const lines: string[] = [HEADER];
@@ -113,7 +130,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(comment(entity, "query"));
         lines.push(`export function query${name}<S extends Selection<${name}>>(`);
         lines.push("    http: HttpClient,");
-        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.orderFields)},`);
+        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.orderFields, entity.whereFields)},`);
         lines.push(`): Promise<Selected<${name}, S>[]> {`);
         lines.push(
             `    return http.${transport(query)}<Selected<${name}, S>[]>("${query.method}", "${query.path}", opts);`,

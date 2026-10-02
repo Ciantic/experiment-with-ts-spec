@@ -82,6 +82,18 @@ export function generateQueryFile(
             lines.push(`        z.tuple([z.enum([${names}]), z.enum(["asc", "desc"])]),`);
             lines.push("    ).optional(),");
         }
+        // Comparisons are whitelisted by `@where`: a field and an operator are both checked here.
+        if (query.whereFields.length > 0) {
+            lines.push("    where: z.strictObject({");
+            for (const field of query.whereFields) {
+                lines.push(`        ${field.name}: z.strictObject({`);
+                for (const operator of field.operators) {
+                    lines.push(`            ${operator}: ${field.expression}.optional(),`);
+                }
+                lines.push("        }).optional(),");
+            }
+            lines.push("    }).optional(),");
+        }
         lines.push(...PAGING_FIELDS);
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
         lines.push("});");

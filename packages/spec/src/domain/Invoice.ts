@@ -91,6 +91,7 @@ export interface Invoice {
      * The date the invoice was issued.
      * 
      * @fieldName Issue date
+     * @where gte lte
      * @widget date
      */
     issueDate?: Date;

@@ -150,6 +150,30 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({});
     });
+
+    it("decodes @where operators in declaration order", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @where gte lte\n     */", "at: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toEqual(["gte", "lte"]);
+    });
+
+    it("decodes a bare @where as an empty operator list", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @where\n     */", "at: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toEqual([]);
+    });
+
+    it("leaves where undefined when the tag is absent", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @fieldName At\n     */", "at: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toBeUndefined();
+    });
 });
 
 describe("parseSpec formulas", () => {

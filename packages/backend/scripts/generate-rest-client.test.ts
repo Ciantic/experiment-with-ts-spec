@@ -33,6 +33,7 @@ const widget = table("widget", "Widget", [
     column("id", { primaryKey: true, queryFilter: true }),
     column("size", { queryFilter: true }),
     column("createdAt", { queryOrder: { default: "asc" } }),
+    column("amount", { where: ["gte", "lte"] }),
     column("version", { version: true }),
 ]);
 
@@ -78,7 +79,6 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain('order?: Order<"createdAt">[]');
-        expect(code).toContain('import type { Filters, Order, Selected, Selection } from "spec/selection.ts";');
     });
 
     it("gives every read a limit and an offset", () => {
@@ -86,6 +86,13 @@ describe("renderClientModule", () => {
         const code = renderClientModule(markerEntity!);
 
         expect(code).toContain("limit?: number; offset?: number; select: S");
+    });
+
+    it("narrows the comparisons to the whitelisted operators", () => {
+        const code = widgetModule();
+
+        expect(code).toContain('where?: Where<Widget, { amount: "gte" | "lte" }>');
+        expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "spec/selection.ts";');
     });
 
     it("declares the patch locally, since it cannot import the repository's", () => {

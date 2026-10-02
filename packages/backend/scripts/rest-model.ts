@@ -42,6 +42,8 @@ export interface RestEntity {
     filters: string[];
     /** The `@queryorderby` fields: `query` accepts them as `order` keys. */
     orderFields: string[];
+    /** The `@where` fields with their allowed operators: `query` accepts them as `where` keys. */
+    whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
     operations: RestOperation[];
@@ -86,6 +88,9 @@ export function buildRestModel(tables: Map<string, Table>): RestModel {
             key: table.columns.find((column) => column.primaryKey)?.name ?? "id",
             filters: table.columns.filter((column) => column.queryFilter).map((column) => column.name),
             orderFields: table.columns.filter((column) => column.queryOrder).map((column) => column.name),
+            whereFields: table.columns
+                .filter((column) => column.where !== undefined)
+                .map((column) => ({ name: column.name, operators: column.where ?? [] })),
             versionFields: table.columns.filter((column) => column.version).map((column) => column.name),
             operations: operationsFor(table, path),
         });

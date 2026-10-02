@@ -54,6 +54,12 @@ const stamped = table("stamped", "Stamped", [
     column("updatedAt", { queryOrder: {} }),
 ]);
 
+/** An entity whose `amount` may be compared with a whitelist of operators. */
+const sized = table("sized", "Sized", [
+    column("id", { primaryKey: true, queryFilter: true }),
+    column("amount", { where: ["gte", "lte"] }),
+]);
+
 const tables = new Map([
     ["Invoice", invoice],
     ["Seller", seller],
@@ -98,6 +104,18 @@ describe("buildQueryModel", () => {
 
         expect(model?.order).toBeUndefined();
         expect(model?.defaultOrder).toBeUndefined();
+    });
+
+    it("records the comparable fields and their operators", () => {
+        const model = buildQueryModel(new Map([["Sized", sized]]));
+
+        expect(model.tables.sized?.where).toEqual({ amount: ["gte", "lte"] });
+    });
+
+    it("omits where metadata when the entity marks nothing comparable", () => {
+        const model = buildQueryModel(tables).tables.invoice;
+
+        expect(model?.where).toBeUndefined();
     });
 });
 
@@ -176,6 +194,21 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Seller", seller);
 
         expect(code).toContain("limit?: number; offset?: number; select: S");
+    });
+
+    it("takes comparisons for the whitelisted operators", () => {
+        const code = renderQueryModule("Sized", sized);
+
+        expect(code).toContain("import type { Filters, Selected, Selection, Where } from");
+        expect(code).toContain('where?: Where<Sized, { amount: "gte" | "lte" }>');
+        expect(code).toContain("where: opts.where");
+    });
+
+    it("omits the where key from the opts type when the entity marks nothing comparable", () => {
+        const code = renderQueryModule("Invoice", invoice);
+
+        expect(code).not.toContain("Where<");
+        expect(code).not.toContain("where: opts.where");
     });
 });
 

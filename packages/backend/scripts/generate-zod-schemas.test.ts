@@ -93,6 +93,7 @@ export interface Thing {
      * An optional amount.
      *
      * @queryorderby
+     * @where gte lte
      */
     amount?: Money;
     /**
@@ -345,6 +346,17 @@ describe("buildZodModel queries", () => {
         expect(queryThing?.orderFields).toEqual(["name", "amount"]);
         expect(queryChild?.orderFields).toEqual([]);
     });
+
+    it("records the comparable fields with their operators", () => {
+        const { model } = generate({ domain: { Thing: THING } });
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
+        const queryChild = model.queries.find((query) => query.entity === "Child");
+
+        expect(queryThing?.whereFields).toEqual([
+            { name: "amount", operators: ["gte", "lte"], expression: "primitives.moneySchema" },
+        ]);
+        expect(queryChild?.whereFields).toEqual([]);
+    });
 });
 
 describe("generateQueryFile", () => {
@@ -358,6 +370,10 @@ describe("generateQueryFile", () => {
         expect(code).toContain("    }).optional(),");
         expect(code).toContain("    order: z.array(");
         expect(code).toContain('        z.tuple([z.enum(["name", "amount"]), z.enum(["asc", "desc"])]),');
+        expect(code).toContain("    where: z.strictObject({");
+        expect(code).toContain("        amount: z.strictObject({");
+        expect(code).toContain("            gte: primitives.moneySchema.optional(),");
+        expect(code).toContain("            lte: primitives.moneySchema.optional(),");
         expect(code).toContain("    limit: z.number().int().positive().optional(),");
         expect(code).toContain("    offset: z.number().int().nonnegative().optional(),");
         expect(code).toContain("    select: thingSelectSchema,");
@@ -409,7 +425,7 @@ describe("generateQueryFile", () => {
                 return { z };
             }
             if (id === "../primitives.ts") {
-                return { brandedIdSchema: () => z.string() };
+                return { brandedIdSchema: () => z.string(), moneySchema: z.string() };
             }
             if (id === "../thing.ts") {
                 return { thingSelectSchema: z.strictObject({}) };
@@ -435,6 +451,14 @@ describe("generateQueryFile", () => {
         expect(exports.queryThingSchema?.safeParse({ limit: 0, select: {} }).success).toBe(false);
         expect(exports.queryThingSchema?.safeParse({ offset: -1, select: {} }).success).toBe(false);
         expect(exports.queryThingSchema?.safeParse({ limit: 1.5, select: {} }).success).toBe(false);
+        // Comparisons are whitelisted by field and operator, so a stray one is a 400.
+        expect(exports.queryThingSchema?.safeParse({ where: { amount: { gte: "1" } }, select: {} }).success).toBe(
+            true,
+        );
+        expect(exports.queryThingSchema?.safeParse({ where: { amount: { gt: "1" } }, select: {} }).success).toBe(
+            false,
+        );
+        expect(exports.queryThingSchema?.safeParse({ where: { name: { eq: "x" } }, select: {} }).success).toBe(false);
     });
 });
 

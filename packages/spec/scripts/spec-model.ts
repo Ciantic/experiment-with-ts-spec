@@ -39,6 +39,7 @@ export const FIELD_TAGS = [
     "version",
     "queryfilter",
     "queryorderby",
+    "where",
 ] as const;
 
 /** Tags an interface may carry. */
@@ -77,6 +78,15 @@ export type OrderDirection = (typeof ORDER_DIRECTIONS)[number];
 /** True when the text is one of {@link ORDER_DIRECTIONS}. */
 export function isOrderDirection(value: string | undefined): value is OrderDirection {
     return value === "asc" || value === "desc";
+}
+
+/** The comparison operators a `@where` field may name. */
+export const COMPARE_OPERATORS = ["eq", "ne", "gt", "gte", "lt", "lte"] as const;
+export type CompareOperator = (typeof COMPARE_OPERATORS)[number];
+
+/** True when the text is one of {@link COMPARE_OPERATORS}. */
+export function isCompareOperator(value: string): value is CompareOperator {
+    return (COMPARE_OPERATORS as readonly string[]).includes(value);
 }
 
 /** A problem found while reading the spec. */
@@ -126,6 +136,8 @@ export interface Tags {
     queryfilter: boolean;
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
+    /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
+    where?: string[];
 }
 
 /** A field of a spec interface. */
@@ -282,6 +294,13 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                             order.default = tokens[1];
                         }
                         tags.queryOrderBy = order;
+                    }
+                    break;
+                }
+                case "where": {
+                    // The operators, as written; an empty list is a lint finding rather than an error here.
+                    if (tags.where === undefined) {
+                        tags.where = (value ?? "").split(/\s+/).filter((token) => token !== "");
                     }
                     break;
                 }

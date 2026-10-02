@@ -173,6 +173,57 @@ An entity with no `@queryorderby` field takes no `order` (its opts type omits
 the key) and is returned in database order. Ordering is a root-only feature:
 a branch cannot carry `order` any more than it can carry `filter`.
 
+## `@where`
+
+```
+@where gte lte
+```
+
+`@queryfilter` matches a **set** (`in (…)`). A comparison cannot be a set, so it
+has its own tag and its own option: `@where` on a scalar field whitelists the
+operators that field may be narrowed with, and the read's `where` key carries
+them.
+
+```ts
+const invoices = await queryInvoice(db, {
+    where: { issueDate: { gte: from, lte: to } },
+    select: { number: true },
+});
+```
+
+The operator list is **required**: a bare `@where` is a lint finding. The
+vocabulary is `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, mapped to `=`, `<>`, `>`,
+`>=`, `<`, `<=`. Each operator takes one value; several operators on one field
+AND together, so `{ gte, lte }` **is** a range and no `between` operator is
+needed. An operator the field does not declare is a **type error** and, over
+HTTP, a 400.
+
+```ts
+/** The comparison arguments of a read. See docs/queries.md. */
+export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
+    [K in keyof O & keyof E]?: { [P in NonNullable<O[K]>]?: NonNullable<E[K]> };
+};
+export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+```
+
+`filter` stays for membership: an `in (…)` is index-friendly and reads a whole
+set in one comparison, so a read may use both — `filter` to narrow cheaply, then
+`where` for the range. The two are independent and combine with `and`.
+
+```ts
+/**
+ * @fieldName Issue date
+ * @where gte lte
+ * @widget date
+ */
+issueDate?: Date;
+```
+
+A field may carry `@queryfilter`, `@where`, and `@queryorderby` at once — they
+are separate read facets. An entity with no `@where` field takes no `where` (its
+opts type omits the key). Like `order`, comparisons are a **root-only** feature:
+a branch fetch never carries them.
+
 ## `limit` and `offset`
 
 Every read pages. `limit` bounds how many rows a read returns and `offset` skips
@@ -341,13 +392,14 @@ A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
 `@queryfilter` on a branch field, so a filter always names a scalar column.
 
-Ordering and paging are applied the same way: the resolver reads the table's
-`order` whitelist and `defaultOrder` from `queryModel`, refuses a field that is
-not on the list, and validates the direction before it reaches the SQL. It
-fills in `limit` (default 1000) and `offset` (default 0) and rejects a value
-that is not a positive integer or a non-negative integer. Only the root query
-is ordered and paged; a batched branch keeps its own order so grouping stays
-stable and is never truncated.
+Ordering, paging, and comparisons are applied the same way: the resolver reads
+the table's `order`/`defaultOrder` and `where` whitelists from `queryModel`,
+refuses a field or operator that is not on them, and validates the direction and
+operator before they reach the SQL, where every value is parameterized. It fills
+in `limit` (default 1000) and `offset` (default 0) and rejects a value that is
+not a positive integer or a non-negative integer. Only the root query is
+ordered, paged, and compared; a batched branch keeps its own order so grouping
+stays stable and is never truncated or filtered.
 
 ## Gotchas
 
@@ -359,12 +411,15 @@ stable and is never truncated.
 - **`true` on a branch selects scalars only.** It does not recurse into nested
   branches, so a default selection cannot fan out into unbounded joins.
 - **A filter reads columns the selection may omit.** `select` governs the
-  projection; the `args` still read whatever they name, and so does `order`.
-- **Set membership only.** A filter is an array matched with `in (…)`; an empty
-  set matches nothing, and a non-array value throws. A range
-  (`issuedFrom`/`issuedTo`) would need `>=`/`<=`, which the resolver does not
-  implement; a range operator needs its own annotation (a `@gte`/`@lte` tag) and
-  a resolver clause.
+  projection; the `args` still read whatever they name, and so do `order` and
+  `where`.
+- **Set membership, or the `@where` operators.** A `filter` is an array matched
+  with `in (…)`; an empty set matches nothing, and a non-array value throws. A
+  comparison goes through `where`, whose operators are whitelisted per field.
+  A range is `{ gte, lte }`, not a `between`.
+- **`eq` overlaps `filter`.** `where: { id: { eq } }` says what
+  `filter: { id: [value] }` already says; `eq` exists for symmetry and `ne` is
+  the operator `filter` cannot express.
 - **Filters come only from `@queryfilter`, plus `id`.** A field without the tag
   is not filterable, `id` is a filter without it, and a branch field may not
   carry it; filtering by a relation is not implemented.
@@ -386,7 +441,8 @@ stable and is never truncated.
   across pages between calls. Stable paging over a mutable table needs a keyset
   cursor, which is not implemented.
 - **The read types are in the spec, the reader is not.** `Selection`,
-  `Selected`, `Filters`, and `Order` are pure types with no query in them, so
+  `Selected`, `Filters`, `Order`, and `Where` are pure types with no query in
+  them, so
   they live in `packages/spec/src/selection.ts` and both the backend and the
   generated REST client import them from there. The SQL, the resolver, and the
   metadata stay in the backend.
@@ -408,16 +464,22 @@ middle ground if the args logic grows past equality.
 
 ## Deliberately not implemented
 
-- **Set and range filters.** Set membership only; see the gotcha above.
+- **Comparisons on a branch.** `@where` is scalar-only, so `queryInvoice` cannot
+  compare a related record's columns, such as `customer.name`.
 - **Filters on a branch.** `@queryfilter` is scalar-only, so `queryInvoice`
   cannot filter on a related record's columns, such as `customer.name`. The
   foreign key is a scalar field, so `customerId` is filterable.
+- **More comparison operators.** The vocabulary is `eq ne gt gte lt lte`. `like`,
+  `isNull`, and a case-insensitive match would each be another entry.
+- **Comparisons across fields.** A `where` value is a literal, not a column
+  reference, so `totalAmount > netAmount` is not expressible.
 - **A row at most, not exactly one.** There is no `limit 1` shorthand; a caller
   takes the first result, which fetches a whole page.
-- **Per-branch arguments.** A branch cannot carry `order`/`limit`/`offset`;
-  `rows: { description: true }` has nowhere to put them. The extension point is
-  to widen a branch from `Selection<E>` to `{ select?: Selection<E>; order?: …;
-  limit?: number; offset?: number }` and recurse into `.select`.
+- **Per-branch arguments.** A branch cannot carry `order`/`where`/`limit`/
+  `offset`; `rows: { description: true }` has nowhere to put them. The extension
+  point is to widen a branch from `Selection<E>` to `{ select?: Selection<E>;
+  order?: …; where?: …; limit?: number; offset?: number }` and recurse into
+  `.select`.
 - **Cursor pagination and a total count.** `limit`/`offset` page a read, but
   there is no keyset cursor and no way to ask how many rows matched.
 - **`@projection` generation.** If static read SQL is ever wanted, the hook is a

@@ -8,7 +8,9 @@ import { Node, SyntaxKind, type Project } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    isCompareOperator,
     parseSpec,
+    type CompareOperator,
     type Diagnostic,
     type OrderDirection,
     type SpecProperty,
@@ -72,6 +74,8 @@ export interface Column {
     queryFilter?: boolean;
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
     queryOrder?: { default?: OrderDirection };
+    /** The comparison operators the field may be compared with. See docs/queries.md. */
+    where?: CompareOperator[];
     read?: string;
 }
 
@@ -510,6 +514,12 @@ export function buildSpecTables(
             };
             if (tags.queryOrderBy !== undefined) {
                 column.queryOrder = tags.queryOrderBy;
+            }
+            // Only known operators reach the model; the linter reports an unknown one, and a
+            // generator run without lint should not emit a comparison it cannot build.
+            const operators = tags.where?.filter(isCompareOperator);
+            if (operators && operators.length > 0) {
+                column.where = operators;
             }
             if (resolved.checkValues) {
                 column.checkValues = resolved.checkValues;

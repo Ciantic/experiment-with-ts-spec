@@ -8,6 +8,7 @@ import {
     type TypeAliasDeclaration,
 } from "ts-morph";
 import {
+    COMPARE_OPERATORS,
     DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
@@ -17,6 +18,7 @@ import {
     TYPE_TAGS,
     WIDGETS,
     formulaNamesIn,
+    isCompareOperator,
     isOrderDirection,
     parseParameters,
     readFormulaNames,
@@ -374,6 +376,26 @@ function lintProperty(
         }
         if (firstBranch) {
             report(`@queryorderby must be on a scalar field, not a @${firstBranch.name} field`, queryOrderTag);
+        }
+    }
+
+    // @where whitelists the comparison operators a field may be compared with. See docs/queries.md.
+    const whereTag = (tags.get("where") ?? [])[0];
+    if (whereTag) {
+        const tokens = (whereTag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
+        if (tokens.length === 0) {
+            report(`@where requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, whereTag);
+        }
+        for (const token of tokens) {
+            if (!isCompareOperator(token)) {
+                report(
+                    `@where \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`,
+                    whereTag,
+                );
+            }
+        }
+        if (firstBranch) {
+            report(`@where must be on a scalar field, not a @${firstBranch.name} field`, whereTag);
         }
     }
 }

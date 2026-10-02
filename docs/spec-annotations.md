@@ -29,6 +29,10 @@ Field tags:
   reads. A bare marker whitelists the field; `@queryorderby default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
   Scalar fields only; a branch field may not carry it. See `docs/queries.md`.
+- `@where <op>…` — whitelists the comparison operators the field may be narrowed
+  with, space-separated, one or more of `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
+  The list is required: a bare `@where` is a lint finding. Scalar fields only; a
+  branch field may not carry it. See `docs/queries.md`.
 
 Interface tags:
 
@@ -317,6 +321,8 @@ Enforced:
 - `@queryorderby` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
+- `@where` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
+  `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
 - `formula=` must be a member of an `@formula`-annotated type.
 - An `@formula` type must be a non-empty union of string literals.
 - Tags may not repeat on a field.

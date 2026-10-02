@@ -38,9 +38,10 @@ Which side carries the argument is a field on the model (`source: "query" |
 each applying a rule. The router obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other.
 
-A read pages and orders: it returns at most `limit` matching rows (default 1000)
-starting at `offset`, in the `order` the caller names. A caller that wants a
-single row takes the first result (`docs/queries.md`).
+A read pages, orders, and compares: it returns at most `limit` matching rows
+(default 1000) starting at `offset`, in the `order` the caller names, narrowed by
+`where`. A caller that wants a single row takes the first result
+(`docs/queries.md`).
 
 A create takes a whole entity and a patch takes `<entity>PatchSchema`, mirroring
 the repository signatures exactly (`docs/repositories.md`). A delete needs only
@@ -112,6 +113,7 @@ export function queryInvoice<S extends Selection<Invoice>>(
     opts: {
         filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
         order?: Order<"createdAt" | "updatedAt">[];
+        where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
         limit?: number;
         offset?: number;
         select: S;

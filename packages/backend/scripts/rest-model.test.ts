@@ -23,6 +23,7 @@ const filterable = table("widget", "Widget", [
     column("id", { primaryKey: true, queryFilter: true }),
     column("size", { queryFilter: true }),
     column("createdAt", { queryOrder: { default: "asc" } }),
+    column("amount", { where: ["gte", "lte"] }),
     column("version", { version: true }),
 ]);
 
@@ -112,5 +113,13 @@ describe("buildRestModel", () => {
 
         expect(widget?.orderFields).toEqual(["createdAt"]);
         expect(marker?.orderFields).toEqual([]);
+    });
+
+    it("records the comparable fields with their operators", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+        const marker = buildRestModel(tables).entities.find((entity) => entity.entity === "Marker");
+
+        expect(widget?.whereFields).toEqual([{ name: "amount", operators: ["gte", "lte"] }]);
+        expect(marker?.whereFields).toEqual([]);
     });
 });
