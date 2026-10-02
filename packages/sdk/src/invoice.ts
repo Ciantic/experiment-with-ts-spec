@@ -9,7 +9,7 @@ export type InvoicePatch = Partial<Invoice> & Required<Pick<Invoice, "id" | "ver
 /** Query `Invoice` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
     http: HttpClient,
-    opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
+    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; select: S },
 ): Promise<Selected<Invoice, S>[]> {
     return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }

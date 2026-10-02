@@ -4,6 +4,8 @@ import { invoiceSentRowSelectSchema } from "../invoiceSentRow.ts";
 import * as primitives from "../primitives.ts";
 
 export const queryInvoiceSentRowSchema = z.strictObject({
-    id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).optional(),
+    filter: z.strictObject({
+        id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).optional(),
+    }).optional(),
     select: invoiceSentRowSelectSchema,
 });

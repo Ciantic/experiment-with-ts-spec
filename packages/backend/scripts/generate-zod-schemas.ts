@@ -66,10 +66,14 @@ export function generateQueryFile(
     for (const query of queries) {
         lines.push("");
         lines.push(`export const ${query.schemaName} = z.strictObject({`);
-        for (const field of query.fields) {
-            lines.push(`    ${field.name}: ${field.expression},`);
+        // The filter is its own object so a data field can never collide with `select`.
+        if (query.fields.length > 0) {
+            lines.push("    filter: z.strictObject({");
+            for (const field of query.fields) {
+                lines.push(`        ${field.name}: ${field.expression},`);
+            }
+            lines.push("    }).optional(),");
         }
-        // The read's one argument carries the filters and the selection together.
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
         lines.push("});");
     }

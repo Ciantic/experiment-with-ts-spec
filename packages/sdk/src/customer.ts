@@ -9,7 +9,7 @@ export type CustomerPatch = Partial<Customer> & Required<Pick<Customer, "id" | "
 /** Query `Customer` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryCustomer<S extends Selection<Customer>>(
     http: HttpClient,
-    opts: Filters<Customer, "id"> & { select: S },
+    opts: { filter?: Filters<Customer, "id">; select: S },
 ): Promise<Selected<Customer, S>[]> {
     return http.query<Selected<Customer, S>[]>("GET", "/customer/query", opts);
 }

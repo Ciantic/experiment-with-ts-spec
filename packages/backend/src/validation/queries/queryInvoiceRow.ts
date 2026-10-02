@@ -4,6 +4,8 @@ import { invoiceRowSelectSchema } from "../invoiceRow.ts";
 import * as primitives from "../primitives.ts";
 
 export const queryInvoiceRowSchema = z.strictObject({
-    id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
+    filter: z.strictObject({
+        id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
+    }).optional(),
     select: invoiceRowSelectSchema,
 });

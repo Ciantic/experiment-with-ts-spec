@@ -37,6 +37,13 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
+/** The `query` options: an optional filter object plus the selection. */
+function queryOptsType(name: string, filters: string[]): string {
+    return filters.length > 0
+        ? `{ filter?: Filters<${name}, ${filterKeys(filters)}>; select: S }`
+        : "{ select: S }";
+}
+
 /** The operation of the given kind, or undefined when the entity does not expose it. */
 function operation(entity: RestEntity, kind: RestKind) {
     return entity.operations.find((candidate) => candidate.kind === kind);
@@ -69,7 +76,6 @@ export function renderClientModule(entity: RestEntity): string {
     const create = operation(entity, "create");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
-    const keys = filterKeys(entity.filters);
 
     const selectionTypes = ["Filters", "Selection", "Selected"];
     selectionTypes.sort((a, b) => a.localeCompare(b));
@@ -95,7 +101,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(comment(entity, "query"));
         lines.push(`export function query${name}<S extends Selection<${name}>>(`);
         lines.push("    http: HttpClient,");
-        lines.push(`    opts: Filters<${name}, ${keys}> & { select: S },`);
+        lines.push(`    opts: ${queryOptsType(name, entity.filters)},`);
         lines.push(`): Promise<Selected<${name}, S>[]> {`);
         lines.push(
             `    return http.${transport(query)}<Selected<${name}, S>[]>("${query.method}", "${query.path}", opts);`,

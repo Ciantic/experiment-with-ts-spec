@@ -119,19 +119,23 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push(
         `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters)}): Promise<Selected<${entity}, S>[]> {`,
     );
-    lines.push("    const { select, ...args } = opts;");
     lines.push(
-        `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, args, { select });`,
+        `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, ${queryArgs(filters)}, { select: opts.select });`,
     );
     lines.push("}");
     return lines.join("\n") + "\n";
 }
 
-/** The `query` options: the filter sets, all optional, plus the selection. */
+/** The `query` options: an optional filter object plus the selection. */
 function queryOptsType(entity: string, filters: string[]): string {
     return filters.length > 0
-        ? `Filters<${entity}, ${filterKeys(filters)}> & { select: S }`
+        ? `{ filter?: Filters<${entity}, ${filterKeys(filters)}>; select: S }`
         : "{ select: S }";
+}
+
+/** The filter object handed to the resolver: the caller's, or an empty one when the entity has none. */
+function queryArgs(filters: string[]): string {
+    return filters.length > 0 ? "opts.filter ?? {}" : "{}";
 }
 
 /** Render every generated file, keyed by file name (including the barrel). */

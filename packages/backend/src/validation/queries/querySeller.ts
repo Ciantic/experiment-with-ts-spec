@@ -4,6 +4,8 @@ import { sellerSelectSchema } from "../seller.ts";
 import * as primitives from "../primitives.ts";
 
 export const querySellerSchema = z.strictObject({
-    id: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
+    filter: z.strictObject({
+        id: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
+    }).optional(),
     select: sellerSelectSchema,
 });

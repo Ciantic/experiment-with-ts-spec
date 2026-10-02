@@ -108,7 +108,7 @@ narrowing. `db: SqlExecutor` becomes `http: HttpClient` and nothing else changes
 ```typescript
 export function queryInvoice<S extends Selection<Invoice>>(
     http: HttpClient,
-    opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
+    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; select: S },
 ): Promise<Selected<Invoice, S>[]> {
     return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }
@@ -122,7 +122,7 @@ So a call site narrows across the wire exactly as it does in the backend:
 
 ```typescript
 const [invoice] = await queryInvoice(http, {
-    id: [id],
+    filter: { id: [id] },
     select: { number: true, totalAmount: true, rows: { description: true } },
 });
 // invoice.rows![0].description  ✓
@@ -207,8 +207,7 @@ the same path as an empty body.
   a `null` one, so the patch contract carries that limitation over HTTP unchanged
   (`docs/repositories.md`).
 - **A `query` with no filters scans the table.** `queryInvoice(http, { select })`
-  is legal by design. There is no authorization.
-- **The version precondition is the client's to send.** `update` requires the
+  is legal by design. There is no authorization.- **The version precondition is the client's to send.** `update` requires the
   version the client read; a stale one is a 409 from the trigger, not a silent
   skip.
 - **The server reads no configuration.** `createApiServer(db)` takes the

@@ -96,13 +96,18 @@ a set: `z.array(…)`. The schema is named after the read: `Invoice` yields
 
 ```typescript
 export const queryInvoiceSchema = z.strictObject({
-    id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
+    filter: z.strictObject({
+        id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
+    }).optional(),
     select: invoiceSelectSchema,
 });
 ```
 
 Every filter is optional, which mirrors the generated `Filters<…>` type and lets
-`queryInvoiceSchema` validate a `query` that names none.
+`queryInvoiceSchema` validate a `query` that names none. The filter is its own
+`z.strictObject`, so a flat filter field or an unknown filter key fails rather
+than being stripped, and a data field named `select` cannot collide with the
+projection.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

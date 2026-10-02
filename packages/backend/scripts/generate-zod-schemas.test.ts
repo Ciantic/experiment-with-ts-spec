@@ -336,7 +336,9 @@ describe("generateQueryFile", () => {
         const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
-        expect(code).toContain('    id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
+        expect(code).toContain("    filter: z.strictObject({");
+        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
+        expect(code).toContain("    }).optional(),");
         expect(code).toContain("    select: thingSelectSchema,");
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
@@ -396,8 +398,10 @@ describe("generateQueryFile", () => {
         new Function("exports", "require", exportedCode)(exports, stubRequire);
 
         expect(exports.queryThingSchema?.safeParse({ select: {} }).success).toBe(true);
-        expect(exports.queryThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(true);
-        expect(exports.queryThingSchema?.safeParse({ id: ["x"] }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ filter: { id: ["x"] }, select: {} }).success).toBe(true);
+        // A flat filter field and a non-array value are both rejected by the nested strict object.
+        expect(exports.queryThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ filter: { id: "x" }, select: {} }).success).toBe(false);
     });
 });
 

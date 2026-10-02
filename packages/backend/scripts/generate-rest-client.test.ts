@@ -70,7 +70,7 @@ describe("renderClientModule", () => {
     });
 
     it("narrows the filters to the filterable fields", () => {
-        expect(widgetModule()).toContain('Filters<Widget, "id" | "size"> & { select: S }');
+        expect(widgetModule()).toContain('{ filter?: Filters<Widget, "id" | "size">; select: S }');
     });
 
     it("declares the patch locally, since it cannot import the repository's", () => {

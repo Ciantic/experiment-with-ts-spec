@@ -88,19 +88,21 @@ describe("renderQueryModule", () => {
         expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice"');
     });
 
-    it("takes db first and the filter sets plus the selection second", () => {
+    it("takes db first and the filter object plus the selection second", () => {
         const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain(
-            'queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id"> & { select: S })',
+            'queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: { filter?: Filters<Invoice, "id">; select: S })',
         );
     });
 
-    it("splits the filters back apart for the resolver", () => {
+    it("passes the filter object and the selection through to the resolver", () => {
         const code = renderQueryModule("Invoice", invoice);
 
-        expect(code).toContain("const { select, ...args } = opts;");
-        expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice", args, { select })');
+        expect(code).not.toContain("const { select, ...args } = opts;");
+        expect(code).toContain(
+            'resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select })',
+        );
     });
 
     it("returns a list", () => {

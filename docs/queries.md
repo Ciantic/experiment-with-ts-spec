@@ -30,10 +30,9 @@ There is no query alias to write. The generator walks the entities and emits
 ```ts
 export function queryInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
-    opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
+    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; select: S },
 ): Promise<Selected<Invoice, S>[]> {
-    const { select, ...args } = opts;
-    return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
+    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select });
 }
 ```
 
@@ -53,16 +52,16 @@ ordered only if the query is.
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
 entity's reads. `id` is a filter **without the tag**, because every entity has
-one, so `queryInvoice` accepts `{ id }` out of the box:
+one, so `queryInvoice` accepts `filter: { id }` out of the box:
 
 ```ts
 const invoices = await queryInvoice(db, {
-    id: [firstId, secondId],
+    filter: { id: [firstId, secondId] },
     select: { number: true, totalAmount: true },
 });
 
 const [invoice] = await queryInvoice(db, {
-    id: [id],
+    filter: { id: [id] },
     select: { number: true, totalAmount: true },
 });
 ```
@@ -150,16 +149,17 @@ decimal.
 
 ## A read, generated
 
-A read takes **two arguments**: the executor `db` first, then the filters, with
-`select` intersected in by the generator. The function then splits the filters
-back apart for the resolver, whose signature keeps filters and projection
-explicit.
+A read takes **two arguments**: the executor `db` first, then an options object
+that carries the filter and the selection. The generator keeps them as separate
+keys — `{ filter, select }` — so a data field can never collide with `select`,
+and passes the filter object straight to the resolver, whose signature already
+keeps filters and projection explicit.
 
 A call site narrows exactly:
 
 ```ts
 const [invoice] = await queryInvoice(db, {
-    id: [id],
+    filter: { id: [id] },
     select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
 });
 // invoice.rows![0].totalAmount  ✓
