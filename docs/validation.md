@@ -1,8 +1,10 @@
 # Validation
 
-`packages/backend/scripts/generate-zod-schemas.ts` turns the domain models in
+`packages/validation/scripts/generate-zod-schemas.ts` turns the domain models in
 `packages/spec/src/domain` into Zod schemas and the matching write types, written
-to `packages/validation/src`. A schema is what validates a value at the boundary
+to `packages/validation/src`. The generator lives in the package that owns its
+artifact, so `pnpm --filter validation run generate:validation` regenerates the
+schemas without the backend. A schema is what validates a value at the boundary
 — an HTTP body, a job payload — against the same annotations the database schema
 and the repositories are generated from; the write types are what a caller passes
 in process. Because both live in one module, the backend repositories, the REST
@@ -273,13 +275,14 @@ reported as a diagnostic.
 
 ## Commands
 
-- `pnpm generate:validation` — writes `packages/validation/src`.
+- `pnpm generate:validation` — writes `packages/validation/src`. It runs in the
+  `validation` package, which owns the generator (`scripts/generate-zod-schemas.ts`).
 - `pnpm generate:validation --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm run generate` — runs it after the schema, repository, and query generators.
 
 ## Validation
 
-- `packages/backend/scripts/generate-zod-schemas.test.ts` drives the mapper
+- `packages/validation/scripts/generate-zod-schemas.test.ts` drives the mapper
   and the renderer with self-contained fixtures, never the real spec. It also
   evaluates `primitives.ts` against Zod to prove the emitted schemas parse.
 - `pnpm run typecheck` compiles the generated `src`, so a schema that does not

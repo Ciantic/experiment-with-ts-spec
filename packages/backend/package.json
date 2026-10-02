@@ -13,7 +13,6 @@
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
     "generate:repositories": "node scripts/generate-repositories.ts",
     "generate:queries": "node scripts/generate-queries.ts",
-    "generate:validation": "node scripts/generate-zod-schemas.ts",
     "generate:rest-api": "node scripts/generate-rest-api.ts",
     "generate:rest-client": "node scripts/generate-rest-client.ts",
     "example:server": "node src/main.ts"
