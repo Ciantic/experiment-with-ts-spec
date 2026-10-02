@@ -14,6 +14,7 @@ import {
     omittedFromPatch,
     parseSpec,
     type Diagnostic,
+    type SpecTypeAlias,
     type SpecInterface,
 } from "spec/scripts/spec-model.ts";
 
@@ -162,8 +163,15 @@ function unwrapParenthesized(node: Node): Node {
     return parenthesized ? parenthesized.getTypeNode() : node;
 }
 
-/** The carried state of one type resolution: the entities and primitives it reaches for. */
-interface ResolveContext {
+/** The shared half of a resolution: the spec maps, and where a diagnostic is written. */
+interface Resolver {
+    aliases: Map<string, SpecTypeAlias>;
+    interfaces: Map<string, SpecInterface>;
+    report: (node: Node, message: string) => void;
+}
+
+/** The carried state of one entity's resolution: the shared spec, plus what this type reached for. */
+interface ResolveContext extends Resolver {
     dependencies: Set<string>;
     usesPrimitives: boolean;
 }
@@ -193,199 +201,185 @@ function isOpenString(node: Node): boolean {
     return hasString && hasEmptyObject;
 }
 
-/** Build the Zod schema model from the parsed spec. */
-export function buildZodModel(project: Project, options: GenerateOptions = {}): ZodModel {
-    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
-    const diagnostics: Diagnostic[] = [];
-    const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+/** Resolve a named reference: a primitive alias, an entity, or another alias's underlying type. */
+function resolveNamedType(name: string, args: string[], context: ResolveContext): string | undefined {
+    const builtin = BUILTIN_REFERENCES[name];
+    if (builtin) {
+        return builtin;
+    }
+    const alias = context.aliases.get(name);
+    // A primitive declares its schema; the generator references it rather than inlining it.
+    if (alias?.tags.zod) {
+        context.usesPrimitives = true;
+        const generic = alias.declaration.getTypeParameters().length > 0;
+        return generic
+            ? `primitives.${schemaName(name)}<${args.join(", ")}>()`
+            : `primitives.${schemaName(name)}`;
+    }
+    // An entity field holds the entity object, referenced lazily so cycles import safely.
+    if (context.interfaces.has(name)) {
+        context.dependencies.add(name);
+        return `z.lazy(() => ${schemaName(name)})`;
+    }
+    // A domain alias such as `InvoiceId = BrandedId<"InvoiceId">` resolves through its target.
+    const aliasType = alias?.declaration.getTypeNode();
+    return aliasType ? resolveTypeNode(aliasType, context) : undefined;
+}
 
-    const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
-    const report = (node: Node, message: string) => {
-        diagnostics.push({
-            filePath: relative(node.getSourceFile().getFilePath()),
-            line: node.getStartLineNumber(),
-            message,
+/** Resolve a union: a string-literal set becomes an enum, anything else a `z.union`. */
+function resolveUnion(union: UnionTypeNode, context: ResolveContext): string | undefined {
+    const literals: string[] = [];
+    let open = false;
+    const others: Node[] = [];
+    for (const raw of union.getTypeNodes()) {
+        const member = unwrapParenthesized(raw);
+        const value = stringLiteralValue(member);
+        if (value !== undefined) {
+            literals.push(value);
+            continue;
+        }
+        if (isOpenString(member)) {
+            open = true;
+            continue;
+        }
+        others.push(member);
+    }
+    if (others.length === 0 && literals.length > 0) {
+        const enumExpression = `z.enum([${literals.map((value) => JSON.stringify(value)).join(", ")}])`;
+        return open ? `${enumExpression}.or(z.string())` : enumExpression;
+    }
+    const members = union.getTypeNodes().map((member) => resolveTypeNode(member, context));
+    if (members.some((member) => member === undefined)) {
+        return undefined;
+    }
+    return `z.union([${members.join(", ")}])`;
+}
+
+/** Resolve an object type literal's members to fields, each carrying its own optionality. */
+function resolveObjectFields(typeLiteral: TypeLiteralNode, context: ResolveContext): ZodField[] | undefined {
+    const fields: ZodField[] = [];
+    for (const member of typeLiteral.getMembers()) {
+        const property = member.asKind(SyntaxKind.PropertySignature);
+        if (!property) {
+            return undefined;
+        }
+        const memberType = property.getTypeNode();
+        if (!memberType) {
+            return undefined;
+        }
+        const resolvedMember = resolveTypeNode(memberType, context);
+        if (resolvedMember === undefined) {
+            return undefined;
+        }
+        fields.push({
+            name: property.getName(),
+            expression: property.hasQuestionToken() ? `${resolvedMember}.optional()` : resolvedMember,
         });
-    };
+    }
+    return fields;
+}
 
-    /** Resolve a named reference: a primitive alias, an entity, or another alias's underlying type. */
-    function resolveNamedType(name: string, args: string[], context: ResolveContext): string | undefined {
-        const builtin = BUILTIN_REFERENCES[name];
-        if (builtin) {
-            return builtin;
-        }
-        const alias = aliases.get(name);
-        // A primitive declares its schema; the generator references it rather than inlining it.
-        if (alias?.tags.zod) {
-            context.usesPrimitives = true;
-            const generic = alias.declaration.getTypeParameters().length > 0;
-            return generic
-                ? `primitives.${schemaName(name)}<${args.join(", ")}>()`
-                : `primitives.${schemaName(name)}`;
-        }
-        // An entity field holds the entity object, referenced lazily so cycles import safely.
-        if (interfaces.has(name)) {
-            context.dependencies.add(name);
-            return `z.lazy(() => ${schemaName(name)})`;
-        }
-        // A domain alias such as `InvoiceId = BrandedId<"InvoiceId">` resolves through its target.
-        const aliasType = alias?.declaration.getTypeNode();
-        return aliasType ? resolveTypeNode(aliasType, context) : undefined;
+/** Resolve a type node to the Zod expression that validates it. */
+function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined {
+    const node = unwrapParenthesized(raw);
+
+    if (node.getKindName().endsWith("Keyword")) {
+        return KEYWORD_SCHEMAS[node.getText()];
     }
 
-    /** Resolve a union: a string-literal set becomes an enum, anything else a `z.union`. */
-    function resolveUnion(union: UnionTypeNode, context: ResolveContext): string | undefined {
-        const literals: string[] = [];
-        let open = false;
-        const others: Node[] = [];
-        for (const raw of union.getTypeNodes()) {
-            const member = unwrapParenthesized(raw);
-            const value = stringLiteralValue(member);
-            if (value !== undefined) {
-                literals.push(value);
-                continue;
-            }
-            if (isOpenString(member)) {
-                open = true;
-                continue;
-            }
-            others.push(member);
-        }
-        if (others.length === 0 && literals.length > 0) {
-            const enumExpression = `z.enum([${literals.map((value) => JSON.stringify(value)).join(", ")}])`;
-            return open ? `${enumExpression}.or(z.string())` : enumExpression;
-        }
-        const members = union.getTypeNodes().map((member) => resolveTypeNode(member, context));
-        if (members.some((member) => member === undefined)) {
-            return undefined;
-        }
-        return `z.union([${members.join(", ")}])`;
+    const array = node.asKind(SyntaxKind.ArrayType);
+    if (array) {
+        const element = resolveTypeNode(array.getElementTypeNode(), context);
+        return element === undefined ? undefined : `z.array(${element})`;
     }
 
-    /** Resolve an object type literal's members to fields, each carrying its own optionality. */
-    function resolveObjectFields(typeLiteral: TypeLiteralNode, context: ResolveContext): ZodField[] | undefined {
-        const fields: ZodField[] = [];
-        for (const member of typeLiteral.getMembers()) {
-            const property = member.asKind(SyntaxKind.PropertySignature);
-            if (!property) {
-                return undefined;
-            }
-            const memberType = property.getTypeNode();
-            if (!memberType) {
-                return undefined;
-            }
-            const resolvedMember = resolveTypeNode(memberType, context);
-            if (resolvedMember === undefined) {
-                return undefined;
-            }
-            fields.push({
-                name: property.getName(),
-                expression: property.hasQuestionToken() ? `${resolvedMember}.optional()` : resolvedMember,
-            });
-        }
-        return fields;
+    const reference = node.asKind(SyntaxKind.TypeReference);
+    if (reference) {
+        const args = reference.getTypeArguments().map((argument) => argument.getText());
+        return resolveNamedType(reference.getTypeName().getText(), args, context);
     }
 
-    /** Resolve a type node to the Zod expression that validates it. */
-    function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined {
-        const node = unwrapParenthesized(raw);
-
-        if (node.getKindName().endsWith("Keyword")) {
-            return KEYWORD_SCHEMAS[node.getText()];
+    const literal = node.asKind(SyntaxKind.LiteralType);
+    if (literal) {
+        const value = literal.getLiteral();
+        if (Node.isStringLiteral(value)) {
+            return `z.literal(${JSON.stringify(value.getLiteralText())})`;
         }
-
-        const array = node.asKind(SyntaxKind.ArrayType);
-        if (array) {
-            const element = resolveTypeNode(array.getElementTypeNode(), context);
-            return element === undefined ? undefined : `z.array(${element})`;
+        if (Node.isNumericLiteral(value)) {
+            return `z.literal(${value.getLiteralValue()})`;
         }
-
-        const reference = node.asKind(SyntaxKind.TypeReference);
-        if (reference) {
-            const args = reference.getTypeArguments().map((argument) => argument.getText());
-            return resolveNamedType(reference.getTypeName().getText(), args, context);
-        }
-
-        const literal = node.asKind(SyntaxKind.LiteralType);
-        if (literal) {
-            const value = literal.getLiteral();
-            if (Node.isStringLiteral(value)) {
-                return `z.literal(${JSON.stringify(value.getLiteralText())})`;
-            }
-            if (Node.isNumericLiteral(value)) {
-                return `z.literal(${value.getLiteralValue()})`;
-            }
-            return undefined;
-        }
-
-        const union = node.asKind(SyntaxKind.UnionType);
-        if (union) {
-            return resolveUnion(union, context);
-        }
-
-        const intersection = node.asKind(SyntaxKind.IntersectionType);
-        if (intersection) {
-            if (isOpenString(intersection)) {
-                return "z.string()";
-            }
-            for (const member of intersection.getTypeNodes()) {
-                const resolved = resolveTypeNode(member, context);
-                if (resolved !== undefined) {
-                    return resolved;
-                }
-            }
-            return undefined;
-        }
-
-        const typeLiteral = node.asKind(SyntaxKind.TypeLiteral);
-        if (typeLiteral) {
-            const objectFields = resolveObjectFields(typeLiteral, context);
-            if (objectFields === undefined) {
-                return undefined;
-            }
-            if (objectFields.length === 0) {
-                return "z.strictObject({})";
-            }
-            const membersText = objectFields
-                .map((field) => `${field.name}: ${field.expression}`)
-                .join(", ");
-            return `z.strictObject({ ${membersText} })`;
-        }
-
         return undefined;
     }
 
-    /**
-     * The entity a field selects into: its type resolves to an interface, directly or as an
-     * array element. The branch tags only say *how* it is stored; the value shape is the type's.
-     */
-    function entityNameOf(node: Node): string | undefined {
-        const unwrapped = unwrapParenthesized(node);
-        const array = unwrapped.asKind(SyntaxKind.ArrayType);
-        const element = array ? unwrapParenthesized(array.getElementTypeNode()) : unwrapped;
-        const reference = element.asKind(SyntaxKind.TypeReference);
-        if (!reference) {
+    const union = node.asKind(SyntaxKind.UnionType);
+    if (union) {
+        return resolveUnion(union, context);
+    }
+
+    const intersection = node.asKind(SyntaxKind.IntersectionType);
+    if (intersection) {
+        if (isOpenString(intersection)) {
+            return "z.string()";
+        }
+        for (const member of intersection.getTypeNodes()) {
+            const resolved = resolveTypeNode(member, context);
+            if (resolved !== undefined) {
+                return resolved;
+            }
+        }
+        return undefined;
+    }
+
+    const typeLiteral = node.asKind(SyntaxKind.TypeLiteral);
+    if (typeLiteral) {
+        const objectFields = resolveObjectFields(typeLiteral, context);
+        if (objectFields === undefined) {
             return undefined;
         }
-        const name = reference.getTypeName().getText();
-        return interfaces.has(name) ? name : undefined;
-    }
-
-    /** Classify every field of an interface for `select`: scalars take `true`, branches nest. */
-    function selectFieldsFor(spec: SpecInterface): ZodSelectField[] {
-        const fields: ZodSelectField[] = [];
-        for (const property of spec.properties) {
-            const typeNode = property.declaration.getTypeNode();
-            if (!typeNode) {
-                continue;
-            }
-            const target = entityNameOf(typeNode);
-            fields.push(target === undefined ? { name: property.name } : { name: property.name, target });
+        if (objectFields.length === 0) {
+            return "z.strictObject({})";
         }
-        return fields;
+        const membersText = objectFields
+            .map((field) => `${field.name}: ${field.expression}`)
+            .join(", ");
+        return `z.strictObject({ ${membersText} })`;
     }
 
+    return undefined;
+}
+
+/**
+ * The entity a field selects into: its type resolves to an interface, directly or as an
+ * array element. The branch tags only say *how* it is stored; the value shape is the type's.
+ */
+function entityNameOf(node: Node, interfaces: Map<string, SpecInterface>): string | undefined {
+    const unwrapped = unwrapParenthesized(node);
+    const array = unwrapped.asKind(SyntaxKind.ArrayType);
+    const element = array ? unwrapParenthesized(array.getElementTypeNode()) : unwrapped;
+    const reference = element.asKind(SyntaxKind.TypeReference);
+    if (!reference) {
+        return undefined;
+    }
+    const name = reference.getTypeName().getText();
+    return interfaces.has(name) ? name : undefined;
+}
+
+/** Classify every field of an interface for `select`: scalars take `true`, branches nest. */
+function selectFieldsFor(spec: SpecInterface, interfaces: Map<string, SpecInterface>): ZodSelectField[] {
+    const fields: ZodSelectField[] = [];
+    for (const property of spec.properties) {
+        const typeNode = property.declaration.getTypeNode();
+        if (!typeNode) {
+            continue;
+        }
+        const target = entityNameOf(typeNode, interfaces);
+        fields.push(target === undefined ? { name: property.name } : { name: property.name, target });
+    }
+    return fields;
+}
+
+/** Build the primitive schemas: the `@primitive` aliases that declare a `@zod` expression. */
+function buildPrimitives(aliases: Map<string, SpecTypeAlias>): ZodPrimitive[] {
     const primitives: ZodPrimitive[] = [];
     for (const alias of aliases.values()) {
         if (!alias.tags.primitive || !alias.tags.zod) {
@@ -402,22 +396,33 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         });
     }
     primitives.sort((a, b) => a.name.localeCompare(b.name));
+    return primitives;
+}
 
+/** Build every entity's schema, its insert/patch shapes, and the fields a `select` classifies. */
+function buildEntities(
+    interfaces: Map<string, SpecInterface>,
+    resolver: Resolver,
+): ZodEntity[] {
     const entities: ZodEntity[] = [];
     for (const spec of interfaces.values()) {
-        const context: ResolveContext = { dependencies: new Set(), usesPrimitives: false };
+        // Each entity resolves in its own context, so the dependencies it reaches for start empty.
+        const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
         const fields: ZodField[] = [];
         const required: string[] = [];
 
         for (const property of spec.properties) {
             const typeNode = property.declaration.getTypeNode();
             if (!typeNode) {
-                report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
             const resolved = resolveTypeNode(typeNode, context);
             if (resolved === undefined) {
-                report(property.declaration, `\`${property.name}\`: unsupported type \`${typeNode.getText()}\``);
+                resolver.report(
+                    property.declaration,
+                    `\`${property.name}\`: unsupported type \`${typeNode.getText()}\``,
+                );
                 continue;
             }
             fields.push({
@@ -448,23 +453,28 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             patchOmit,
             insertInlined: inlinedFromInsert(spec).flatMap((property) => {
                 const typeNode = property.declaration.getTypeNode();
-                const target = typeNode && entityNameOf(typeNode);
+                const target = typeNode && entityNameOf(typeNode, interfaces);
                 return target === undefined ? [] : [{ name: property.name, target }];
             }),
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
             required,
             key: spec.properties.find((property) => property.tags.primaryKey)?.name ?? "",
-            selectFields: selectFieldsFor(spec),
+            selectFields: selectFieldsFor(spec, interfaces),
         });
     }
     entities.sort((a, b) => a.name.localeCompare(b.name));
+    return entities;
+}
 
-    // Every entity gets a `query` read: its `@queryfilter` fields are the optional filters, and
-    // the renderer adds `select` from the entity itself. The resolvers already read the columns.
+/** Build every entity's `query` read: its `@queryfilter` fields and its `@where` operators. */
+function buildQueries(
+    interfaces: Map<string, SpecInterface>,
+    resolver: Resolver,
+): ZodQuery[] {
     const queries: ZodQuery[] = [];
     for (const spec of interfaces.values()) {
-        const context: ResolveContext = { dependencies: new Set(), usesPrimitives: false };
+        const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
         const fields: ZodField[] = [];
         for (const property of spec.properties) {
             if (!property.tags.queryfilter) {
@@ -472,12 +482,15 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             }
             const typeNode = property.declaration.getTypeNode();
             if (!typeNode) {
-                report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
             const resolved = resolveTypeNode(typeNode, context);
             if (resolved === undefined) {
-                report(property.declaration, `\`${property.name}\`: unsupported filter type \`${typeNode.getText()}\``);
+                resolver.report(
+                    property.declaration,
+                    `\`${property.name}\`: unsupported filter type \`${typeNode.getText()}\``,
+                );
                 continue;
             }
             fields.push({ name: property.name, expression: `z.array(${resolved}).optional()` });
@@ -494,12 +507,15 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             }
             const typeNode = property.declaration.getTypeNode();
             if (!typeNode) {
-                report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
             const resolved = resolveTypeNode(typeNode, context);
             if (resolved === undefined) {
-                report(property.declaration, `\`${property.name}\`: unsupported where type \`${typeNode.getText()}\``);
+                resolver.report(
+                    property.declaration,
+                    `\`${property.name}\`: unsupported where type \`${typeNode.getText()}\``,
+                );
                 continue;
             }
             whereFields.push({ name: property.name, operators, expression: resolved });
@@ -515,6 +531,25 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         });
     }
     queries.sort((a, b) => a.entity.localeCompare(b.entity));
+    return queries;
+}
 
-    return { primitives, entities, queries, diagnostics };
+/** Build the Zod schema model from the parsed spec. */
+export function buildZodModel(project: Project, options: GenerateOptions = {}): ZodModel {
+    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
+    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
+    const diagnostics: Diagnostic[] = [];
+    const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+
+    const report = (node: Node, message: string) => {
+        const filePath = node.getSourceFile().getFilePath().replace(`${process.cwd()}/`, "");
+        diagnostics.push({ filePath, line: node.getStartLineNumber(), message });
+    };
+    const resolver: Resolver = { aliases, interfaces, report };
+
+    // Entities resolve before queries, so their diagnostics are reported in that order.
+    const entities = buildEntities(interfaces, resolver);
+    const queries = buildQueries(interfaces, resolver);
+
+    return { primitives: buildPrimitives(aliases), entities, queries, diagnostics };
 }
