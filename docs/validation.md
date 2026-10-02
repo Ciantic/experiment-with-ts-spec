@@ -11,7 +11,7 @@ database schema and the repositories are generated from.
 - `packages/backend/src/validation/primitives.ts` — one schema per `@primitive`
   alias, from its `@zod` tag.
 - `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
-  exporting `<name>Schema` and `<name>PatchSchema`.
+  exporting `<name>Schema`, `<name>PatchSchema`, and `<name>InsertSchema`.
 - `packages/backend/src/validation/queries/query<Entity>.ts` — one module per
   entity, exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for
   its `query` read.
@@ -77,12 +77,89 @@ to `primitives.brandedIdSchema<"InvoiceId">()`, so the parsed value carries the
 
 ## Patch schemas
 
-`<name>PatchSchema` is the schema's `.partial()` with the key and every
-`@version` field made required again. It mirrors the repository's patch contract
-(`docs/repositories.md`): an update names the row and carries the optimistic-lock
-precondition, and every other field is optional. It matches the repository
-generator's rule — the key is the `id` field, the version is the `@version`
-field — without hardcoding a column list.
+`<name>PatchSchema` is the insert shape with every field optional and the key
+and version required again. A patch writes the same columns a create does, plus
+the version that carries the optimistic-lock precondition, and nothing else —
+which is what the repository's patch contract says (`docs/repositories.md`).
+
+```typescript
+export const invoicePatchSchema = invoiceSchema
+    .omit({
+        customer: true,
+        seller: true,
+        netAmount: true,
+        taxAmount: true,
+        totalAmount: true,
+        rows: true,
+        createdAt: true,
+        updatedAt: true,
+    })
+    .partial()
+    .required({
+        id: true,
+        version: true,
+    })
+    .strict();
+```
+
+The omit list is a create's, less the version. That one exception is the whole
+difference: a create must not carry the precondition, a patch must. So a patch
+rejects the same branches, `@default` columns, and derivable values a create
+does, and `.strict()` turns a key the update would silently ignore into a 400.
+
+The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
+generated `<Entity>Patch` type reads it too, so the repository type and the wire
+schema permit exactly the same fields. A nullable `@computed` value is on the
+list because a `before insert or update` trigger derives it: the update does not
+name the column, so accepting one would be accepting a field that does nothing
+(`docs/repositories.md`).
+
+## Insert schemas
+
+`<name>InsertSchema` is the schema's `.omit()` of everything a create does not
+write, made `.strict()`. It mirrors the repository's insert contract
+(`docs/repositories.md`): a `create` writes the columns the database does not
+own, and a key the schema rejects is a 400 rather than a field that is silently
+dropped on the way to the SQL.
+
+```typescript
+export const invoiceInsertSchema = invoiceSchema
+    .omit({
+        customer: true,
+        seller: true,
+        netAmount: true,
+        taxAmount: true,
+        totalAmount: true,
+        rows: true,
+        createdAt: true,
+        updatedAt: true,
+        version: true,
+    })
+    .strict();
+```
+
+A field is omitted when the database owns it, from either annotation:
+
+- **A branch** — a `@relation` or a `@children` collection — is not a column, so
+  a create cannot write it. `customer`, `seller`, and `rows` are omitted.
+- **A `@default` column** is left to the database on insert, which covers both
+  timestamps and the `@version` column.
+- **A stored computation** is the trigger's to derive, but only while the column
+  is optional. A required one has no default and no nullable column, so the
+  insert has to carry it: `InvoiceSent.netAmount` and its siblings stay, while
+  `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
+  not a default.
+
+An `@inlined` field is the exception: it is a snapshot of another entity, so a
+create still writes it, nested as that entity's own insert schema. `InvoiceSent`
+therefore keeps `customer` and `seller`, each validated as `customerInsertSchema`
+— `docs/timestamps.md` explains why the snapshot carries the target's own audit
+columns.
+
+The repository's `create` takes the same field set, as `<entity>Insert`, and its
+`insert` names exactly those columns (`docs/repositories.md`). So the type a
+caller passes, the schema that validates it, and the statement that runs all
+carry one set of fields, and a field added to the spec narrows all three at once.
 
 ## Query schemas
 

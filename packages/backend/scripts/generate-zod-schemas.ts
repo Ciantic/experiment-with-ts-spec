@@ -157,7 +157,7 @@ export function generatePrimitives(primitives: ZodPrimitive[]): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render one entity module: its schema and its patch schema. */
+/** Render one entity module: its schema, its patch schema, and its insert schema. */
 export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>): string {
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
     if (entity.usesPrimitives) {
@@ -166,9 +166,10 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     for (const dependency of entity.dependencies) {
         const target = byName.get(dependency);
         if (target) {
-            lines.push(
-                `import { ${target.schemaName} } from "${entityImport(target)}";`,
-            );
+            // An `@inlined` branch nests the target's insert schema, so its import joins the entity's.
+            const inlined = entity.insertInlined.some((branch) => branch.target === dependency);
+            const names = inlined ? `${target.schemaName}, ${target.insertName}` : target.schemaName;
+            lines.push(`import { ${names} } from "${entityImport(target)}";`);
         }
     }
 
@@ -186,11 +187,42 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
             ? "/** A partial update: every field is optional except the key and the version. */"
             : "/** A partial update: every field is optional except the key. */",
     );
-    lines.push(`export const ${entity.patchName} = ${entity.schemaName}.partial().required({`);
-    for (const name of entity.required) {
-        lines.push(`    ${name}: true,`);
+    lines.push(`export const ${entity.patchName} = ${entity.schemaName}`);
+    if (entity.patchOmit.length > 0) {
+        lines.push("    .omit({");
+        for (const name of entity.patchOmit) {
+            lines.push(`        ${name}: true,`);
+        }
+        lines.push("    })");
     }
-    lines.push("});");
+    lines.push("    .partial()");
+    lines.push("    .required({");
+    for (const name of entity.required) {
+        lines.push(`        ${name}: true,`);
+    }
+    lines.push("    })");
+    lines.push("    .strict();");
+
+    lines.push("");
+    lines.push("/** The fields a `create` writes: only the columns the database does not own. */");
+    lines.push(`export const ${entity.insertName} = ${entity.schemaName}`);
+    if (entity.insertOmit.length > 0) {
+        lines.push("    .omit({");
+        for (const name of entity.insertOmit) {
+            lines.push(`        ${name}: true,`);
+        }
+        lines.push("    })");
+    }
+    if (entity.insertInlined.length > 0) {
+        lines.push("    .extend({");
+        for (const branch of entity.insertInlined) {
+            const target = byName.get(branch.target);
+            const insertName = target ? target.insertName : "z.never()";
+            lines.push(`        ${branch.name}: ${insertName}.optional(),`);
+        }
+        lines.push("    })");
+    }
+    lines.push("    .strict();");
 
     return lines.join("\n") + "\n";
 }

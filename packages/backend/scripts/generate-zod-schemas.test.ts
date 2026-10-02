@@ -104,9 +104,17 @@ export interface Thing {
     version?: Version;
     /** The format. */
     format?: ThingFormat;
-    /** The children. */
+    /**
+     * The children.
+     *
+     * @children
+     */
     children?: Child[];
-    /** The parent. */
+    /**
+     * The parent.
+     *
+     * @relation
+     */
     parent?: Parent;
 }
 
@@ -195,7 +203,8 @@ describe("generateEntity", () => {
         const code = files.get("thing.ts") ?? "";
 
         expect(code).toContain("export const thingSchema = z.object({");
-        expect(code).toContain("export const thingPatchSchema = thingSchema.partial().required({");
+        expect(code).toContain("export const thingPatchSchema = thingSchema");
+        expect(code).toContain("    .partial()");
     });
 
     it("references a primitive schema, calling a generic primitive as a factory", () => {
@@ -230,7 +239,8 @@ describe("generateEntity", () => {
         const code = files.get("thing.ts") ?? "";
 
         expect(code).toContain("every field is optional except the key and the version");
-        expect(code).toContain("    id: true,\n    version: true,\n});");
+        expect(code).toContain("    .required({\n        id: true,\n        version: true,\n    })");
+        expect(code).toContain("    .strict();");
     });
 
     it("resolves an open-union alias to an enum plus a string", () => {
@@ -524,5 +534,163 @@ describe("select schemas", () => {
 
         expect(code).toContain("export const queryChildSelectSchema = z.lazy(() =>");
         expect(code).toContain("        thingId: z.literal(true).optional(),");
+    });
+});
+
+/** A column the database defaults, one it derives, and one the insert must carry. */
+const MARKER = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a marker. */
+export type MarkerId = BrandedId<"MarkerId">;
+
+/**
+ * A marker.
+ *
+ * @table marker
+ */
+export interface Marker {
+    /** The identifier. */
+    id: MarkerId;
+    /** A label the caller supplies. */
+    label?: string;
+    /**
+     * When it was created.
+     *
+     * @default now()
+     */
+    createdAt?: Date;
+    /**
+     * A total the trigger derives.
+     *
+     * @computed storage=stored formula=markerTotal
+     */
+    total?: Money;
+    /**
+     * A stored value the insert has to carry.
+     *
+     * @computed storage=stored formula=markerRequired
+     */
+    required: Money;
+}
+`.trim();
+
+/** An `@inlined` branch, which a create writes as a nested object rather than a column. */
+const INLINED = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a thing. */
+export type ThingId = BrandedId<"ThingId">;
+
+/** The identifier of a child. */
+export type ChildId = BrandedId<"ChildId">;
+
+/**
+ * A child.
+ *
+ * @table child
+ */
+export interface Child {
+    /** The child identifier. */
+    id: ChildId;
+    /** A name. */
+    name?: string;
+}
+
+/**
+ * A thing holding a snapshot of its child.
+ *
+ * @table thing
+ */
+export interface Thing {
+    /** The identifier. */
+    id: ThingId;
+    /**
+     * The child as it was.
+     *
+     * @inlined
+     */
+    snapshot?: Child;
+}
+`.trim();
+
+describe("insert schemas", () => {
+    it("omits the branches a create cannot write", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain("export const thingInsertSchema = thingSchema");
+        expect(code).toContain("        children: true,");
+        expect(code).toContain("        parent: true,");
+        expect(code).toContain("    .strict();");
+    });
+
+    it("omits a defaulted or derivable column but keeps a required one", () => {
+        const { files } = generate({ domain: { Marker: MARKER } });
+        const code = files.get("marker.ts") ?? "";
+
+        expect(code).toContain("        createdAt: true,");
+        expect(code).toContain("        total: true,");
+        expect(code).not.toContain("        required: true,");
+        expect(code).not.toContain("        label: true,");
+    });
+
+    it("nests an `@inlined` branch as the target's insert schema", () => {
+        const { files } = generate({ domain: { Thing: INLINED } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain('import { childSchema, childInsertSchema } from "./child.ts";');
+        expect(code).toContain("        snapshot: childInsertSchema.optional(),");
+        expect(code).not.toContain("        snapshot: true,");
+    });
+});
+
+describe("patch schemas", () => {
+    it("omits the same fields a create does, so a patch cannot send them", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain("export const thingPatchSchema = thingSchema");
+        expect(code).toContain("        children: true,");
+        expect(code).toContain("        parent: true,");
+        expect(code).toContain("    .partial()");
+    });
+
+    it("keeps the version a create omits, since a patch must carry it", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain(
+            [
+                "export const thingPatchSchema = thingSchema",
+                "    .omit({",
+                "        children: true,",
+                "        parent: true,",
+                "    })",
+                "    .partial()",
+                "    .required({",
+                "        id: true,",
+                "        version: true,",
+                "    })",
+                "    .strict();",
+            ].join("\n"),
+        );
+    });
+
+    it("requires only the key when the entity has no version", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("child.ts") ?? "";
+
+        expect(code).toContain("    .required({\n        id: true,\n    })");
+        expect(code).not.toContain("version");
+    });
+
+    it("rejects a field the update would never write", () => {
+        const { files } = generate({ domain: { Marker: MARKER } });
+        const code = files.get("marker.ts") ?? "";
+
+        expect(code).toContain("        createdAt: true,");
+        expect(code).toContain("        total: true,");
+        expect(code).not.toContain("        required: true,");
     });
 });

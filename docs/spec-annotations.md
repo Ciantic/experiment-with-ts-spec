@@ -10,8 +10,8 @@ Field tags:
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
-- `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`.
-- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
+- `@computed` — derived from other fields or from child rows. Carries `storage=` and `formula=`. A nullable one is omitted from `<name>InsertSchema`, since the row that fills it arrives later; a required one has no default and must be supplied. See `docs/validation.md`.
+- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. See `docs/timestamps.md`.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through a `<field>Id` field the interface also declares. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.

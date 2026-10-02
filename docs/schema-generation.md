@@ -161,8 +161,10 @@ Gotchas found by running the DDL:
   revealed this.
 - **Foreign keys have no `ON DELETE` clause,** so a referenced row cannot be
   deleted rather than the reference being nulled or cascaded.
-- **Computed columns are `not null` with no default,** so an insert must supply
-  them; the before trigger overwrites the supplied value.
+- **Computed columns follow the field's optionality, not the computation.** A
+  required one is `not null` with no default, so an insert must supply it and the
+  before trigger then overwrites it. An optional one is nullable, so the trigger
+  fills it from a `null` and an insert may leave it out.
 
 ## Result mapping
 
@@ -209,9 +211,10 @@ Gotchas:
 - **Defaults and sequences.** `id` is `uuid not null` with no default, so the
   application supplies it.
 - **Indexes beyond primary key, unique, and foreign key.**
-- **`not null` on computed columns before the trigger runs.** The columns are
-  declared `not null` and populated by a before trigger, so an insert that skips
-  the trigger fails rather than defaulting.
+- **`not null` on computed columns before the trigger runs.** A *required*
+  computed column is declared `not null` and populated by a before trigger, so an
+  insert that skips the trigger fails rather than defaulting. An optional one is
+  nullable instead.
 - **Ownership and grants.**
 - **Idempotent output.** The file is plain `create` statements with no
   `if not exists` and no `drop`, so re-applying it to an existing database

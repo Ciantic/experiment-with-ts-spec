@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, parseSpec, readTags } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, omittedFromPatch, parseSpec, readTags } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -187,6 +187,43 @@ describe("parseSpec formulas", () => {
         });
 
         expect([...formulaNames].sort()).toEqual(["rowNet", "rowTax"]);
+    });
+});
+
+describe("patch field rules", () => {
+    /** The tag block for one field, and the field itself. */
+    const field = (doc: string, declaration: string) => `export interface Thing {\n${doc}\n    ${declaration}\n}`;
+    const omitted = (doc: string, declaration: string) => {
+        const spec = parse({ "Thing.ts": field(doc, declaration) }).interfaces.get("Thing")!;
+        return omittedFromPatch(spec).map((property) => property.name);
+    };
+
+    it("keeps a plain field patchable", () => {
+        expect(omitted("    /**\n     * @fieldName Label\n     */", "label?: string;")).toEqual([]);
+    });
+
+    it("refuses a field a database default owns", () => {
+        expect(omitted("    /**\n     * @default now()\n     */", "createdAt?: Date;")).toEqual(["createdAt"]);
+    });
+
+    it("keeps the version patchable, because a patch carries it to lock the row", () => {
+        expect(omitted("    /**\n     * @version\n     * @default 0\n     */", "version?: number;")).toEqual([]);
+    });
+
+    it("refuses a nullable stored computation the trigger derives", () => {
+        expect(omitted("    /**\n     * @computed storage=stored formula=rowNet\n     */", "net?: Money;")).toEqual(["net"]);
+    });
+
+    it("keeps a required stored computation, which the caller alone can supply", () => {
+        expect(omitted("    /**\n     * @computed storage=stored formula=rowNet\n     */", "net: Money;")).toEqual([]);
+    });
+
+    it("refuses a relation, which is written through the target's own repository", () => {
+        expect(omitted("    /**\n     * @relation\n     */", "customer?: Customer;")).toEqual(["customer"]);
+    });
+
+    it("refuses the children of an aggregate, which belong to the child's table", () => {
+        expect(omitted("    /**\n     * @children\n     */", "rows?: Row[];")).toEqual(["rows"]);
     });
 });
 

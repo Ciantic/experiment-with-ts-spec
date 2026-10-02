@@ -9,6 +9,10 @@ import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     isCompareOperator,
+    isInsertable,
+    isUpdatable,
+    omittedFromInsert,
+    omittedFromPatch,
     parseSpec,
     type CompareOperator,
     type Diagnostic,
@@ -76,6 +80,10 @@ export interface Column {
     queryOrder?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with. See docs/queries.md. */
     where?: CompareOperator[];
+    /** False when a create never writes the column: `@default`, or a stored computation it can derive. */
+    insertable: boolean;
+    /** False when a patch never writes the column: a branch, a default, or a nullable computation. */
+    updatable: boolean;
     read?: string;
 }
 
@@ -102,6 +110,10 @@ export interface Table {
     sameRowAssignments: string[];
     /** Child-change statements keyed by the child table that carries them. */
     rollups: Map<string, { newStatements: string[]; oldStatements: string[] }>;
+    /** The fields a create omits, in spec order; absent means the create omits nothing. */
+    insertOmit?: string[];
+    /** The fields a patch omits, in spec order; the patch type and the wire schema both read this. */
+    patchOmit?: string[];
 }
 
 interface TypeResolution {
@@ -400,6 +412,8 @@ export function buildSpecTables(
                 notNull: notNull && !inner.optional,
                 primaryKey: false,
                 unique: false,
+                insertable: isInsertable(property),
+                updatable: isUpdatable(property),
                 read: notNull ? `${fieldName}.${innerName}` : `${fieldName}?.${innerName}`,
             };
             if (resolved.checkValues) {
@@ -420,6 +434,8 @@ export function buildSpecTables(
             relations: new Map(),
             sameRowAssignments: [],
             rollups: new Map(),
+            insertOmit: omittedFromInsert(spec).map((property) => property.name),
+            patchOmit: omittedFromPatch(spec).map((property) => property.name),
         };
 
         for (const property of spec.properties) {
@@ -510,6 +526,8 @@ export function buildSpecTables(
                 primaryKey: isPrimaryKey,
                 unique: tags.unique,
                 queryFilter: tags.queryfilter,
+                insertable: isInsertable(property),
+                updatable: isUpdatable(property),
                 read: fieldName,
             };
             if (tags.queryOrderBy !== undefined) {

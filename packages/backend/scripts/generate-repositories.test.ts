@@ -7,11 +7,20 @@ import { generateIndex, generateRepositories, generateRepository } from "./gener
 import type { Column, Table } from "./postgres-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
+    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
+    // otherwise passes the flag itself.
+    const insertable = extras.insertable ?? extras.default === undefined;
+    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
 /** A table fixture; defaults keep each test focused on the part it exercises. */
-function table(name: string, interfaceName: string, columns: Column[]): Table {
+function table(
+    name: string,
+    interfaceName: string,
+    columns: Column[],
+    insertOmit: string[] = [],
+    patchOmit: string[] = [],
+): Table {
     return {
         name,
         interfaceName,
@@ -20,6 +29,8 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         relations: new Map(),
         sameRowAssignments: [],
         rollups: new Map(),
+        insertOmit,
+        patchOmit,
     };
 }
 
@@ -95,6 +106,98 @@ describe("generateRepository", () => {
         expect(code).toContain("export async function createCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {");
         expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {");
         expect(code).toContain("export async function deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void> {");
+    });
+
+    it("takes an insert type when the create writes fewer fields than the entity has", () => {
+        const limited = table(
+            "limited",
+            "Limited",
+            [column("id", { sqlType: "uuid", primaryKey: true }), column("label")],
+            ["computed", "createdAt"],
+        );
+        const code = generateRepository(limited);
+
+        expect(code).toContain('export type LimitedInsert = Omit<Limited, "computed" | "createdAt">;');
+        expect(code).toContain("export async function createLimited(db: SqlExecutor, rows: LimitedInsert[])");
+    });
+
+    it("keeps the entity type when a create writes every field", () => {
+        const code = generateRepository(customer);
+
+        expect(code).not.toContain("CustomerInsert");
+    });
+
+    it("narrows the patch type to the fields the update writes", () => {
+        const limited = table(
+            "limited",
+            "Limited",
+            [column("id", { sqlType: "uuid", primaryKey: true }), column("label")],
+            [],
+            ["readOnly", "createdAt"],
+        );
+        const code = generateRepository(limited);
+
+        expect(code).toContain(
+            'export type LimitedPatch = Omit<Partial<Limited>, "readOnly" | "createdAt"> & Required<Pick<Limited, "id">>;',
+        );
+    });
+
+    it("keeps the plain patch shape when the update writes every column", () => {
+        const code = generateRepository(customer);
+
+        expect(code).toContain('export type CustomerPatch = Partial<Customer> & Required<Pick<Customer, "id">>;');
+    });
+
+    it("refuses in the patch type every column the update statement leaves alone", () => {
+        const limited = table(
+            "limited",
+            "Limited",
+            [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("label"),
+                column("createdAt", { sqlType: "timestamptz", default: "now()" }),
+                column("derived", { notNull: false, updatable: false }),
+                column("version", { sqlType: "int8", default: "0", version: true }),
+            ],
+            [],
+            ["createdAt", "derived"],
+        );
+        const code = generateRepository(limited);
+        const setClause = code.match(/set (.*?) from \(values /)?.[1] ?? "";
+        const assigned = new Set([...setClause.matchAll(/"(\w+)" = /g)].map((match) => match[1]));
+        const omitted = code.match(/Omit<Partial<Limited>, ([^>]*)>/)?.[1] ?? "";
+
+        // The statement sets the patchable column and the version; the key identifies the row in the where
+        // clause, and the defaulted and derived columns are skipped altogether.
+        expect(assigned).toEqual(new Set(["label", "version"]));
+        expect(code).toContain('where "limited"."id" = data."id"');
+        // The type refuses exactly the columns the statement leaves alone, so a caller cannot pass one and
+        // see it dropped.
+        expect(omitted.replaceAll('"', "").split(" | ")).toEqual(["createdAt", "derived"]);
+    });
+
+    it("leaves a non-updatable column out of the patch statement", () => {
+        const limited = table("limited", "Limited", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("label"),
+            column("derived", { notNull: false, updatable: false }),
+        ]);
+        const setClause = generateRepository(limited).match(/set (.*?) from \(values /)?.[1] ?? "";
+
+        expect(setClause).toContain('"label" = ');
+        expect(setClause).not.toContain('"derived"');
+    });
+
+    it("leaves a non-insertable column out of the insert statement", () => {
+        const limited = table("limited", "Limited", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("label"),
+            column("derived", { insertable: false }),
+        ]);
+        const insert = generateRepository(limited).match(/insert into "limited" \(([^)]*)\)/)?.[1] ?? "";
+
+        expect(insert).toContain('"label"');
+        expect(insert).not.toContain('"derived"');
     });
 
     it("returns early for an empty array", () => {

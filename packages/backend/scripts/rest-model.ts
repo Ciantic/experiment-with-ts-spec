@@ -46,6 +46,10 @@ export interface RestEntity {
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
+    /** The fields a create omits, so a client cannot send a column the database owns. */
+    insertOmit: string[];
+    /** The fields a patch omits, so a client cannot send a column the update will not write. */
+    patchOmit: string[];
     operations: RestOperation[];
 }
 
@@ -92,6 +96,8 @@ export function buildRestModel(tables: Map<string, Table>): RestModel {
                 .filter((column) => column.where !== undefined)
                 .map((column) => ({ name: column.name, operators: column.where ?? [] })),
             versionFields: table.columns.filter((column) => column.version).map((column) => column.name),
+            insertOmit: table.insertOmit ?? [],
+            patchOmit: table.patchOmit ?? [],
             operations: operationsFor(table, path),
         });
     }

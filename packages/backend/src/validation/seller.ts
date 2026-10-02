@@ -15,7 +15,23 @@ export const sellerSchema = z.object({
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export const sellerPatchSchema = sellerSchema.partial().required({
-    id: true,
-    version: true,
-});
+export const sellerPatchSchema = sellerSchema
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+    })
+    .partial()
+    .required({
+        id: true,
+        version: true,
+    })
+    .strict();
+
+/** The fields a `create` writes: only the columns the database does not own. */
+export const sellerInsertSchema = sellerSchema
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+        version: true,
+    })
+    .strict();

@@ -8,7 +8,10 @@ import {
 } from "./generate-queries.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
+    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
+    // otherwise passes the flag itself.
+    const insertable = extras.insertable ?? extras.default === undefined;
+    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
 function table(

@@ -193,6 +193,43 @@ export function snakeCase(name: string): string {
     return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
+/** True when a create writes the field, rather than the database owning it. See docs/repositories.md. */
+export function isInsertable(property: SpecProperty): boolean {
+    // A `@default` column is left to the database on insert.
+    if (property.tags.default !== undefined) {
+        return false;
+    }
+    // A stored computation belongs to the trigger, so it is the caller's only while the column is
+    // required: a nullable one may be left out and derived from the rows that follow.
+    if (property.tags.computed) {
+        return !property.optional;
+    }
+    return true;
+}
+
+/** The fields a create omits: a branch that is not flattened, or a column the database owns. */
+export function omittedFromInsert(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter(
+        (property) => property.tags.relation || property.tags.children || !isInsertable(property),
+    );
+}
+
+/** The `@inlined` fields a create nests, each written as the target entity's own insert shape. */
+export function inlinedFromInsert(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter((property) => property.tags.inlined);
+}
+
+/** True when a patch writes the field: what a create writes, plus the version it carries as its precondition. */
+export function isUpdatable(property: SpecProperty): boolean {
+    // The version is the one defaulted column a patch supplies; every other one keeps its stored value.
+    return Boolean(property.tags.version) || (isInsertable(property) && !property.tags.relation && !property.tags.children);
+}
+
+/** The fields a patch omits; the wire schema and the generated patch type share this set, so they agree. */
+export function omittedFromPatch(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter((property) => !isUpdatable(property));
+}
+
 /** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
 export function lowerFirst(name: string): string {
     // A leading run of capitals is an acronym: lowercase all of it, not just the first letter.

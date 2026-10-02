@@ -3,9 +3,12 @@ import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
 /** A partial update: every column is optional except the key. */
-export type InvoiceSentPatch = Partial<InvoiceSent> & Required<Pick<InvoiceSent, "id">>;
+export type InvoiceSentPatch = Omit<Partial<InvoiceSent>, "rows"> & Required<Pick<InvoiceSent, "id">>;
 
-export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSent[]): Promise<void> {
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceSentInsert = Omit<InvoiceSent, "rows">;
+
+export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSentInsert[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }

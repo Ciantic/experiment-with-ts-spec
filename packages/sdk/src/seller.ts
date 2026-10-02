@@ -4,7 +4,7 @@ import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { HttpClient } from "./http.ts";
 
 /** A partial update: every field is optional except the key and the version. */
-export type SellerPatch = Partial<Seller> & Required<Pick<Seller, "id" | "version">>;
+export type SellerPatch = Omit<Partial<Seller>, "createdAt" | "updatedAt"> & Required<Pick<Seller, "id" | "version">>;
 
 /** Query `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
@@ -14,8 +14,11 @@ export function querySeller<S extends Selection<Seller>>(
     return http.query<Selected<Seller, S>[]>("GET", "/seller/query", opts);
 }
 
+/** The fields a create writes: only the columns the database does not own. */
+export type SellerInsert = Omit<Seller, "createdAt" | "updatedAt" | "version">;
+
 /** Create `Seller` rows. */
-export function createSeller(http: HttpClient, rows: Seller[]): Promise<void> {
+export function createSeller(http: HttpClient, rows: SellerInsert[]): Promise<void> {
     return http.send<void>("POST", "/seller", rows);
 }
 

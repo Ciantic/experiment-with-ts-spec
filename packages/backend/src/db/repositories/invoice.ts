@@ -3,21 +3,24 @@ import type { Invoice } from "spec/domain/Invoice.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
 /** A partial update: every column is optional except the key and the version. */
-export type InvoicePatch = Partial<Invoice> & Required<Pick<Invoice, "id" | "version">>;
+export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt"> & Required<Pick<Invoice, "id" | "version">>;
 
-export async function createInvoice(db: SqlExecutor, rows: Invoice[]): Promise<void> {
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceInsert = Omit<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version">;
+
+export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.number, row.customerId, row.sellerId, row.language, row.issueDate, row.dueDate, row.netAmount, row.taxAmount, row.totalAmount, row.notes];
+        const values = [row.id, row.number, row.customerId, row.sellerId, row.language, row.issueDate, row.dueDate, row.notes];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::text" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::text" + ")");
     }
-    await db.query('insert into "invoice" ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "netAmount", "taxAmount", "totalAmount", "notes") values ' + tuples.join(", "), parameters);
+    await db.query('insert into "invoice" ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") values ' + tuples.join(", "), parameters);
 }
 
 export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Promise<void> {
@@ -27,12 +30,12 @@ export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Prom
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.number ?? null, row.customerId ?? null, row.sellerId ?? null, row.language ?? null, row.issueDate ?? null, row.dueDate ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null, row.notes ?? null, row.version];
+        const values = [row.id, row.number ?? null, row.customerId ?? null, row.sellerId ?? null, row.language ?? null, row.issueDate ?? null, row.dueDate ?? null, row.notes ?? null, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::text" + ", " + "$" + (offset + 12) + "::int8" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::text" + ", " + "$" + (offset + 9) + "::int8" + ")");
     }
-    await db.query('update "invoice" set "number" = coalesce(data."number", "invoice"."number"), "customerId" = coalesce(data."customerId", "invoice"."customerId"), "sellerId" = coalesce(data."sellerId", "invoice"."sellerId"), "language" = coalesce(data."language", "invoice"."language"), "issueDate" = coalesce(data."issueDate", "invoice"."issueDate"), "dueDate" = coalesce(data."dueDate", "invoice"."dueDate"), "netAmount" = coalesce(data."netAmount", "invoice"."netAmount"), "taxAmount" = coalesce(data."taxAmount", "invoice"."taxAmount"), "totalAmount" = coalesce(data."totalAmount", "invoice"."totalAmount"), "notes" = coalesce(data."notes", "invoice"."notes"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "netAmount", "taxAmount", "totalAmount", "notes", "version") where "invoice"."id" = data."id"', parameters);
+    await db.query('update "invoice" set "number" = coalesce(data."number", "invoice"."number"), "customerId" = coalesce(data."customerId", "invoice"."customerId"), "sellerId" = coalesce(data."sellerId", "invoice"."sellerId"), "language" = coalesce(data."language", "invoice"."language"), "issueDate" = coalesce(data."issueDate", "invoice"."issueDate"), "dueDate" = coalesce(data."dueDate", "invoice"."dueDate"), "notes" = coalesce(data."notes", "invoice"."notes"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "version") where "invoice"."id" = data."id"', parameters);
 }
 
 export async function deleteInvoice(db: SqlExecutor, rows: Invoice[]): Promise<void> {

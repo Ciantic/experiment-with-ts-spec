@@ -14,8 +14,11 @@ export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
     return http.query<Selected<InvoiceSentRow, S>[]>("GET", "/invoice_sent_row/query", opts);
 }
 
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceSentRowInsert = InvoiceSentRow;
+
 /** Create `InvoiceSentRow` rows. */
-export function createInvoiceSentRow(http: HttpClient, rows: InvoiceSentRow[]): Promise<void> {
+export function createInvoiceSentRow(http: HttpClient, rows: InvoiceSentRowInsert[]): Promise<void> {
     return http.send<void>("POST", "/invoice_sent_row", rows);
 }
 

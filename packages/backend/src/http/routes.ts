@@ -3,7 +3,7 @@ import type { Route } from "./router.ts";
 import { z } from "zod";
 import { createCustomer, createInvoice, createInvoiceRow, createInvoiceSent, createInvoiceSentRow, createSeller, deleteCustomer, deleteInvoice, deleteInvoiceRow, deleteInvoiceSent, deleteInvoiceSentRow, deleteSeller, updateCustomer, updateInvoice, updateInvoiceRow, updateInvoiceSent, updateInvoiceSentRow, updateSeller } from "../db/repositories/index.ts";
 import { queryCustomer, queryInvoice, queryInvoiceRow, queryInvoiceSent, queryInvoiceSentRow, querySeller } from "../db/queries/index.ts";
-import { customerPatchSchema, customerSchema, invoicePatchSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentPatchSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
+import { customerInsertSchema, customerPatchSchema, customerSchema, invoiceInsertSchema, invoicePatchSchema, invoiceRowInsertSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
 
 /** Every exposed call, matched by method and path. */
 export const routes: Route[] = [
@@ -18,14 +18,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/customer",
         source: "body",
-        input: customerSchema,
+        input: z.array(customerInsertSchema),
         handler: (db, body) => createCustomer(db, body as never),
     },
     {
         method: "PATCH",
         path: "/customer",
         source: "body",
-        input: customerPatchSchema,
+        input: z.array(customerPatchSchema),
         handler: (db, body) => updateCustomer(db, body as never),
     },
     {
@@ -46,14 +46,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/invoice",
         source: "body",
-        input: invoiceSchema,
+        input: z.array(invoiceInsertSchema),
         handler: (db, body) => createInvoice(db, body as never),
     },
     {
         method: "PATCH",
         path: "/invoice",
         source: "body",
-        input: invoicePatchSchema,
+        input: z.array(invoicePatchSchema),
         handler: (db, body) => updateInvoice(db, body as never),
     },
     {
@@ -74,14 +74,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/invoice_row",
         source: "body",
-        input: invoiceRowSchema,
+        input: z.array(invoiceRowInsertSchema),
         handler: (db, body) => createInvoiceRow(db, body as never),
     },
     {
         method: "PATCH",
         path: "/invoice_row",
         source: "body",
-        input: invoiceRowPatchSchema,
+        input: z.array(invoiceRowPatchSchema),
         handler: (db, body) => updateInvoiceRow(db, body as never),
     },
     {
@@ -102,14 +102,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/invoice_sent",
         source: "body",
-        input: invoiceSentSchema,
+        input: z.array(invoiceSentInsertSchema),
         handler: (db, body) => createInvoiceSent(db, body as never),
     },
     {
         method: "PATCH",
         path: "/invoice_sent",
         source: "body",
-        input: invoiceSentPatchSchema,
+        input: z.array(invoiceSentPatchSchema),
         handler: (db, body) => updateInvoiceSent(db, body as never),
     },
     {
@@ -130,14 +130,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/invoice_sent_row",
         source: "body",
-        input: invoiceSentRowSchema,
+        input: z.array(invoiceSentRowInsertSchema),
         handler: (db, body) => createInvoiceSentRow(db, body as never),
     },
     {
         method: "PATCH",
         path: "/invoice_sent_row",
         source: "body",
-        input: invoiceSentRowPatchSchema,
+        input: z.array(invoiceSentRowPatchSchema),
         handler: (db, body) => updateInvoiceSentRow(db, body as never),
     },
     {
@@ -158,14 +158,14 @@ export const routes: Route[] = [
         method: "POST",
         path: "/seller",
         source: "body",
-        input: sellerSchema,
+        input: z.array(sellerInsertSchema),
         handler: (db, body) => createSeller(db, body as never),
     },
     {
         method: "PATCH",
         path: "/seller",
         source: "body",
-        input: sellerPatchSchema,
+        input: z.array(sellerPatchSchema),
         handler: (db, body) => updateSeller(db, body as never),
     },
     {

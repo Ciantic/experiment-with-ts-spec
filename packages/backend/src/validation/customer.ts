@@ -17,7 +17,23 @@ export const customerSchema = z.object({
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export const customerPatchSchema = customerSchema.partial().required({
-    id: true,
-    version: true,
-});
+export const customerPatchSchema = customerSchema
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+    })
+    .partial()
+    .required({
+        id: true,
+        version: true,
+    })
+    .strict();
+
+/** The fields a `create` writes: only the columns the database does not own. */
+export const customerInsertSchema = customerSchema
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+        version: true,
+    })
+    .strict();

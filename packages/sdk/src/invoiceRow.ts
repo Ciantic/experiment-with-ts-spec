@@ -4,7 +4,7 @@ import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { HttpClient } from "./http.ts";
 
 /** A partial update: every field is optional except the key and the version. */
-export type InvoiceRowPatch = Partial<InvoiceRow> & Required<Pick<InvoiceRow, "id" | "version">>;
+export type InvoiceRowPatch = Omit<Partial<InvoiceRow>, "netAmount" | "taxAmount" | "totalAmount" | "createdAt" | "updatedAt"> & Required<Pick<InvoiceRow, "id" | "version">>;
 
 /** Query `InvoiceRow` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
@@ -14,8 +14,11 @@ export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
     return http.query<Selected<InvoiceRow, S>[]>("GET", "/invoice_row/query", opts);
 }
 
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceRowInsert = Omit<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount" | "createdAt" | "updatedAt" | "version">;
+
 /** Create `InvoiceRow` rows. */
-export function createInvoiceRow(http: HttpClient, rows: InvoiceRow[]): Promise<void> {
+export function createInvoiceRow(http: HttpClient, rows: InvoiceRowInsert[]): Promise<void> {
     return http.send<void>("POST", "/invoice_row", rows);
 }
 

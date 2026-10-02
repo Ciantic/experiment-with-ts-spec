@@ -77,12 +77,12 @@ export function generateRepository(table: Table): string {
     const columns = table.columns;
     const primaryKeys = columns.filter((column) => column.primaryKey);
     const versionColumns = columns.filter((column) => column.version);
-    // A column with a database default is left to the database on insert; the repository never writes it.
-    const insertColumns = columns.filter((column) => column.default === undefined);
-    // A patch may set every column except the key; a defaulted column is skipped unless it is the version.
-    const patchColumns = columns.filter(
-        (column) => !column.primaryKey && (column.default === undefined || column.version),
-    );
+    // A create writes the insertable fields: no `@default`, and no `@computed` value it can derive. The
+    // same rule names `<entity>InsertSchema`, so the statement and the type cannot disagree.
+    const insertColumns = columns.filter((column) => column.insertable !== false);
+    // A patch writes the same fields as its type allows: a defaulted or nullable-derived column keeps its
+    // stored value, so the statement never names one. The trigger owns it, not the caller.
+    const patchColumns = columns.filter((column) => !column.primaryKey && column.updatable !== false);
     // The tuple carries the keys first, then the patchable columns.
     const dataEntries = [...primaryKeys.map(readEntry), ...patchColumns.map(patchEntry)];
     const requiredColumns = [...primaryKeys, ...versionColumns];
@@ -115,10 +115,29 @@ export function generateRepository(table: Table): string {
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push("");
     lines.push(requiredComment);
-    lines.push(`export type ${entity}Patch = Partial<${entity}> & Required<Pick<${entity}, ${requiredKeys}>>;`);
+    // The patch type carries exactly the fields the statement writes, so a caller cannot pass a field the
+    // update would read and then drop. It mirrors `<entity>PatchSchema` (`docs/validation.md`).
+    const patchOmit = table.patchOmit ?? [];
+    if (patchOmit.length === 0) {
+        lines.push(`export type ${entity}Patch = Partial<${entity}> & Required<Pick<${entity}, ${requiredKeys}>>;`);
+    } else {
+        lines.push(
+            `export type ${entity}Patch = Omit<Partial<${entity}>, ${patchOmit.map(quote).join(" | ")}> & Required<Pick<${entity}, ${requiredKeys}>>;`,
+        );
+    }
+
+    // The create type is the entity minus every field the insert does not write, so a caller cannot
+    // pass one and assume it landed. It mirrors `<entity>InsertSchema` (`docs/validation.md`).
+    const insertOmit = table.insertOmit ?? [];
+    const insertType = insertOmit.length === 0 ? entity : `${entity}Insert`;
+    if (insertOmit.length > 0) {
+        lines.push("");
+        lines.push("/** The fields a create writes: only the columns the database does not own. */");
+        lines.push(`export type ${entity}Insert = Omit<${entity}, ${insertOmit.map(quote).join(" | ")}>;`);
+    }
     lines.push("");
 
-    lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
+    lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${insertType}[]): Promise<void> {`);
     lines.push(...collectValues(insertColumns.map(readEntry)));
     lines.push(
         `    await db.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,

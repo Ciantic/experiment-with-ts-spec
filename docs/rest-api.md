@@ -29,7 +29,7 @@ their argument in a single `q` query parameter; a write carries it in the body.
 | Call | Method | Path | Argument |
 | --- | --- | --- | --- |
 | query | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
-| create | `POST` | `/<table>` | `[<entity>Schema]` in the body |
+| create | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
 
@@ -43,10 +43,10 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 `where`. A caller that wants a single row takes the first result
 (`docs/queries.md`).
 
-A create takes a whole entity and a patch takes `<entity>PatchSchema`, mirroring
-the repository signatures exactly (`docs/repositories.md`). A delete needs only
-the key, so its schema is the entity schema projected to the key rather than a
-new schema.
+A create takes `<entity>InsertSchema`, the columns the database does not own, and
+a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly
+(`docs/repositories.md`). A delete needs only the key, so its schema is the
+entity schema projected to the key rather than a new schema.
 
 ## Why a read is a `GET` with `q`
 
@@ -143,11 +143,15 @@ OpenAPI document: `Selected<E, S>` is a conditional type, and conditional types
 do not survive a round trip through a document format.
 
 `update` needs the repository's patch type and cannot import it, so the client
-declares its own from the same rule — optional except the key and the version:
+declares its own from the same rule — optional except the key and the version,
+carrying only what an update writes:
 
 ```typescript
-export type InvoicePatch = Partial<Invoice> & Required<Pick<Invoice, "id" | "version">>;
+export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt"> & Required<Pick<Invoice, "id" | "version">>;
 ```
+
+A create narrows the same way, to `<Entity>Insert`, so the type a caller sends
+and the schema that validates it agree (`docs/validation.md`).
 
 ## Transport
 
@@ -208,13 +212,16 @@ the same path as an empty body.
 - **The wire format is JavaScript-specific.** `devalue` has no cross-language
   spec, so there is no OpenAPI artifact and no non-JS client. See "Deliberately
   not implemented".
-- **A create takes the identifiers it should not.** `<entity>Schema` includes
-  `id` and the `@generated` and `@computed` fields, so a client can supply them.
-  That is the repository's contract, not an oversight: `create<Entity>` takes a
-  whole entity. Narrowing it needs an annotation-driven input schema.
-- **A patch cannot clear a column.** `coalesce` cannot tell an omitted field from
-  a `null` one, so the patch contract carries that limitation over HTTP unchanged
-  (`docs/repositories.md`).
+- **A create takes only what it writes.** `<entity>InsertSchema` carries the
+  columns the database does not own, so `id` and the `@default` / `@computed`
+  fields a client must not choose are absent and a stray one is a 400. The
+  generated client types the same way, as `<Entity>Insert`.
+- **A patch takes only what an update writes.** `<entity>PatchSchema` is the
+  create's field set plus the version, so the same branches and defaulted columns
+  are absent and a stray one is a 400 rather than a no-op. The generated
+  `<Entity>Patch` type narrows with it. What the patch still cannot do is clear a
+  column: `coalesce` cannot tell an omitted field from a `null` one, so the patch
+  contract carries that limitation over HTTP unchanged (`docs/repositories.md`).
 - **A `query` with no filters scans the table, up to `limit`.**
   `queryInvoice(http, { select })` is legal by design and returns the first 1000
   rows. There is no authorization.

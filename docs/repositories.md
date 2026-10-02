@@ -13,14 +13,15 @@ The output is committed. Regenerate rather than editing it by hand.
 Each module exports three functions for its entity:
 
 ```ts
-createCustomer(db: SqlExecutor, rows: Customer[]): Promise<void>
+createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void>
 updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
 deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void>
 ```
 
-`create` and `delete` take a whole entity. `update` takes a **patch**, so a
-caller changes the fields it has without having to read and resend the rest;
-see "Patching" below.
+`create` takes an **insert** — the fields a create writes — and `update` takes a
+**patch**, so a caller changes the fields it has without having to read and
+resend the rest; see "Inserting" and "Patching" below. `delete` takes a whole
+entity, of which it reads only the key.
 
 Every function takes an array and returns nothing. **Reading is not part of a
 repository.** There is no `getById`, no list, no query builder. Those belong to
@@ -48,23 +49,47 @@ whole reason the functions exist in this shape:
 Each function returns early on an empty array, so the caller does not have to
 guard.
 
+## Inserting
+
+`create` takes an insert rather than the whole entity. The type is the entity
+minus every field the statement does not write, so it mirrors the SQL exactly:
+
+```ts
+export type InvoiceInsert = Omit<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version">;
+
+export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void>
+```
+
+A whole entity is still assignable to it, so a caller holding one can pass it
+unchanged. What the type rules out is a field that would be read and then
+dropped — a branch, a defaulted column, or a derivable value — which is the same
+set `<entity>InsertSchema` accepts (`docs/validation.md`). An entity with
+nothing to omit keeps the entity type and gets no alias.
+
 ## Patching
 
 `update` takes a patch rather than a whole entity. The generator emits one type
-per module:
+per module, narrowed to the columns the statement writes:
 
 ```ts
-export type CustomerPatch = Partial<Customer> & Required<Pick<Customer, "id" | "version">>;
+export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
 ```
 
-Every column is optional except two, which are the keys the rest of the design
-leans on:
+Every written column is optional except two, which are the keys the rest of the
+design leans on:
 
 - **The primary key** says which row to write.
 - **The `@version` column**, where one exists, is the optimistic-lock
   precondition (`docs/versioning.md`). It is required so a patch cannot
   accidentally skip the check. For an entity with no version — the snapshots —
   only the key is required.
+
+A field the statement does not write is left out of the type rather than being
+accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
+touches. That is a branch — a `@relation` or `@children` field, which has no
+column — a defaulted column, which the database owns, or a nullable `@computed`
+column, which the trigger derives. An entity that writes every column keeps the
+plain `Partial<Entity>` shape.
 
 The emitted statement writes every patchable column, using `coalesce` to keep a
 stored value when the patch omits one:
@@ -89,6 +114,12 @@ compare it against the stored one.
 A table with nothing to patch sets its key to the key it already holds, so the
 statement stays valid.
 
+`<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
+`omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), so the repository
+type and the wire schema cannot drift apart. A field neither writes is a 400 on
+the wire and a type error in process, rather than a field that quietly does
+nothing (`docs/validation.md`).
+
 ## Where the columns come from
 
 The generator does not read `schema.sql` and does not re-parse the spec: it
@@ -109,6 +140,18 @@ appears in a generated `insert`. That covers both timestamps: the default fills
 `createdAt` and `updatedAt` on insert, and the trigger refreshes `updatedAt` on
 every write; see `docs/timestamps.md`.
 
+A `@computed` column the database can fill later is left out too, so the
+`insert` names exactly the insertable fields and nothing else. That is the whole
+of `<entity>InsertSchema`, which is why the statement and the wire schema cannot
+disagree (`docs/validation.md`). A computed column that is *required* stays: it
+has no default and no nullable column, so the insert has to carry it.
+
+A *nullable* computed column is likewise left out of a patch, and out of the
+`update` statement with it: a `before insert or update` trigger reassigns the
+column from the fields it derives from, so naming it would write a value the
+trigger then overwrites. A *required* computed column stays in the patch, since
+it has no stored value to fall back on.
+
 The one exception is a `@version` column. It is defaulted, so it is omitted on
 insert, but it is written on update because it carries the optimistic-lock
 precondition the trigger checks. The generator therefore builds the insert and
@@ -119,9 +162,14 @@ patch column sets separately; see `docs/versioning.md`.
 - **Foreign keys have no `ON DELETE` clause**, so `deleteInvoice` fails while
   rows still reference it. Deleting children is the caller's job; there is no
   cascade.
-- **Computed columns without a default are supplied like any other.** The insert
-  sends them, then the before-trigger overwrites them. Passing a value is
-  required (the columns are `not null` with no default) but has no effect.
+- **A required computed column is supplied and then overwritten.** The insert
+  sends it, the before-trigger overwrites it, so passing a value has no effect.
+  Whether one is required follows the field's optionality, not the computation:
+  `InvoiceSentRow.netAmount` is required and `not null`, so the insert has to
+  carry it, while `InvoiceRow.netAmount` is optional and its column nullable. A
+  *nullable* computed column is named in neither the `insert` nor the `update`,
+  so its value is left to the trigger or rollup that fills it
+  (`docs/validation.md`).
 - **A defaulted column is never written.** Both timestamps have database defaults
   and are excluded from `insert` and `update`, so the generated functions cannot
   set them even deliberately. Writing one takes raw SQL. A `@version` column is

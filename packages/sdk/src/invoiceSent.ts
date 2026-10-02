@@ -4,7 +4,7 @@ import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { HttpClient } from "./http.ts";
 
 /** A partial update: every field is optional except the key. */
-export type InvoiceSentPatch = Partial<InvoiceSent> & Required<Pick<InvoiceSent, "id">>;
+export type InvoiceSentPatch = Omit<Partial<InvoiceSent>, "rows"> & Required<Pick<InvoiceSent, "id">>;
 
 /** Query `InvoiceSent` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
@@ -14,8 +14,11 @@ export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
     return http.query<Selected<InvoiceSent, S>[]>("GET", "/invoice_sent/query", opts);
 }
 
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceSentInsert = Omit<InvoiceSent, "rows">;
+
 /** Create `InvoiceSent` rows. */
-export function createInvoiceSent(http: HttpClient, rows: InvoiceSent[]): Promise<void> {
+export function createInvoiceSent(http: HttpClient, rows: InvoiceSentInsert[]): Promise<void> {
     return http.send<void>("POST", "/invoice_sent", rows);
 }
 

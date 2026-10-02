@@ -7,8 +7,11 @@ import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNod
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    inlinedFromInsert,
     isCompareOperator,
     lowerFirst,
+    omittedFromInsert,
+    omittedFromPatch,
     parseSpec,
     type Diagnostic,
     type SpecInterface,
@@ -39,8 +42,16 @@ export interface ZodEntity {
     patchName: string;
     /** The schema validating a `select` over this entity's query. See docs/queries.md. */
     querySelectName: string;
+    /** The schema validating a create: the entity minus everything the database owns. */
+    insertName: string;
     fileName: string;
     fields: ZodField[];
+    /** Field names a create omits, rendered as an `.omit()` of the entity schema. */
+    insertOmit: string[];
+    /** Field names a patch omits: the same set, less the key and version a patch must carry. */
+    patchOmit: string[];
+    /** `@inlined` branches a create nests, each as the target's own insert schema. */
+    insertInlined: { name: string; target: string }[];
     /** Entity names a field references, so the file imports their schemas. */
     dependencies: string[];
     /** True when a field resolves through a primitive schema. */
@@ -129,6 +140,11 @@ function schemaName(name: string): string {
 /** Invoice -> queryInvoiceSelectSchema. */
 export function querySelectSchemaName(name: string): string {
     return `query${name}SelectSchema`;
+}
+
+/** Invoice -> invoiceInsertSchema. */
+export function insertSchemaName(name: string): string {
+    return `${lowerFirst(name)}InsertSchema`;
 }
 
 /** Invoice -> invoice.ts. */
@@ -411,13 +427,25 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
 
         // A self-reference is not imported; the schema is in the same module.
         context.dependencies.delete(spec.name);
+        // A create and a patch write the same fields; a patch only adds the version back, since the
+        // optimistic-lock precondition is not part of what a create writes. See docs/validation.md.
+        const insertOmit = omittedFromInsert(spec).map((property) => property.name);
+        const patchOmit = omittedFromPatch(spec).map((property) => property.name);
         entities.push({
             name: spec.name,
             schemaName: schemaName(spec.name),
             patchName: `${lowerFirst(spec.name)}PatchSchema`,
             querySelectName: querySelectSchemaName(spec.name),
+            insertName: insertSchemaName(spec.name),
             fileName: fileName(spec.name),
             fields,
+            insertOmit,
+            patchOmit,
+            insertInlined: inlinedFromInsert(spec).flatMap((property) => {
+                const typeNode = property.declaration.getTypeNode();
+                const target = typeNode && entityNameOf(typeNode);
+                return target === undefined ? [] : [{ name: property.name, target }];
+            }),
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
             required,

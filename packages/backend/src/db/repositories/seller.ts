@@ -3,9 +3,12 @@ import type { Seller } from "spec/domain/Seller.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
 /** A partial update: every column is optional except the key and the version. */
-export type SellerPatch = Partial<Seller> & Required<Pick<Seller, "id" | "version">>;
+export type SellerPatch = Omit<Partial<Seller>, "createdAt" | "updatedAt"> & Required<Pick<Seller, "id" | "version">>;
 
-export async function createSeller(db: SqlExecutor, rows: Seller[]): Promise<void> {
+/** The fields a create writes: only the columns the database does not own. */
+export type SellerInsert = Omit<Seller, "createdAt" | "updatedAt" | "version">;
+
+export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }

@@ -19,7 +19,29 @@ export const invoiceRowSchema = z.object({
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export const invoiceRowPatchSchema = invoiceRowSchema.partial().required({
-    id: true,
-    version: true,
-});
+export const invoiceRowPatchSchema = invoiceRowSchema
+    .omit({
+        netAmount: true,
+        taxAmount: true,
+        totalAmount: true,
+        createdAt: true,
+        updatedAt: true,
+    })
+    .partial()
+    .required({
+        id: true,
+        version: true,
+    })
+    .strict();
+
+/** The fields a `create` writes: only the columns the database does not own. */
+export const invoiceRowInsertSchema = invoiceRowSchema
+    .omit({
+        netAmount: true,
+        taxAmount: true,
+        totalAmount: true,
+        createdAt: true,
+        updatedAt: true,
+        version: true,
+    })
+    .strict();

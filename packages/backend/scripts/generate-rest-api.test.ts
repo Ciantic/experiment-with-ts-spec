@@ -5,7 +5,10 @@ import { buildRestModel } from "./rest-model.ts";
 import { renderRoutesModule } from "./generate-rest-api.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
+    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
+    // otherwise passes the flag itself.
+    const insertable = extras.insertable ?? extras.default === undefined;
+    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
 function table(name: string, interfaceName: string, columns: Column[]): Table {
@@ -49,8 +52,16 @@ describe("renderRoutesModule", () => {
 
         expect(code).toContain('path: "/widget/query"');
         expect(code).toContain("input: queryWidgetSchema");
-        expect(code).toContain("input: widgetSchema");
-        expect(code).toContain("input: widgetPatchSchema");
+        expect(code).toContain("input: z.array(widgetInsertSchema)");
+        expect(code).toContain("input: z.array(widgetPatchSchema)");
+    });
+
+    it("validates a write as a batch, since the repository takes rows", () => {
+        const code = render();
+
+        expect(code).toContain("input: z.array(widgetInsertSchema)");
+        expect(code).toContain("input: z.array(widgetPatchSchema)");
+        expect(code).toContain('input: z.array(widgetSchema.pick({ id: true }))');
     });
 
     it("reads with GET and says the argument travels in the query string", () => {

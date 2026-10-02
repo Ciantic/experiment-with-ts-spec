@@ -45,6 +45,7 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
         case "query":
             return `query${entity.entity}Schema`;
         case "create":
+            return `${entity.module}InsertSchema`;
         case "delete":
             return `${entity.module}Schema`;
         case "update":
@@ -52,10 +53,14 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
     }
 }
 
-/** The expression the router validates the body with. A delete carries only the key. */
+/** The expression the router validates the argument with. A read takes options; every write takes rows. */
 function inputExpression(entity: RestEntity, kind: RestKind): string {
     const schema = schemaName(entity, kind);
-    return kind === "delete" ? `z.array(${schema}.pick({ ${entity.key}: true }))` : schema;
+    // A delete carries only the key; a create and an update carry a batch of rows.
+    if (kind === "query") {
+        return schema;
+    }
+    return kind === "delete" ? `z.array(${schema}.pick({ ${entity.key}: true }))` : `z.array(${schema})`;
 }
 
 /** Every repository function the model needs. */

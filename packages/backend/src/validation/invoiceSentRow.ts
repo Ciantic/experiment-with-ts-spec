@@ -16,6 +16,13 @@ export const invoiceSentRowSchema = z.object({
 });
 
 /** A partial update: every field is optional except the key. */
-export const invoiceSentRowPatchSchema = invoiceSentRowSchema.partial().required({
-    id: true,
-});
+export const invoiceSentRowPatchSchema = invoiceSentRowSchema
+    .partial()
+    .required({
+        id: true,
+    })
+    .strict();
+
+/** The fields a `create` writes: only the columns the database does not own. */
+export const invoiceSentRowInsertSchema = invoiceSentRowSchema
+    .strict();

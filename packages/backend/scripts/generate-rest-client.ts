@@ -116,13 +116,17 @@ export function renderClientModule(entity: RestEntity): string {
 
     if (update) {
         const required = [entity.key, ...entity.versionFields].map((key) => JSON.stringify(key)).join(" | ");
+        const base =
+            entity.patchOmit.length === 0
+                ? `Partial<${name}>`
+                : `Omit<Partial<${name}>, ${entity.patchOmit.map((field) => JSON.stringify(field)).join(" | ")}>`;
         lines.push("");
         lines.push(
             entity.versionFields.length > 0
                 ? "/** A partial update: every field is optional except the key and the version. */"
                 : "/** A partial update: every field is optional except the key. */",
         );
-        lines.push(`export type ${name}Patch = Partial<${name}> & Required<Pick<${name}, ${required}>>;`);
+        lines.push(`export type ${name}Patch = ${base} & Required<Pick<${name}, ${required}>>;`);
     }
 
     if (query) {
@@ -140,8 +144,16 @@ export function renderClientModule(entity: RestEntity): string {
 
     if (create) {
         lines.push("");
+        lines.push("/** The fields a create writes: only the columns the database does not own. */");
+        if (entity.insertOmit.length === 0) {
+            lines.push(`export type ${name}Insert = ${name};`);
+        } else {
+            const omitted = entity.insertOmit.map((field) => JSON.stringify(field)).join(" | ");
+            lines.push(`export type ${name}Insert = Omit<${name}, ${omitted}>;`);
+        }
+        lines.push("");
         lines.push(comment(entity, "create"));
-        lines.push(`export function create${name}(http: HttpClient, rows: ${name}[]): Promise<void> {`);
+        lines.push(`export function create${name}(http: HttpClient, rows: ${name}Insert[]): Promise<void> {`);
         lines.push(`    return http.${transport(create)}<void>("${create.method}", "${create.path}", rows);`);
         lines.push("}");
     }

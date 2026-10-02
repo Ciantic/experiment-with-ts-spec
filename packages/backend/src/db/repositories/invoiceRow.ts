@@ -3,21 +3,24 @@ import type { InvoiceRow } from "spec/domain/InvoiceRow.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
 /** A partial update: every column is optional except the key and the version. */
-export type InvoiceRowPatch = Partial<InvoiceRow> & Required<Pick<InvoiceRow, "id" | "version">>;
+export type InvoiceRowPatch = Omit<Partial<InvoiceRow>, "netAmount" | "taxAmount" | "totalAmount" | "createdAt" | "updatedAt"> & Required<Pick<InvoiceRow, "id" | "version">>;
 
-export async function createInvoiceRow(db: SqlExecutor, rows: InvoiceRow[]): Promise<void> {
+/** The fields a create writes: only the columns the database does not own. */
+export type InvoiceRowInsert = Omit<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount" | "createdAt" | "updatedAt" | "version">;
+
+export async function createInvoiceRow(db: SqlExecutor, rows: InvoiceRowInsert[]): Promise<void> {
     if (rows.length === 0) {
         return;
     }
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.invoiceId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate, row.netAmount, row.taxAmount, row.totalAmount];
+        const values = [row.id, row.invoiceId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ")");
     }
-    await db.query('insert into "invoice_row" ("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") values ' + tuples.join(", "), parameters);
+    await db.query('insert into "invoice_row" ("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate") values ' + tuples.join(", "), parameters);
 }
 
 export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRowPatch[]): Promise<void> {
@@ -27,12 +30,12 @@ export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRowPatch[])
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.id, row.invoiceId ?? null, row.description ?? null, row.quantity ?? null, row.unit ?? null, row.unitPrice ?? null, row.taxRate ?? null, row.netAmount ?? null, row.taxAmount ?? null, row.totalAmount ?? null, row.version];
+        const values = [row.id, row.invoiceId ?? null, row.description ?? null, row.quantity ?? null, row.unit ?? null, row.unitPrice ?? null, row.taxRate ?? null, row.version];
         parameters.push(...values);
         const offset = parameters.length - values.length;
-        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ", " + "$" + (offset + 11) + "::int8" + ")");
+        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::int8" + ")");
     }
-    await db.query('update "invoice_row" set "invoiceId" = coalesce(data."invoiceId", "invoice_row"."invoiceId"), "description" = coalesce(data."description", "invoice_row"."description"), "quantity" = coalesce(data."quantity", "invoice_row"."quantity"), "unit" = coalesce(data."unit", "invoice_row"."unit"), "unitPrice" = coalesce(data."unitPrice", "invoice_row"."unitPrice"), "taxRate" = coalesce(data."taxRate", "invoice_row"."taxRate"), "netAmount" = coalesce(data."netAmount", "invoice_row"."netAmount"), "taxAmount" = coalesce(data."taxAmount", "invoice_row"."taxAmount"), "totalAmount" = coalesce(data."totalAmount", "invoice_row"."totalAmount"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount", "version") where "invoice_row"."id" = data."id"', parameters);
+    await db.query('update "invoice_row" set "invoiceId" = coalesce(data."invoiceId", "invoice_row"."invoiceId"), "description" = coalesce(data."description", "invoice_row"."description"), "quantity" = coalesce(data."quantity", "invoice_row"."quantity"), "unit" = coalesce(data."unit", "invoice_row"."unit"), "unitPrice" = coalesce(data."unitPrice", "invoice_row"."unitPrice"), "taxRate" = coalesce(data."taxRate", "invoice_row"."taxRate"), "version" = data."version" from (values ' + tuples.join(", ") + ') as data("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "version") where "invoice_row"."id" = data."id"', parameters);
 }
 
 export async function deleteInvoiceRow(db: SqlExecutor, rows: InvoiceRow[]): Promise<void> {

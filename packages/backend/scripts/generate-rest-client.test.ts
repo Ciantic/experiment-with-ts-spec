@@ -14,10 +14,19 @@ import { generateRestClient, renderClientModule } from "./generate-rest-client.t
 import { renderRoutesModule } from "./generate-rest-api.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, ...extras };
+    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
+    // otherwise passes the flag itself.
+    const insertable = extras.insertable ?? extras.default === undefined;
+    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
-function table(name: string, interfaceName: string, columns: Column[]): Table {
+function table(
+    name: string,
+    interfaceName: string,
+    columns: Column[],
+    insertOmit: string[] = [],
+    patchOmit: string[] = [],
+): Table {
     return {
         name,
         interfaceName,
@@ -26,6 +35,8 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         relations: new Map(),
         sameRowAssignments: [],
         rollups: new Map(),
+        insertOmit,
+        patchOmit,
     };
 }
 
@@ -119,6 +130,41 @@ describe("renderClientModule", () => {
 
         expect(code).toContain('rows: Pick<Widget, "id">[]');
         expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
+    });
+
+    it("types a create with an insert type, not the whole entity", () => {
+        const code = widgetModule();
+
+        expect(code).toContain("export type WidgetInsert = Widget;");
+        expect(code).toContain(
+            "export function createWidget(http: HttpClient, rows: WidgetInsert[]): Promise<void> {",
+        );
+    });
+
+    it("omits the columns the database owns from the insert type", () => {
+        const limited = table("limited", "Limited", [column("id", { primaryKey: true })], [
+            "version",
+            "createdAt",
+        ]);
+        const limitedModel = buildRestModel(new Map([["Limited", limited]]));
+        const code = renderClientModule(limitedModel.entities[0]!);
+
+        expect(code).toContain('export type LimitedInsert = Omit<Limited, "version" | "createdAt">;');
+    });
+
+    it("narrows the patch type to what the update writes, keeping the key and version", () => {
+        const limited = table(
+            "limited",
+            "Limited",
+            [column("id", { primaryKey: true }), column("version", { version: true })],
+            ["rows", "version"],
+            ["rows"],
+        );
+        const limitedModel = buildRestModel(new Map([["Limited", limited]]));
+        const code = renderClientModule(limitedModel.entities[0]!);
+
+        expect(code).toContain('export type LimitedPatch = Omit<Partial<Limited>, "rows">');
+        expect(code).toContain('& Required<Pick<Limited, "id" | "version">>;');
     });
 
     it("emits no getter", () => {
