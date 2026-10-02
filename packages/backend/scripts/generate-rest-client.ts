@@ -2,8 +2,8 @@
  * Generate the type-safe client from the REST model. See docs/rest-api.md.
  *
  * Writes `packages/sdk/src`: one module per entity plus a barrel. The output may
- * import `spec` and its own `./http.ts` and nothing else — no backend module, no
- * `zod`. A test asserts that invariant.
+ * import `spec`, the type-only write types `validation` shares, and its own
+ * `./http.ts` — no backend module, no `zod`. A test asserts that invariant.
  *
  * The call signatures are the generated reads with `db` replaced by `http`, so
  * the client narrows exactly as the server does and needs no encoding logic of
@@ -31,6 +31,9 @@ const INDEX_FILE = "index.ts";
 
 /** The package specifier the read types are imported from. */
 const SELECTION_IMPORT = "spec/selection.ts";
+
+/** The package the shared write types (`<Entity>Patch`, `<Entity>Insert`) are imported from. */
+const VALIDATION_PACKAGE = "validation";
 
 /** `"id" | "customerId"`. */
 function filterKeys(filters: string[]): string {
@@ -112,21 +115,23 @@ export function renderClientModule(entity: RestEntity): string {
     const lines: string[] = [HEADER];
     lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
     lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
-    lines.push(`import type { HttpClient } from "./${HTTP_MODULE}";`);
-
+    // The write types live in the validation package, so the client, the wire schema, and the server
+    // all name one definition. A type-only import keeps `zod` out of the client's runtime. See docs/validation.md.
+    const writeTypes: string[] = [];
+    if (create) {
+        writeTypes.push(`${name}Insert`);
+    }
     if (update) {
-        const required = [entity.key, ...entity.versionFields].map((key) => JSON.stringify(key)).join(" | ");
-        const base =
-            entity.patchOmit.length === 0
-                ? `Partial<${name}>`
-                : `Omit<Partial<${name}>, ${entity.patchOmit.map((field) => JSON.stringify(field)).join(" | ")}>`;
+        writeTypes.push(`${name}Patch`);
+    }
+    writeTypes.sort((a, b) => a.localeCompare(b));
+    if (writeTypes.length > 0) {
+        lines.push(`import type { ${writeTypes.join(", ")} } from "${VALIDATION_PACKAGE}/${entity.module}.ts";`);
+    }
+    lines.push(`import type { HttpClient } from "./${HTTP_MODULE}";`);
+    if (writeTypes.length > 0) {
         lines.push("");
-        lines.push(
-            entity.versionFields.length > 0
-                ? "/** A partial update: every field is optional except the key and the version. */"
-                : "/** A partial update: every field is optional except the key. */",
-        );
-        lines.push(`export type ${name}Patch = ${base} & Required<Pick<${name}, ${required}>>;`);
+        lines.push(`export type { ${writeTypes.join(", ")} };`);
     }
 
     if (query) {
@@ -143,14 +148,6 @@ export function renderClientModule(entity: RestEntity): string {
     }
 
     if (create) {
-        lines.push("");
-        lines.push("/** The fields a create writes: only the columns the database does not own. */");
-        if (entity.insertOmit.length === 0) {
-            lines.push(`export type ${name}Insert = ${name};`);
-        } else {
-            const omitted = entity.insertOmit.map((field) => JSON.stringify(field)).join(" | ");
-            lines.push(`export type ${name}Insert = Omit<${name}, ${omitted}>;`);
-        }
         lines.push("");
         lines.push(comment(entity, "create"));
         lines.push(`export function create${name}(http: HttpClient, rows: ${name}Insert[]): Promise<void> {`);

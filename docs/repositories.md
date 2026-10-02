@@ -51,27 +51,32 @@ guard.
 
 ## Inserting
 
-`create` takes an insert rather than the whole entity. The type is the entity
-minus every field the statement does not write, so it mirrors the SQL exactly:
+`create` takes an insert rather than the whole entity. The type lives in
+`packages/validation`, next to the schema that accepts the same fields, and the
+repository imports it:
 
 ```ts
-export type InvoiceInsert = Omit<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version">;
+import type { InvoiceInsert } from "validation/invoice.ts";
 
 export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void>
 ```
 
-A whole entity is still assignable to it, so a caller holding one can pass it
-unchanged. What the type rules out is a field that would be read and then
-dropped — a branch, a defaulted column, or a derivable value — which is the same
-set `<entity>InsertSchema` accepts (`docs/validation.md`). An entity with
-nothing to omit keeps the entity type and gets no alias.
+`InvoiceInsert` is the entity minus every field the statement does not write, so
+it mirrors the SQL exactly. A whole entity is still assignable to it, so a caller
+holding one can pass it unchanged. What the type rules out is a field that would
+be read and then dropped — a branch, a defaulted column, or a derivable value —
+which is the same set `<entity>InsertSchema` accepts (`docs/validation.md`). An
+entity with nothing to omit gets `type <Entity>Insert = <Entity>`.
 
 ## Patching
 
-`update` takes a patch rather than a whole entity. The generator emits one type
-per module, narrowed to the columns the statement writes:
+`update` takes a patch rather than a whole entity. The type lives in
+`packages/validation`, narrowed to the columns the statement writes, and the
+repository imports it:
 
 ```ts
+import type { CustomerPatch } from "validation/customer.ts";
+
 export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
 ```
 
@@ -115,8 +120,9 @@ A table with nothing to patch sets its key to the key it already holds, so the
 statement stays valid.
 
 `<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
-`omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), so the repository
-type and the wire schema cannot drift apart. A field neither writes is a 400 on
+`omittedFromPatch` (`packages/spec/scripts/spec-model.ts`) into one
+`packages/validation` module, so the repository type and the wire schema cannot
+drift apart. A field neither writes is a 400 on
 the wire and a type error in process, rather than a field that quietly does
 nothing (`docs/validation.md`).
 

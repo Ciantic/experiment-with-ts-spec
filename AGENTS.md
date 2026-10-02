@@ -1,7 +1,8 @@
 # Architecture
 
 - `packages/spec/` — TypeScript interfaces that form the definition of the application.
-- `packages/backend/` — Postgres schema, generated repositories, result mapping, and generated Zod schemas for the spec.
+- `packages/validation/` — generated Zod schemas and the shared Patch/Insert types, consumed by the backend, the SDK, and eventually the frontend.
+- `packages/backend/` — Postgres schema, generated repositories, and result mapping for the spec.
 - `packages/sdk/` — generated type-safe REST client, plus the hand-written transport.
 
 # Scripts

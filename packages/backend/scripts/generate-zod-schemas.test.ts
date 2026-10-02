@@ -257,6 +257,47 @@ describe("generateEntity", () => {
         expect(code).not.toContain('from "./thing.ts"');
     });
 
+    it("imports the spec entity type for the write types", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain('import type { Thing } from "spec/');
+    });
+
+    it("narrows the patch type by the same omit list as the patch schema", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain(
+            'export type ThingPatch = Omit<Partial<Thing>, "children" | "parent"> & Required<Pick<Thing, "id" | "version">>;',
+        );
+    });
+
+    it("mirrors the insert schema's omit list in the insert type", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain('export type ThingInsert = Omit<Thing, "children" | "parent">;');
+    });
+
+    it("requires only the key when the entity has no version", () => {
+        const { files } = generate({ domain: { Marker: MARKER } });
+        const code = files.get("marker.ts") ?? "";
+
+        expect(code).toContain(
+            'export type MarkerPatch = Omit<Partial<Marker>, "createdAt" | "total"> & Required<Pick<Marker, "id">>;',
+        );
+        expect(code).not.toContain('Required<Pick<Marker, "id" | "version">>');
+    });
+
+    it("keeps the entity type when the insert schema omits nothing", () => {
+        const bare = "export interface Bare { id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
+        const { files } = generate({ domain: { Bare: bare } });
+        const code = files.get("bare.ts") ?? "";
+
+        expect(code).toContain("export type BareInsert = Bare;");
+    });
+
 });
 
 describe("generateIndex", () => {

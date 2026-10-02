@@ -32,7 +32,7 @@ const ROUTER_IMPORT = "./router.ts";
 /** The module specifiers of the generated pieces the routes call into. */
 const QUERIES_IMPORT = "../db/queries/index.ts";
 const REPOSITORIES_IMPORT = "../db/repositories/index.ts";
-const VALIDATION_IMPORT = "../validation/index.ts";
+const VALIDATION_IMPORT = "validation/index.ts";
 
 /** `invoice` + `query` -> `queryInvoice`. The generated function that serves the call. */
 function functionName(entity: RestEntity, kind: RestKind): string {

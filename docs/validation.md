@@ -1,24 +1,34 @@
 # Validation
 
 `packages/backend/scripts/generate-zod-schemas.ts` turns the domain models in
-`packages/spec/src/domain` into Zod schemas, written to
-`packages/backend/src/validation`. A schema is what validates a value at the
-boundary — an HTTP body, a job payload — against the same annotations the
-database schema and the repositories are generated from.
+`packages/spec/src/domain` into Zod schemas and the matching write types, written
+to `packages/validation/src`. A schema is what validates a value at the boundary
+— an HTTP body, a job payload — against the same annotations the database schema
+and the repositories are generated from; the write types are what a caller passes
+in process. Because both live in one module, the backend repositories, the REST
+API, the generated client, and (eventually) the frontend share one definition of
+"the fields a create writes" and "the fields a patch writes".
 
 ## Output
 
-- `packages/backend/src/validation/primitives.ts` — one schema per `@primitive`
-  alias, from its `@zod` tag.
-- `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
-  exporting `<name>Schema`, `<name>PatchSchema`, and `<name>InsertSchema`.
-- `packages/backend/src/validation/queries/query<Entity>.ts` — one module per
-  entity, exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for
-  its `query` read.
-- `packages/backend/src/validation/queries/index.ts` — the barrel re-exporting
-  every query module.
-- `packages/backend/src/validation/index.ts` — the barrel re-exporting the
-  primitives, every entity, and the queries barrel.
+- `packages/validation/src/primitives.ts` — one schema per `@primitive` alias,
+  from its `@zod` tag.
+- `packages/validation/src/<entity>.ts` — one module per domain interface,
+  exporting `<name>Schema`, `<name>PatchSchema`, `<name>InsertSchema`, and the
+  matching `<Entity>Patch` and `<Entity>Insert` types.
+- `packages/validation/src/queries/query<Entity>.ts` — one module per entity,
+  exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for its `query`
+  read.
+- `packages/validation/src/queries/index.ts` — the barrel re-exporting every
+  query module.
+- `packages/validation/src/index.ts` — the barrel re-exporting the primitives,
+  every entity, and the queries barrel.
+
+The package is consumed as TypeScript through its `exports` map, like every other
+package here. `packages/backend` and `packages/sdk` depend on it: the repositories
+take `<Entity>Patch` / `<Entity>Insert` from it, the route table validates with
+its schemas, and the client imports its write types type-only, so `zod` never
+enters the client runtime.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -34,6 +44,9 @@ export const invoicePatchSchema = invoiceSchema.partial().required({
     id: true,
     version: true,
 });
+
+/** A partial update: every field is optional except the key and the version. */
+export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "rows"> & Required<Pick<Invoice, "id" | "version">>;
 ```
 
 ## How a field maps
@@ -108,8 +121,9 @@ rejects the same branches, `@default` columns, and derivable values a create
 does, and `.strict()` turns a key the update would silently ignore into a 400.
 
 The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
-generated `<Entity>Patch` type reads it too, so the repository type and the wire
-schema permit exactly the same fields. A nullable `@computed` value is on the
+`<Entity>Patch` type is rendered from it into the same module, so the repository
+type taking it, the client sending it, and the wire schema accepting it all
+permit exactly the same fields. A nullable `@computed` value is on the
 list because a `before insert or update` trigger derives it: the update does not
 name the column, so accepting one would be accepting a field that does nothing
 (`docs/repositories.md`).
@@ -156,10 +170,11 @@ therefore keeps `customer` and `seller`, each validated as `customerInsertSchema
 — `docs/timestamps.md` explains why the snapshot carries the target's own audit
 columns.
 
-The repository's `create` takes the same field set, as `<entity>Insert`, and its
-`insert` names exactly those columns (`docs/repositories.md`). So the type a
-caller passes, the schema that validates it, and the statement that runs all
-carry one set of fields, and a field added to the spec narrows all three at once.
+The repository's `create` takes the same field set, as the `<Entity>Insert` type
+imported from this package, and its `insert` names exactly those columns
+(`docs/repositories.md`). So the type a caller passes, the schema that validates
+it, and the statement that runs all carry one set of fields, and a field added to
+the spec narrows all three at once.
 
 ## Query schemas
 
@@ -172,7 +187,7 @@ keywords, and `Date` mapping) and always validated as a set: `z.array(…)`. The
 ordering keys come from the entity's `@queryorderby` fields, and the comparison
 fields and their operators from `@where`. The schema is named after the read:
 `Invoice` yields `queryInvoiceSchema` in
-`packages/backend/src/validation/queries/queryInvoice.ts`.
+`packages/validation/src/queries/queryInvoice.ts`.
 
 ```typescript
 export const queryInvoiceSchema = z.strictObject({
@@ -258,7 +273,7 @@ reported as a diagnostic.
 
 ## Commands
 
-- `pnpm generate:validation` — writes `packages/backend/src/validation`.
+- `pnpm generate:validation` — writes `packages/validation/src`.
 - `pnpm generate:validation --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm run generate` — runs it after the schema, repository, and query generators.
 
@@ -284,4 +299,7 @@ artifact; staleness is caught by running the generator, not by a test.
   property of the type.
 - **A type-parity assertion.** Nothing asserts that `z.infer<typeof
   invoiceSchema>` is assignable to `Invoice`. The two are generated from the same
-  annotations, but the compiler is not asked to prove it.
+  annotations, but the compiler is not asked to prove it. The write types are
+  built from the spec type and the omit lists, not `z.infer`, so a patch or
+  insert keeps the entity's own branded primitives and the repository can read a
+  nested snapshot's audit columns.

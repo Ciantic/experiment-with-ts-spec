@@ -10,13 +10,7 @@ function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
-function table(
-    name: string,
-    interfaceName: string,
-    columns: Column[],
-    insertOmit: string[] = [],
-    patchOmit: string[] = [],
-): Table {
+function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
@@ -25,8 +19,6 @@ function table(
         relations: new Map(),
         sameRowAssignments: [],
         rollups: new Map(),
-        insertOmit,
-        patchOmit,
     };
 }
 
@@ -132,31 +124,5 @@ describe("buildRestModel", () => {
 
         expect(widget?.whereFields).toEqual([{ name: "amount", operators: ["gte", "lte"] }]);
         expect(marker?.whereFields).toEqual([]);
-    });
-
-    it("carries the fields a create omits", () => {
-        const limited = table("limited", "Limited", [column("id", { primaryKey: true })], [
-            "version",
-            "createdAt",
-        ]);
-        const model = buildRestModel(new Map([["Limited", limited]]));
-
-        expect(model.entities[0]?.insertOmit).toEqual(["version", "createdAt"]);
-    });
-
-    it("omits nothing when the table names no omitted fields", () => {
-        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
-
-        expect(widget?.insertOmit).toEqual([]);
-    });
-
-    it("carries the fields a patch omits, which never include what a patch must send", () => {
-        const limited = table("limited", "Limited", [column("id", { primaryKey: true })], ["rows"], [
-            "rows",
-            "createdAt",
-        ]);
-        const model = buildRestModel(new Map([["Limited", limited]]));
-
-        expect(model.entities[0]?.patchOmit).toEqual(["rows", "createdAt"]);
     });
 });

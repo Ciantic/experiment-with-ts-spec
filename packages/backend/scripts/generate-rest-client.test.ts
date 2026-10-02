@@ -20,13 +20,7 @@ function column(name: string, extras: Partial<Column> = {}): Column {
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
-function table(
-    name: string,
-    interfaceName: string,
-    columns: Column[],
-    insertOmit: string[] = [],
-    patchOmit: string[] = [],
-): Table {
+function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
@@ -35,8 +29,6 @@ function table(
         relations: new Map(),
         sameRowAssignments: [],
         rollups: new Map(),
-        insertOmit,
-        patchOmit,
     };
 }
 
@@ -106,22 +98,20 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "spec/selection.ts";');
     });
 
-    it("declares the patch locally, since it cannot import the repository's", () => {
+    it("imports and re-exports the patch type from the validation package", () => {
         const code = widgetModule();
 
-        expect(code).toContain(
-            'export type WidgetPatch = Partial<Widget> & Required<Pick<Widget, "id" | "version">>;',
-        );
+        expect(code).toContain('import type { WidgetInsert, WidgetPatch } from "validation/widget.ts";');
+        expect(code).toContain("export type { WidgetInsert, WidgetPatch };");
         expect(code).toContain("rows: WidgetPatch[]");
+        expect(code).not.toContain("export type WidgetPatch =");
     });
 
-    it("requires only the key in a patch when there is no version", () => {
+    it("does not decide the patch shape, so a table without a version needs no generator branch", () => {
         const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
         const code = renderClientModule(markerEntity!);
 
-        expect(code).toContain(
-            'export type MarkerPatch = Partial<Marker> & Required<Pick<Marker, "id">>;',
-        );
+        expect(code).toContain('import type { MarkerInsert, MarkerPatch } from "validation/marker.ts";');
         expect(code).not.toContain("and the version");
     });
 
@@ -132,39 +122,22 @@ describe("renderClientModule", () => {
         expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
     });
 
-    it("types a create with an insert type, not the whole entity", () => {
+    it("types a create with the validation insert type, not the whole entity", () => {
         const code = widgetModule();
 
-        expect(code).toContain("export type WidgetInsert = Widget;");
+        expect(code).toContain('import type { WidgetInsert, WidgetPatch } from "validation/widget.ts";');
         expect(code).toContain(
             "export function createWidget(http: HttpClient, rows: WidgetInsert[]): Promise<void> {",
         );
+        expect(code).not.toContain("export type WidgetInsert =");
     });
 
-    it("omits the columns the database owns from the insert type", () => {
-        const limited = table("limited", "Limited", [column("id", { primaryKey: true })], [
-            "version",
-            "createdAt",
-        ]);
+    it("names the validation module after the entity", () => {
+        const limited = table("limited", "Limited", [column("id", { primaryKey: true })]);
         const limitedModel = buildRestModel(new Map([["Limited", limited]]));
         const code = renderClientModule(limitedModel.entities[0]!);
 
-        expect(code).toContain('export type LimitedInsert = Omit<Limited, "version" | "createdAt">;');
-    });
-
-    it("narrows the patch type to what the update writes, keeping the key and version", () => {
-        const limited = table(
-            "limited",
-            "Limited",
-            [column("id", { primaryKey: true }), column("version", { version: true })],
-            ["rows", "version"],
-            ["rows"],
-        );
-        const limitedModel = buildRestModel(new Map([["Limited", limited]]));
-        const code = renderClientModule(limitedModel.entities[0]!);
-
-        expect(code).toContain('export type LimitedPatch = Omit<Partial<Limited>, "rows">');
-        expect(code).toContain('& Required<Pick<Limited, "id" | "version">>;');
+        expect(code).toContain('import type { LimitedInsert, LimitedPatch } from "validation/limited.ts";');
     });
 
     it("emits no getter", () => {
@@ -187,7 +160,7 @@ describe("generateRestClient", () => {
         expect(files.has("widget.ts")).toBe(true);
     });
 
-    it("imports nothing but spec and its own transport", () => {
+    it("imports nothing but spec, the shared validation types, and its own transport", () => {
         const files = generateRestClient(model);
         const specifiers: string[] = [];
         for (const content of files.values()) {
@@ -200,7 +173,23 @@ describe("generateRestClient", () => {
 
         expect(specifiers.length).toBeGreaterThan(0);
         for (const specifier of specifiers) {
-            expect(specifier.startsWith("spec/") || specifier.startsWith("./")).toBe(true);
+            expect(
+                specifier.startsWith("spec/") ||
+                    specifier.startsWith("validation/") ||
+                    specifier.startsWith("./"),
+            ).toBe(true);
+        }
+    });
+
+    it("reaches the validation types without pulling zod into the client", () => {
+        const files = generateRestClient(model);
+        for (const content of files.values()) {
+            expect(content).not.toContain('from "zod"');
+            for (const line of content.split("\n")) {
+                if (line.includes("validation/")) {
+                    expect(line.startsWith("import type ") || line.startsWith("export type ")).toBe(true);
+                }
+            }
         }
     });
 

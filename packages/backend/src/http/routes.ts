@@ -3,7 +3,7 @@ import type { Route } from "./router.ts";
 import { z } from "zod";
 import { createCustomer, createInvoice, createInvoiceRow, createInvoiceSent, createInvoiceSentRow, createSeller, deleteCustomer, deleteInvoice, deleteInvoiceRow, deleteInvoiceSent, deleteInvoiceSentRow, deleteSeller, updateCustomer, updateInvoice, updateInvoiceRow, updateInvoiceSent, updateInvoiceSentRow, updateSeller } from "../db/repositories/index.ts";
 import { queryCustomer, queryInvoice, queryInvoiceRow, queryInvoiceSent, queryInvoiceSentRow, querySeller } from "../db/queries/index.ts";
-import { customerInsertSchema, customerPatchSchema, customerSchema, invoiceInsertSchema, invoicePatchSchema, invoiceRowInsertSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
+import { customerInsertSchema, customerPatchSchema, customerSchema, invoiceInsertSchema, invoicePatchSchema, invoiceRowInsertSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerSchema } from "validation/index.ts";
 
 /** Every exposed call, matched by method and path. */
 export const routes: Route[] = [

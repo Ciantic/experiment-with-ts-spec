@@ -45,6 +45,8 @@ export interface ZodEntity {
     /** The schema validating a create: the entity minus everything the database owns. */
     insertName: string;
     fileName: string;
+    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
+    importSpecifier: string;
     fields: ZodField[];
     /** Field names a create omits, rendered as an `.omit()` of the entity schema. */
     insertOmit: string[];
@@ -438,6 +440,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             querySelectName: querySelectSchemaName(spec.name),
             insertName: insertSchemaName(spec.name),
             fileName: fileName(spec.name),
+            importSpecifier: spec.importSpecifier,
             fields,
             insertOmit,
             patchOmit,

@@ -21,6 +21,7 @@
   "dependencies": {
     "devalue": "^5.3.2",
     "spec": "workspace:*",
+    "validation": "workspace:*",
     "zod": "^4.6.5"
   },
   "devDependencies": {

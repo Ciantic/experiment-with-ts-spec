@@ -32,8 +32,9 @@ The order is load-bearing:
   is well formed. Running it first fails fast on a tag the generator would
   otherwise only report as a diagnostic, and it validates the whole spec rather
   than the subset the generators read.
-- **Generate before build.** Generated `.sql` and repository modules are
-  committed artifacts; anything that compiles or checks them must run after they
+- **Generate before build.** Generated `.sql`, repository modules, and the
+  `packages/validation` schemas are committed artifacts; anything that compiles
+  or checks them must run after they
   are written, or it validates the previous generation.
 - **Build last.** It is the only step that consumes the generated output as
   input.

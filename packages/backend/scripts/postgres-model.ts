@@ -11,8 +11,6 @@ import {
     isCompareOperator,
     isInsertable,
     isUpdatable,
-    omittedFromInsert,
-    omittedFromPatch,
     parseSpec,
     type CompareOperator,
     type Diagnostic,
@@ -110,10 +108,6 @@ export interface Table {
     sameRowAssignments: string[];
     /** Child-change statements keyed by the child table that carries them. */
     rollups: Map<string, { newStatements: string[]; oldStatements: string[] }>;
-    /** The fields a create omits, in spec order; absent means the create omits nothing. */
-    insertOmit?: string[];
-    /** The fields a patch omits, in spec order; the patch type and the wire schema both read this. */
-    patchOmit?: string[];
 }
 
 interface TypeResolution {
@@ -434,8 +428,6 @@ export function buildSpecTables(
             relations: new Map(),
             sameRowAssignments: [],
             rollups: new Map(),
-            insertOmit: omittedFromInsert(spec).map((property) => property.name),
-            patchOmit: omittedFromPatch(spec).map((property) => property.name),
         };
 
         for (const property of spec.properties) {

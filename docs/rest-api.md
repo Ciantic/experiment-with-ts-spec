@@ -90,13 +90,17 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `../validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*` and `./http.ts` |
+| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and `./http.ts` |
 | Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from the backend.** It cannot reach a table
-name, a column, a driver, or `zod`, so the only thing it can agree with the
-server on is what `packages/spec` declares.
+name, a column, a driver, or `zod`. The one cross-package import it does have is
+type-only: its `<Entity>Patch` and `<Entity>Insert` come from
+`packages/validation`, the same definitions the repositories take and the route
+table validates with, and a type-only import keeps `zod` (and every schema) out
+of the client's runtime. Everything else it agrees with the server on is what
+`packages/spec` declares.
 
 A drift check is the second assertion: both generators are driven from one model
 and the `(method, path)` sets they render are compared, so a route added on the
@@ -142,16 +146,20 @@ This is why the client is generated from the spec rather than derived from an
 OpenAPI document: `Selected<E, S>` is a conditional type, and conditional types
 do not survive a round trip through a document format.
 
-`update` needs the repository's patch type and cannot import it, so the client
-declares its own from the same rule — optional except the key and the version,
-carrying only what an update writes:
+`update` takes the `<Entity>Patch` type from `packages/validation` — the same
+definition the repository takes and the route table validates with — so the
+client cannot drift from the server:
 
 ```typescript
-export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt"> & Required<Pick<Invoice, "id" | "version">>;
+import type { InvoiceInsert, InvoicePatch } from "validation/invoice.ts";
+
+export function updateInvoice(http: HttpClient, rows: InvoicePatch[]): Promise<void>
 ```
 
 A create narrows the same way, to `<Entity>Insert`, so the type a caller sends
-and the schema that validates it agree (`docs/validation.md`).
+and the schema that validates it agree (`docs/validation.md`). Both are imported
+type-only and re-exported, so the client's public surface is unchanged and `zod`
+stays out of its runtime.
 
 ## Transport
 

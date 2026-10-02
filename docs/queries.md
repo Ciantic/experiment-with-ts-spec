@@ -14,7 +14,7 @@ hand-written".
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
-- `packages/backend/src/validation/queries/` — generated read argument
+- `packages/validation/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.
 
 - `pnpm generate:queries` — writes the generated modules.
