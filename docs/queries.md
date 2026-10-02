@@ -201,7 +201,7 @@ HTTP, a 400.
 ```ts
 /** The comparison arguments of a read. See docs/queries.md. */
 export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
-    [K in keyof O & keyof E]?: { [P in NonNullable<O[K]>]?: NonNullable<E[K]> };
+    [K in keyof O & keyof E]?: { [P in Extract<NonNullable<O[K]>, PropertyKey>]?: NonNullable<E[K]> };
 };
 export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
 ```
