@@ -76,16 +76,15 @@ separates `InvoiceId` from `InvoiceRowId`. A plain alias
 the compiler could not catch an invoice id passed where a row id was expected.
 `Decimal` brands `string` the same way.
 
-Using Zod's brand rather than a local `{ readonly __brand: … }` has two payoffs:
+Zod's brand has two payoffs:
 
 - **The schema and the type agree.** `z.infer<typeof x>` produces `$brand<…>`,
-  which is exactly what `Brand<…>` aliases — a parsed value is already the spec
-  type, with no cast between a `__brand` and a `$brand` spelling.
+  which is exactly what `Brand<…>` aliases, so a parsed value is already the spec
+  type with no cast.
 - **Brands accumulate.** `$brand`'s payload is a mapped object, so intersecting
   two brands yields `{ Decimal: true; Money: true }`, not `never`. A shared
   property name with a literal type would collapse on intersection; the mapped
-  form does not. That is why the old types split `__decimal` from `__brand`; with
-  `$brand` the split is unnecessary.
+  form does not, so a value can carry several brands without a per-brand split.
 
 Cost: values must be cast at the boundary where they are constructed or parsed,
 because nothing produces a branded value on its own.
@@ -150,16 +149,11 @@ Conventions:
 - `taxRate` is a fraction, not a percentage: `"0.255"` is 25.5%. Three decimals
   are needed for rates such as 8.875%, and `decimal` carries them exactly.
 
-This replaced three separate types (`Money` as an integer `bigint` in minor
-units, `Quantity`, `TaxRate`). The integer approach was exact but required a
-scale convention per field, and mixed two representations in one model.
-
 Gotchas:
 
 - **Keep one copy of Zod in the workspace.** Zod's brand is a `unique symbol`
   declared per module, so a second resolved copy makes its brands mutually
-  unassignable — the same silent failure the old `__brand` literal-collapse had.
-  Deduplication is what keeps `z.infer` and the spec types in step.
+  unassignable. Deduplication is what keeps `z.infer` and the spec types in step.
 - **Branding is not validation.** Nothing checks that the string parses as a
   number. Parsing and rounding are the caller's job.
 - **Construction needs a cast.** Nothing produces a branded value on its own, so

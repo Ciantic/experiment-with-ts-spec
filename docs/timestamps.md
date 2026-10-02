@@ -100,23 +100,21 @@ The redundancy is cheap and self-consistent, so `@updatedAt` emits both. The
 default documents the column's guarantee at the schema level; the trigger
 maintains it.
 
-`now()` is written by the generator: the clock tags are the only place the
-spec declares a timestamp, so there is no expression to name and no registry to
-consult. That is why `packages/spec/src/domain/Timestamp.ts` and its
-`TimestampFormula` union no longer exist — see `docs/spec-annotations.md`.
+`now()` is written by the generator: the clock tags are the only place the spec
+declares a timestamp, so there is no expression to name and no registry to
+consult. See `docs/spec-annotations.md`.
 
 `updatedAt` is optional for the same reason `createdAt` is: the column has a
 default, so the repository never writes it and the caller never supplies it.
 Because the trigger fires on every write, it overwrites whatever a hand-written
 statement sent.
 
-## Why a trigger fixes the rollup
+## Why the trigger, and not the application
 
-The earlier version of this design had the application assign `updatedAt`, which
-left a real hole: the invoice rollup triggers run
-`update "invoice" set "netAmount" = …` directly in SQL when a child row changes.
-An application-assigned column was not part of those statements, so editing an
-`invoice_row` changed an invoice without touching its `updatedAt`.
+The invoice rollup triggers run `update "invoice" set "netAmount" = …` directly
+in SQL when a child row changes. An application-assigned `updatedAt` would not be
+part of those statements, so editing an `invoice_row` would change an invoice
+without touching its `updatedAt`.
 
 The invoice's own `before update` trigger closes that hole: the rollup's `update`
 fires it, which refreshes `updatedAt`. The rollup and the clock tag chain, and
@@ -162,7 +160,7 @@ from `@inlined`.
 - **Soft delete (`deletedAt`).** Deletion is a real `delete`.
 - **Optimistic locking via `updatedAt`.** Not this column: `now()` is transaction
   time, so two writes in one transaction share a value and a stale read could
-  still match. A separate monotonic counter was added instead; see
+  still match. A separate monotonic counter fills that role; see
   `docs/versioning.md`.
 - **Timestamps on the snapshots.** Above.
 - **An actor column.** Who made the change (`updatedBy`) is not modelled.

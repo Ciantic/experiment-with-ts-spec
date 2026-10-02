@@ -12,8 +12,7 @@ to change is the same contradiction `updatedAt` would be.
 
 The column is `int8`, incremented by a `before update` trigger. A caller that
 sends a version other than the one stored gets a conflict raised, rather than
-silently overwriting a concurrent write. This replaces the "last-writer-wins"
-note in `docs/timestamps.md`.
+silently overwriting a concurrent write.
 
 ## The primitive
 
@@ -199,7 +198,7 @@ caller cannot build a patch that omits the precondition.
   surfacing a conflict to a user is the caller's decision.
 - **Deletes checking a version.** `deleteCustomer` keys on the primary key only.
   Deleting a row someone else has just updated is a real race, but a delete is
-  idempotent enough that it was left out.
+  idempotent enough to omit the check.
 
 ## Wiring
 

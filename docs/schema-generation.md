@@ -90,9 +90,8 @@ each reads the previous one, so they cannot be virtual columns.
 
 The statements are plpgsql, so every reference to a column of the row being
 written must be `NEW`-qualified. An unqualified `"quantity"` is a plpgsql error
-(`column "quantity" does not exist`), not an implicit `NEW` lookup. This only
-surfaced once the DDL was run against a real Postgres. A virtual column's
-expression is the opposite: it is a SQL expression, so it must *not* be
+(`column "quantity" does not exist`), not an implicit `NEW` lookup. A virtual
+column's expression is the opposite: it is a SQL expression, so it must *not* be
 `NEW`-qualified, and the linter does not check which form a field used.
 
 A `@version` column gets its own `before update` trigger, separate from the
@@ -134,18 +133,17 @@ artifact, and staleness is caught by remembering to run `pnpm generate:schema`,
 not by a test. A drift test is the obvious way to enforce it if that becomes a
 problem.
 
-Execution subsumes the structural checks that were tempting to add (balanced
-quotes, well-formed identifiers, foreign keys pointing at real tables, functions
-existing before they are used), because Postgres rejects all of those at parse or
-create time. Text assertions on the same properties can only fail where execution
-already would.
+Execution subsumes the structural checks (balanced quotes, well-formed
+identifiers, foreign keys pointing at real tables, functions existing before they
+are used), because Postgres rejects all of those at parse or create time. Text
+assertions on the same properties can only fail where execution already would.
 
 None of these assert what the schema *means*. A trigger that computes the wrong
 column, or an aggregate that sums the wrong thing, passes both — the SQL is
-valid and the text is as generated. Behavioural tests were deliberately not added
-yet, because they would be tightly coupled to the domain and would have to be
-rewritten with every model change. When the model settles, a suite that exercises
-triggers and constraints against PGlite is the missing layer.
+valid and the text is as generated. Behavioural tests are deliberately absent:
+they would be tightly coupled to the domain and would have to be rewritten with
+every model change. When the model settles, a suite that exercises triggers and
+constraints against PGlite is the missing layer.
 
 ## Type resolution
 

@@ -90,10 +90,9 @@ that could disagree with the type — a tag naming an entity other than the
 field's is not expressible. `@relation` and `@inlined` must be on a single
 entity, `@children` on an array of one, and the three are mutually exclusive.
 
-`@generated` and `@computed` replace the earlier `@readonly`, which conflated the
-two. The distinction matters because they produce different column behaviour:
-`id` is assigned once and never recomputed, whereas `totalAmount` is a function
-of other data.
+`@generated` and `@computed` are separate tags because they produce different
+column behaviour: `id` is assigned once and never recomputed, whereas
+`totalAmount` is a function of other data.
 
 `@generated` says *who* assigns a value, not *how*. On its own it carries no SQL:
 it is presentation metadata telling a UI not to offer the field. How the value
@@ -171,8 +170,7 @@ only.
 ## `@computed` mechanisms
 
 `@computed` is a bare marker meaning "derived"; exactly one mechanism tag says
-how Postgres materializes it, and the expression is written in the spec rather
-than in a registry:
+how Postgres materializes it, and the expression is written on the field:
 
 ```
 /**
@@ -212,16 +210,16 @@ generated columns forbid expressing it directly:
 
 Making the row amounts virtual would mean inlining `round(NEW."quantity" *
 NEW."unitPrice", 2)` into all three expressions. The trigger keeps one
-expression per amount and preserves the order. `@pgtrigger` is what makes that
-choice visible in the spec instead of implicit in the SQL shape.
+expression per amount and preserves the order, and `@pgtrigger` makes that
+choice explicit in the spec.
 
-## Why amounts are stored rather than derived on read
+## Why the rollup amounts are written
 
-An invoice is a legal document. A value recomputed on every write would change
-silently when rounding or tax rules change, so amounts are computed when the
-invoice is written and then frozen. `@pgvirtual` is used only where the value is
-a pure function of two columns on the same row; nothing that rolls up from other
-tables is virtual.
+An invoice is a legal document, so an issued amount should not change when
+rounding or tax rules change. A trigger writes the rolled-up value once, when a
+child row changes, and the column keeps it. `@pgvirtual` is used only where the
+value is a pure function of two columns on the same row, so a recomputation from
+those columns always reproduces the same figure.
 
 ## Column naming
 
@@ -242,7 +240,7 @@ column type:
   is a fraction (`0.255` is 25.5%).
 - The aggregates need no cast, since `sum` of `decimal` is `decimal`.
 
-Rationale and the alternative that was tried are in `docs/primitives.md`.
+Rationale is in `docs/primitives.md`.
 
 ## Gotchas
 
@@ -304,7 +302,7 @@ Rationale and the alternative that was tried are in `docs/primitives.md`.
 `packages/backend/scripts/generate-postgres-schema.ts` implements all of the
 above. See `docs/schema-generation.md`.
 
-## Saying what, not how
+## Why the expressions live in the spec
 
 The mechanism tags are deliberately Postgres-specific, in the same way `@pgtype`
 is: `packages/spec/` names the storage the backend uses rather than describing a
@@ -326,12 +324,6 @@ describes:
  */
 totalAmount?: Money;
 ```
-
-Earlier revisions kept the expressions in
-`packages/backend/src/postgres/formulas.ts`, keyed by names declared as
-`@formula` unions in the spec. That split kept SQL out of the spec at the cost of
-a second place to look and a `Record<…>` that could drift. Inlining the
-expression removed the registry, the unions, and the aliasing layer.
 
 ## Linting
 
@@ -367,13 +359,11 @@ Enforced:
 
 Gotchas:
 
-- **`@computed` is a bare marker, not a parameter block.** It used to carry
-  `storage=` and `formula=`; both are now lint findings, and the expression sits
-  in the mechanism tag that replaced them.
-- **`@formula` is retired.** It was a type tag marking a union of valid
-  `formula=` names, and the unions and their registry are gone. Writing it on a
-  type alias reports "not a recognised type tag"; on a field it reports the
-  replacement mechanism tags.
+- **`@computed` takes no parameters.** It is a bare marker; the expression sits
+  in the mechanism tag beside it, so `storage=` or `formula=` on it is a finding.
+- **`@formula` is not a recognised tag.** A type alias carrying it reports "not a
+  recognised type tag", and a field carrying it reports the mechanism tags that
+  replace it. It is in the retired-tag table above.
 - **Absence of a mechanism tag is valid.** A `@computed` field with no `@pg*`
   tag is accepted and the generator emits nothing for it. That is the escape
   hatch for a derivation that is not yet implemented, and it is why the linter
