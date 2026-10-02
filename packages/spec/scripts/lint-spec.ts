@@ -174,311 +174,369 @@ export function lintInterface(
     }
 }
 
-function lintProperty(
-    property: PropertySignature,
-    filePath: string,
-    findings: Finding[],
-): void {
-    const fieldName = property.getName();
-    const report = (message: string, tag?: JSDocTag) => {
-        const line = (tag ?? property).getStartLineNumber();
-        findings.push({ filePath, line, message: `\`${fieldName}\`: ${message}` });
+/** Report a finding on the field under lint, at the tag's line or the field's. */
+type Report = (message: string, tag?: JSDocTag) => void;
+
+/** A branch marker on an entity-typed field: `@relation`, `@children`, or `@inlined`. */
+interface BranchTag {
+    name: string;
+    tag: JSDocTag;
+}
+
+/** The tags and type shape one field's rules share, resolved once so no rule walks the map itself. */
+interface FieldTags {
+    /** Every occurrence, keyed by name, for the vocabulary rules. */
+    byName: Map<string, JSDocTag[]>;
+    fieldName: JSDocTag | undefined;
+    widget: JSDocTag | undefined;
+    generated: JSDocTag | undefined;
+    computed: JSDocTag | undefined;
+    /** The `@computed` mechanism tags present, in `COMPUTED_KINDS` order. */
+    mechanism: { name: ComputedKind; tag: JSDocTag }[];
+    rollup: JSDocTag | undefined;
+    createdAt: JSDocTag | undefined;
+    updatedAt: JSDocTag | undefined;
+    default: JSDocTag | undefined;
+    branches: BranchTag[];
+    primaryKey: JSDocTag | undefined;
+    foreignKey: JSDocTag | undefined;
+    queryFilter: JSDocTag | undefined;
+    version: JSDocTag | undefined;
+    queryOrderBy: JSDocTag | undefined;
+    where: JSDocTag | undefined;
+    /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
+    typeText: string | undefined;
+    isArray: boolean;
+}
+
+/** Resolve the tags a field's rules share: the first occurrence of each, plus the type shape. */
+function resolveFieldTags(property: PropertySignature): FieldTags {
+    const byName = readTags(property).byName;
+    const first = (name: string) => (byName.get(name) ?? [])[0];
+    const branch = (name: string): BranchTag[] => {
+        const tag = first(name);
+        return tag ? [{ name, tag }] : [];
     };
+    const typeNode = property.getTypeNode();
+    return {
+        byName,
+        fieldName: first("fieldName"),
+        widget: first("widget"),
+        generated: first("generated"),
+        computed: first("computed"),
+        mechanism: COMPUTED_KINDS.map((name) => ({ name, tag: first(name) })).filter(
+            (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
+        ),
+        rollup: first("pgrollup"),
+        createdAt: first("createdAt"),
+        updatedAt: first("updatedAt"),
+        default: first("default"),
+        branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
+        primaryKey: first("primaryKey"),
+        foreignKey: first("foreignKey"),
+        queryFilter: first("queryfilter"),
+        version: first("version"),
+        queryOrderBy: first("queryorderby"),
+        where: first("where"),
+        typeText: typeNode?.getText(),
+        isArray: typeNode !== undefined && Node.isArrayTypeNode(typeNode),
+    };
+}
 
-    const tags = readTags(property).byName;
-
-    // Unknown and retired tags.
-    for (const [name, instances] of tags) {
+/** Every tag is recognised, and a retired one names its replacement. */
+function lintKnownTags(tags: FieldTags, report: Report): void {
+    for (const [name, instances] of tags.byName) {
         if (ALLOWED_TAGS.has(name)) {
             continue;
         }
         const retired = RETIRED_TAGS.get(name);
         for (const tag of instances) {
-            report(
-                retired
-                    ? `@${name} is retired; ${retired}`
-                    : `@${name} is not a recognised tag`,
-                tag,
-            );
+            report(retired ? `@${name} is retired; ${retired}` : `@${name} is not a recognised tag`, tag);
         }
     }
+}
 
-    // Duplicate tags.
-    for (const [name, instances] of tags) {
+/** No tag appears twice. */
+function lintDuplicateTags(tags: FieldTags, report: Report): void {
+    for (const [name, instances] of tags.byName) {
         if (instances.length > 1) {
             for (const tag of instances) {
                 report(`@${name} appears more than once`, tag);
             }
         }
     }
+}
 
-    // @fieldName is required and must be non-empty.
-    const fieldNameTags = tags.get("fieldName") ?? [];
-    const fieldNameTag = fieldNameTags[0];
-    if (!fieldNameTag) {
+/** `@fieldName` is required and non-empty. */
+function lintFieldName(tags: FieldTags, report: Report): void {
+    if (!tags.fieldName) {
         report("missing @fieldName");
-    } else if (!(fieldNameTag.getCommentText() ?? "").trim()) {
-        report("@fieldName is empty", fieldNameTag);
+    } else if (!(tags.fieldName.getCommentText() ?? "").trim()) {
+        report("@fieldName is empty", tags.fieldName);
     }
+}
 
-    // @widget is required and must be a known widget.
-    const widgetTags = tags.get("widget") ?? [];
-    const widgetTag = widgetTags[0];
-    if (!widgetTag) {
+/** `@widget` is required and names a known control. */
+function lintWidget(tags: FieldTags, report: Report): void {
+    if (!tags.widget) {
         report("missing @widget");
-    } else {
-        const widget = (widgetTag.getCommentText() ?? "").trim();
-        if (!ALLOWED_WIDGETS.has(widget)) {
-            report(
-                `@widget \`${widget}\` is not one of: ${[...ALLOWED_WIDGETS].join(", ")}`,
-                widgetTag,
-            );
+        return;
+    }
+    const widget = (tags.widget.getCommentText() ?? "").trim();
+    if (!ALLOWED_WIDGETS.has(widget)) {
+        report(`@widget \`${widget}\` is not one of: ${[...ALLOWED_WIDGETS].join(", ")}`, tags.widget);
+    }
+}
+
+/** `@generated` and `@computed` are mutually exclusive, and both take no parameters. */
+function lintOwnership(tags: FieldTags, report: Report): void {
+    if (tags.generated && tags.computed) {
+        report("@generated and @computed are mutually exclusive", tags.generated);
+    }
+    const parameterized: [string, JSDocTag | undefined][] = [
+        ["generated", tags.generated],
+        ["computed", tags.computed],
+    ];
+    for (const [name, tag] of parameterized) {
+        if (!tag) {
+            continue;
         }
-    }
-
-    const generatedTags = tags.get("generated") ?? [];
-    const computedTags = tags.get("computed") ?? [];
-
-    // @generated and @computed are mutually exclusive.
-    if (generatedTags.length > 0 && computedTags.length > 0) {
-        report("@generated and @computed are mutually exclusive", generatedTags[0]);
-    }
-
-    const generatedTag = generatedTags[0];
-    if (generatedTag) {
-        const parameters = parseParameters(generatedTag);
+        const parameters = parseParameters(tag);
         if (parameters.size > 0) {
             report(
-                `@generated takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
-                generatedTag,
+                `@${name} takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
+                tag,
             );
         }
     }
+}
 
-    const computedTag = computedTags[0];
-    if (computedTag) {
-        const parameters = parseParameters(computedTag);
-        if (parameters.size > 0) {
-            report(
-                `@computed takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
-                computedTag,
-            );
-        }
-    }
-
-    // One mechanism tag per computed field says how Postgres materializes it. See docs/spec-annotations.md.
-    const mechanismTags = COMPUTED_KINDS.map((name) => ({ name, tag: (tags.get(name) ?? [])[0] })).filter(
-        (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
-    );
-
-    for (const { name, tag } of mechanismTags) {
+/** A `@computed` field names one mechanism, with an expression. See docs/spec-annotations.md. */
+function lintComputedMechanism(tags: FieldTags, report: Report): void {
+    for (const { name, tag } of tags.mechanism) {
         if (!(tag.getCommentText() ?? "").trim()) {
             report(`@${name} is missing its expression`, tag);
         }
-        if (computedTags.length === 0) {
+        if (!tags.computed) {
             report(`@${name} requires @computed`, tag);
         }
     }
-    const firstMechanism = mechanismTags[0];
-    if (firstMechanism) {
-        for (const current of mechanismTags.slice(1)) {
-            report(`@${firstMechanism.name} and @${current.name} are mutually exclusive`, current.tag);
+    const first = tags.mechanism[0];
+    if (first) {
+        for (const current of tags.mechanism.slice(1)) {
+            report(`@${first.name} and @${current.name} are mutually exclusive`, current.tag);
         }
     }
-
-    // A rollup statement is written once for the child change and mirrored for the child removal,
-    // so the generator substitutes NEW -> OLD; spelling OLD here would make that partial.
-    const rollupTag = (tags.get("pgrollup") ?? [])[0];
-    if (rollupTag && (rollupTag.getCommentText() ?? "").includes("OLD.")) {
-        report("@pgrollup is written with NEW.; the delete variant is generated from it", rollupTag);
+    // The generator derives the delete variant by substituting OLD. for NEW., so OLD. here would be partial.
+    if (tags.rollup && (tags.rollup.getCommentText() ?? "").includes("OLD.")) {
+        report("@pgrollup is written with NEW.; the delete variant is generated from it", tags.rollup);
     }
+}
 
-    // The clock tags are self-contained: the database owns the column, so they exclude every
-    // other ownership tag and must sit on a `Date` field. See docs/timestamps.md.
-    const createdAtTag = (tags.get("createdAt") ?? [])[0];
-    const updatedAtTag = (tags.get("updatedAt") ?? [])[0];
-    for (const { name, tag } of [
-        { name: "createdAt", tag: createdAtTag },
-        { name: "updatedAt", tag: updatedAtTag },
-    ]) {
+/** The clock tags are self-contained and exclusive of each other. See docs/timestamps.md. */
+function lintClocks(tags: FieldTags, report: Report): void {
+    const clocks: [string, JSDocTag | undefined][] = [
+        ["createdAt", tags.createdAt],
+        ["updatedAt", tags.updatedAt],
+    ];
+    for (const [name, tag] of clocks) {
         if (!tag) {
             continue;
         }
         if ((tag.getCommentText() ?? "").trim()) {
             report(`@${name} takes no value`, tag);
         }
-        if (generatedTags.length > 0) {
+        if (tags.generated) {
             report(`@${name} and @generated are mutually exclusive`, tag);
         }
-        if (computedTags.length > 0) {
+        if (tags.computed) {
             report(`@${name} and @computed are mutually exclusive`, tag);
         }
-        if (tags.get("default") !== undefined) {
+        if (tags.default) {
             report(`@${name} supplies its own default; drop @default`, tag);
         }
-        for (const { name: mechanism } of mechanismTags) {
+        for (const { name: mechanism } of tags.mechanism) {
             report(`@${name} and @${mechanism} are mutually exclusive`, tag);
         }
-        const typeText = property.getTypeNode()?.getText();
-        if (typeText !== "Date") {
-            report(`@${name} must be on a \`Date\` field, found \`${typeText ?? "unknown"}\``, tag);
+        if (tags.typeText !== "Date") {
+            report(`@${name} must be on a \`Date\` field, found \`${tags.typeText ?? "unknown"}\``, tag);
         }
     }
-    if (createdAtTag && updatedAtTag) {
-        report("@createdAt and @updatedAt are mutually exclusive", updatedAtTag);
+    if (tags.createdAt && tags.updatedAt) {
+        report("@createdAt and @updatedAt are mutually exclusive", tags.updatedAt);
     }
+}
 
-    // @default carries a SQL expression the database uses when the column is omitted.
-    // A before trigger runs after defaults are applied, so the two agree on insert where they overlap.
-    const defaultTag = (tags.get("default") ?? [])[0];
-    if (defaultTag && !(defaultTag.getCommentText() ?? "").trim()) {
-        report("@default is missing its expression", defaultTag);
+/** `@default` carries the expression the database applies when the column is omitted. */
+function lintDefaultTag(tags: FieldTags, report: Report): void {
+    if (tags.default && !(tags.default.getCommentText() ?? "").trim()) {
+        report("@default is missing its expression", tags.default);
     }
+}
 
-    // The branch tags are bare markers on an entity-typed field: @relation (foreign key),
-    // @children (child collection), @inlined (flattened snapshot). The entity is the field type.
-    const relationTag = (tags.get("relation") ?? [])[0];
-    const childrenTag = (tags.get("children") ?? [])[0];
-    const inlinedTag = (tags.get("inlined") ?? [])[0];
-    const branchTags = [
-        relationTag ? { tag: relationTag, name: "relation" } : undefined,
-        childrenTag ? { tag: childrenTag, name: "children" } : undefined,
-        inlinedTag ? { tag: inlinedTag, name: "inlined" } : undefined,
-    ].filter((entry): entry is { tag: JSDocTag; name: string } => entry !== undefined);
+/** A scalar-only tag may not sit on a branch field. */
+function reportIfBranch(tags: FieldTags, tag: JSDocTag, report: Report): void {
+    const branch = tags.branches[0];
+    if (branch) {
+        report(`@${tag.getTagName()} must be on a scalar field, not a @${branch.name} field`, tag);
+    }
+}
 
-    for (const { tag, name } of branchTags) {
+/** The branch markers are bare, mutually exclusive, and match the field's cardinality. */
+function lintBranches(tags: FieldTags, report: Report): void {
+    for (const { name, tag } of tags.branches) {
         if ((tag.getCommentText() ?? "").trim()) {
             report(`@${name} takes no value; the entity comes from the field type`, tag);
         }
     }
-    const firstBranch = branchTags[0];
-    if (firstBranch) {
-        for (const current of branchTags.slice(1)) {
-            report(`@${firstBranch.name} and @${current.name} are mutually exclusive`, current.tag);
+    const first = tags.branches[0];
+    if (first) {
+        for (const current of tags.branches.slice(1)) {
+            report(`@${first.name} and @${current.name} are mutually exclusive`, current.tag);
         }
     }
-
-    const typeNode = property.getTypeNode();
-    const isArray = typeNode !== undefined && Node.isArrayTypeNode(typeNode);
-    for (const { tag, name } of branchTags) {
-        const wantsArray = name === "children";
-        if (wantsArray && !isArray) {
-            report("@children must be on an array field, such as `rows?: InvoiceRow[]`", tag);
-        }
-        if (!wantsArray && isArray) {
+    for (const { name, tag } of tags.branches) {
+        if (name === "children") {
+            if (!tags.isArray) {
+                report("@children must be on an array field, such as `rows?: InvoiceRow[]`", tag);
+            }
+        } else if (tags.isArray) {
             report(`@${name} must be on a single entity field, not an array`, tag);
         }
     }
+}
 
-    // The key tags say what a column is: @primaryKey is the table's key, @foreignKey names the
-    // interface its column points at. Both sit on a single scalar field.
-    const primaryKeyTag = (tags.get("primaryKey") ?? [])[0];
-    const foreignKeyTag = (tags.get("foreignKey") ?? [])[0];
-    if (primaryKeyTag) {
-        if ((primaryKeyTag.getCommentText() ?? "").trim()) {
-            report("@primaryKey takes no value", primaryKeyTag);
+/** `@primaryKey` and `@foreignKey` say what a column is; both sit on a single scalar field. */
+function lintKeyTags(tags: FieldTags, report: Report): void {
+    if (tags.primaryKey) {
+        if ((tags.primaryKey.getCommentText() ?? "").trim()) {
+            report("@primaryKey takes no value", tags.primaryKey);
         }
-        if (firstBranch) {
-            report(`@primaryKey must be on a scalar field, not a @${firstBranch.name} field`, primaryKeyTag);
-        }
-        if (isArray) {
-            report("@primaryKey must be on a single field, not an array", primaryKeyTag);
+        reportIfBranch(tags, tags.primaryKey, report);
+        if (tags.isArray) {
+            report("@primaryKey must be on a single field, not an array", tags.primaryKey);
         }
     }
-    if (foreignKeyTag) {
-        const target = (foreignKeyTag.getCommentText() ?? "").trim();
-        if (target === "") {
+    if (tags.foreignKey) {
+        if (!(tags.foreignKey.getCommentText() ?? "").trim()) {
             report(
                 "@foreignKey is missing the interface it references, such as `@foreignKey Customer`",
-                foreignKeyTag,
+                tags.foreignKey,
             );
         }
-        if (firstBranch) {
-            report(`@foreignKey must be on a scalar field, not a @${firstBranch.name} field`, foreignKeyTag);
-        }
-        if (isArray) {
-            report("@foreignKey must be on a single field, not an array", foreignKeyTag);
+        reportIfBranch(tags, tags.foreignKey, report);
+        if (tags.isArray) {
+            report("@foreignKey must be on a single field, not an array", tags.foreignKey);
         }
     }
-    if (primaryKeyTag && foreignKeyTag) {
-        report("@primaryKey and @foreignKey are mutually exclusive", foreignKeyTag);
+    if (tags.primaryKey && tags.foreignKey) {
+        report("@primaryKey and @foreignKey are mutually exclusive", tags.foreignKey);
     }
+}
 
-    // @queryfilter marks a scalar field as a filter of its entity's generated reads.
-    const queryFilterTag = (tags.get("queryfilter") ?? [])[0];
-    if (queryFilterTag) {
-        if ((queryFilterTag.getCommentText() ?? "").trim()) {
-            report("@queryfilter takes no value", queryFilterTag);
-        }
-        if (firstBranch) {
-            report(`@queryfilter must be on a scalar field, not a @${firstBranch.name} field`, queryFilterTag);
-        }
-        // The primary key is a filter already (spec-model defaults it), so the tag is noise.
-        if (primaryKeyTag) {
-            report("the primary key is a filter by default; drop @queryfilter", queryFilterTag);
-        }
+/** `@queryfilter` makes a scalar column a filter of the entity's generated reads. */
+function lintQueryFilter(tags: FieldTags, report: Report): void {
+    const tag = tags.queryFilter;
+    if (!tag) {
+        return;
     }
+    if ((tag.getCommentText() ?? "").trim()) {
+        report("@queryfilter takes no value", tag);
+    }
+    reportIfBranch(tags, tag, report);
+    // The primary key is a filter already (spec-model defaults it), so the tag is noise.
+    if (tags.primaryKey) {
+        report("the primary key is a filter by default; drop @queryfilter", tag);
+    }
+}
 
-    // @version marks the optimistic-lock column; the type must be Version and the value is not derived.
-    const versionTag = (tags.get("version") ?? [])[0];
-    if (versionTag) {
-        if (generatedTags.length > 0) {
-            report("@version and @generated are mutually exclusive", versionTag);
-        }
-        if (computedTags.length > 0) {
-            report("@version and @computed are mutually exclusive", versionTag);
-        }
-        if (createdAtTag) {
-            report("@version and @createdAt are mutually exclusive", versionTag);
-        }
-        if (updatedAtTag) {
-            report("@version and @updatedAt are mutually exclusive", versionTag);
-        }
-        const typeText = property.getTypeNode()?.getText();
-        if (typeText !== "Version") {
-            report(`@version must be on a \`Version\` field, found \`${typeText ?? "unknown"}\``, versionTag);
-        }
+/** `@version` marks the optimistic-lock column. See docs/versioning.md. */
+function lintVersion(tags: FieldTags, report: Report): void {
+    const tag = tags.version;
+    if (!tag) {
+        return;
     }
+    if (tags.generated) {
+        report("@version and @generated are mutually exclusive", tag);
+    }
+    if (tags.computed) {
+        report("@version and @computed are mutually exclusive", tag);
+    }
+    if (tags.createdAt) {
+        report("@version and @createdAt are mutually exclusive", tag);
+    }
+    if (tags.updatedAt) {
+        report("@version and @updatedAt are mutually exclusive", tag);
+    }
+    if (tags.typeText !== "Version") {
+        report(`@version must be on a \`Version\` field, found \`${tags.typeText ?? "unknown"}\``, tag);
+    }
+}
 
-    // @queryorderby marks a scalar field as an ordering key; `default asc|desc` also names the
-    // entity's default ordering. See docs/queries.md.
-    const queryOrderTag = (tags.get("queryorderby") ?? [])[0];
-    if (queryOrderTag) {
-        const text = (queryOrderTag.getCommentText() ?? "").trim();
-        if (text !== "") {
-            const tokens = text.split(/\s+/);
-            const isDefault = tokens.length === 2 && tokens[0] === "default" && isOrderDirection(tokens[1]);
-            if (!isDefault) {
-                report(
-                    `@queryorderby takes no value or \`default asc|desc\`, found \`${text}\``,
-                    queryOrderTag,
-                );
-            }
-        }
-        if (firstBranch) {
-            report(`@queryorderby must be on a scalar field, not a @${firstBranch.name} field`, queryOrderTag);
+/** `@queryorderby` whitelists an ordering key; `default asc|desc` also names the default. */
+function lintQueryOrderBy(tags: FieldTags, report: Report): void {
+    const tag = tags.queryOrderBy;
+    if (!tag) {
+        return;
+    }
+    const text = (tag.getCommentText() ?? "").trim();
+    if (text !== "") {
+        const tokens = text.split(/\s+/);
+        const isDefault = tokens.length === 2 && tokens[0] === "default" && isOrderDirection(tokens[1]);
+        if (!isDefault) {
+            report(`@queryorderby takes no value or \`default asc|desc\`, found \`${text}\``, tag);
         }
     }
+    reportIfBranch(tags, tag, report);
+}
 
-    // @where whitelists the comparison operators a field may be compared with. See docs/queries.md.
-    const whereTag = (tags.get("where") ?? [])[0];
-    if (whereTag) {
-        const tokens = (whereTag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
-        if (tokens.length === 0) {
-            report(`@where requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, whereTag);
-        }
-        for (const token of tokens) {
-            if (!isCompareOperator(token)) {
-                report(
-                    `@where \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`,
-                    whereTag,
-                );
-            }
-        }
-        if (firstBranch) {
-            report(`@where must be on a scalar field, not a @${firstBranch.name} field`, whereTag);
+/** `@where` whitelists the comparison operators a field may be narrowed with. See docs/queries.md. */
+function lintWhere(tags: FieldTags, report: Report): void {
+    const tag = tags.where;
+    if (!tag) {
+        return;
+    }
+    const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
+    if (tokens.length === 0) {
+        report(`@where requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
+    }
+    for (const token of tokens) {
+        if (!isCompareOperator(token)) {
+            report(`@where \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
         }
     }
+    reportIfBranch(tags, tag, report);
+}
+
+/** Check one field: its tag vocabulary, then each tag family's rules. */
+function lintProperty(
+    property: PropertySignature,
+    filePath: string,
+    findings: Finding[],
+): void {
+    const fieldName = property.getName();
+    const report: Report = (message, tag) => {
+        const line = (tag ?? property).getStartLineNumber();
+        findings.push({ filePath, line, message: `\`${fieldName}\`: ${message}` });
+    };
+
+    const tags = resolveFieldTags(property);
+
+    // The call order is the order the findings are emitted in.
+    lintKnownTags(tags, report);
+    lintDuplicateTags(tags, report);
+    lintFieldName(tags, report);
+    lintWidget(tags, report);
+    lintOwnership(tags, report);
+    lintComputedMechanism(tags, report);
+    lintClocks(tags, report);
+    lintDefaultTag(tags, report);
+    lintBranches(tags, report);
+    lintKeyTags(tags, report);
+    lintQueryFilter(tags, report);
+    lintVersion(tags, report);
+    lintQueryOrderBy(tags, report);
+    lintWhere(tags, report);
 }
 
 /** Lint an in-memory source string, for tests and one-off checks. */
