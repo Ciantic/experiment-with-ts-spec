@@ -86,12 +86,13 @@ field — without hardcoding a column list.
 ## Query schemas
 
 Every entity gets a generated `query` read (`docs/queries.md`), so every entity
-gets a `query` args schema. A read takes one argument — its filters plus `select`
-— so the schema is that object with the entity's select schema added as a field.
-The filters come from the entity's `@queryfilter` fields, resolved like any other
-field (the same primitives, keywords, and `Date` mapping) and always validated as
-a set: `z.array(…)`. The schema is named after the read: `Invoice` yields
-`queryInvoiceSchema` in
+gets a `query` args schema. A read takes one argument — its filters, its
+ordering, and `select` — so the schema is that object with the entity's select
+schema added as a field. The filters come from the entity's `@queryfilter`
+fields, resolved like any other field (the same primitives, keywords, and `Date`
+mapping) and always validated as a set: `z.array(…)`. The ordering keys come
+from the entity's `@queryorderby` fields. The schema is named after the read:
+`Invoice` yields `queryInvoiceSchema` in
 `packages/backend/src/validation/queries/queryInvoice.ts`.
 
 ```typescript
@@ -99,6 +100,12 @@ export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     }).optional(),
+    order: z.array(
+        z.strictObject({
+            field: z.enum(["createdAt", "updatedAt"]),
+            direction: z.enum(["asc", "desc"]).optional(),
+        }),
+    ).optional(),
     select: invoiceSelectSchema,
 });
 ```
@@ -107,7 +114,9 @@ Every filter is optional, which mirrors the generated `Filters<…>` type and le
 `queryInvoiceSchema` validate a `query` that names none. The filter is its own
 `z.strictObject`, so a flat filter field or an unknown filter key fails rather
 than being stripped, and a data field named `select` cannot collide with the
-projection.
+projection. Each `order` clause names a whitelisted field (`z.enum`) and an
+optional direction, so an unknown sort key is a 400 rather than a `500` from the
+resolver. An entity with no `@queryorderby` field gets no `order` key at all.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

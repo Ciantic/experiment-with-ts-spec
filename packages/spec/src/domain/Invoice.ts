@@ -153,6 +153,7 @@ export interface Invoice {
      * @fieldName Created at
      * @generated
      * @default now()
+     * @queryorderby default asc
      * @widget date
      */
     createdAt?: Date;
@@ -163,6 +164,7 @@ export interface Invoice {
      * @fieldName Updated at
      * @computed storage=stored formula=now
      * @default now()
+     * @queryorderby
      * @widget date
      */
     updatedAt?: Date;

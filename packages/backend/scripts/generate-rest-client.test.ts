@@ -32,6 +32,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
 const widget = table("widget", "Widget", [
     column("id", { primaryKey: true, queryFilter: true }),
     column("size", { queryFilter: true }),
+    column("createdAt", { queryOrder: { default: "asc" } }),
     column("version", { version: true }),
 ]);
 
@@ -70,7 +71,14 @@ describe("renderClientModule", () => {
     });
 
     it("narrows the filters to the filterable fields", () => {
-        expect(widgetModule()).toContain('{ filter?: Filters<Widget, "id" | "size">; select: S }');
+        expect(widgetModule()).toContain('filter?: Filters<Widget, "id" | "size">');
+    });
+
+    it("narrows the ordering to the orderable fields", () => {
+        const code = widgetModule();
+
+        expect(code).toContain('order?: Order<"createdAt">[]');
+        expect(code).toContain('import type { Filters, Order, Selected, Selection } from "spec/selection.ts";');
     });
 
     it("declares the patch locally, since it cannot import the repository's", () => {

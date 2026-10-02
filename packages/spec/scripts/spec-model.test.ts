@@ -126,6 +126,30 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(false);
     });
+
+    it("decodes a bare @queryorderby", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryorderby\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({});
+    });
+
+    it("decodes @queryorderby default asc", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryorderby default asc\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({ default: "asc" });
+    });
+
+    it("leaves an @queryorderby value the linter rejects as no default", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryorderby sideways\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({});
+    });
 });
 
 describe("parseSpec formulas", () => {

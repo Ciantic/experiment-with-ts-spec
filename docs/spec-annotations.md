@@ -25,6 +25,10 @@ Field tags:
   generated reads. A filter is a set matched with `in (…)`; several are combined
   with `and`. Scalar fields only; a branch field may not carry it, and it is
   redundant on `id`, which is a filter by default. See `docs/queries.md`.
+- `@queryorderby` — makes the field an ordering key of the entity's generated
+  reads. A bare marker whitelists the field; `@queryorderby default asc|desc`
+  also makes it the entity's default ordering (at most one per interface).
+  Scalar fields only; a branch field may not carry it. See `docs/queries.md`.
 
 Interface tags:
 
@@ -310,6 +314,9 @@ Enforced:
 - `@queryfilter` is a bare marker on a scalar field; a branch field may not
   carry it, and it must not be written on `id`, which is a filter already. See
   `docs/queries.md`.
+- `@queryorderby` is a bare marker on a scalar field, or `default asc|desc`; a
+  branch field may not carry it, and at most one field may declare the default.
+  See `docs/queries.md`.
 - `formula=` must be a member of an `@formula`-annotated type.
 - An `@formula` type must be a non-empty union of string literals.
 - Tags may not repeat on a field.

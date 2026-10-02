@@ -237,3 +237,69 @@ describe("resolveMany", () => {
         ).rejects.toThrow("unknown filter field `nonsense` on `invoice`");
     });
 });
+
+/** A resolver whose invoice table whitelists ordering fields, with `number asc` as the default. */
+const ordered = createResolver({
+    tables: {
+        invoice: {
+            name: "invoice",
+            key: "id",
+            fields: { id: "id", number: "number", totalAmount: "totalAmount", customerId: "customerId", notes: "notes" },
+            relations: {},
+            order: ["number", "totalAmount", "customerId"],
+            defaultOrder: { field: "number", direction: "asc" },
+        },
+    },
+});
+
+describe("resolveMany ordering", () => {
+    const select = { id: true } as const;
+
+    it("orders by a whitelisted field", async () => {
+        const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+            select,
+            order: [{ field: "number", direction: "desc" }],
+        });
+
+        expect(rows.map((row) => row.id)).toEqual(["i4", "i3", "i2", "i1"]);
+    });
+
+    it("applies the entity default ordering when the read names none", async () => {
+        const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select });
+
+        expect(rows.map((row) => row.id)).toEqual(["i1", "i2", "i3", "i4"]);
+    });
+
+    it("defaults a clause with no direction to asc", async () => {
+        const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+            select,
+            order: [{ field: "number" }],
+        });
+
+        expect(rows.map((row) => row.id)).toEqual(["i1", "i2", "i3", "i4"]);
+    });
+
+    it("orders by several clauses, the first breaking ties", async () => {
+        const rows = await ordered.resolveMany<Invoice, typeof select>(db, "invoice", { customerId: ["c1", "c2"] }, {
+            select,
+            order: [{ field: "customerId", direction: "asc" }, { field: "number", direction: "desc" }],
+        });
+
+        expect(rows.map((row) => row.id)).toEqual(["i3", "i1", "i2"]);
+    });
+
+    it("rejects a field that is not orderable", async () => {
+        await expect(
+            ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select, order: [{ field: "notes" }] }),
+        ).rejects.toThrow("unknown order field `notes` on `invoice`");
+    });
+
+    it("rejects a direction that is not asc or desc", async () => {
+        await expect(
+            ordered.resolveMany<Invoice, typeof select>(db, "invoice", {}, {
+                select,
+                order: [{ field: "number", direction: "up" as never }],
+            }),
+        ).rejects.toThrow('order direction for `number` on `invoice` must be "asc" or "desc"');
+    });
+});

@@ -38,6 +38,7 @@ export const FIELD_TAGS = [
     "default",
     "version",
     "queryfilter",
+    "queryorderby",
 ] as const;
 
 /** Tags an interface may carry. */
@@ -68,6 +69,15 @@ export type Widget = (typeof WIDGETS)[number];
 /** Storage modes a `@computed` field may carry. */
 export const STORAGE_MODES = ["generated", "stored", "derived"] as const;
 export type StorageMode = (typeof STORAGE_MODES)[number];
+
+/** The sort directions an `@queryorderby default …` may name. */
+export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
+export type OrderDirection = (typeof ORDER_DIRECTIONS)[number];
+
+/** True when the text is one of {@link ORDER_DIRECTIONS}. */
+export function isOrderDirection(value: string | undefined): value is OrderDirection {
+    return value === "asc" || value === "desc";
+}
 
 /** A problem found while reading the spec. */
 export interface Diagnostic {
@@ -114,6 +124,8 @@ export interface Tags {
     pgtype?: string;
     /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
     queryfilter: boolean;
+    /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
+    queryOrderBy?: { default?: OrderDirection };
 }
 
 /** A field of a spec interface. */
@@ -261,6 +273,18 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "queryfilter":
                     tags.queryfilter = true;
                     break;
+                case "queryorderby": {
+                    // Bare marks the field orderable; `default asc|desc` also names the entity default.
+                    if (tags.queryOrderBy === undefined) {
+                        const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
+                        const order: { default?: OrderDirection } = {};
+                        if (tokens[0] === "default" && isOrderDirection(tokens[1])) {
+                            order.default = tokens[1];
+                        }
+                        tags.queryOrderBy = order;
+                    }
+                    break;
+                }
                 case "generated":
                     tags.generated = true;
                     break;

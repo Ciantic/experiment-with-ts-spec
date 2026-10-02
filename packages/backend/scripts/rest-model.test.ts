@@ -22,6 +22,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
 const filterable = table("widget", "Widget", [
     column("id", { primaryKey: true, queryFilter: true }),
     column("size", { queryFilter: true }),
+    column("createdAt", { queryOrder: { default: "asc" } }),
     column("version", { version: true }),
 ]);
 
@@ -103,5 +104,13 @@ describe("buildRestModel", () => {
         expect(widget?.filters).toEqual(["id", "size"]);
         expect(widget?.key).toBe("id");
         expect(widget?.versionFields).toEqual(["version"]);
+    });
+
+    it("records the orderable fields", () => {
+        const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
+        const marker = buildRestModel(tables).entities.find((entity) => entity.entity === "Marker");
+
+        expect(widget?.orderFields).toEqual(["createdAt"]);
+        expect(marker?.orderFields).toEqual([]);
     });
 });

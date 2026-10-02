@@ -83,9 +83,17 @@ export type ThingFormat = "short" | "long" | (string & {});
 export interface Thing {
     /** The identifier: a filter by default, no @queryfilter needed. */
     id: ThingId;
-    /** An optional label. */
+    /**
+     * An optional label.
+     *
+     * @queryorderby default asc
+     */
     name?: string;
-    /** An optional amount. */
+    /**
+     * An optional amount.
+     *
+     * @queryorderby
+     */
     amount?: Money;
     /**
      * The revision.
@@ -328,6 +336,15 @@ describe("buildZodModel queries", () => {
             { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ChildId">()).optional()' },
         ]);
     });
+
+    it("records the orderable fields", () => {
+        const { model } = generate({ domain: { Thing: THING } });
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
+        const queryChild = model.queries.find((query) => query.entity === "Child");
+
+        expect(queryThing?.orderFields).toEqual(["name", "amount"]);
+        expect(queryChild?.orderFields).toEqual([]);
+    });
 });
 
 describe("generateQueryFile", () => {
@@ -339,6 +356,9 @@ describe("generateQueryFile", () => {
         expect(code).toContain("    filter: z.strictObject({");
         expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
         expect(code).toContain("    }).optional(),");
+        expect(code).toContain("    order: z.array(");
+        expect(code).toContain('            field: z.enum(["name", "amount"]),');
+        expect(code).toContain('            direction: z.enum(["asc", "desc"]).optional(),');
         expect(code).toContain("    select: thingSelectSchema,");
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
@@ -402,6 +422,17 @@ describe("generateQueryFile", () => {
         // A flat filter field and a non-array value are both rejected by the nested strict object.
         expect(exports.queryThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(false);
         expect(exports.queryThingSchema?.safeParse({ filter: { id: "x" }, select: {} }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ order: [{ field: "name" }], select: {} }).success).toBe(true);
+        expect(
+            exports.queryThingSchema?.safeParse({ order: [{ field: "amount", direction: "desc" }], select: {} })
+                .success,
+        ).toBe(true);
+        // An unknown field and an unknown direction are both rejected before they reach SQL.
+        expect(exports.queryThingSchema?.safeParse({ order: [{ field: "nope" }], select: {} }).success).toBe(false);
+        expect(
+            exports.queryThingSchema?.safeParse({ order: [{ field: "name", direction: "up" }], select: {} })
+                .success,
+        ).toBe(false);
     });
 });
 

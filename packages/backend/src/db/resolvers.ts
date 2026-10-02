@@ -5,7 +5,7 @@
  * into SQL. A branch costs one extra query, batched over every parent — there is
  * no JSON aggregation.
  */
-import type { Selection, Selected } from "./selection.ts";
+import type { Direction, Selection, Selected } from "./selection.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 
 /** How a branch field of a table reaches another table. */
@@ -29,6 +29,10 @@ export interface QueryTable {
     fields: Record<string, string>;
     /** Branch fields, mapped to how they are joined or flattened. */
     relations: Record<string, QueryRelation>;
+    /** Orderable field names; absent when the entity marks none. See docs/queries.md. */
+    order?: string[];
+    /** The entity's default ordering, applied to a root read that names none. See docs/queries.md. */
+    defaultOrder?: { field: string; direction: Direction };
 }
 
 /** Every table the resolver may read, keyed by physical table name. */
@@ -41,9 +45,17 @@ type FetchFilter =
     | { kind: "args"; args: Record<string, unknown> }
     | { kind: "match"; column: string; values: unknown[] };
 
+/** One ordering clause, as a read passes it. See docs/queries.md. */
+export interface OrderClause {
+    field: string;
+    direction?: Direction;
+}
+
 /** What a read selects and filters on, as the generated function passes it. */
 export interface ResolveOptions<E, S extends Selection<E>> {
     select: S;
+    /** `| undefined` so a generated call may forward an absent ordering under exactOptionalPropertyTypes. */
+    order?: OrderClause[] | undefined;
 }
 
 /** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
@@ -275,6 +287,31 @@ function copyField(target: Record<string, unknown>, field: string, value: unknow
     }
 }
 
+/**
+ * The `order by` clause for a root read, or "" when nothing orders. Only whitelisted fields may
+ * order, and a direction is validated because it reaches the SQL; a clause that omits one uses the
+ * field's declared default, or `asc`. See docs/queries.md.
+ */
+function buildOrder(table: string, meta: QueryTable, order: OrderClause[] | undefined): string {
+    const clauses = order && order.length > 0 ? order : meta.defaultOrder ? [meta.defaultOrder] : [];
+    if (clauses.length === 0) {
+        return "";
+    }
+    const orderable = new Set(meta.order ?? []);
+    const parts = clauses.map(({ field, direction }) => {
+        const column = meta.fields[field];
+        if (column === undefined || !orderable.has(field)) {
+            throw new Error(`unknown order field \`${field}\` on \`${table}\``);
+        }
+        const resolved = direction ?? (meta.defaultOrder?.field === field ? meta.defaultOrder.direction : "asc");
+        if (resolved !== "asc" && resolved !== "desc") {
+            throw new Error(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
+        }
+        return `${TABLE_ALIAS}.${quote(column)} ${resolved}`;
+    });
+    return ` order by ${parts.join(", ")}`;
+}
+
 /** Shape one raw row into its key, the value its filter matched, and the projected fields. */
 function mapRow(projection: Projection, row: Record<string, unknown>, matchColumn: string | undefined): FetchedRow {
     const value: Record<string, unknown> = {};
@@ -367,6 +404,7 @@ async function fetchRows(
     table: string,
     selection: Record<string, unknown>,
     filter: FetchFilter,
+    order?: OrderClause[],
 ): Promise<FetchedRow[]> {
     const meta = model.tables[table];
     if (!meta) {
@@ -380,7 +418,9 @@ async function fetchRows(
         return [];
     }
 
-    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}`;
+    // Only a root read orders; a batched branch keeps its own order so grouping stays stable.
+    const orderSql = filter.kind === "args" ? buildOrder(table, meta, order) : "";
+    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}${orderSql}`;
     const rows = rowsOf(await db.query(sql, built.params));
     const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
 
@@ -397,10 +437,14 @@ export function createResolver(model: QueryModel): Resolver {
         args: Record<string, unknown>,
         opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]> {
-        const rows = await fetchRows(model, db, table, opts.select as Record<string, unknown>, {
-            kind: "args",
-            args,
-        });
+        const rows = await fetchRows(
+            model,
+            db,
+            table,
+            opts.select as Record<string, unknown>,
+            { kind: "args", args },
+            opts.order,
+        );
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }
 

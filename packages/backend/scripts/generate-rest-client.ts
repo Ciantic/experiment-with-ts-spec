@@ -37,11 +37,17 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
-/** The `query` options: an optional filter object plus the selection. */
-function queryOptsType(name: string, filters: string[]): string {
-    return filters.length > 0
-        ? `{ filter?: Filters<${name}, ${filterKeys(filters)}>; select: S }`
-        : "{ select: S }";
+/** The `query` options: an optional filter, an optional ordering, and the selection. */
+function queryOptsType(name: string, filters: string[], order: string[]): string {
+    const parts: string[] = [];
+    if (filters.length > 0) {
+        parts.push(`filter?: Filters<${name}, ${filterKeys(filters)}>`);
+    }
+    if (order.length > 0) {
+        parts.push(`order?: Order<${filterKeys(order)}>[]`);
+    }
+    parts.push("select: S");
+    return `{ ${parts.join("; ")} }`;
 }
 
 /** The operation of the given kind, or undefined when the entity does not expose it. */
@@ -77,7 +83,13 @@ export function renderClientModule(entity: RestEntity): string {
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
 
-    const selectionTypes = ["Filters", "Selection", "Selected"];
+    const selectionTypes = ["Selection", "Selected"];
+    if (entity.filters.length > 0) {
+        selectionTypes.push("Filters");
+    }
+    if (entity.orderFields.length > 0) {
+        selectionTypes.push("Order");
+    }
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
     const lines: string[] = [HEADER];
@@ -101,7 +113,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(comment(entity, "query"));
         lines.push(`export function query${name}<S extends Selection<${name}>>(`);
         lines.push("    http: HttpClient,");
-        lines.push(`    opts: ${queryOptsType(name, entity.filters)},`);
+        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.orderFields)},`);
         lines.push(`): Promise<Selected<${name}, S>[]> {`);
         lines.push(
             `    return http.${transport(query)}<Selected<${name}, S>[]>("${query.method}", "${query.path}", opts);`,

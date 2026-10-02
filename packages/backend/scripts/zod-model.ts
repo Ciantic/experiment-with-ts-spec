@@ -82,6 +82,8 @@ export interface ZodQuery {
     schemaName: string;
     /** The filter fields, all optional sets; the renderer adds the entity's select schema. */
     fields: ZodField[];
+    /** The orderable field names, from `@queryorderby`; the renderer validates `order` against them. */
+    orderFields: string[];
     /** Entity names the filters reference, so the file imports their schemas. */
     dependencies: string[];
     /** True when a filter resolves through a primitive schema. */
@@ -437,10 +439,14 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             fields.push({ name: property.name, expression: `z.array(${resolved}).optional()` });
         }
         context.dependencies.delete(spec.name);
+        const orderFields = spec.properties
+            .filter((property) => property.tags.queryOrderBy !== undefined)
+            .map((property) => property.name);
         queries.push({
             entity: spec.name,
             schemaName: `query${spec.name}Schema`,
             fields,
+            orderFields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
         });

@@ -656,6 +656,87 @@ describe("@queryfilter", () => {
     });
 });
 
+describe("@queryorderby", () => {
+    const field = (name: string, extra: string, type = "string") =>
+        `export interface Thing {
+            /**
+             * @fieldName Label
+             * @widget text
+             * @queryorderby
+             ${extra}
+             */
+            ${name}: ${type};
+        }`;
+
+    it("accepts a bare @queryorderby on a scalar field", () => {
+        const findings = lintSourceText(field("value", ""), new Set());
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts @queryorderby default asc and desc", () => {
+        expect(lintSourceText(field("value", "default asc"), new Set())).toEqual([]);
+        expect(lintSourceText(field("value", "default desc"), new Set())).toEqual([]);
+    });
+
+    it("rejects an unknown @queryorderby value", () => {
+        const findings = lintSourceText(field("value", "sideways"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`value`: @queryorderby takes no value or `default asc|desc`, found `sideways`",
+        ]);
+    });
+
+    it("rejects `default` with no direction", () => {
+        const findings = lintSourceText(field("value", "default"), new Set());
+
+        expect(messages(findings)).toEqual([
+            "`value`: @queryorderby takes no value or `default asc|desc`, found `default`",
+        ]);
+    });
+
+    it("rejects @queryorderby on a relation field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget select
+                 * @relation
+                 * @queryorderby
+                 */
+                owner?: Owner;
+            }`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`owner`: @queryorderby must be on a scalar field, not a @relation field",
+        ]);
+    });
+
+    it("rejects more than one default ordering field", () => {
+        const findings = lintSourceText(
+            `export interface Two {
+                /**
+                 * @fieldName Created
+                 * @widget date
+                 * @queryorderby default asc
+                 */
+                createdAt?: Date;
+                /**
+                 * @fieldName Updated
+                 * @widget date
+                 * @queryorderby default desc
+                 */
+                updatedAt?: Date;
+            }`,
+            new Set(),
+        );
+
+        expect(messages(findings)).toEqual(["`Two`: @queryorderby default may appear on at most one field"]);
+    });
+});
+
 describe("readFormulaNames", () => {
     it("discovers names from @formula-annotated types", () => {
         const names = realFormulaNames();

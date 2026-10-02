@@ -17,6 +17,7 @@ import {
     TYPE_TAGS,
     WIDGETS,
     formulaNamesIn,
+    isOrderDirection,
     parseParameters,
     readFormulaNames,
     readTags,
@@ -157,6 +158,18 @@ export function lintInterface(
             filePath,
             line: property.getStartLineNumber(),
             message: `\`${name}\`: @version may appear on at most one field`,
+        });
+    }
+
+    // At most one ordering field may declare the entity default; otherwise it is ambiguous.
+    const defaultOrdered = declaration
+        .getProperties()
+        .filter((property) => readTags(property).queryOrderBy?.default !== undefined);
+    for (const property of defaultOrdered.slice(1)) {
+        findings.push({
+            filePath,
+            line: property.getStartLineNumber(),
+            message: `\`${name}\`: @queryorderby default may appear on at most one field`,
         });
     }
 }
@@ -341,6 +354,26 @@ function lintProperty(
         const typeText = property.getTypeNode()?.getText();
         if (typeText !== "Version") {
             report(`@version must be on a \`Version\` field, found \`${typeText ?? "unknown"}\``, versionTag);
+        }
+    }
+
+    // @queryorderby marks a scalar field as an ordering key; `default asc|desc` also names the
+    // entity's default ordering. See docs/queries.md.
+    const queryOrderTag = (tags.get("queryorderby") ?? [])[0];
+    if (queryOrderTag) {
+        const text = (queryOrderTag.getCommentText() ?? "").trim();
+        if (text !== "") {
+            const tokens = text.split(/\s+/);
+            const isDefault = tokens.length === 2 && tokens[0] === "default" && isOrderDirection(tokens[1]);
+            if (!isDefault) {
+                report(
+                    `@queryorderby takes no value or \`default asc|desc\`, found \`${text}\``,
+                    queryOrderTag,
+                );
+            }
+        }
+        if (firstBranch) {
+            report(`@queryorderby must be on a scalar field, not a @${firstBranch.name} field`, queryOrderTag);
         }
     }
 }

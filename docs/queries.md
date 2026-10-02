@@ -30,9 +30,9 @@ There is no query alias to write. The generator walks the entities and emits
 ```ts
 export function queryInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
-    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; select: S },
+    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; select: S },
 ): Promise<Selected<Invoice, S>[]> {
-    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select });
+    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, { select: opts.select, order: opts.order });
 }
 ```
 
@@ -41,8 +41,8 @@ No domain name is hardcoded: a new entity flows through with no generator edit.
 `queryInvoiceRow`, `queryInvoiceSent`, and `querySeller` the same way.
 
 To read one row, take the first result — there is no `get` and no `limit 1`.
-A filter set that matches several rows yields all of them, deterministically
-ordered only if the query is.
+A filter set that matches several rows yields all of them, in the order the read
+names (or the entity default); a read that names none is database order.
 
 ## `@queryfilter`
 
@@ -106,6 +106,63 @@ type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
 
 So `queryInvoice(db, { select })` lists every row, and a one-element array names a
 single value.
+
+## `@queryorderby`
+
+```
+@queryorderby
+@queryorderby default asc
+```
+
+A bare marker on a **scalar** field whitelists it as an ordering key. The
+`order` option then accepts clauses that name those fields:
+
+```ts
+const invoices = await queryInvoice(db, {
+    filter: { customerId: [customerId] },
+    order: [{ field: "createdAt", direction: "desc" }],
+    select: { number: true },
+});
+```
+
+`order` is an array, so several clauses sort with the first breaking ties, each
+column matching SQL `ORDER BY`. A clause that omits `direction` is `asc`. Only
+whitelisted fields may order — an unknown field is a **type error** and, over
+HTTP, a 400 — so a field simply cannot reach the `ORDER BY`.
+
+```ts
+/** The ordering of a read: one clause per sort key. See docs/queries.md. */
+export type Order<K extends PropertyKey> = { field: K; direction?: Direction };
+export type Direction = "asc" | "desc";
+```
+
+### The default ordering
+
+`@queryorderby default asc|desc` (at most one field per entity) additionally
+makes that field the **entity default**: a read that names no `order` sorts by
+it. It also gives the field's clauses a default direction, so
+`order: [{ field: "createdAt" }]` uses `desc` if `createdAt` is
+`@queryorderby default desc`.
+
+```ts
+/**
+ * @fieldName Created at
+ * @queryorderby default asc
+ * @widget date
+ */
+createdAt?: Date;
+
+/**
+ * @fieldName Updated at
+ * @queryorderby
+ * @widget date
+ */
+updatedAt?: Date;
+```
+
+An entity with no `@queryorderby` field takes no `order` (its opts type omits
+the key) and is returned in database order. Ordering is a root-only feature:
+a branch cannot carry `order` any more than it can carry `filter`.
 
 ## Selection
 
@@ -249,6 +306,11 @@ A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
 `@queryfilter` on a branch field, so a filter always names a scalar column.
 
+Ordering is applied the same way: the resolver reads the table's `order`
+whitelist and `defaultOrder` from `queryModel`, refuses a field that is not on
+the list, and validates the direction before it reaches the SQL. Only the root
+query is ordered; a batched branch keeps its own order so grouping stays stable.
+
 ## Gotchas
 
 - **Every selected key is optional.** All spec fields are optional, so
@@ -259,7 +321,7 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
 - **`true` on a branch selects scalars only.** It does not recurse into nested
   branches, so a default selection cannot fan out into unbounded joins.
 - **A filter reads columns the selection may omit.** `select` governs the
-  projection; the `args` still read whatever they name.
+  projection; the `args` still read whatever they name, and so does `order`.
 - **Set membership only.** A filter is an array matched with `in (…)`; an empty
   set matches nothing, and a non-array value throws. A range
   (`issuedFrom`/`issuedTo`) would need `>=`/`<=`, which the resolver does not
@@ -276,8 +338,11 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
   `InvoiceRow.invoiceId` is a scalar alias, not a `@relation`, so today's
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
+- **Ordering comes only from `@queryorderby`.** A field without the tag cannot
+  order, and a direction is `asc` or `desc`. Like a filter, ordering is a root
+  concern: a branch field may not carry the tag.
 - **The read types are in the spec, the reader is not.** `Selection`,
-  `Selected`, and `Filters` are pure types with no query in them, so
+  `Selected`, `Filters`, and `Order` are pure types with no query in them, so
   they live in `packages/spec/src/selection.ts` and both the backend and the
   generated REST client import them from there. The SQL, the resolver, and the
   metadata stay in the backend.
@@ -305,11 +370,12 @@ middle ground if the args logic grows past equality.
   foreign key is a scalar field, so `customerId` is filterable.
 - **A row at most, not exactly one.** There is no `limit 1`; a caller takes the
   first result, which fetches every match.
-- **Per-branch arguments.** A branch cannot carry `orderBy`/`limit`; `rows:
+- **Per-branch arguments.** A branch cannot carry `order`/`limit`; `rows:
   { description: true }` has nowhere to put them. The extension point is to
-  widen a branch from `Selection<E>` to `{ select?: Selection<E>; orderBy?: …;
+  widen a branch from `Selection<E>` to `{ select?: Selection<E>; order?: …;
   limit?: number }` and recurse into `.select`.
-- **Pagination and ordering at the top level.** No `limit`/`offset`/`orderBy`.
+- **Pagination and a limit at the top level.** No `limit`/`offset`; `order` is
+  the one per-read control, whitelisted by `@queryorderby`.
 - **`@projection` generation.** If static read SQL is ever wanted, the hook is a
   `@projection` tag on a `Pick<Entity, "…">` alias, emitting a view or a column
   list. It is not built.

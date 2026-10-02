@@ -35,3 +35,9 @@ export type Selected<E, S> = {
 
 /** The filter arguments of a read: each named field, as a set matched with `in (…)`. See docs/queries.md. */
 export type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
+
+/** A sort direction. See docs/queries.md. */
+export type Direction = "asc" | "desc";
+
+/** One ordering clause of a read: a whitelisted field and an optional direction. See docs/queries.md. */
+export type Order<K extends PropertyKey> = { field: K; direction?: Direction };

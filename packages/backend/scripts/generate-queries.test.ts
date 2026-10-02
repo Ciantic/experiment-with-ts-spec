@@ -47,6 +47,13 @@ const invoice = table(
 
 const seller = table("seller", "Seller", [column("id", { primaryKey: true })]);
 
+/** An entity whose `createdAt` is the default ordering and `updatedAt` is merely orderable. */
+const stamped = table("stamped", "Stamped", [
+    column("id", { primaryKey: true, queryFilter: true }),
+    column("createdAt", { queryOrder: { default: "asc" } }),
+    column("updatedAt", { queryOrder: {} }),
+]);
+
 const tables = new Map([
     ["Invoice", invoice],
     ["Seller", seller],
@@ -77,6 +84,21 @@ describe("buildQueryModel", () => {
             columns: { name: "customerName" },
         });
     });
+
+    it("records the orderable fields and the entity default ordering", () => {
+        const model = buildQueryModel(new Map([["Stamped", stamped]]));
+        const meta = model.tables.stamped;
+
+        expect(meta?.order).toEqual(["createdAt", "updatedAt"]);
+        expect(meta?.defaultOrder).toEqual({ field: "createdAt", direction: "asc" });
+    });
+
+    it("omits order metadata when the entity marks nothing orderable", () => {
+        const model = buildQueryModel(tables).tables.invoice;
+
+        expect(model?.order).toBeUndefined();
+        expect(model?.defaultOrder).toBeUndefined();
+    });
 });
 
 describe("renderQueryModule", () => {
@@ -105,6 +127,14 @@ describe("renderQueryModule", () => {
         );
     });
 
+    it("passes the ordering through to the resolver when the entity is orderable", () => {
+        const code = renderQueryModule("Stamped", stamped);
+
+        expect(code).toContain(
+            'resolver.resolveMany<Stamped, S>(db, "stamped", opts.filter ?? {}, { select: opts.select, order: opts.order })',
+        );
+    });
+
     it("returns a list", () => {
         const code = renderQueryModule("Invoice", invoice);
 
@@ -124,6 +154,20 @@ describe("renderQueryModule", () => {
         expect(code).not.toContain("getInvoice");
         expect(code).not.toContain("AtLeastOne");
         expect(code).not.toContain("resolveOne");
+    });
+
+    it("takes order clauses for the whitelisted fields", () => {
+        const code = renderQueryModule("Stamped", stamped);
+
+        expect(code).toContain("import type { Filters, Order, Selected, Selection } from");
+        expect(code).toContain('order?: Order<"createdAt" | "updatedAt">[]');
+    });
+
+    it("omits the order key from the opts type when the entity marks nothing orderable", () => {
+        const code = renderQueryModule("Invoice", invoice);
+
+        expect(code).not.toContain("Order<");
+        expect(code).toContain("opts: { filter?: Filters<Invoice, \"id\">; select: S }");
     });
 });
 

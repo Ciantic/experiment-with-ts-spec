@@ -56,6 +56,14 @@ export const queryModel: QueryModel = {
                     "table": "invoice_row",
                     "column": "invoiceId"
                 }
+            },
+            "order": [
+                "createdAt",
+                "updatedAt"
+            ],
+            "defaultOrder": {
+                "field": "createdAt",
+                "direction": "asc"
             }
         },
         "invoice_row": {

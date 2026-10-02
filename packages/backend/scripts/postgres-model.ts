@@ -10,6 +10,7 @@ import {
     SPEC_GLOB,
     parseSpec,
     type Diagnostic,
+    type OrderDirection,
     type SpecProperty,
 } from "spec/scripts/spec-model.ts";
 
@@ -69,6 +70,8 @@ export interface Column {
     version?: boolean;
     /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
     queryFilter?: boolean;
+    /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
+    queryOrder?: { default?: OrderDirection };
     read?: string;
 }
 
@@ -505,6 +508,9 @@ export function buildSpecTables(
                 queryFilter: tags.queryfilter,
                 read: fieldName,
             };
+            if (tags.queryOrderBy !== undefined) {
+                column.queryOrder = tags.queryOrderBy;
+            }
             if (resolved.checkValues) {
                 column.checkValues = resolved.checkValues;
             }

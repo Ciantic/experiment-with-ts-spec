@@ -9,5 +9,11 @@ export const queryInvoiceSchema = z.strictObject({
         customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
         sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     }).optional(),
+    order: z.array(
+        z.strictObject({
+            field: z.enum(["createdAt", "updatedAt"]),
+            direction: z.enum(["asc", "desc"]).optional(),
+        }),
+    ).optional(),
     select: invoiceSelectSchema,
 });

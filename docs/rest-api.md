@@ -108,7 +108,7 @@ narrowing. `db: SqlExecutor` becomes `http: HttpClient` and nothing else changes
 ```typescript
 export function queryInvoice<S extends Selection<Invoice>>(
     http: HttpClient,
-    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; select: S },
+    opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; select: S },
 ): Promise<Selected<Invoice, S>[]> {
     return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }
@@ -227,7 +227,8 @@ the same path as an empty body.
   implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
   entity set, so the generator does not see it. `POST /invoice/send` is
   hand-wired when the operation exists.
-- **Pagination, ordering, and a limit.** A read returns every matching row;
-  there is no `limit 1`, so a single row is the first result.
+- **Pagination and a limit.** A read returns every matching row; there is no
+  `limit 1`, so a single row is the first result. `order` is supported, but
+  whitelisted by `@queryorderby` (`docs/queries.md`).
 - **A public protocol version.** Client and server ship from one commit, so a
   deployed client and a moved server must be updated together.
