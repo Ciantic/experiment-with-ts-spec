@@ -2,8 +2,8 @@
 import type { Route } from "./router.ts";
 import { z } from "zod";
 import { createCustomer, createInvoice, createInvoiceRow, createInvoiceSent, createInvoiceSentRow, createSeller, deleteCustomer, deleteInvoice, deleteInvoiceRow, deleteInvoiceSent, deleteInvoiceSentRow, deleteSeller, updateCustomer, updateInvoice, updateInvoiceRow, updateInvoiceSent, updateInvoiceSentRow, updateSeller } from "../db/repositories/index.ts";
-import { listCustomer, listInvoice, listInvoiceRow, listInvoiceSent, listInvoiceSentRow, listSeller } from "../db/queries/index.ts";
-import { customerPatchSchema, customerSchema, invoicePatchSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentPatchSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, listCustomerSchema, listInvoiceRowSchema, listInvoiceSchema, listInvoiceSentRowSchema, listInvoiceSentSchema, listSellerSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
+import { queryCustomer, queryInvoice, queryInvoiceRow, queryInvoiceSent, queryInvoiceSentRow, querySeller } from "../db/queries/index.ts";
+import { customerPatchSchema, customerSchema, invoicePatchSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentPatchSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
 
 /** Every exposed call, matched by method and path. */
 export const routes: Route[] = [
@@ -11,8 +11,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/customer/query",
         source: "query",
-        input: listCustomerSchema,
-        handler: (db, body) => listCustomer(db, body as never),
+        input: queryCustomerSchema,
+        handler: (db, body) => queryCustomer(db, body as never),
     },
     {
         method: "POST",
@@ -39,8 +39,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/invoice/query",
         source: "query",
-        input: listInvoiceSchema,
-        handler: (db, body) => listInvoice(db, body as never),
+        input: queryInvoiceSchema,
+        handler: (db, body) => queryInvoice(db, body as never),
     },
     {
         method: "POST",
@@ -67,8 +67,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/invoice_row/query",
         source: "query",
-        input: listInvoiceRowSchema,
-        handler: (db, body) => listInvoiceRow(db, body as never),
+        input: queryInvoiceRowSchema,
+        handler: (db, body) => queryInvoiceRow(db, body as never),
     },
     {
         method: "POST",
@@ -95,8 +95,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/invoice_sent/query",
         source: "query",
-        input: listInvoiceSentSchema,
-        handler: (db, body) => listInvoiceSent(db, body as never),
+        input: queryInvoiceSentSchema,
+        handler: (db, body) => queryInvoiceSent(db, body as never),
     },
     {
         method: "POST",
@@ -123,8 +123,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/invoice_sent_row/query",
         source: "query",
-        input: listInvoiceSentRowSchema,
-        handler: (db, body) => listInvoiceSentRow(db, body as never),
+        input: queryInvoiceSentRowSchema,
+        handler: (db, body) => queryInvoiceSentRow(db, body as never),
     },
     {
         method: "POST",
@@ -151,8 +151,8 @@ export const routes: Route[] = [
         method: "GET",
         path: "/seller/query",
         source: "query",
-        input: listSellerSchema,
-        handler: (db, body) => listSeller(db, body as never),
+        input: querySellerSchema,
+        handler: (db, body) => querySeller(db, body as never),
     },
     {
         method: "POST",

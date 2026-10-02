@@ -12,8 +12,8 @@ database schema and the repositories are generated from.
   alias, from its `@zod` tag.
 - `packages/backend/src/validation/<entity>.ts` — one module per domain interface,
   exporting `<name>Schema`, `<name>PatchSchema`, and `<name>SelectSchema`.
-- `packages/backend/src/validation/queries/<entity>Queries.ts` — one module per
-  entity, exporting `<name>Schema` for its `list` read.
+- `packages/backend/src/validation/queries/query<Entity>.ts` — one module per
+  entity, exporting `<name>Schema` for its `query` read.
 - `packages/backend/src/validation/queries/index.ts` — the barrel re-exporting
   every query module.
 - `packages/backend/src/validation/index.ts` — the barrel re-exporting the
@@ -85,24 +85,24 @@ field — without hardcoding a column list.
 
 ## Query schemas
 
-Every entity gets a generated `list` read (`docs/queries.md`), so every entity
-gets a `list` args schema. A read takes one argument — its filters plus `select`
+Every entity gets a generated `query` read (`docs/queries.md`), so every entity
+gets a `query` args schema. A read takes one argument — its filters plus `select`
 — so the schema is that object with the entity's select schema added as a field.
 The filters come from the entity's `@queryfilter` fields, resolved like any other
 field (the same primitives, keywords, and `Date` mapping) and always validated as
 a set: `z.array(…)`. The schema is named after the read: `Invoice` yields
-`listInvoiceSchema` in
-`packages/backend/src/validation/queries/invoiceQueries.ts`.
+`queryInvoiceSchema` in
+`packages/backend/src/validation/queries/queryInvoice.ts`.
 
 ```typescript
-export const listInvoiceSchema = z.strictObject({
+export const queryInvoiceSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     select: invoiceSelectSchema,
 });
 ```
 
 Every filter is optional, which mirrors the generated `Filters<…>` type and lets
-`listInvoiceSchema` validate a `list` that names none.
+`queryInvoiceSchema` validate a `query` that names none.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

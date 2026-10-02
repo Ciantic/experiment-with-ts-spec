@@ -5,8 +5,8 @@ import type { HttpClient } from "sdk/http.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { startServer, type StartedServer } from "./main.ts";
 
-/** A generated `list<Entity>` call, seen through the client. */
-type ListFn = (http: HttpClient, opts: { select: Record<string, never> }) => Promise<unknown[]>;
+/** A generated `query<Entity>` call, seen through the client. */
+type QueryFn = (http: HttpClient, opts: { select: Record<string, never> }) => Promise<unknown[]>;
 
 let started!: StartedServer;
 let http!: HttpClient;
@@ -25,13 +25,13 @@ afterAll(async () => {
 
 describe("seeded server", () => {
     it("round-trips every mock table through its generated client call", async () => {
-        const calls = api as unknown as Record<string, ListFn | undefined>;
+        const calls = api as unknown as Record<string, QueryFn | undefined>;
 
         for (const { entity, rows } of mockTables) {
-            const list = calls[`list${entity}`];
-            expect(list, `list${entity} is generated`).toBeTypeOf("function");
+            const query = calls[`query${entity}`];
+            expect(query, `query${entity} is generated`).toBeTypeOf("function");
 
-            const result = await list?.(http, { select: {} });
+            const result = await query?.(http, { select: {} });
 
             expect(result, entity).toHaveLength(rows.length);
         }

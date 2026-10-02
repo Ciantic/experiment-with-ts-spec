@@ -13,7 +13,7 @@ import type { Table } from "./postgres-model.ts";
 export type RestMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 /** One kind of call. The kind decides the path and the argument, not the method. */
-export type RestKind = "list" | "create" | "update" | "delete";
+export type RestKind = "query" | "create" | "update" | "delete";
 
 /** Where a call carries its argument: the `q` query parameter, or the request body. */
 export type RestSource = "query" | "body";
@@ -38,7 +38,7 @@ export interface RestEntity {
     path: string;
     /** The primary-key field, which names the row a write targets. */
     key: string;
-    /** The `@queryfilter` fields: `list` accepts them all. */
+    /** The `@queryfilter` fields: `query` accepts them all. */
     filters: string[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
@@ -51,7 +51,7 @@ export interface RestModel {
 }
 
 /** `/invoice/query`. The argument travels in `q`, so it is a `GET` on the collection. */
-function listPath(path: string): string {
+function queryPath(path: string): string {
     return `${path}/query`;
 }
 
@@ -59,7 +59,7 @@ function listPath(path: string): string {
 function operationsFor(table: Table, path: string): RestOperation[] {
     // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
     const operations: RestOperation[] = [
-        { kind: "list", method: "GET", path: listPath(path), source: "query" },
+        { kind: "query", method: "GET", path: queryPath(path), source: "query" },
     ];
     operations.push(
         { kind: "create", method: "POST", path, source: "body" },

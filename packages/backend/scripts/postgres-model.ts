@@ -67,7 +67,7 @@ export interface Column {
     default?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
-    /** The field may be an equality filter of its entity's generated `list` read. See docs/queries.md. */
+    /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
     queryFilter?: boolean;
     read?: string;
 }

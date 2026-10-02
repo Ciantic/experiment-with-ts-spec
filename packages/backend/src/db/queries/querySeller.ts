@@ -7,8 +7,8 @@ import { queryModel } from "./model.ts";
 
 const resolver = createResolver(queryModel);
 
-/** List `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
-export function listSeller<S extends Selection<Seller>>(db: SqlExecutor, opts: Filters<Seller, "id"> & { select: S }): Promise<Selected<Seller, S>[]> {
+/** Query `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
+export function querySeller<S extends Selection<Seller>>(db: SqlExecutor, opts: Filters<Seller, "id"> & { select: S }): Promise<Selected<Seller, S>[]> {
     const { select, ...args } = opts;
     return resolver.resolveMany<Seller, S>(db, "seller", args, { select });
 }

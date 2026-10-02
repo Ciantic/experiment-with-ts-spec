@@ -80,10 +80,10 @@ describe("buildQueryModel", () => {
 });
 
 describe("renderQueryModule", () => {
-    it("emits one exported list function, with no interface", () => {
+    it("emits one exported query function, with no interface", () => {
         const code = renderQueryModule("Invoice", invoice);
 
-        expect(code).toContain("export function listInvoice<");
+        expect(code).toContain("export function queryInvoice<");
         expect(code).not.toContain("export interface");
         expect(code).toContain('resolver.resolveMany<Invoice, S>(db, "invoice"');
     });
@@ -92,7 +92,7 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Invoice", invoice);
 
         expect(code).toContain(
-            'listInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id"> & { select: S })',
+            'queryInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: Filters<Invoice, "id"> & { select: S })',
         );
     });
 
@@ -112,7 +112,7 @@ describe("renderQueryModule", () => {
     it("leaves the filters out when the entity marks none", () => {
         const code = renderQueryModule("Seller", seller);
 
-        expect(code).toContain("listSeller<S extends Selection<Seller>>(db: SqlExecutor, opts: { select: S })");
+        expect(code).toContain("querySeller<S extends Selection<Seller>>(db: SqlExecutor, opts: { select: S })");
         expect(code).not.toContain("Filters<");
     });
 
@@ -131,9 +131,9 @@ describe("generateQueries", () => {
 
         expect([...files.keys()].sort()).toEqual([
             "index.ts",
-            "invoiceQueries.ts",
             "model.ts",
-            "sellerQueries.ts",
+            "queryInvoice.ts",
+            "querySeller.ts",
         ]);
     });
 
@@ -141,7 +141,7 @@ describe("generateQueries", () => {
         const code = generateQueries(tables).get("index.ts") ?? "";
 
         expect(code).toContain('export * from "./model.ts";');
-        expect(code).toContain('export * from "./invoiceQueries.ts";');
-        expect(code).toContain('export * from "./sellerQueries.ts";');
+        expect(code).toContain('export * from "./queryInvoice.ts";');
+        expect(code).toContain('export * from "./querySeller.ts";');
     });
 });

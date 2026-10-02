@@ -75,9 +75,9 @@ export interface ZodModel {
     diagnostics: Diagnostic[];
 }
 
-/** The generated `list` schema for one entity: its `@queryfilter` sets plus `select`. */
+/** The generated `query` schema for one entity: its `@queryfilter` sets plus `select`. */
 export interface ZodQuery {
-    /** The entity the read lists, which groups the generated file and supplies `select`. */
+    /** The entity the read queries, which groups the generated file and supplies `select`. */
     entity: string;
     schemaName: string;
     /** The filter fields, all optional sets; the renderer adds the entity's select schema. */
@@ -414,7 +414,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
     }
     entities.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Every entity gets a `list` read: its `@queryfilter` fields are the optional filters, and
+    // Every entity gets a `query` read: its `@queryfilter` fields are the optional filters, and
     // the renderer adds `select` from the entity itself. The resolvers already read the columns.
     const queries: ZodQuery[] = [];
     for (const spec of interfaces.values()) {
@@ -439,7 +439,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
         context.dependencies.delete(spec.name);
         queries.push({
             entity: spec.name,
-            schemaName: `${lowerFirst(`list${spec.name}`)}Schema`,
+            schemaName: `query${spec.name}Schema`,
             fields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,

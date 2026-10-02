@@ -51,8 +51,8 @@ function transport(op: { source: "query" | "body" }): "query" | "send" {
 function comment(entity: RestEntity, kind: RestKind): string {
     const name = entity.entity;
     switch (kind) {
-        case "list":
-            return `/** List \`${name}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`;
+        case "query":
+            return `/** Query \`${name}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "update":
@@ -65,7 +65,7 @@ function comment(entity: RestEntity, kind: RestKind): string {
 /** Render one entity's client module. */
 export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
-    const list = operation(entity, "list");
+    const query = operation(entity, "query");
     const create = operation(entity, "create");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
@@ -90,15 +90,15 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`export type ${name}Patch = Partial<${name}> & Required<Pick<${name}, ${required}>>;`);
     }
 
-    if (list) {
+    if (query) {
         lines.push("");
-        lines.push(comment(entity, "list"));
-        lines.push(`export function list${name}<S extends Selection<${name}>>(`);
+        lines.push(comment(entity, "query"));
+        lines.push(`export function query${name}<S extends Selection<${name}>>(`);
         lines.push("    http: HttpClient,");
         lines.push(`    opts: Filters<${name}, ${keys}> & { select: S },`);
         lines.push(`): Promise<Selected<${name}, S>[]> {`);
         lines.push(
-            `    return http.${transport(list)}<Selected<${name}, S>[]>("${list.method}", "${list.path}", opts);`,
+            `    return http.${transport(query)}<Selected<${name}, S>[]>("${query.method}", "${query.path}", opts);`,
         );
         lines.push("}");
     }

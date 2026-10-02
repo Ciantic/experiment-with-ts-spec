@@ -51,7 +51,7 @@ describe("buildRestModel", () => {
         const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
 
         expect(widget?.operations.map((operation) => operation.kind)).toEqual([
-            "list",
+            "query",
             "create",
             "update",
             "delete",
@@ -62,7 +62,7 @@ describe("buildRestModel", () => {
         const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
 
         expect(widget?.operations).toContainEqual({
-            kind: "list",
+            kind: "query",
             method: "GET",
             path: "/widget/query",
             source: "query",
@@ -91,7 +91,7 @@ describe("buildRestModel", () => {
         const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
         const byKind = new Map(widget?.operations.map((operation) => [operation.kind, operation]));
 
-        expect(byKind.get("list")?.source).toBe("query");
+        expect(byKind.get("query")?.source).toBe("query");
         expect(byKind.get("delete")?.source).toBe("query");
         expect(byKind.get("create")?.source).toBe("body");
         expect(byKind.get("update")?.source).toBe("body");

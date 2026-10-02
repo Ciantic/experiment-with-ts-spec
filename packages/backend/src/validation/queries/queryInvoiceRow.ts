@@ -3,7 +3,7 @@ import { z } from "zod";
 import { invoiceRowSelectSchema } from "../invoiceRow.ts";
 import * as primitives from "../primitives.ts";
 
-export const listInvoiceRowSchema = z.strictObject({
+export const queryInvoiceRowSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
     select: invoiceRowSelectSchema,
 });

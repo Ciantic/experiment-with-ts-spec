@@ -6,8 +6,8 @@ import type { HttpClient } from "./http.ts";
 /** A partial update: every field is optional except the key and the version. */
 export type SellerPatch = Partial<Seller> & Required<Pick<Seller, "id" | "version">>;
 
-/** List `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
-export function listSeller<S extends Selection<Seller>>(
+/** Query `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
+export function querySeller<S extends Selection<Seller>>(
     http: HttpClient,
     opts: Filters<Seller, "id"> & { select: S },
 ): Promise<Selected<Seller, S>[]> {

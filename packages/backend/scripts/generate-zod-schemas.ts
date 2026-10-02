@@ -6,7 +6,6 @@ import { DEFAULT_SPEC_GLOB, SPEC_GLOB } from "spec/scripts/spec-model.ts";
 import { BACKEND_PACKAGE_ROOT } from "./postgres-model.ts";
 import {
     buildZodModel,
-    lowerFirst,
     type ZodEntity,
     type ZodModel,
     type ZodPrimitive,
@@ -35,12 +34,12 @@ const QUERIES_DIR = "queries";
 /** The barrel re-exporting every query schema, inside {@link QUERIES_DIR}. */
 const QUERIES_INDEX = join(QUERIES_DIR, "index.ts");
 
-/** The file for one entity's queries, e.g. `Invoice` -> `queries/invoiceQueries.ts`. */
+/** The file for one entity's queries, e.g. `Invoice` -> `queries/queryInvoice.ts`. */
 export function queryFileName(entity: string): string {
-    return join(QUERIES_DIR, `${lowerFirst(entity)}Queries.ts`);
+    return join(QUERIES_DIR, `query${entity}.ts`);
 }
 
-/** Render one entity's query schema module: the `list` filters and `select`. */
+/** Render one entity's query schema module: the `query` filters and `select`. */
 export function generateQueryFile(
     entity: string,
     queries: ZodQuery[],
@@ -82,7 +81,7 @@ export function generateQueriesIndex(queries: ZodQuery[]): string {
     const lines = [HEADER];
     const entities = [...new Set(queries.map((query) => query.entity))].sort((a, b) => a.localeCompare(b));
     for (const entity of entities) {
-        lines.push(`export * from "./${lowerFirst(entity)}Queries.ts";`);
+        lines.push(`export * from "./query${entity}.ts";`);
     }
     return lines.join("\n") + "\n";
 }

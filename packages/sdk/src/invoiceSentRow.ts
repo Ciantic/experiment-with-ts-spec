@@ -6,8 +6,8 @@ import type { HttpClient } from "./http.ts";
 /** A partial update: every field is optional except the key. */
 export type InvoiceSentRowPatch = Partial<InvoiceSentRow> & Required<Pick<InvoiceSentRow, "id">>;
 
-/** List `InvoiceSentRow` rows, filtered by the `@queryfilter` fields, combined with and. */
-export function listInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
+/** Query `InvoiceSentRow` rows, filtered by the `@queryfilter` fields, combined with and. */
+export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
     http: HttpClient,
     opts: Filters<InvoiceSentRow, "id"> & { select: S },
 ): Promise<Selected<InvoiceSentRow, S>[]> {

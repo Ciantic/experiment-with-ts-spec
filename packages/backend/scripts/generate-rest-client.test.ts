@@ -56,7 +56,7 @@ describe("renderClientModule", () => {
     it("takes the transport where the server takes the executor", () => {
         const code = widgetModule();
 
-        expect(code).toContain("export function listWidget<S extends Selection<Widget>>(");
+        expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
         expect(code).toContain("    http: HttpClient,");
         expect(code).toContain('return http.query<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
     });

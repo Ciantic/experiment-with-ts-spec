@@ -296,62 +296,62 @@ describe("generateEntity standalone", () => {
 });
 
 describe("buildZodModel queries", () => {
-    it("builds one query per entity, named list<Entity>Schema", () => {
+    it("builds one query per entity, named query<Entity>Schema", () => {
         const { model } = generate({ domain: { Thing: THING } });
         const names = model.queries.map((query) => query.schemaName).sort();
 
-        expect(names).toEqual(["listChildSchema", "listParentSchema", "listThingSchema"]);
+        expect(names).toEqual(["queryChildSchema", "queryParentSchema", "queryThingSchema"]);
     });
 
-    it("records the entity each query lists", () => {
+    it("records the entity each query queries", () => {
         const { model } = generate({ domain: { Thing: THING } });
-        const listThing = model.queries.find((query) => query.entity === "Thing");
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
 
-        expect(listThing?.schemaName).toBe("listThingSchema");
+        expect(queryThing?.schemaName).toBe("queryThingSchema");
     });
 
     it("resolves @queryfilter fields as optional sets", () => {
         const { model } = generate({ domain: { Thing: THING } });
-        const listThing = model.queries.find((query) => query.entity === "Thing");
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
 
-        expect(listThing?.fields).toEqual([
+        expect(queryThing?.fields).toEqual([
             { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).optional()' },
         ]);
-        expect(listThing?.usesPrimitives).toBe(true);
+        expect(queryThing?.usesPrimitives).toBe(true);
     });
 
     it("makes every entity's id a filter, with no tag", () => {
         const { model } = generate({ domain: { Thing: THING } });
-        const listChild = model.queries.find((query) => query.entity === "Child");
+        const queryChild = model.queries.find((query) => query.entity === "Child");
 
-        expect(listChild?.fields).toEqual([
+        expect(queryChild?.fields).toEqual([
             { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ChildId">()).optional()' },
         ]);
     });
 });
 
 describe("generateQueryFile", () => {
-    it("emits the entity's list schema with `select` added", () => {
+    it("emits the entity's query schema with `select` added", () => {
         const { files } = generate({ domain: { Thing: THING } });
-        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+        const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
-        expect(code).toContain("export const listThingSchema = z.strictObject({");
+        expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).toContain('    id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
         expect(code).toContain("    select: thingSelectSchema,");
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
 
-    it("emits only the list schema", () => {
+    it("emits only the query schema", () => {
         const { files } = generate({ domain: { Thing: THING } });
-        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+        const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
-        expect(code).toContain("export const listThingSchema = z.strictObject({");
+        expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).not.toContain("getThingSchema");
     });
 
     it("imports the primitives module it references", () => {
         const { files } = generate({ domain: { Thing: THING } });
-        const code = files.get(join("queries", "thingQueries.ts")) ?? "";
+        const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain('import * as primitives from "../primitives.ts";');
     });
@@ -360,7 +360,7 @@ describe("generateQueryFile", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get(join("queries", "index.ts")) ?? "";
 
-        expect(code).toContain('export * from "./thingQueries.ts";');
+        expect(code).toContain('export * from "./queryThing.ts";');
     });
 
     it("re-exports the queries barrel from the root index", () => {
@@ -395,9 +395,9 @@ describe("generateQueryFile", () => {
         };
         new Function("exports", "require", exportedCode)(exports, stubRequire);
 
-        expect(exports.listThingSchema?.safeParse({ select: {} }).success).toBe(true);
-        expect(exports.listThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(true);
-        expect(exports.listThingSchema?.safeParse({ id: ["x"] }).success).toBe(false);
+        expect(exports.queryThingSchema?.safeParse({ select: {} }).success).toBe(true);
+        expect(exports.queryThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(true);
+        expect(exports.queryThingSchema?.safeParse({ id: ["x"] }).success).toBe(false);
     });
 });
 

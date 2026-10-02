@@ -1,9 +1,9 @@
 # Queries
 
 Reading is derived from the spec. Every entity in `packages/spec/src/domain/`
-gets a generated `list<Entity>` read; a caller that wants a single row takes the
-first of the list. A generator emits the typed functions and the physical model;
-one hand-written resolver turns a selection into SQL. See "Why the resolver is
+gets a generated `query<Entity>` read; a caller that wants a single row takes the
+first result. A generator emits the typed functions and the physical model; one
+hand-written resolver turns a selection into SQL. See "Why the resolver is
 hand-written".
 
 - `packages/spec/src/selection.ts` — `Selection`/`Selected` (the
@@ -12,7 +12,7 @@ hand-written".
   `packages/backend/src/db/selection.ts` re-exports it. See `docs/rest-api.md`.
 - `packages/backend/scripts/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
-  `<entity>Queries.ts` (a `list<Entity>` per entity), `index.ts` (barrel).
+  `query<Entity>.ts` (a `query<Entity>` per entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/backend/src/validation/queries/` — generated read argument
   schemas. See `docs/validation.md`.
@@ -22,13 +22,13 @@ hand-written".
 
 The generated output is committed. Regenerate rather than editing it by hand.
 
-## One list per entity
+## One query per entity
 
 There is no query alias to write. The generator walks the entities and emits
-`list<Entity>`:
+`query<Entity>`:
 
 ```ts
-export function listInvoice<S extends Selection<Invoice>>(
+export function queryInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
     opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
 ): Promise<Selected<Invoice, S>[]> {
@@ -38,10 +38,10 @@ export function listInvoice<S extends Selection<Invoice>>(
 ```
 
 No domain name is hardcoded: a new entity flows through with no generator edit.
-`Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `listCustomer`,
-`listInvoiceRow`, `listInvoiceSent`, and `listSeller` the same way.
+`Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `queryCustomer`,
+`queryInvoiceRow`, `queryInvoiceSent`, and `querySeller` the same way.
 
-To read one row, take the first of a `list` — there is no `get` and no `limit 1`.
+To read one row, take the first result — there is no `get` and no `limit 1`.
 A filter set that matches several rows yields all of them, deterministically
 ordered only if the query is.
 
@@ -53,15 +53,15 @@ ordered only if the query is.
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
 entity's reads. `id` is a filter **without the tag**, because every entity has
-one, so `listInvoice` accepts `{ id }` out of the box:
+one, so `queryInvoice` accepts `{ id }` out of the box:
 
 ```ts
-const invoices = await listInvoice(db, {
+const invoices = await queryInvoice(db, {
     id: [firstId, secondId],
     select: { number: true, totalAmount: true },
 });
 
-const [invoice] = await listInvoice(db, {
+const [invoice] = await queryInvoice(db, {
     id: [id],
     select: { number: true, totalAmount: true },
 });
@@ -96,7 +96,7 @@ written as a one-element array. An array matches any of its values, and an empty
 array matches nothing.
 
 Several filters are combined with **`and`**: `{ id: […], customerId: […] }`
-requires both. A filter left `undefined` is dropped, so `listInvoice(db, { select })`
+requires both. A filter left `undefined` is dropped, so `queryInvoice(db, { select })`
 lists every row.
 
 The generated type makes every filter optional:
@@ -105,7 +105,7 @@ The generated type makes every filter optional:
 type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
 ```
 
-So `listInvoice(db, { select })` lists every row, and a one-element array names a
+So `queryInvoice(db, { select })` lists every row, and a one-element array names a
 single value.
 
 ## Selection
@@ -158,7 +158,7 @@ explicit.
 A call site narrows exactly:
 
 ```ts
-const [invoice] = await listInvoice(db, {
+const [invoice] = await queryInvoice(db, {
     id: [id],
     select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
 });
@@ -179,7 +179,7 @@ columns, and the branch tags below. No domain name is hardcoded, so a new
 
 | Artifact | Source |
 | --- | --- |
-| `list<Entity>` functions | generated |
+| `query<Entity>` functions | generated |
 | `queryModel` (tables, fields, branches) | generated |
 | `resolveMany` | hand-written, once |
 
@@ -300,11 +300,11 @@ middle ground if the args logic grows past equality.
 ## Deliberately not implemented
 
 - **Set and range filters.** Set membership only; see the gotcha above.
-- **Filters on a branch.** `@queryfilter` is scalar-only, so `listInvoice`
+- **Filters on a branch.** `@queryfilter` is scalar-only, so `queryInvoice`
   cannot filter on a related record's columns, such as `customer.name`. The
   foreign key is a scalar field, so `customerId` is filterable.
 - **A row at most, not exactly one.** There is no `limit 1`; a caller takes the
-  first of a `list`, which fetches every match.
+  first result, which fetches every match.
 - **Per-branch arguments.** A branch cannot carry `orderBy`/`limit`; `rows:
   { description: true }` has nowhere to put them. The extension point is to
   widen a branch from `Selection<E>` to `{ select?: Selection<E>; orderBy?: …;

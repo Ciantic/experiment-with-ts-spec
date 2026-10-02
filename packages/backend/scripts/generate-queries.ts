@@ -1,13 +1,12 @@
 /**
- * Generate the per-entity `list` queries and the query metadata module from the
- * spec entities. See docs/queries.md. The resolver itself is hand-written: this
- * emits the model it reads and the typed `list` function every entity gets.
- * There is no `get`: a caller that wants one row takes the first of a `list`.
+ * Generate the per-entity `query` functions and the query metadata module from
+ * the spec entities. See docs/queries.md. The resolver itself is hand-written:
+ * this emits the model it reads and the typed `query` function every entity gets.
+ * There is no `get`: a caller that wants one row takes the first of a `query`.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Project } from "ts-morph";
-import { lowerFirst } from "spec/scripts/spec-model.ts";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
@@ -40,9 +39,9 @@ interface QueryModelData {
     tables: Record<string, QueryTableData>;
 }
 
-/** The module file for an entity, e.g. `Invoice` -> `invoiceQueries.ts`. */
+/** The module file for an entity, e.g. `Invoice` -> `queryInvoice.ts`. */
 function queryFileName(entity: string): string {
-    return `${lowerFirst(entity)}Queries.ts`;
+    return `query${entity}.ts`;
 }
 
 /** Map the table model to the resolver's metadata: scalar fields plus branch descriptors. */
@@ -100,7 +99,7 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
-/** Render one entity's list function. */
+/** Render one entity's query function. */
 export function renderQueryModule(entity: string, table: Table): string {
     const filters = filterFields(table);
     const lines: string[] = [HEADER];
@@ -116,9 +115,9 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push("");
     lines.push("const resolver = createResolver(queryModel);");
     lines.push("");
-    lines.push(`/** List \`${entity}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`);
+    lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`);
     lines.push(
-        `export function list${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${listOptsType(entity, filters)}): Promise<Selected<${entity}, S>[]> {`,
+        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters)}): Promise<Selected<${entity}, S>[]> {`,
     );
     lines.push("    const { select, ...args } = opts;");
     lines.push(
@@ -128,8 +127,8 @@ export function renderQueryModule(entity: string, table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** The `list` options: the filter sets, all optional, plus the selection. */
-function listOptsType(entity: string, filters: string[]): string {
+/** The `query` options: the filter sets, all optional, plus the selection. */
+function queryOptsType(entity: string, filters: string[]): string {
     return filters.length > 0
         ? `Filters<${entity}, ${filterKeys(filters)}> & { select: S }`
         : "{ select: S }";

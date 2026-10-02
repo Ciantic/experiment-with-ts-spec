@@ -28,7 +28,7 @@ their argument in a single `q` query parameter; a write carries it in the body.
 
 | Call | Method | Path | Argument |
 | --- | --- | --- | --- |
-| list | `GET` | `/<table>/query?q=…` | `list<Entity>Schema` |
+| query | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
 | create | `POST` | `/<table>` | `[<entity>Schema]` in the body |
 | update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
@@ -39,7 +39,7 @@ each applying a rule. The router obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other.
 
 A read returns every matching row; a caller that wants a single row takes the
-first of a `list` (`docs/queries.md`).
+first result (`docs/queries.md`).
 
 A create takes a whole entity and a patch takes `<entity>PatchSchema`, mirroring
 the repository signatures exactly (`docs/repositories.md`). A delete needs only
@@ -106,7 +106,7 @@ Because the read types live in the spec, the generated client keeps the server's
 narrowing. `db: SqlExecutor` becomes `http: HttpClient` and nothing else changes:
 
 ```typescript
-export function listInvoice<S extends Selection<Invoice>>(
+export function queryInvoice<S extends Selection<Invoice>>(
     http: HttpClient,
     opts: Filters<Invoice, "id" | "customerId" | "sellerId"> & { select: S },
 ): Promise<Selected<Invoice, S>[]> {
@@ -121,7 +121,7 @@ mentions the transport.
 So a call site narrows across the wire exactly as it does in the backend:
 
 ```typescript
-const [invoice] = await listInvoice(http, {
+const [invoice] = await queryInvoice(http, {
     id: [id],
     select: { number: true, totalAmount: true, rows: { description: true } },
 });
@@ -206,7 +206,7 @@ the same path as an empty body.
 - **A patch cannot clear a column.** `coalesce` cannot tell an omitted field from
   a `null` one, so the patch contract carries that limitation over HTTP unchanged
   (`docs/repositories.md`).
-- **A `list` with no filters lists the table.** `listInvoice(http, { select })`
+- **A `query` with no filters scans the table.** `queryInvoice(http, { select })`
   is legal by design. There is no authorization.
 - **The version precondition is the client's to send.** `update` requires the
   version the client read; a stale one is a 409 from the trigger, not a silent
@@ -229,6 +229,6 @@ the same path as an empty body.
   entity set, so the generator does not see it. `POST /invoice/send` is
   hand-wired when the operation exists.
 - **Pagination, ordering, and a limit.** A read returns every matching row;
-  there is no `limit 1`, so a single row is the first of a `list`.
+  there is no `limit 1`, so a single row is the first result.
 - **A public protocol version.** Client and server ship from one commit, so a
   deployed client and a moved server must be updated together.

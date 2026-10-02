@@ -43,8 +43,8 @@ database is an in-memory PGlite created fresh on every start.
 ## The client test
 
 `packages/backend/src/main.test.ts` starts a seeded server on an ephemeral port
-and drives it through the generated client from `packages/sdk`. It lists every
-`mockTables` entry by calling `list<Entity>` and asserts each comes back with
+and drives it through the generated client from `packages/sdk`. It walks every
+`mockTables` entry by calling `query<Entity>` and asserts each comes back with
 the number of rows that were seeded.
 
 The test is deliberately generic: it reads `mockTables` and the client barrel

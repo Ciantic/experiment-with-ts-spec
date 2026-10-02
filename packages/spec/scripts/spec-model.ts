@@ -112,7 +112,7 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
     pgtype?: string;
-    /** The field may be an equality filter of its entity's generated `list` read. See docs/queries.md. */
+    /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
     queryfilter: boolean;
 }
 

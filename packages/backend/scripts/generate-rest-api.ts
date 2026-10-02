@@ -34,7 +34,7 @@ const QUERIES_IMPORT = "../db/queries/index.ts";
 const REPOSITORIES_IMPORT = "../db/repositories/index.ts";
 const VALIDATION_IMPORT = "../validation/index.ts";
 
-/** `invoice` + `list` -> `listInvoice`. The generated function that serves the call. */
+/** `invoice` + `query` -> `queryInvoice`. The generated function that serves the call. */
 function functionName(entity: RestEntity, kind: RestKind): string {
     return `${kind}${entity.entity}`;
 }
@@ -42,8 +42,8 @@ function functionName(entity: RestEntity, kind: RestKind): string {
 /** The generated schema that validates the request body, before the `delete` projection. */
 function schemaName(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
-        case "list":
-            return `list${entity.entity}Schema`;
+        case "query":
+            return `query${entity.entity}Schema`;
         case "create":
         case "delete":
             return `${entity.module}Schema`;
@@ -74,7 +74,7 @@ function queryFunctions(model: RestModel): string[] {
     return model.entities
         .flatMap((entity) =>
             entity.operations
-                .filter((operation) => operation.kind === "list")
+                .filter((operation) => operation.kind === "query")
                 .map((operation) => functionName(entity, operation.kind)),
         )
         .sort((a, b) => a.localeCompare(b));

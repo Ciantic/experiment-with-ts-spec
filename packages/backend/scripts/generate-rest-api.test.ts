@@ -48,7 +48,7 @@ describe("renderRoutesModule", () => {
         const code = render();
 
         expect(code).toContain('path: "/widget/query"');
-        expect(code).toContain("input: listWidgetSchema");
+        expect(code).toContain("input: queryWidgetSchema");
         expect(code).toContain("input: widgetSchema");
         expect(code).toContain("input: widgetPatchSchema");
     });
@@ -76,7 +76,7 @@ describe("renderRoutesModule", () => {
     it("wires each route to its generated function", () => {
         const code = render();
 
-        expect(code).toContain("handler: (db, body) => listWidget(db, body as never)");
+        expect(code).toContain("handler: (db, body) => queryWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => createWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => updateWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => deleteWidget(db, body as never)");
