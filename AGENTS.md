@@ -26,6 +26,16 @@
   explanation, put it in `docs/` instead and leave a one-line pointer where the
   code needs it.
 
+# Docs
+
+- One topic per file in `docs/`, named for the concept (`queries.md`,
+  `versioning.md`), each with a single `# Title`. There is no index;
+  `docs/spec-annotations.md` is the entry point, since the tags are the contract
+  every generator reads.
+- Write about the design as it is. A note explains how the system works, not how
+  it came to: no "this replaced X", no "previously", no record of an approach
+  that was rejected. Git history is where change is recorded.
+
 # Testing
 
 - Tests cover the functionality of the code under test, not domain-specific
