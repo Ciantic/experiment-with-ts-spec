@@ -29,7 +29,6 @@ their argument in a single `q` query parameter; a write carries it in the body.
 | Call | Method | Path | Argument |
 | --- | --- | --- | --- |
 | list | `GET` | `/<table>/query?q=…` | `list<Entity>Schema` |
-| get | `GET` | `/<table>/get?q=…` | `get<Entity>Schema` |
 | create | `POST` | `/<table>` | `[<entity>Schema]` in the body |
 | update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
@@ -39,9 +38,8 @@ Which side carries the argument is a field on the model (`source: "query" |
 each applying a rule. The router obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other.
 
-`get` exists only when the entity has a `@queryfilter` field, because a getter
-needs a filter to name a row — the same rule the reads obey (`docs/queries.md`).
-`id` is a filter by default, so in practice every entity has both.
+A read returns every matching row; a caller that wants a single row takes the
+first of a `list` (`docs/queries.md`).
 
 A create takes a whole entity and a patch takes `<entity>PatchSchema`, mirroring
 the repository signatures exactly (`docs/repositories.md`). A delete needs only
@@ -165,9 +163,8 @@ and no transport model of an entity exists at all.
 
 Two rules follow from the codec:
 
-- **A miss is `null` on the wire.** A `get` that finds nothing has no value to
-  send, so the server encodes `null`; the client's `?? undefined` restores the
-  `| undefined` its signature promises. A void write encodes the same way.
+- **A miss is `null` on the wire.** A write has no value to send, so the
+  server encodes `null`; the generated signature types the call as `void`.
 - **Decode, never evaluate.** `devalue.parse` reconstructs plain values and
   executes nothing. `uneval`/`eval` must never be used, and the transport is a
   parser of untrusted input: the server caps the body at 1 MB.
@@ -231,7 +228,7 @@ the same path as an empty body.
   implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
   entity set, so the generator does not see it. `POST /invoice/send` is
   hand-wired when the operation exists.
-- **Pagination, ordering, and a limit.** A read returns every matching row; a
-  `get` returns the first without a `limit 1`.
+- **Pagination, ordering, and a limit.** A read returns every matching row;
+  there is no `limit 1`, so a single row is the first of a `list`.
 - **A public protocol version.** Client and server ship from one commit, so a
   deployed client and a moved server must be updated together.

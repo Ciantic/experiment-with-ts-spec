@@ -85,15 +85,13 @@ field — without hardcoding a column list.
 
 ## Query schemas
 
-Every entity gets a generated `list` read, and every entity with a `@queryfilter`
-field also gets a `get` (`docs/queries.md`) — which is every entity, since `id`
-is a filter by default — so every entity gets two schemas. A read takes one
-argument — its filters plus `select` — so the schema is
-that object with the entity's select schema added as a field. The filters come
-from the entity's `@queryfilter` fields, resolved like any other field (the same
-primitives, keywords, and `Date` mapping) and always validated as a set:
-`z.array(…)`. The schema is named after the read: `Invoice` yields
-`listInvoiceSchema` and `getInvoiceSchema` in
+Every entity gets a generated `list` read (`docs/queries.md`), so every entity
+gets a `list` args schema. A read takes one argument — its filters plus `select`
+— so the schema is that object with the entity's select schema added as a field.
+The filters come from the entity's `@queryfilter` fields, resolved like any other
+field (the same primitives, keywords, and `Date` mapping) and always validated as
+a set: `z.array(…)`. The schema is named after the read: `Invoice` yields
+`listInvoiceSchema` in
 `packages/backend/src/validation/queries/invoiceQueries.ts`.
 
 ```typescript
@@ -101,18 +99,10 @@ export const listInvoiceSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
     select: invoiceSelectSchema,
 });
-
-/** The same filters, with at least one of them named. */
-export const getInvoiceSchema = listInvoiceSchema.refine(
-    (value) => value.id !== undefined,
-    { message: "getInvoice needs at least one filter" },
-);
 ```
 
-A `list` filter is optional; a `get` must name one, which mirrors the generated
-types: `Filters<…>` for `list`, `AtLeastOne<Filters<…>>` for `get`. `get` is
-built by refining the `list` schema, so the two cannot drift apart, and an entity
-with no filter gets only the `list` schema.
+Every filter is optional, which mirrors the generated `Filters<…>` type and lets
+`listInvoiceSchema` validate a `list` that names none.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

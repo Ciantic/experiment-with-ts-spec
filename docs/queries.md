@@ -1,19 +1,18 @@
 # Queries
 
 Reading is derived from the spec. Every entity in `packages/spec/src/domain/`
-gets a generated `list<Entity>` read, and — when it marks a `@queryfilter` field —
-a matching `get<Entity>`. A generator emits the typed functions and the physical
-model; one hand-written resolver turns a selection into SQL. See "Why the
-resolver is hand-written".
+gets a generated `list<Entity>` read; a caller that wants a single row takes the
+first of the list. A generator emits the typed functions and the physical model;
+one hand-written resolver turns a selection into SQL. See "Why the resolver is
+hand-written".
 
 - `packages/spec/src/selection.ts` — `Selection`/`Selected` (the
-  column-limiting types) and `Filters`/`AtLeastOne` (the filter arguments).
-  Hand-written. It sits in the spec because the generated REST client shares it;
+  column-limiting types) and `Filters` (the filter arguments). Hand-written. It
+  sits in the spec because the generated REST client shares it;
   `packages/backend/src/db/selection.ts` re-exports it. See `docs/rest-api.md`.
 - `packages/backend/scripts/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
-  `<entity>Queries.ts` (a `list<Entity>` and maybe a `get<Entity>` per entity),
-  `index.ts` (barrel).
+  `<entity>Queries.ts` (a `list<Entity>` per entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/backend/src/validation/queries/` — generated read argument
   schemas. See `docs/validation.md`.
@@ -23,10 +22,10 @@ resolver is hand-written".
 
 The generated output is committed. Regenerate rather than editing it by hand.
 
-## One list, and one get, per entity
+## One list per entity
 
 There is no query alias to write. The generator walks the entities and emits
-`list<Entity>`, plus `get<Entity>` when the entity has a filter:
+`list<Entity>`:
 
 ```ts
 export function listInvoice<S extends Selection<Invoice>>(
@@ -36,27 +35,15 @@ export function listInvoice<S extends Selection<Invoice>>(
     const { select, ...args } = opts;
     return resolver.resolveMany<Invoice, S>(db, "invoice", args, { select });
 }
-
-export function getInvoice<S extends Selection<Invoice>>(
-    db: SqlExecutor,
-    opts: AtLeastOne<Filters<Invoice, "id" | "customerId" | "sellerId">> & { select: S },
-): Promise<Selected<Invoice, S> | undefined> {
-    const { select, ...args } = opts;
-    return resolver.resolveOne<Invoice, S>(db, "invoice", args, { select });
-}
 ```
 
 No domain name is hardcoded: a new entity flows through with no generator edit.
 `Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `listCustomer`,
 `listInvoiceRow`, `listInvoiceSent`, and `listSeller` the same way.
 
-A **getter needs something to name a row with**, so it is emitted only when the
-entity has a filter. In practice that is always: `id` is a filter by default, so
-every entity gets both reads. The rule still holds at the generator, which reads
-whatever annotations produced — an entity whose `id` were removed would lose its
-getter rather than gain one that returns an arbitrary row. `get` returns the
-first row — there is no `limit 1` — so a filter set that matches several rows
-yields one of them, deterministically ordered only if the query is.
+To read one row, take the first of a `list` — there is no `get` and no `limit 1`.
+A filter set that matches several rows yields all of them, deterministically
+ordered only if the query is.
 
 ## `@queryfilter`
 
@@ -66,7 +53,7 @@ yields one of them, deterministically ordered only if the query is.
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
 entity's reads. `id` is a filter **without the tag**, because every entity has
-one, so `listInvoice` and `getInvoice` accept `{ id }` out of the box:
+one, so `listInvoice` accepts `{ id }` out of the box:
 
 ```ts
 const invoices = await listInvoice(db, {
@@ -74,7 +61,7 @@ const invoices = await listInvoice(db, {
     select: { number: true, totalAmount: true },
 });
 
-const invoice = await getInvoice(db, {
+const [invoice] = await listInvoice(db, {
     id: [id],
     select: { number: true, totalAmount: true },
 });
@@ -112,19 +99,14 @@ Several filters are combined with **`and`**: `{ id: […], customerId: […] }`
 requires both. A filter left `undefined` is dropped, so `listInvoice(db, { select })`
 lists every row.
 
-The generated types encode the difference between the two reads:
+The generated type makes every filter optional:
 
 ```ts
 type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
-
-type AtLeastOne<T> = {
-    [K in keyof T]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<keyof T, K>>>;
-}[keyof T];
 ```
 
-`list` takes `Filters` — every filter optional. `get` takes
-`AtLeastOne<Filters>` — a union in which one filter is required and the rest are
-optional, so `getInvoice(db, { select })` does not compile.
+So `listInvoice(db, { select })` lists every row, and a one-element array names a
+single value.
 
 ## Selection
 
@@ -197,9 +179,9 @@ columns, and the branch tags below. No domain name is hardcoded, so a new
 
 | Artifact | Source |
 | --- | --- |
-| `list<Entity>` / `get<Entity>` functions | generated |
+| `list<Entity>` functions | generated |
 | `queryModel` (tables, fields, branches) | generated |
-| `resolveMany` / `resolveOne` | hand-written, once |
+| `resolveMany` | hand-written, once |
 
 `queryModel` is the physical model: for each table its key, its scalar fields,
 and a descriptor per branch (see below). The resolver reads that data plus the
@@ -239,8 +221,8 @@ the interface declares, so `Invoice.customerId` is a selectable field and — wi
 
 ## The resolver reads one query per branch
 
-`resolveMany`/`resolveOne` (`packages/backend/src/db/resolvers.ts`) build
-the SQL at run time from `queryModel` plus the selection:
+`resolveMany` (`packages/backend/src/db/resolvers.ts`) builds the SQL at run
+time from `queryModel` plus the selection:
 
 - **Scalars** — projected into the root query.
 - **`@inlined`** — projected from the same row, aliased per target field. No query.
@@ -267,9 +249,6 @@ A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
 `@queryfilter` on a branch field, so a filter always names a scalar column.
 
-`resolveOne` fetches and returns the first row of the same query; there is no
-`limit 1`.
-
 ## Gotchas
 
 - **Every selected key is optional.** All spec fields are optional, so
@@ -286,10 +265,6 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
   (`issuedFrom`/`issuedTo`) would need `>=`/`<=`, which the resolver does not
   implement; a range operator needs its own annotation (a `@gte`/`@lte` tag) and
   a resolver clause.
-- **`get` needs a filter.** It is generated only for an entity that marks one,
-  and its type requires at least one. It returns the first match, not a unique
-  row: nothing enforces that the filters identify one row, and a nullable or
-  non-unique column can return any of several.
 - **Filters come only from `@queryfilter`, plus `id`.** A field without the tag
   is not filterable, `id` is a filter without it, and a branch field may not
   carry it; filtering by a relation is not implemented.
@@ -302,7 +277,7 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
 - **The read types are in the spec, the reader is not.** `Selection`,
-  `Selected`, `Filters`, and `AtLeastOne` are pure types with no query in them, so
+  `Selected`, and `Filters` are pure types with no query in them, so
   they live in `packages/spec/src/selection.ts` and both the backend and the
   generated REST client import them from there. The SQL, the resolver, and the
   metadata stay in the backend.
@@ -328,9 +303,8 @@ middle ground if the args logic grows past equality.
 - **Filters on a branch.** `@queryfilter` is scalar-only, so `listInvoice`
   cannot filter on a related record's columns, such as `customer.name`. The
   foreign key is a scalar field, so `customerId` is filterable.
-- **A row at most, not exactly one.** `resolveOne` fetches every match and takes
-  the first; a `limit 1` would need a per-read contract the generator does not
-  have.
+- **A row at most, not exactly one.** There is no `limit 1`; a caller takes the
+  first of a `list`, which fetches every match.
 - **Per-branch arguments.** A branch cannot carry `orderBy`/`limit`; `rows:
   { description: true }` has nowhere to put them. The extension point is to
   widen a branch from `Selection<E>` to `{ select?: Selection<E>; orderBy?: …;

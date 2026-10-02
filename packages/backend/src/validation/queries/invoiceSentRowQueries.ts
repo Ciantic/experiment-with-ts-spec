@@ -7,9 +7,3 @@ export const listInvoiceSentRowSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).optional(),
     select: invoiceSentRowSelectSchema,
 });
-
-/** The same filters, with at least one of them named. */
-export const getInvoiceSentRowSchema = listInvoiceSentRowSchema.refine(
-    (value) => value.id !== undefined,
-    { message: "getInvoiceSentRow needs at least one filter" },
-);

@@ -2,6 +2,7 @@
  * Generate the per-entity `list` queries and the query metadata module from the
  * spec entities. See docs/queries.md. The resolver itself is hand-written: this
  * emits the model it reads and the typed `list` function every entity gets.
+ * There is no `get`: a caller that wants one row takes the first of a `list`.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -99,14 +100,14 @@ function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
 }
 
-/** Render one entity's list and (when it has filters) get functions. */
+/** Render one entity's list function. */
 export function renderQueryModule(entity: string, table: Table): string {
     const filters = filterFields(table);
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     lines.push(
         filters.length > 0
-            ? 'import type { AtLeastOne, Filters, Selection, Selected } from "../selection.ts";'
+            ? 'import type { Filters, Selection, Selected } from "../selection.ts";'
             : 'import type { Selection, Selected } from "../selection.ts";',
     );
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
@@ -124,20 +125,6 @@ export function renderQueryModule(entity: string, table: Table): string {
         `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, args, { select });`,
     );
     lines.push("}");
-
-    // A getter needs something to name a row with, so it exists only when a filter does.
-    if (filters.length > 0) {
-        lines.push("");
-        lines.push(`/** Get the first \`${entity}\` row matching every given filter; at least one is required. */`);
-        lines.push(
-            `export function get${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: AtLeastOne<Filters<${entity}, ${filterKeys(filters)}>> & { select: S }): Promise<Selected<${entity}, S> | undefined> {`,
-        );
-        lines.push("    const { select, ...args } = opts;");
-        lines.push(
-            `    return resolver.resolveOne<${entity}, S>(db, ${JSON.stringify(table.name)}, args, { select });`,
-        );
-        lines.push("}");
-    }
     return lines.join("\n") + "\n";
 }
 

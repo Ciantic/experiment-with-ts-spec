@@ -237,19 +237,3 @@ describe("resolveMany", () => {
         ).rejects.toThrow("unknown filter field `nonsense` on `invoice`");
     });
 });
-
-describe("resolveOne", () => {
-    it("returns the first matching row", async () => {
-        const select = { number: true, totalAmount: true } as const;
-        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: ["i1"] }, { select });
-
-        expect(row).toEqual({ number: "INV-1", totalAmount: "100" });
-    });
-
-    it("returns undefined when nothing matches", async () => {
-        const select = { number: true } as const;
-        const row = await resolver.resolveOne<Invoice, typeof select>(db, "invoice", { id: ["nope"] }, { select });
-
-        expect(row).toBeUndefined();
-    });
-});

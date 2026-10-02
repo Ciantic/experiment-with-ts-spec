@@ -109,17 +109,6 @@ describe("renderQueryModule", () => {
         expect(code).toContain("Promise<Selected<Invoice, S>[]>");
     });
 
-    it("emits a getter that requires at least one filter", () => {
-        const code = renderQueryModule("Invoice", invoice);
-
-        expect(code).toContain("export function getInvoice<");
-        expect(code).toContain(
-            'getInvoice<S extends Selection<Invoice>>(db: SqlExecutor, opts: AtLeastOne<Filters<Invoice, "id">> & { select: S })',
-        );
-        expect(code).toContain("Promise<Selected<Invoice, S> | undefined>");
-        expect(code).toContain('resolver.resolveOne<Invoice, S>(db, "invoice", args, { select })');
-    });
-
     it("leaves the filters out when the entity marks none", () => {
         const code = renderQueryModule("Seller", seller);
 
@@ -127,11 +116,12 @@ describe("renderQueryModule", () => {
         expect(code).not.toContain("Filters<");
     });
 
-    it("emits no getter when the entity marks no filter", () => {
-        const code = renderQueryModule("Seller", seller);
+    it("emits no getter", () => {
+        const code = renderQueryModule("Invoice", invoice);
 
-        expect(code).not.toContain("getSeller");
+        expect(code).not.toContain("getInvoice");
         expect(code).not.toContain("AtLeastOne");
+        expect(code).not.toContain("resolveOne");
     });
 });
 

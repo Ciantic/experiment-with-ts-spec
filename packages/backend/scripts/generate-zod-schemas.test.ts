@@ -341,20 +341,9 @@ describe("generateQueryFile", () => {
         expect(code).toContain('import { thingSelectSchema } from "../thing.ts";');
     });
 
-    it("emits a get schema that requires at least one filter", () => {
+    it("emits only the list schema", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = files.get(join("queries", "thingQueries.ts")) ?? "";
-
-        expect(code).toContain("export const getThingSchema = listThingSchema.refine(");
-        expect(code).toContain("    (value) => value.id !== undefined,");
-        expect(code).toContain('{ message: "getThing needs at least one filter" },');
-    });
-
-    it("emits no get schema for a query with no filter", () => {
-        const { model } = generate({ domain: { Thing: THING } });
-        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
-        // A spec entity always has an `id` filter, so an empty query is built by hand.
-        const code = generateQueryFile("Thing", [{ entity: "Thing", schemaName: "listThingSchema", fields: [], dependencies: [], usesPrimitives: false }], byName);
 
         expect(code).toContain("export const listThingSchema = z.strictObject({");
         expect(code).not.toContain("getThingSchema");
@@ -409,9 +398,6 @@ describe("generateQueryFile", () => {
         expect(exports.listThingSchema?.safeParse({ select: {} }).success).toBe(true);
         expect(exports.listThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(true);
         expect(exports.listThingSchema?.safeParse({ id: ["x"] }).success).toBe(false);
-        expect(exports.getThingSchema?.safeParse({ id: ["x"], select: {} }).success).toBe(true);
-        expect(exports.getThingSchema?.safeParse({ select: {} }).success).toBe(false);
-        expect(exports.getThingSchema?.safeParse({ id: "x", select: {} }).success).toBe(false);
     });
 });
 

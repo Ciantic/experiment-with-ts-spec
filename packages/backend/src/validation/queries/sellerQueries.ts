@@ -7,9 +7,3 @@ export const listSellerSchema = z.strictObject({
     id: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     select: sellerSelectSchema,
 });
-
-/** The same filters, with at least one of them named. */
-export const getSellerSchema = listSellerSchema.refine(
-    (value) => value.id !== undefined,
-    { message: "getSeller needs at least one filter" },
-);

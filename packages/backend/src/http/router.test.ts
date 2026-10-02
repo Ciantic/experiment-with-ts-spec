@@ -154,7 +154,7 @@ describe("createRouter", () => {
         expect(seen).toEqual([db]);
     });
 
-    it("encodes an undefined result as null, as a getter miss does", async () => {
+    it("encodes an undefined result as null", async () => {
         const router = createRouter(db, [echoRoute({ handler: async () => undefined })]);
 
         const response = await router.handle({ method: "POST", url: "/echo", body: "" });

@@ -61,13 +61,6 @@ export interface Resolver {
         args: Record<string, unknown>,
         opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]>;
-
-    resolveOne<E, S extends Selection<E>>(
-        db: SqlExecutor,
-        table: string,
-        args: Record<string, unknown>,
-        opts: ResolveOptions<E, S>,
-    ): Promise<Selected<E, S> | undefined>;
 }
 
 const KEY_ALIAS = "__key";
@@ -411,15 +404,5 @@ export function createResolver(model: QueryModel): Resolver {
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }
 
-    async function resolveOne<E, S extends Selection<E>>(
-        db: SqlExecutor,
-        table: string,
-        args: Record<string, unknown>,
-        opts: ResolveOptions<E, S>,
-    ): Promise<Selected<E, S> | undefined> {
-        const rows = await resolveMany<E, S>(db, table, args, opts);
-        return rows[0];
-    }
-
-    return { resolveMany, resolveOne };
+    return { resolveMany };
 }

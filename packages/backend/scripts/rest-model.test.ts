@@ -52,7 +52,6 @@ describe("buildRestModel", () => {
 
         expect(widget?.operations.map((operation) => operation.kind)).toEqual([
             "list",
-            "get",
             "create",
             "update",
             "delete",
@@ -66,12 +65,6 @@ describe("buildRestModel", () => {
             kind: "list",
             method: "GET",
             path: "/widget/query",
-            source: "query",
-        });
-        expect(widget?.operations).toContainEqual({
-            kind: "get",
-            method: "GET",
-            path: "/widget/get",
             source: "query",
         });
         expect(widget?.operations).toContainEqual({
@@ -99,17 +92,9 @@ describe("buildRestModel", () => {
         const byKind = new Map(widget?.operations.map((operation) => [operation.kind, operation]));
 
         expect(byKind.get("list")?.source).toBe("query");
-        expect(byKind.get("get")?.source).toBe("query");
         expect(byKind.get("delete")?.source).toBe("query");
         expect(byKind.get("create")?.source).toBe("body");
         expect(byKind.get("update")?.source).toBe("body");
-    });
-
-    it("omits the getter when nothing can name a row", () => {
-        const marker = buildRestModel(tables).entities.find((entity) => entity.entity === "Marker");
-
-        expect(marker?.filters).toEqual([]);
-        expect(marker?.operations.map((operation) => operation.kind)).not.toContain("get");
     });
 
     it("records the filter fields, the key, and the version fields", () => {

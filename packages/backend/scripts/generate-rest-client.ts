@@ -53,8 +53,6 @@ function comment(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
         case "list":
             return `/** List \`${name}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`;
-        case "get":
-            return `/** Get the first \`${name}\` row matching every given filter; at least one is required. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "update":
@@ -68,16 +66,12 @@ function comment(entity: RestEntity, kind: RestKind): string {
 export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const list = operation(entity, "list");
-    const get = operation(entity, "get");
     const create = operation(entity, "create");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
     const keys = filterKeys(entity.filters);
 
     const selectionTypes = ["Filters", "Selection", "Selected"];
-    if (get) {
-        selectionTypes.push("AtLeastOne");
-    }
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
     const lines: string[] = [HEADER];
@@ -105,20 +99,6 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`): Promise<Selected<${name}, S>[]> {`);
         lines.push(
             `    return http.${transport(list)}<Selected<${name}, S>[]>("${list.method}", "${list.path}", opts);`,
-        );
-        lines.push("}");
-    }
-
-    if (get) {
-        lines.push("");
-        lines.push(comment(entity, "get"));
-        lines.push(`export async function get${name}<S extends Selection<${name}>>(`);
-        lines.push("    http: HttpClient,");
-        lines.push(`    opts: AtLeastOne<Filters<${name}, ${keys}>> & { select: S },`);
-        lines.push(`): Promise<Selected<${name}, S> | undefined> {`);
-        // A miss has no value to send, so the server answers `null`; the client restores `undefined`.
-        lines.push(
-            `    return (await http.${transport(get)}<Selected<${name}, S> | null>("${get.method}", "${get.path}", opts)) ?? undefined;`,
         );
         lines.push("}");
     }

@@ -44,8 +44,6 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
         case "list":
             return `list${entity.entity}Schema`;
-        case "get":
-            return `get${entity.entity}Schema`;
         case "create":
         case "delete":
             return `${entity.module}Schema`;
@@ -76,7 +74,7 @@ function queryFunctions(model: RestModel): string[] {
     return model.entities
         .flatMap((entity) =>
             entity.operations
-                .filter((operation) => operation.kind === "list" || operation.kind === "get")
+                .filter((operation) => operation.kind === "list")
                 .map((operation) => functionName(entity, operation.kind)),
         )
         .sort((a, b) => a.localeCompare(b));

@@ -73,17 +73,6 @@ export function generateQueryFile(
         // The read's one argument carries the filters and the selection together.
         lines.push(`    select: ${entitySchema ? entitySchema.selectName : "z.never()"},`);
         lines.push("});");
-
-        // A getter needs a filter to name a row, so the schema requires at least one of them.
-        if (query.fields.length > 0) {
-            const named = query.fields.map((field) => `value.${field.name} !== undefined`).join(" || ");
-            lines.push("");
-            lines.push(`/** The same filters, with at least one of them named. */`);
-            lines.push(`export const get${entity}Schema = ${query.schemaName}.refine(`);
-            lines.push(`    (value) => ${named},`);
-            lines.push(`    { message: "get${entity} needs at least one filter" },`);
-            lines.push(");");
-        }
     }
     return lines.join("\n") + "\n";
 }

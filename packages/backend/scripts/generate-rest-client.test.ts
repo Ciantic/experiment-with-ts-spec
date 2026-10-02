@@ -64,7 +64,6 @@ describe("renderClientModule", () => {
     it("sends a read through the query parameter and a write through the body", () => {
         const code = widgetModule();
 
-        expect(code).toContain('http.query<Selected<Widget, S> | null>("GET", "/widget/get", opts)');
         expect(code).toContain('http.send<void>("POST", "/widget", rows)');
         expect(code).toContain('http.send<void>("PATCH", "/widget", rows)');
         expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
@@ -72,14 +71,6 @@ describe("renderClientModule", () => {
 
     it("narrows the filters to the filterable fields", () => {
         expect(widgetModule()).toContain('Filters<Widget, "id" | "size"> & { select: S }');
-    });
-
-    it("keeps the getter's at-least-one filter and restores a miss to undefined", () => {
-        const code = widgetModule();
-
-        expect(code).toContain('opts: AtLeastOne<Filters<Widget, "id" | "size">> & { select: S },');
-        expect(code).toContain("Promise<Selected<Widget, S> | undefined>");
-        expect(code).toContain("?? undefined;");
     });
 
     it("declares the patch locally, since it cannot import the repository's", () => {
@@ -108,12 +99,14 @@ describe("renderClientModule", () => {
         expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
     });
 
-    it("omits the getter for an entity that cannot name a row", () => {
+    it("emits no getter", () => {
+        const code = widgetModule();
         const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
-        const code = renderClientModule(markerEntity!);
+        const markerCode = renderClientModule(markerEntity!);
 
-        expect(code).not.toContain("getMarker");
+        expect(code).not.toContain("getWidget");
         expect(code).not.toContain("AtLeastOne");
+        expect(markerCode).not.toContain("getMarker");
     });
 });
 

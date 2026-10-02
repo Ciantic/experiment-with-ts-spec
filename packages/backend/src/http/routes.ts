@@ -2,8 +2,8 @@
 import type { Route } from "./router.ts";
 import { z } from "zod";
 import { createCustomer, createInvoice, createInvoiceRow, createInvoiceSent, createInvoiceSentRow, createSeller, deleteCustomer, deleteInvoice, deleteInvoiceRow, deleteInvoiceSent, deleteInvoiceSentRow, deleteSeller, updateCustomer, updateInvoice, updateInvoiceRow, updateInvoiceSent, updateInvoiceSentRow, updateSeller } from "../db/repositories/index.ts";
-import { getCustomer, getInvoice, getInvoiceRow, getInvoiceSent, getInvoiceSentRow, getSeller, listCustomer, listInvoice, listInvoiceRow, listInvoiceSent, listInvoiceSentRow, listSeller } from "../db/queries/index.ts";
-import { customerPatchSchema, customerSchema, getCustomerSchema, getInvoiceRowSchema, getInvoiceSchema, getInvoiceSentRowSchema, getInvoiceSentSchema, getSellerSchema, invoicePatchSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentPatchSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, listCustomerSchema, listInvoiceRowSchema, listInvoiceSchema, listInvoiceSentRowSchema, listInvoiceSentSchema, listSellerSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
+import { listCustomer, listInvoice, listInvoiceRow, listInvoiceSent, listInvoiceSentRow, listSeller } from "../db/queries/index.ts";
+import { customerPatchSchema, customerSchema, invoicePatchSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentPatchSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, listCustomerSchema, listInvoiceRowSchema, listInvoiceSchema, listInvoiceSentRowSchema, listInvoiceSentSchema, listSellerSchema, sellerPatchSchema, sellerSchema } from "../validation/index.ts";
 
 /** Every exposed call, matched by method and path. */
 export const routes: Route[] = [
@@ -13,13 +13,6 @@ export const routes: Route[] = [
         source: "query",
         input: listCustomerSchema,
         handler: (db, body) => listCustomer(db, body as never),
-    },
-    {
-        method: "GET",
-        path: "/customer/get",
-        source: "query",
-        input: getCustomerSchema,
-        handler: (db, body) => getCustomer(db, body as never),
     },
     {
         method: "POST",
@@ -50,13 +43,6 @@ export const routes: Route[] = [
         handler: (db, body) => listInvoice(db, body as never),
     },
     {
-        method: "GET",
-        path: "/invoice/get",
-        source: "query",
-        input: getInvoiceSchema,
-        handler: (db, body) => getInvoice(db, body as never),
-    },
-    {
         method: "POST",
         path: "/invoice",
         source: "body",
@@ -83,13 +69,6 @@ export const routes: Route[] = [
         source: "query",
         input: listInvoiceRowSchema,
         handler: (db, body) => listInvoiceRow(db, body as never),
-    },
-    {
-        method: "GET",
-        path: "/invoice_row/get",
-        source: "query",
-        input: getInvoiceRowSchema,
-        handler: (db, body) => getInvoiceRow(db, body as never),
     },
     {
         method: "POST",
@@ -120,13 +99,6 @@ export const routes: Route[] = [
         handler: (db, body) => listInvoiceSent(db, body as never),
     },
     {
-        method: "GET",
-        path: "/invoice_sent/get",
-        source: "query",
-        input: getInvoiceSentSchema,
-        handler: (db, body) => getInvoiceSent(db, body as never),
-    },
-    {
         method: "POST",
         path: "/invoice_sent",
         source: "body",
@@ -155,13 +127,6 @@ export const routes: Route[] = [
         handler: (db, body) => listInvoiceSentRow(db, body as never),
     },
     {
-        method: "GET",
-        path: "/invoice_sent_row/get",
-        source: "query",
-        input: getInvoiceSentRowSchema,
-        handler: (db, body) => getInvoiceSentRow(db, body as never),
-    },
-    {
         method: "POST",
         path: "/invoice_sent_row",
         source: "body",
@@ -188,13 +153,6 @@ export const routes: Route[] = [
         source: "query",
         input: listSellerSchema,
         handler: (db, body) => listSeller(db, body as never),
-    },
-    {
-        method: "GET",
-        path: "/seller/get",
-        source: "query",
-        input: getSellerSchema,
-        handler: (db, body) => getSeller(db, body as never),
     },
     {
         method: "POST",

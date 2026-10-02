@@ -35,8 +35,3 @@ export type Selected<E, S> = {
 
 /** The filter arguments of a read: each named field, as a set matched with `in (…)`. See docs/queries.md. */
 export type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
-
-/** The filter arguments of a `get`: at least one field named, the rest optional. See docs/queries.md. */
-export type AtLeastOne<T> = {
-    [K in keyof T]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<keyof T, K>>>;
-}[keyof T];

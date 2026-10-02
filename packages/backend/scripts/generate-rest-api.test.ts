@@ -49,7 +49,6 @@ describe("renderRoutesModule", () => {
 
         expect(code).toContain('path: "/widget/query"');
         expect(code).toContain("input: listWidgetSchema");
-        expect(code).toContain("input: getWidgetSchema");
         expect(code).toContain("input: widgetSchema");
         expect(code).toContain("input: widgetPatchSchema");
     });
@@ -58,7 +57,6 @@ describe("renderRoutesModule", () => {
         const code = render();
 
         expect(code).toMatch(/method: "GET",\s*\n\s*path: "\/widget\/query",\s*\n\s*source: "query",/);
-        expect(code).toMatch(/method: "GET",\s*\n\s*path: "\/widget\/get",\s*\n\s*source: "query",/);
     });
 
     it("posts an entity and patches a patch from the body", () => {
@@ -92,13 +90,13 @@ describe("renderRoutesModule", () => {
         expect(code).toContain('from "../validation/index.ts"');
     });
 
-    it("emits no getter for an entity that cannot name a row", () => {
+    it("emits no get route", () => {
         const code = render();
 
-        expect(code).toContain("input: listMarkerSchema");
-        expect(code).toContain('path: "/marker/query"');
+        expect(code).not.toContain("getWidgetSchema");
+        expect(code).not.toContain("/widget/get");
         expect(code).not.toContain("getMarkerSchema");
-        expect(code).not.toContain('path: "/marker/get"');
+        expect(code).not.toContain("/marker/get");
     });
 
     it("names every import once, sorted", () => {
