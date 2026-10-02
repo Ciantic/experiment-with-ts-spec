@@ -83,7 +83,8 @@ export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> &
 Every written column is optional except two, which are the keys the rest of the
 design leans on:
 
-- **The primary key** says which row to write.
+- **The primary key** says which row to write. It is the field tagged
+  `@primaryKey`.
 - **The `@version` column**, where one exists, is the optimistic-lock
   precondition (`docs/versioning.md`). It is required so a patch cannot
   accidentally skip the check. For an entity with no version — the snapshots —
@@ -133,14 +134,14 @@ The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
 `packages/backend/scripts/postgres-model.ts`, which maps the parsed spec
 (`packages/spec/scripts/spec-model.ts`) to columns. One interpretation of
-`@table`, `@relation`, `@children`, `@inlined`, `<Entity>Id` foreign keys, and
-type mapping feeds both the DDL and the repositories, so a repository cannot
-name a column the schema does not have.
+`@table`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
+key tags, and type mapping feeds both the DDL and the repositories, so a
+repository cannot name a column the schema does not have.
 
 The column value is read through the accessor recorded on the model, so an
 inlined optional customer is written as `row.customer?.name`, without the
 generator special-casing it. A relation contributes no column of its own: its
-`<field>Id` field is an ordinary column, read as `row.customerId`.
+`@foreignKey` field is an ordinary column, read as `row.customerId`.
 
 A column with a database default (`@default`) is left to the database and never
 appears in a generated `insert`. That covers both timestamps: the default fills

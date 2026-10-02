@@ -120,12 +120,45 @@ describe("parseSpec tags", () => {
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(true);
     });
 
-    it("makes the id field a filter without the tag", () => {
+    it("decodes @primaryKey as a bare marker", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @primaryKey\n     */", "id: ThingId;"),
+        });
+
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.primaryKey).toBe(true);
+        expect(tags?.foreignKey).toBeUndefined();
+    });
+
+    it("decodes @foreignKey with the interface it references", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @foreignKey Owner\n     */", "ownerId?: OwnerId;"),
+        });
+
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.foreignKey).toBe("Owner");
+        expect(tags?.primaryKey).toBe(false);
+    });
+
+    it("makes the @primaryKey field a filter without the tag", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @fieldName ID\n     * @primaryKey\n     */", "id: ThingId;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(true);
+    });
+
+    it("does not treat a field named id as the primary key", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @fieldName ID\n     */", "id: ThingId;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(true);
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.primaryKey).toBe(false);
+        expect(tags?.queryfilter).toBe(false);
     });
 
     it("does not make another field a filter by default", () => {

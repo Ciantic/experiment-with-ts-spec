@@ -36,7 +36,14 @@ Field tags:
   column becomes `not null default now()`, and every write assigns
   `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
 - `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert.
-- `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through a `<field>Id` field the interface also declares. The entity is the field type, which must be an interface. See `@relation` below.
+- `@primaryKey` — the table's primary key. A bare marker on a single scalar
+  field, exactly one per interface: the column is `not null`, and the generated
+  reads filter on it by default. See "`@primaryKey` and `@foreignKey`" below.
+- `@foreignKey <Entity>` — the field is the column pointing at `<Entity>`'s
+  primary key. The value names the interface; the column type and the referenced
+  column come from that table, not from the field's own type. See "`@primaryKey`
+  and `@foreignKey`" below.
+- `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through the field carrying `@foreignKey <entity>`. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
 - `@unique` — the column is unique.
@@ -48,7 +55,7 @@ Field tags:
 - `@queryfilter` — a bare marker that makes the field a filter of the entity's
   generated reads. A filter is a set matched with `in (…)`; several are combined
   with `and`. Scalar fields only; a branch field may not carry it, and it is
-  redundant on `id`, which is a filter by default. See `docs/queries.md`.
+  redundant on the `@primaryKey` field, which is a filter by default. See `docs/queries.md`.
 - `@queryorderby` — makes the field an ordering key of the entity's generated
   reads. A bare marker whitelists the field; `@queryorderby default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
@@ -87,8 +94,10 @@ they take no value. The entity and the cardinality both come from the field
 type, so `owner?: Owner` with `@relation` links to `Owner`, and `rows?: Row[]`
 with `@children` makes `Row` the child. This removes a second source of truth
 that could disagree with the type — a tag naming an entity other than the
-field's is not expressible. `@relation` and `@inlined` must be on a single
-entity, `@children` on an array of one, and the three are mutually exclusive.
+field's is not expressible. `@foreignKey` is the exception: a key column's type
+may be an opaque alias, so the tag names its target. `@relation` and `@inlined`
+must be on a single entity, `@children` on an array of one, and the three are
+mutually exclusive.
 
 `@generated` and `@computed` are separate tags because they produce different
 column behaviour: `id` is assigned once and never recomputed, whereas
@@ -99,11 +108,44 @@ it is presentation metadata telling a UI not to offer the field. How the value
 arrives is a separate decision — a client-supplied column or a `@default`. The
 clock tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
+## `@primaryKey` and `@foreignKey`
+
+The key tags say what a column *is*, without deriving it from a name or a type:
+`@primaryKey` marks the table's key, and `@foreignKey <Entity>` marks a column
+that points at another table's key. Neither convention survives — a field named
+`id` is not a key unless it is tagged, and an `<Entity>Id` type is not a foreign
+key unless it is tagged. Every entity declares exactly one `@primaryKey`, and a
+missing one is a generation error rather than a fallback.
+
+```ts
+/**
+ * @fieldName ID
+ * @generated
+ * @primaryKey
+ * @widget text
+ */
+id: InvoiceId;
+
+/**
+ * @fieldName Customer ID
+ * @generated
+ * @foreignKey Customer
+ * @widget text
+ */
+customerId?: CustomerId;
+```
+
+`@foreignKey Customer` takes the column's storage type and referenced column
+from `Customer`'s own `@primaryKey` field, so the field's declared type is
+documentation and may be an alias this model cannot resolve. Both tags sit on a
+single scalar field and are mutually exclusive, so a self-referencing key is not
+expressible; that keeps the pair unambiguous.
+
 ## `@relation`
 
 A `@relation` field is *navigation*: it names the entity on the other side of a
-foreign key. The key itself is an ordinary field the interface declares,
-named `<field>Id`:
+foreign key. The key itself is an ordinary field the interface declares, carrying
+`@foreignKey <entity>`:
 
 ```ts
 /**
@@ -116,6 +158,7 @@ customer?: Customer;
 /**
  * @fieldName Customer ID
  * @generated
+ * @foreignKey Customer
  * @widget text
  */
 customerId?: CustomerId;
@@ -123,12 +166,12 @@ customerId?: CustomerId;
 
 The alternative — the tag synthesizing the column — would put one fact in two
 places: the tag's entity and the key field's type could disagree. Here the
-generator joins the two fields by name, and a mismatch is a diagnostic rather
-than a silent second column. Either half alone is also a diagnostic: a
-`@relation` without its `<field>Id` field, or a `<field>Id` field whose type
-references a table other than the relation's.
+generator joins the two fields by the table the key points at, and a mismatch is
+a diagnostic rather than a silent second column. Either half alone is also a
+diagnostic: a `@relation` with no `@foreignKey` field referencing its table, or
+an ambiguous pair of keys into the same table.
 
-Nullability lives on the `<field>Id` field, so a required relation needs a
+Nullability lives on the `@foreignKey` field, so a required relation needs a
 required key; the relation field's own optionality does not matter to the DDL.
 The key is a normal scalar field: it is selectable, and it takes `@queryfilter`
 like any other, which is how a read filters by a relation. The `@relation` field
@@ -347,9 +390,13 @@ Enforced:
   interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
+- `@primaryKey` is a bare marker on a single scalar field and may appear at most
+  once per interface; `@foreignKey` requires the interface it references and sits
+  on a single scalar field. The two are mutually exclusive. See "`@primaryKey`
+  and `@foreignKey`".
 - `@queryfilter` is a bare marker on a scalar field; a branch field may not
-  carry it, and it must not be written on `id`, which is a filter already. See
-  `docs/queries.md`.
+  carry it, and it must not be written on the `@primaryKey` field, which is a
+  filter already. See `docs/queries.md`.
 - `@queryorderby` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
@@ -374,15 +421,16 @@ Gotchas:
   expression is semantically right for its field, nor whether the SQL is
   syntactically valid. `pnpm test` executes the generated `schema.sql` in PGlite,
   which is what catches a malformed expression.
-- **`id` is a filter without a tag.** `spec-model.ts` marks the field named `id`
-  as `queryfilter` when it parses an entity, because `id` is the primary key
-  every entity has. Writing `@queryfilter` on it is therefore a lint finding,
-  not a second way to say the same thing: the default has one spelling.
+- **The primary key is a filter without a tag.** `spec-model.ts` marks the
+  `@primaryKey` field as `queryfilter` when it parses an entity. Writing
+  `@queryfilter` on it is therefore a lint finding, not a second way to say the
+  same thing: the default has one spelling.
 - **`@queryfilter` is checked structurally, not by type.** The linter rejects it
-  on a branch field (a `@relation`/`@children`/`@inlined` marker), on `id`, and
-  on a value, but it does not resolve the field's type: the generated read types
-  the filter from the field's own type, so a non-scalar would surface there.
-- **`@relation` and its `<field>Id` field are paired by the generator, not the
+  on a branch field (a `@relation`/`@children`/`@inlined` marker), on the
+  primary key, and on a value, but it does not resolve the field's type: the
+  generated read types the filter from the field's own type, so a non-scalar
+  would surface there.
+- **`@relation` and its `@foreignKey` field are paired by the generator, not the
   linter.** The linter checks tags; the cross-field rule is enforced when the
   table model is built, so the diagnostic comes from `pnpm generate` with a file
   and line, the same way `@children` without a foreign key does. See

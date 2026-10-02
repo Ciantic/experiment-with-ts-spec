@@ -721,10 +721,133 @@ describe("@queryfilter", () => {
         ]);
     });
 
-    it("rejects @queryfilter on id, which is a filter by default", () => {
-        const findings = lintSourceText(field("id", ""));
+    it("rejects @queryfilter on the primary key, which is a filter by default", () => {
+        const findings = lintSourceText(field("id", "@primaryKey"));
 
-        expect(messages(findings)).toEqual(["`id`: `id` is a filter by default; drop @queryfilter"]);
+        expect(messages(findings)).toEqual([
+            "`id`: the primary key is a filter by default; drop @queryfilter",
+        ]);
+    });
+});
+
+describe("@primaryKey and @foreignKey", () => {
+    it("accepts @primaryKey on a scalar field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 */
+                id: ThingId;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @primaryKey with a value", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey yes
+                 */
+                id: ThingId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`id`: @primaryKey takes no value"]);
+    });
+
+    it("rejects a second @primaryKey field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 */
+                id: ThingId;
+                /**
+                 * @fieldName Code
+                 * @widget text
+                 * @primaryKey
+                 */
+                code: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @primaryKey may appear on at most one field"]);
+    });
+
+    it("rejects @primaryKey on a relation field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget select
+                 * @relation
+                 * @primaryKey
+                 */
+                owner?: Owner;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`owner`: @primaryKey must be on a scalar field, not a @relation field",
+        ]);
+    });
+
+    it("accepts @foreignKey with the interface it references", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @foreignKey without the interface it references", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey is missing the interface it references, such as `@foreignKey Customer`",
+        ]);
+    });
+
+    it("rejects @primaryKey and @foreignKey together", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @primaryKey
+                 * @foreignKey Owner
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @primaryKey and @foreignKey are mutually exclusive",
+        ]);
     });
 });
 

@@ -269,7 +269,7 @@ a read validates its selection too.
 ## Annotations
 
 The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
-`@queryfilter` (which `spec-model.ts` defaults on `id`). It never names a domain type. The parsing and tag
+`@queryfilter` (which `spec-model.ts` defaults on the `@primaryKey` field). It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.

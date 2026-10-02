@@ -187,7 +187,7 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     lines.push("});");
 
     lines.push("");
-    const versioned = entity.required.some((name) => name !== "id");
+    const versioned = entity.required.some((name) => name !== entity.key);
     lines.push(
         versioned
             ? "/** A partial update: every field is optional except the key and the version. */"

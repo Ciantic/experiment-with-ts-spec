@@ -92,12 +92,13 @@ number?: string;
 ```
 
 The default lives in `spec-model.ts`, which sets the tag when it parses a field
-named `id`; a generator reads the tag and never the name. Because the default is
-the only spelling, writing `@queryfilter` on `id` is a lint finding.
+carrying `@primaryKey`; a generator reads the tag and never the name. Because the default is
+the only spelling, writing `@queryfilter` on the `@primaryKey` field is a lint
+finding.
 
 A field without `@queryfilter` is not filterable. Branch fields
 (`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
-through its `<field>Id` field, which is a scalar like any other.
+through its `@foreignKey` field, which is a scalar like any other.
 
 ### Filters are sets, combined with `and`
 
@@ -358,7 +359,7 @@ snapshot: { kind: "inlined", table: "customer", columns: { name: "customerName" 
 
 Relation and inlined columns are not the same here. Inlined columns are excluded
 from the table's selectable `fields`, because the spec never declares them. A
-relation's foreign key *is* excluded from nothing: it is the `<field>Id` field
+relation's foreign key *is* excluded from nothing: it is the `@foreignKey` field
 the interface declares, so `Invoice.customerId` is a selectable field and — with
 `@queryfilter` — an ordinary filter. `InvoiceRow.invoiceId` is the same thing.
 
@@ -383,10 +384,10 @@ branch per level. The resolver holds no domain knowledge — it only reads
 `queryModel`, so a new entity and `@queryfilter` field need no resolver change.
 
 Arguments filter by set membership: the generated filters are the scalar fields
-that carry `@queryfilter` (plus `id`), and a relation's `<field>Id` field is one
-of them. An unknown filter field throws rather than silently dropping a clause,
-as does a non-array value. `String`, `Date`, and `decimal` values pass through
-unchanged.
+that carry `@queryfilter` (plus the `@primaryKey` field), and a relation's
+`@foreignKey` field is one of them. An unknown filter field throws rather than
+silently dropping a clause, as does a non-array value. `String`, `Date`, and
+`decimal` values pass through unchanged.
 
 A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
@@ -420,9 +421,10 @@ stays stable and is never truncated or filtered.
 - **`eq` overlaps `filter`.** `where: { id: { eq } }` says what
   `filter: { id: [value] }` already says; `eq` exists for symmetry and `ne` is
   the operator `filter` cannot express.
-- **Filters come only from `@queryfilter`, plus `id`.** A field without the tag
-  is not filterable, `id` is a filter without it, and a branch field may not
-  carry it; filtering by a relation is not implemented.
+- **Filters come only from `@queryfilter`, plus the primary key.** A field
+  without the tag is not filterable, the `@primaryKey` field is a filter without
+  it, and a branch field may not carry it; filtering by a relation is not
+  implemented.
 - **The brand is an internal.** `Scalar` reads the spec's `Brand` alias, whose
   only dependency is a type-only Zod import. The fallback, if that ever moves, is
   separate `select` (scalars) and `with` (branches) keys, which needs no brand

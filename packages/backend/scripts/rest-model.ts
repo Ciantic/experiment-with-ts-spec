@@ -7,7 +7,7 @@
  * generator may re-derive a path. See docs/rest-api.md.
  */
 import { lowerFirst } from "spec/scripts/spec-model.ts";
-import type { Table } from "./postgres-model.ts";
+import { primaryKeyColumn, type Table } from "./postgres-model.ts";
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
 export type RestMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -85,7 +85,7 @@ export function buildRestModel(tables: Map<string, Table>): RestModel {
             module: lowerFirst(table.interfaceName),
             importSpecifier: table.importSpecifier,
             path,
-            key: table.columns.find((column) => column.primaryKey)?.name ?? "id",
+            key: primaryKeyColumn(table).name,
             filters: table.columns.filter((column) => column.queryFilter).map((column) => column.name),
             orderFields: table.columns.filter((column) => column.queryOrder).map((column) => column.name),
             whereFields: table.columns

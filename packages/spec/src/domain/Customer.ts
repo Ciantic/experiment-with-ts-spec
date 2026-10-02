@@ -18,6 +18,7 @@ export interface Customer {
      * 
      * @fieldName ID
      * @generated
+     * @primaryKey
      * @widget text
      */
     id: CustomerId;

@@ -60,6 +60,8 @@ export interface ZodEntity {
     usesPrimitives: boolean;
     /** Fields the patch schema requires: the key, and every `@version` field. */
     required: string[];
+    /** The `@primaryKey` field name, so a patch's mandatory fields can name it. */
+    key: string;
     /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
     selectFields: ZodSelectField[];
 }
@@ -422,7 +424,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
                 name: property.name,
                 expression: property.optional ? `${resolved}.optional()` : resolved,
             });
-            if (property.name === "id" || property.tags.version) {
+            if (property.tags.primaryKey || property.tags.version) {
                 required.push(property.name);
             }
         }
@@ -452,6 +454,7 @@ export function buildZodModel(project: Project, options: GenerateOptions = {}): 
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
             required,
+            key: spec.properties.find((property) => property.tags.primaryKey)?.name ?? "",
             selectFields: selectFieldsFor(spec),
         });
     }

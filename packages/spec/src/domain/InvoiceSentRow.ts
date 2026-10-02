@@ -19,6 +19,7 @@ export interface InvoiceSentRow {
      * 
      * @fieldName ID
      * @generated
+     * @primaryKey
      * @widget text
      */
     id: InvoiceSentRowId;
@@ -28,6 +29,7 @@ export interface InvoiceSentRow {
      * 
      * @fieldName Invoice
      * @generated
+     * @foreignKey InvoiceSent
      * @widget text
      */
     invoiceSentId: InvoiceSentId;

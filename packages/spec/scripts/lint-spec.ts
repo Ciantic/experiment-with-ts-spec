@@ -160,6 +160,18 @@ export function lintInterface(
             message: `\`${name}\`: @queryorderby default may appear on at most one field`,
         });
     }
+
+    // A table has exactly one primary key.
+    const primaryKeyed = declaration
+        .getProperties()
+        .filter((property) => readTags(property).primaryKey);
+    for (const property of primaryKeyed.slice(1)) {
+        findings.push({
+            filePath,
+            line: property.getStartLineNumber(),
+            message: `\`${name}\`: @primaryKey may appear on at most one field`,
+        });
+    }
 }
 
 function lintProperty(
@@ -358,6 +370,40 @@ function lintProperty(
         }
     }
 
+    // The key tags say what a column is: @primaryKey is the table's key, @foreignKey names the
+    // interface its column points at. Both sit on a single scalar field.
+    const primaryKeyTag = (tags.get("primaryKey") ?? [])[0];
+    const foreignKeyTag = (tags.get("foreignKey") ?? [])[0];
+    if (primaryKeyTag) {
+        if ((primaryKeyTag.getCommentText() ?? "").trim()) {
+            report("@primaryKey takes no value", primaryKeyTag);
+        }
+        if (firstBranch) {
+            report(`@primaryKey must be on a scalar field, not a @${firstBranch.name} field`, primaryKeyTag);
+        }
+        if (isArray) {
+            report("@primaryKey must be on a single field, not an array", primaryKeyTag);
+        }
+    }
+    if (foreignKeyTag) {
+        const target = (foreignKeyTag.getCommentText() ?? "").trim();
+        if (target === "") {
+            report(
+                "@foreignKey is missing the interface it references, such as `@foreignKey Customer`",
+                foreignKeyTag,
+            );
+        }
+        if (firstBranch) {
+            report(`@foreignKey must be on a scalar field, not a @${firstBranch.name} field`, foreignKeyTag);
+        }
+        if (isArray) {
+            report("@foreignKey must be on a single field, not an array", foreignKeyTag);
+        }
+    }
+    if (primaryKeyTag && foreignKeyTag) {
+        report("@primaryKey and @foreignKey are mutually exclusive", foreignKeyTag);
+    }
+
     // @queryfilter marks a scalar field as a filter of its entity's generated reads.
     const queryFilterTag = (tags.get("queryfilter") ?? [])[0];
     if (queryFilterTag) {
@@ -367,9 +413,9 @@ function lintProperty(
         if (firstBranch) {
             report(`@queryfilter must be on a scalar field, not a @${firstBranch.name} field`, queryFilterTag);
         }
-        // Every entity's `id` is a filter already (spec-model defaults it), so the tag is noise.
-        if (fieldName === "id") {
-            report("`id` is a filter by default; drop @queryfilter", queryFilterTag);
+        // The primary key is a filter already (spec-model defaults it), so the tag is noise.
+        if (primaryKeyTag) {
+            report("the primary key is a filter by default; drop @queryfilter", queryFilterTag);
         }
     }
 

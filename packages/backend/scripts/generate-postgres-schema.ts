@@ -73,8 +73,11 @@ function renderTable(table: Table): string[] {
         parts.push(part);
     }
 
+    // A table with no key column is already a diagnostic; emitting `primary key ()` would be invalid DDL.
     const primaryKeys = table.columns.filter((column) => column.primaryKey).map((column) => quote(column.name));
-    parts.push(`    constraint ${quote(`${table.name}_pkey`)} primary key (${primaryKeys.join(", ")})`);
+    if (primaryKeys.length > 0) {
+        parts.push(`    constraint ${quote(`${table.name}_pkey`)} primary key (${primaryKeys.join(", ")})`);
+    }
 
     for (const column of table.columns) {
         if (!column.checkValues || column.checkValues.length === 0) {

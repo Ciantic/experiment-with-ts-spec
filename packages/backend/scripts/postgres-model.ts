@@ -105,6 +105,15 @@ interface TypeResolution {
     isArray?: boolean;
 }
 
+/** The table's primary key column. The model reports a missing `@primaryKey` as a diagnostic. */
+export function primaryKeyColumn(table: Table): Column {
+    const column = table.columns.find((candidate) => candidate.primaryKey);
+    if (!column) {
+        throw new Error(`${table.interfaceName} has no @primaryKey column`);
+    }
+    return column;
+}
+
 /** Quote an identifier, matching the tags in the spec. */
 export function quote(name: string): string {
     return `"${name}"`;
@@ -151,21 +160,16 @@ export function buildSpecTables(
         }
     };
 
-    /** The SQL type of an entity's primary key, read from its own `id` field rather than assumed. */
-    const pkTypeInProgress = new Set<string>();
+    /** The field an entity declares as its primary key, or undefined when it declares none. */
+    function primaryKeyFieldName(entity: string): string | undefined {
+        return interfaces.get(entity)?.properties.find((property) => property.tags.primaryKey)?.name;
+    }
+
+    /** The SQL type of an entity's primary key, read from its `@primaryKey` field rather than assumed. */
     function primaryKeySqlType(entity: string): string {
-        const id = interfaces.get(entity)?.properties.find((property) => property.name === "id");
-        const typeNode = id?.declaration.getTypeNode();
-        // A self-referential `<Entity>Id` alias that is not declared would otherwise recurse forever.
-        if (!typeNode || pkTypeInProgress.has(entity)) {
-            return "text";
-        }
-        pkTypeInProgress.add(entity);
-        try {
-            return resolveTypeNode(typeNode)?.sqlType ?? "text";
-        } finally {
-            pkTypeInProgress.delete(entity);
-        }
+        const key = interfaces.get(entity)?.properties.find((property) => property.tags.primaryKey);
+        const typeNode = key?.declaration.getTypeNode();
+        return typeNode ? resolveTypeNode(typeNode)?.sqlType ?? "text" : "text";
     }
 
     /** Resolve a named alias to its type, reading its `@pgtype` before its underlying type. */
@@ -185,13 +189,6 @@ export function buildSpecTables(
         const aliasType = alias?.declaration.getTypeNode();
         if (aliasType) {
             return resolveTypeNode(aliasType);
-        }
-        // InvoiceId, CustomerId: an identifier named after the entity it keys, typed as that key.
-        if (name.endsWith("Id")) {
-            const entity = name.slice(0, -2);
-            if (interfaces.has(entity)) {
-                return { sqlType: primaryKeySqlType(entity) };
-            }
         }
         return undefined;
     }
@@ -354,8 +351,24 @@ export function buildSpecTables(
                 continue;
             }
 
+            // A primary key column and a foreign key column are told apart by their tags, not their
+            // names: `@primaryKey` is the table's key, `@foreignKey Customer` points at another table.
+            const isPrimaryKey = tags.primaryKey;
+            const foreignKeyTarget = isPrimaryKey ? undefined : tags.foreignKey;
+
+            // A foreign key's storage type comes from the table it points at, so its own type node
+            // is documentation and may be an alias this model cannot resolve.
+            const foreignKeyTable = foreignKeyTarget ? entityTableName(foreignKeyTarget) : undefined;
+            if (foreignKeyTarget && !foreignKeyTable) {
+                report(
+                    property.declaration,
+                    `\`${fieldName}\`: @foreignKey has no interface for \`${foreignKeyTarget}\``,
+                );
+                continue;
+            }
+
             const resolved = resolveTypeNode(typeNode);
-            if (!resolved) {
+            if (!resolved && !foreignKeyTarget) {
                 report(property.declaration, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
                 continue;
             }
@@ -368,7 +381,7 @@ export function buildSpecTables(
                     : tags.inlined
                         ? "inlined"
                         : undefined;
-            if (branchName && !resolved.entity) {
+            if (branchName && !resolved?.entity) {
                 report(
                     property.declaration,
                     `\`${fieldName}\`: @${branchName} needs an entity type, found \`${typeNode.getText()}\``,
@@ -376,7 +389,7 @@ export function buildSpecTables(
                 continue;
             }
 
-            if (resolved.isArray) {
+            if (resolved?.isArray) {
                 if (!tags.children) {
                     report(
                         property.declaration,
@@ -397,9 +410,16 @@ export function buildSpecTables(
                 continue;
             }
 
-            if (resolved.entity) {
+            if (resolved?.entity) {
                 if (tags.inlined) {
                     inlineColumns(property, fieldName, resolved.entity, notNull, table);
+                    continue;
+                }
+                if (tags.foreignKey !== undefined) {
+                    report(
+                        property.declaration,
+                        `\`${fieldName}\`: @foreignKey must be on the scalar key field, not the entity`,
+                    );
                     continue;
                 }
                 if (!tags.relation) {
@@ -414,20 +434,18 @@ export function buildSpecTables(
                     report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
                     continue;
                 }
-                // @relation navigates through the `<field>Id` field the interface declares; it adds no
-                // column of its own. The pair is joined once every table's columns exist.
+                // @relation navigates through the `@foreignKey <entity>` field the interface declares;
+                // it adds no column of its own. The pair is joined once every table's columns exist.
                 table.relations.set(fieldName, { kind: "relation", table: targetTable });
                 continue;
             }
 
-            const isPrimaryKey = fieldName === "id";
-            const isForeignKey = !isPrimaryKey && (typeNode.getText().endsWith("Id") ?? false);
             // A default makes the column not null even when the field is optional: the database fills it.
             // The clock tags supply their own default, so they make the column not null the same way.
             const defaultValue = tags.default ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
             const column: Column = {
                 name: fieldName,
-                sqlType: resolved.sqlType ?? "text",
+                sqlType: resolved?.sqlType ?? "text",
                 notNull: notNull || isPrimaryKey || defaultValue !== undefined,
                 primaryKey: isPrimaryKey,
                 unique: tags.unique,
@@ -445,7 +463,7 @@ export function buildSpecTables(
             if (operators && operators.length > 0) {
                 column.where = operators;
             }
-            if (resolved.checkValues) {
+            if (resolved?.checkValues) {
                 column.checkValues = resolved.checkValues;
             }
             if (defaultValue !== undefined) {
@@ -458,16 +476,18 @@ export function buildSpecTables(
                 column.version = true;
             }
 
-            if (isForeignKey) {
-                const entity = typeNode.getText().slice(0, -2);
-                const targetTable = entityTableName(entity);
-                if (!targetTable) {
-                    report(property.declaration, `\`${fieldName}\`: no interface for foreign key entity \`${entity}\``);
+            if (foreignKeyTarget && foreignKeyTable) {
+                const targetColumn = primaryKeyFieldName(foreignKeyTarget);
+                if (!targetColumn) {
+                    report(
+                        property.declaration,
+                        `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
+                    );
                     continue;
                 }
-                // The key column takes the referenced entity's key type, not a fixed one.
-                column.sqlType = primaryKeySqlType(entity);
-                column.references = { table: targetTable, column: "id" };
+                // The key column takes the referenced table's key type and names its key column.
+                column.sqlType = primaryKeySqlType(foreignKeyTarget);
+                column.references = { table: foreignKeyTable, column: targetColumn };
             }
 
             table.columns.push(column);
@@ -482,7 +502,7 @@ export function buildSpecTables(
         }
 
         if (!table.columns.some((column) => column.primaryKey)) {
-            report(spec.declaration, `\`${spec.name}\`: no \`id\` field to use as primary key`);
+            report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
         }
 
         tables.set(spec.name, table);
@@ -520,8 +540,8 @@ export function buildSpecTables(
         }
     }
 
-    /** Point each branch at a declaration that already exists: a relation at its `<field>Id` foreign
-     * key, a child collection at the child's foreign key. */
+    /** Point each branch at a declaration that already exists: a relation at the `@foreignKey`
+     * field that references its table, a child collection at the child's foreign key. */
     const byTableName = new Map<string, Table>();
     for (const table of tables.values()) {
         byTableName.set(table.name, table);
@@ -531,19 +551,37 @@ export function buildSpecTables(
             if (!relation.table) {
                 continue;
             }
-            // @relation never adds a column: it requires a `<field>Id` field to navigate through.
+            // @relation never adds a column: it requires a `@foreignKey` field to navigate through.
             if (relation.kind === "relation") {
-                const column = table.columns.find((candidate) => candidate.name === `${fieldName}Id`);
+                const candidates = table.columns.filter(
+                    (candidate) => candidate.references?.table === relation.table,
+                );
+                const column = candidates[0];
                 if (!column) {
-                    reportField(table, fieldName, `@relation needs the \`${fieldName}Id\` field`);
-                    continue;
-                }
-                const referenced = column.references?.table;
-                if (referenced !== relation.table) {
+                    // Name the tables the FKs do point at, so a `@relation` aimed at the wrong one reads.
+                    const targets = [
+                        ...new Set(
+                            table.columns
+                                .map((candidate) => candidate.references?.table)
+                                .filter((target): target is string => target !== undefined),
+                        ),
+                    ];
+                    const hint =
+                        targets.length > 0
+                            ? `; this table references ${targets.map((target) => `\`${target}\``).join(", ")}`
+                            : "";
                     reportField(
                         table,
                         fieldName,
-                        `@relation targets \`${relation.table}\`, but \`${fieldName}Id\` references \`${referenced ?? "nothing"}\``,
+                        `@relation needs a @foreignKey field referencing \`${relation.table}\`${hint}`,
+                    );
+                    continue;
+                }
+                if (candidates.length > 1) {
+                    reportField(
+                        table,
+                        fieldName,
+                        `@relation matches more than one foreign key referencing \`${relation.table}\``,
                     );
                     continue;
                 }

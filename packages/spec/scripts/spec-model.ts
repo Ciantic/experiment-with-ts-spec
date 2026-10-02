@@ -38,6 +38,8 @@ export const FIELD_TAGS = [
     "relation",
     "children",
     "inlined",
+    "primaryKey",
+    "foreignKey",
     "unique",
     "default",
     "version",
@@ -129,6 +131,10 @@ export interface Tags {
     children: boolean;
     /** The field holds an entity whose scalar fields are flattened into snapshot columns. */
     inlined: boolean;
+    /** The field is the table's primary key; exactly one per interface. */
+    primaryKey: boolean;
+    /** The interface this field references, as written in `@foreignKey Customer`. */
+    foreignKey?: string;
     unique: boolean;
     default?: string;
     version: boolean;
@@ -282,6 +288,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         relation: false,
         children: false,
         inlined: false,
+        primaryKey: false,
         unique: false,
         version: false,
         primitive: false,
@@ -314,6 +321,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "inlined":
                     tags.inlined = true;
+                    break;
+                case "primaryKey":
+                    tags.primaryKey = true;
+                    break;
+                case "foreignKey":
+                    if (value !== undefined) tags.foreignKey ??= value;
                     break;
                 case "default":
                     if (value !== undefined) tags.default ??= value;
@@ -423,9 +436,9 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 declaration,
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
-                    // `id` is the primary key every entity has, so it is always a filter; writing
-                    // the tag on it is redundant. The linter reports that rather than ignoring it.
-                    if (property.getName() === "id") {
+                    // The primary key is a filter every entity has, so writing the tag on it is
+                    // redundant. The linter reports that rather than ignoring it.
+                    if (tags.primaryKey) {
                         tags.queryfilter = true;
                     }
                     return {

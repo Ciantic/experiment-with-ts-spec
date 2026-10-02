@@ -11,6 +11,7 @@ import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     buildSpecTables,
+    primaryKeyColumn,
     type Table,
 } from "./postgres-model.ts";
 import { BACKEND_PACKAGE_ROOT } from "./postgres-model.ts";
@@ -77,7 +78,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
                     : { kind: relation.kind, table: relation.table, column: relation.column };
         }
 
-        const key = table.columns.find((column) => column.primaryKey)?.name ?? "id";
+        const key = primaryKeyColumn(table).name;
         const data: QueryTableData = { name: table.name, key, fields, relations };
 
         // Orderable fields come from `@queryorderby`; one may declare the entity default ordering.

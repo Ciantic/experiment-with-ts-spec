@@ -18,6 +18,7 @@ export interface Seller {
      * 
      * @fieldName ID
      * @generated
+     * @primaryKey
      * @widget text
      */
     id: SellerId;

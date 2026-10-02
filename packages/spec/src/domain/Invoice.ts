@@ -20,6 +20,7 @@ export interface Invoice {
      * 
      * @fieldName ID
      * @generated
+     * @primaryKey
      * @widget text
      */
     id: InvoiceId;
@@ -40,6 +41,7 @@ export interface Invoice {
      * @fieldName Customer ID
      * @queryfilter
      * @generated
+     * @foreignKey Customer
      * @widget text
      */
     customerId?: CustomerId;
@@ -59,6 +61,7 @@ export interface Invoice {
      * @fieldName Seller ID
      * @queryfilter
      * @generated
+     * @foreignKey Seller
      * @widget text
      */
     sellerId?: SellerId;

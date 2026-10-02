@@ -81,7 +81,11 @@ export type ThingFormat = "short" | "long" | (string & {});
  * @table thing
  */
 export interface Thing {
-    /** The identifier: a filter by default, no @queryfilter needed. */
+    /**
+     * The identifier: a filter by default, no @queryfilter needed.
+     *
+     * @primaryKey
+     */
     id: ThingId;
     /**
      * An optional label.
@@ -124,7 +128,11 @@ export interface Thing {
  * @table child
  */
 export interface Child {
-    /** The child identifier. */
+    /**
+     * The child identifier.
+     *
+     * @primaryKey
+     */
     id: ChildId;
     /** The owning thing. */
     thingId: ThingId;
@@ -138,7 +146,11 @@ export type ChildId = BrandedId<"ChildId">;
  * @table parent
  */
 export interface Parent {
-    /** The parent identifier. */
+    /**
+     * The parent identifier.
+     *
+     * @primaryKey
+     */
     id: ParentId;
 }
 
@@ -291,7 +303,7 @@ describe("generateEntity", () => {
     });
 
     it("keeps the entity type when the insert schema omits nothing", () => {
-        const bare = "export interface Bare { id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
+        const bare = "export interface Bare {\n    /** @primaryKey */\n    id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
         const { files } = generate({ domain: { Bare: bare } });
         const code = files.get("bare.ts") ?? "";
 
@@ -313,7 +325,7 @@ describe("generateIndex", () => {
 
 describe("buildZodModel diagnostics", () => {
     it("reports a field whose type it cannot map", () => {
-        const thing = "export interface Thing { id: ThingId; weird: Promise<string>; }\nexport type ThingId = BrandedId<\"ThingId\">;";
+        const thing = "export interface Thing {\n    /** @primaryKey */\n    id: ThingId; weird: Promise<string>; }\nexport type ThingId = BrandedId<\"ThingId\">;";
         const { diagnostics } = generate({ domain: { Thing: thing } });
 
         expect(messages(diagnostics)).toEqual(["`weird`: unsupported type `Promise<string>`"]);
@@ -591,7 +603,11 @@ export type MarkerId = BrandedId<"MarkerId">;
  * @table marker
  */
 export interface Marker {
-    /** The identifier. */
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
     id: MarkerId;
     /** A label the caller supplies. */
     label?: string;
@@ -634,7 +650,11 @@ export type ChildId = BrandedId<"ChildId">;
  * @table child
  */
 export interface Child {
-    /** The child identifier. */
+    /**
+     * The child identifier.
+     *
+     * @primaryKey
+     */
     id: ChildId;
     /** A name. */
     name?: string;
@@ -646,7 +666,11 @@ export interface Child {
  * @table thing
  */
 export interface Thing {
-    /** The identifier. */
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
     id: ThingId;
     /**
      * The child as it was.
