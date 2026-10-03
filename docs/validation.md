@@ -16,8 +16,9 @@ API, the generated client, and (eventually) the frontend share one definition of
 - `packages/validation/src/primitives.ts` — one schema per `@primitive` alias,
   from its `@zod` tag.
 - `packages/validation/src/<entity>.ts` — one module per domain interface,
-  exporting `<name>Schema`, `<name>PatchSchema`, `<name>InsertSchema`, and the
-  matching `<Entity>Patch` and `<Entity>Insert` types.
+  exporting `<name>Schema`, `<name>PatchSchema`, `<name>InsertSchema`,
+  `<name>PrimaryKeySchema`, and the matching `<Entity>Patch`, `<Entity>Insert`,
+  and `<Entity>PrimaryKey` types.
 - `packages/validation/src/queries/query<Entity>.ts` — one module per entity,
   exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for its `query`
   read.
@@ -178,6 +179,27 @@ imported from this package, and its `insert` names exactly those columns
 (`docs/repositories.md`). So the type a caller passes, the schema that validates
 it, and the statement that runs all carry one set of fields, and a field added to
 the spec narrows all three at once.
+
+## Primary key schema and type
+
+`<name>PrimaryKeySchema` is the entity schema projected to the field tagged
+`@primaryKey`, made `.strict()` like a patch or an insert, so a field the write
+would ignore is a 400. `<Entity>PrimaryKey` is the matching type:
+
+```typescript
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const invoicePrimaryKeySchema = invoiceSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type InvoicePrimaryKey = Pick<Invoice, "id">;
+```
+
+A write that only addresses a stored row names this pair rather than the whole
+entity, so a caller cannot pass a field the statement would silently ignore. The
+repository's `delete` takes `InvoicePrimaryKey[]`, and the route that serves it
+validates with `z.array(invoicePrimaryKeySchema)` (`docs/repositories.md`). An
+interface with no `@primaryKey` field gets neither; the backend generator rejects
+it as a table before anything consumes it.
 
 ## Query schemas
 

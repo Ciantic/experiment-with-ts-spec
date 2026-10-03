@@ -104,10 +104,12 @@ export function generateRepository(table: Table): string {
 
     const lines: string[] = [];
     lines.push(HEADER);
-    lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     // The write types live in the validation package, so the repository, the wire schema, and the
-    // client all name one definition. See docs/validation.md.
-    lines.push(`import type { ${entity}Insert, ${entity}Patch } from "validation/${fileName(entity)}";`);
+    // client all name one definition: the insert, the patch, and the key a delete addresses.
+    // See docs/validation.md.
+    lines.push(
+        `import type { ${entity}Insert, ${entity}Patch, ${entity}PrimaryKey } from "validation/${fileName(entity)}";`,
+    );
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push("");
 
@@ -127,7 +129,7 @@ export function generateRepository(table: Table): string {
     lines.push("}");
     lines.push("");
 
-    lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}[]): Promise<void> {`);
+    lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
     lines.push(...collectValues(primaryKeys.map(readEntry)));
     lines.push(
         `    await db.query('delete from ${quote(table.name)} using (values ' + tuples.join(", ") + ') as data(${primaryKeyColumns}) where ${match}', parameters);`,

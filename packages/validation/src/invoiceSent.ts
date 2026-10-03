@@ -50,3 +50,9 @@ export type InvoiceSentPatch = Omit<Partial<InvoiceSent>, "rows"> & Required<Pic
 
 /** The fields a create writes: only the columns the database does not own. */
 export type InvoiceSentInsert = Omit<InvoiceSent, "rows">;
+
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const invoiceSentPrimaryKeySchema = invoiceSentSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type InvoiceSentPrimaryKey = Pick<InvoiceSent, "id">;

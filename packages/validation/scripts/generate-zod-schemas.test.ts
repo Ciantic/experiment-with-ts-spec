@@ -292,6 +292,14 @@ describe("generateEntity", () => {
         expect(code).toContain('export type ThingInsert = Omit<Thing, "children" | "parent">;');
     });
 
+    it("renders the primary key as a schema and a type over the entity, so a by-key write names only the key", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain("export const thingPrimaryKeySchema = thingSchema.pick({ id: true }).strict();");
+        expect(code).toContain('export type ThingPrimaryKey = Pick<Thing, "id">;');
+    });
+
     it("requires only the key when the entity has no version", () => {
         const { files } = generate({ domain: { Marker: MARKER } });
         const code = files.get("marker.ts") ?? "";
@@ -308,6 +316,14 @@ describe("generateEntity", () => {
         const code = files.get("bare.ts") ?? "";
 
         expect(code).toContain("export type BareInsert = Bare;");
+    });
+
+    it("renders no primary key type when the entity declares no key", () => {
+        const keyless = "export interface Keyless {\n    label: string; }";
+        const { files } = generate({ domain: { Keyless: keyless } });
+        const code = files.get("keyless.ts") ?? "";
+
+        expect(code).not.toContain("PrimaryKey");
     });
 
 });

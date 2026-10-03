@@ -3,7 +3,7 @@ import type { Route } from "./router.ts";
 import { z } from "zod";
 import { createCustomer, createInvoice, createInvoiceRow, createInvoiceSent, createInvoiceSentRow, createSeller, deleteCustomer, deleteInvoice, deleteInvoiceRow, deleteInvoiceSent, deleteInvoiceSentRow, deleteSeller, updateCustomer, updateInvoice, updateInvoiceRow, updateInvoiceSent, updateInvoiceSentRow, updateSeller } from "../db/repositories/index.ts";
 import { queryCustomer, queryInvoice, queryInvoiceRow, queryInvoiceSent, queryInvoiceSentRow, querySeller } from "../db/queries/index.ts";
-import { customerInsertSchema, customerPatchSchema, customerSchema, invoiceInsertSchema, invoicePatchSchema, invoiceRowInsertSchema, invoiceRowPatchSchema, invoiceRowSchema, invoiceSchema, invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowSchema, invoiceSentSchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerSchema } from "validation/index.ts";
+import { customerInsertSchema, customerPatchSchema, customerPrimaryKeySchema, invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceRowInsertSchema, invoiceRowPatchSchema, invoiceRowPrimaryKeySchema, invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentPrimaryKeySchema, invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowPrimaryKeySchema, queryCustomerSchema, queryInvoiceRowSchema, queryInvoiceSchema, queryInvoiceSentRowSchema, queryInvoiceSentSchema, querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerPrimaryKeySchema } from "validation/index.ts";
 
 /** Every exposed call, matched by method and path. */
 export const routes: Route[] = [
@@ -32,7 +32,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/customer",
         source: "query",
-        input: z.array(customerSchema.pick({ id: true })),
+        input: z.array(customerPrimaryKeySchema),
         handler: (db, body) => deleteCustomer(db, body as never),
     },
     {
@@ -60,7 +60,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/invoice",
         source: "query",
-        input: z.array(invoiceSchema.pick({ id: true })),
+        input: z.array(invoicePrimaryKeySchema),
         handler: (db, body) => deleteInvoice(db, body as never),
     },
     {
@@ -88,7 +88,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/invoice_row",
         source: "query",
-        input: z.array(invoiceRowSchema.pick({ id: true })),
+        input: z.array(invoiceRowPrimaryKeySchema),
         handler: (db, body) => deleteInvoiceRow(db, body as never),
     },
     {
@@ -116,7 +116,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/invoice_sent",
         source: "query",
-        input: z.array(invoiceSentSchema.pick({ id: true })),
+        input: z.array(invoiceSentPrimaryKeySchema),
         handler: (db, body) => deleteInvoiceSent(db, body as never),
     },
     {
@@ -144,7 +144,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/invoice_sent_row",
         source: "query",
-        input: z.array(invoiceSentRowSchema.pick({ id: true })),
+        input: z.array(invoiceSentRowPrimaryKeySchema),
         handler: (db, body) => deleteInvoiceSentRow(db, body as never),
     },
     {
@@ -172,7 +172,7 @@ export const routes: Route[] = [
         method: "DELETE",
         path: "/seller",
         source: "query",
-        input: z.array(sellerSchema.pick({ id: true })),
+        input: z.array(sellerPrimaryKeySchema),
         handler: (db, body) => deleteSeller(db, body as never),
     },
 ];

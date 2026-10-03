@@ -256,6 +256,19 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
             : `Omit<${entity.name}, ${entity.insertOmit.map(quote).join(" | ")}>`;
     lines.push(`export type ${entity.name}Insert = ${insertBase};`);
 
+    // The key alone addresses a stored row, so a by-key write names it rather than the whole entity.
+    // The schema is strict, like a patch or an insert, so a field the write ignores is a 400.
+    if (entity.key !== "") {
+        lines.push("");
+        lines.push("/** The key of one stored row: the shape a delete or other by-key write sends. */");
+        lines.push(
+            `export const ${entity.primaryKeyName} = ${entity.schemaName}.pick({ ${entity.key}: true }).strict();`,
+        );
+        lines.push("");
+        lines.push("/** The key of one stored row: what a delete or other by-key write addresses. */");
+        lines.push(`export type ${entity.name}PrimaryKey = Pick<${entity.name}, ${quote(entity.key)}>;`);
+    }
+
     return lines.join("\n") + "\n";
 }
 

@@ -33,3 +33,9 @@ export type InvoiceSentRowPatch = Partial<InvoiceSentRow> & Required<Pick<Invoic
 
 /** The fields a create writes: only the columns the database does not own. */
 export type InvoiceSentRowInsert = InvoiceSentRow;
+
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const invoiceSentRowPrimaryKeySchema = invoiceSentRowSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type InvoiceSentRowPrimaryKey = Pick<InvoiceSentRow, "id">;

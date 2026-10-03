@@ -44,3 +44,9 @@ export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> &
 
 /** The fields a create writes: only the columns the database does not own. */
 export type CustomerInsert = Omit<Customer, "createdAt" | "updatedAt" | "version">;
+
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const customerPrimaryKeySchema = customerSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type CustomerPrimaryKey = Pick<Customer, "id">;

@@ -65,3 +65,9 @@ export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "seller" | "netAm
 
 /** The fields a create writes: only the columns the database does not own. */
 export type InvoiceInsert = Omit<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version">;
+
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const invoicePrimaryKeySchema = invoiceSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type InvoicePrimaryKey = Pick<Invoice, "id">;

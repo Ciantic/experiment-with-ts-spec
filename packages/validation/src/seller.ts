@@ -42,3 +42,9 @@ export type SellerPatch = Omit<Partial<Seller>, "createdAt" | "updatedAt"> & Req
 
 /** The fields a create writes: only the columns the database does not own. */
 export type SellerInsert = Omit<Seller, "createdAt" | "updatedAt" | "version">;
+
+/** The key of one stored row: the shape a delete or other by-key write sends. */
+export const sellerPrimaryKeySchema = sellerSchema.pick({ id: true }).strict();
+
+/** The key of one stored row: what a delete or other by-key write addresses. */
+export type SellerPrimaryKey = Pick<Seller, "id">;

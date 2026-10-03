@@ -15,13 +15,13 @@ Each module exports three functions for its entity:
 ```ts
 createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void>
 updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
-deleteCustomer(db: SqlExecutor, rows: Customer[]): Promise<void>
+deleteCustomer(db: SqlExecutor, rows: CustomerPrimaryKey[]): Promise<void>
 ```
 
 `create` takes an **insert** — the fields a create writes — and `update` takes a
 **patch**, so a caller changes the fields it has without having to read and
-resend the rest; see "Inserting" and "Patching" below. `delete` takes a whole
-entity, of which it reads only the key.
+resend the rest; see "Inserting" and "Patching" below. `delete` takes the
+**primary key**, because the key is the whole of what its statement reads.
 
 Every function takes an array and returns nothing. **Reading is not part of a
 repository.** There is no `getById`, no list, no query builder. Those belong to
@@ -128,6 +128,23 @@ drift apart. A field neither writes is a 400 on
 the wire and a type error in process, rather than a field that quietly does
 nothing (`docs/validation.md`).
 
+## Deleting
+
+`delete` takes an entity's **primary key**, `<Entity>PrimaryKey`, the key alone
+rather than the whole entity, because the key is the only thing its statement
+reads. The type and its matching `<name>PrimaryKeySchema` are generated from the
+`@primaryKey` field in `packages/validation`, next to the patch and insert types:
+
+```ts
+import type { CustomerPrimaryKey } from "validation/customer.ts";
+
+export type CustomerPrimaryKey = Pick<Customer, "id">;
+```
+
+The wire schema is the same field set — the delete route validates
+`z.array(customerPrimaryKeySchema)` — so the caller, the schema, and the
+statement agree on what a delete carries (`docs/rest-api.md`).
+
 ## Where the columns come from
 
 The generator does not read `schema.sql` and does not re-parse the spec: it
@@ -196,8 +213,8 @@ patch column sets separately; see `docs/versioning.md`.
   column appears in the statement, so a patch that supplies one field still
   writes the others back to their stored value. That is a no-op per column, but
   it means the written columns are not a signal of what the caller intended.
-- **`delete` keys on the primary key only.** `deleteCustomer` has no patch
-  variant and no version precondition.
+- **`delete` keys on the primary key only.** `deleteCustomer` takes
+  `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
 - **No transaction wrapping.** A multi-row statement is atomic on its own, but
   the caller owns anything spanning more than one call.
 

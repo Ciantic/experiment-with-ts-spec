@@ -61,7 +61,7 @@ describe("renderRoutesModule", () => {
 
         expect(code).toContain("input: z.array(widgetInsertSchema)");
         expect(code).toContain("input: z.array(widgetPatchSchema)");
-        expect(code).toContain('input: z.array(widgetSchema.pick({ id: true }))');
+        expect(code).toContain("input: z.array(widgetPrimaryKeySchema)");
     });
 
     it("reads with GET and says the argument travels in the query string", () => {
@@ -81,7 +81,7 @@ describe("renderRoutesModule", () => {
         const code = render();
 
         expect(code).toMatch(/method: "DELETE",\s*\n\s*path: "\/widget",\s*\n\s*source: "query",/);
-        expect(code).toContain("input: z.array(widgetSchema.pick({ id: true }))");
+        expect(code).toContain("input: z.array(widgetPrimaryKeySchema)");
     });
 
     it("wires each route to its generated function", () => {
