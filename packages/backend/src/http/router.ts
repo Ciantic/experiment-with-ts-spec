@@ -10,7 +10,8 @@
  * validated before any of it runs, and the tree's groups decide the boundaries.
  */
 import { parse as decode, stringify as encode } from "devalue";
-import type { Db, SqlExecutor } from "../db/sql-executor.ts";
+import { atomically, sequence, tolerating } from "../db/group.ts";
+import type { Db } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -240,32 +241,29 @@ async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> 
         return result ?? null;
     }
 
-    const runOn = async (inner: Db) => {
-        const results: unknown[] = [];
-        for (const [index, child] of node.calls.entries()) {
-            results.push(await execute(inner, child, [...path, index]));
-        }
-        return results;
-    };
+    // A step runs on whatever `Db` its group's boundary hands it. That handoff is the
+    // whole of what the three kinds decide; `db/group.ts` owns it and is tested there.
+    const steps = node.calls.map(
+        (child, index) => async (inner: Db) => await execute(inner, child, [...path, index]),
+    );
 
     if (node.kind === "batch") {
-        return await runOn(db);
+        return await sequence(db, steps);
     }
 
     if (node.kind === "transaction") {
-        return await db.transaction(runOn);
+        return await atomically(db, steps);
     }
 
-    // An `attempt` tolerates its own subtree's failure and reports it, so its boundary
-    // already rolled back by the time the marker is built.
-    try {
-        return { ok: true, value: await db.transaction(runOn) };
-    } catch (thrown) {
-        if (!(thrown instanceof GroupFailure) || !within(thrown.path, path)) {
-            throw thrown;
-        }
-        return { ok: false, error: { message: thrown.message, path: thrown.path } };
+    const outcome = await tolerating(db, steps);
+    if (outcome.ok) {
+        return { ok: true, value: outcome.value };
     }
+    // A failure that is not a group failure came from outside the tree, so it is nobody's to report.
+    if (!(outcome.error instanceof GroupFailure) || !within(outcome.error.path, path)) {
+        throw outcome.error;
+    }
+    return { ok: false, error: { message: outcome.error.message, path: outcome.error.path } };
 }
 
 /** A router over a route table, reusing one `db` for every call. */

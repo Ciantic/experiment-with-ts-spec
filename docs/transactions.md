@@ -68,6 +68,33 @@ group does not join the outer one — it opens a savepoint inside it, so it can
 roll back on its own while the outer boundary still commits. Two sibling
 `transaction` groups are two boundaries, atomic separately, inside one request.
 
+The router does not decide that itself. `db/group.ts` holds the three boundary
+semantics over the port, and the router only maps a group's `kind` onto one of
+them:
+
+```ts
+export type Step = (db: Db) => Promise<unknown>;
+
+export function sequence(db: Db, steps: readonly Step[]): Promise<unknown[]>;
+export function atomically(db: Db, steps: readonly Step[]): Promise<unknown[]>;
+export function tolerating(db: Db, steps: readonly Step[]): Promise<Outcome>;
+```
+
+A step is one unit of work that is handed the `Db` it must run on, so the three
+differ in exactly two ways: whether the steps share a boundary, and whether a
+step's failure is raised or reported. `tolerating` reports the error unchanged
+rather than interpreting it, because what a failure means — its path, its HTTP
+status, whether it was even this group's to tolerate — is a router question.
+
+That split is what makes the semantics testable without a spec.
+`src/db/group.test.ts` drives the three against a real PGlite over a `widget`
+table it creates itself, so it asserts the boundary behaviour — that a failed
+`atomically` leaves nothing behind, that a nested one is a savepoint the outer
+transaction survives — without naming a domain type or a route. The load-bearing
+property it can assert and a mock cannot is that the steps really do receive the
+boundary handle: were `atomically` to hand its steps the outer `db`, the rows
+would survive the rollback and the assertion would fail.
+
 ## Who owns the boundary
 
 A handler owns its boundary. It receives a `Db` scoped to the request, and it

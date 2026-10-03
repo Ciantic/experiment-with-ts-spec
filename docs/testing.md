@@ -43,6 +43,12 @@ values, all of which are domain decisions rather than code behaviour.
   port the router takes. The second is what lets a group open a real
   transaction, so it asserts a commit, a rollback, and that a nested boundary is
   a savepoint the outer transaction survives.
+- `packages/backend/src/db/group.test.ts` — drives `sequence`, `atomically`, and
+  `tolerating` against a real PGlite over a `widget` table it creates itself. It
+  asserts boundary behaviour — a failed `atomically` leaves nothing behind, a
+  nested one is a savepoint the outer transaction survives, a tolerated one does
+  not poison its enclosing boundary — naming no domain type and no route. What
+  only this can assert is that the steps really receive the boundary handle.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
