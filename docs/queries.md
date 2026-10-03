@@ -499,5 +499,8 @@ middle ground if the args logic grows past equality.
   list. It is not built.
 - **Returning a whole entity in one call.** There is no `select: true` shorthand
   for the entire interface; a caller names the fields.
-- **A transaction around a multi-query read.** A batched branch and its root are
-  separate statements, so a concurrent write can be observed between them.
+- **A transaction around a multi-query read as a property of a read.** A batched
+  branch and its root are separate statements, so a concurrent write can be
+  observed between them; a caller that needs the two to agree wraps them in a
+  `transaction` group, which a read does not do on its own
+  (`docs/transactions.md`).

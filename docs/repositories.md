@@ -225,7 +225,9 @@ patch column sets separately; see `docs/versioning.md`.
 - **`delete` keys on the primary key only.** `deleteCustomer` takes
   `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
 - **No transaction wrapping.** A multi-row statement is atomic on its own, but
-  the caller owns anything spanning more than one call.
+  anything spanning more than one call needs a boundary the caller opens: the
+  repositories take `SqlExecutor`, and `Db` adds `transaction`
+  (`docs/transactions.md`).
 
 ## Deliberately not implemented
 
@@ -235,6 +237,8 @@ patch column sets separately; see `docs/versioning.md`.
   exactly this object" variant, and no insert-or-update.
 - **Cascade delete** for `@children`. A child table's foreign key has no
   `ON DELETE`, so a parent with children cannot be deleted.
-- **Batching across repositories.** No unit of work; each call is one statement.
+- **A unit of work inside a repository.** No function opens a boundary: they take
+  `SqlExecutor`, and a caller that needs one takes `Db` and hands the call a
+  transactional executor (`docs/transactions.md`).
 - **A drift test.** Like `schema.sql`, staleness is caught by running
   `pnpm generate:repositories`, not by a test.

@@ -1,13 +1,16 @@
 /**
  * The hand-written half of the API: one HTTP request in, one generated call out.
- * See docs/rest-api.md.
+ * See docs/rest-api.md and docs/transactions.md.
  *
  * The router owns parsing, validation, and status mapping; the generated
  * `routes.ts` owns which calls exist. The body codec is `devalue`, so a request
  * and a response carry real `Date` and `bigint` values and need no wire schema.
+ *
+ * One request may carry a tree of calls. Every call in the tree is resolved and
+ * validated before any of it runs, and the tree's groups decide the boundaries.
  */
 import { parse as decode, stringify as encode } from "devalue";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import type { Db, SqlExecutor } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -30,7 +33,12 @@ export interface Route {
     source: "query" | "body";
     /** Validates the decoded argument. */
     input: RouteInput;
-    handler: (db: SqlExecutor, argument: unknown) => Promise<unknown>;
+    /**
+     * Runs the call. It receives the request's `Db`, which can open a boundary of
+     * its own and nests with a savepoint when the request already has one. See
+     * docs/transactions.md.
+     */
+    handler: (db: Db, argument: unknown) => Promise<unknown>;
 }
 
 /** One request, with the body already read into a string. */
@@ -47,6 +55,51 @@ export interface HttpResponse {
     body: string;
 }
 
+/** The path the group entry point is mounted at. See docs/transactions.md. */
+export const GROUP_PATH = "/$group";
+
+/** Whether a group runs its calls as one boundary. */
+type GroupKind = "batch" | "transaction" | "attempt";
+
+/** A checked call: its route, and the argument that route's schema accepted. */
+interface PlannedCall {
+    kind: "call";
+    route: Route;
+    argument: unknown;
+}
+
+/** A checked group, with every call in it resolved and validated. */
+interface PlannedGroup {
+    kind: GroupKind;
+    calls: Planned[];
+}
+
+type Planned = PlannedCall | PlannedGroup;
+
+/** A group body the router refuses, naming the entry that is wrong. */
+class BadGroup extends Error {
+    readonly path: number[];
+    readonly issues: unknown;
+
+    constructor(message: string, path: number[], issues?: unknown) {
+        super(message);
+        this.path = path;
+        this.issues = issues;
+    }
+}
+
+/** A handler that failed inside a group, carrying the path of the entry that raised. */
+class GroupFailure extends Error {
+    readonly path: number[];
+    readonly code: unknown;
+
+    constructor(thrown: unknown, path: number[]) {
+        super(thrown instanceof Error ? thrown.message : "request failed");
+        this.path = path;
+        this.code = (thrown as { code?: unknown } | null)?.code;
+    }
+}
+
 /** PostgreSQL error codes to HTTP statuses. Anything else is a server fault. */
 const ERROR_STATUSES: Record<string, number> = {
     "22P02": 400, // invalid_text_representation
@@ -55,6 +108,9 @@ const ERROR_STATUSES: Record<string, number> = {
     "23505": 409, // unique_violation
     "40001": 409, // serialization_failure: the version-conflict raise. See docs/versioning.md
 };
+
+/** Every verb a route or a group entry may name. */
+const METHODS: HttpMethod[] = ["GET", "POST", "PATCH", "DELETE"];
 
 /** The status a thrown database error maps to. */
 function statusFor(thrown: unknown): number {
@@ -70,14 +126,190 @@ function error(status: number, message: string): HttpResponse {
     return { status, body: JSON.stringify({ error: message }) };
 }
 
+/** The same, for a group failure: the path names the entry that raised. */
+function failure(status: number, message: string, path: number[], issues?: unknown): HttpResponse {
+    const body: Record<string, unknown> = { error: message, path };
+    if (issues !== undefined) {
+        body["issues"] = issues;
+    }
+    return { status, body: JSON.stringify(body) };
+}
+
+/** Whether a decoded value is an object with keys. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+/** Whether a decoded value is one of the verbs. */
+function isMethod(value: unknown): value is HttpMethod {
+    return typeof value === "string" && (METHODS as string[]).includes(value);
+}
+
+/**
+ * Check one node of a group body: its shape, then the route it names, then that
+ * route's `input`. Runs no handler, so a whole tree is checked before any of it
+ * executes.
+ */
+function planNode(wire: unknown, byKey: Map<string, Route>, path: number[]): Planned {
+    if (!isRecord(wire)) {
+        throw new BadGroup("a group entry must be an object", path);
+    }
+
+    if ("call" in wire) {
+        return planCall(wire["call"], byKey, path);
+    }
+
+    if ("group" in wire) {
+        const group = wire["group"];
+        if (!isRecord(group)) {
+            throw new BadGroup("a group must be an object", path);
+        }
+        const kind = group["kind"];
+        if (kind !== "batch" && kind !== "transaction" && kind !== "attempt") {
+            throw new BadGroup("a group kind must be batch, transaction, or attempt", path);
+        }
+        const calls = group["calls"];
+        if (!Array.isArray(calls)) {
+            throw new BadGroup("a group must carry calls", path);
+        }
+        return { kind, calls: calls.map((child, index) => planNode(child, byKey, [...path, index])) };
+    }
+
+    throw new BadGroup("a group entry must be a call or a group", path);
+}
+
+/** Resolve one call against the route table and validate its argument. */
+function planCall(value: unknown, byKey: Map<string, Route>, path: number[]): PlannedCall {
+    if (!isRecord(value)) {
+        throw new BadGroup("a call must be an object", path);
+    }
+    const method = value["method"];
+    const routePath = value["path"];
+    if (!isMethod(method)) {
+        throw new BadGroup("a call names an unknown method", path);
+    }
+    if (typeof routePath !== "string") {
+        throw new BadGroup("a call must name a path", path);
+    }
+
+    const route = byKey.get(`${method} ${routePath}`);
+    if (!route) {
+        throw new BadGroup("no route", path);
+    }
+
+    const parsed = route.input.safeParse(value["argument"]);
+    if (!parsed.success) {
+        throw new BadGroup("invalid request", path, parsed.error.issues);
+    }
+
+    return { kind: "call", route, argument: parsed.data };
+}
+
+/** Check a whole group body. The top level must be a group, not a lone call. */
+function planGroup(value: unknown, byKey: Map<string, Route>): PlannedGroup {
+    const node = planNode(value, byKey, []);
+    if (node.kind === "call") {
+        throw new BadGroup("the body must be a group", []);
+    }
+    return node;
+}
+
+/**
+ * Run one checked node. The `Db` it is given carries the boundary the request is
+ * already in, so a `transaction` group opens one at the root and a savepoint when
+ * it is nested.
+ */
+async function execute(db: Db, node: Planned, path: number[]): Promise<unknown> {
+    try {
+        return await runNode(db, node, path);
+    } catch (thrown) {
+        // The innermost entry wins, so the path names the call that actually raised.
+        throw thrown instanceof GroupFailure ? thrown : new GroupFailure(thrown, path);
+    }
+}
+
+/** Whether `path` is the same node as `ancestor`, or beneath it. */
+function within(path: number[], ancestor: number[]): boolean {
+    return path.length >= ancestor.length && ancestor.every((step, index) => path[index] === step);
+}
+
+/** The body of {@link execute}, without the path bookkeeping. */
+async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> {
+    if (node.kind === "call") {
+        const result = await node.route.handler(db, node.argument);
+        return result ?? null;
+    }
+
+    const runOn = async (inner: Db) => {
+        const results: unknown[] = [];
+        for (const [index, child] of node.calls.entries()) {
+            results.push(await execute(inner, child, [...path, index]));
+        }
+        return results;
+    };
+
+    if (node.kind === "batch") {
+        return await runOn(db);
+    }
+
+    if (node.kind === "transaction") {
+        return await db.transaction(runOn);
+    }
+
+    // An `attempt` tolerates its own subtree's failure and reports it, so its boundary
+    // already rolled back by the time the marker is built.
+    try {
+        return { ok: true, value: await db.transaction(runOn) };
+    } catch (thrown) {
+        if (!(thrown instanceof GroupFailure) || !within(thrown.path, path)) {
+            throw thrown;
+        }
+        return { ok: false, error: { message: thrown.message, path: thrown.path } };
+    }
+}
+
 /** A router over a route table, reusing one `db` for every call. */
-export function createRouter(db: SqlExecutor, routes: Route[]) {
+export function createRouter(db: Db, routes: Route[]) {
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
+
+    /** Decode, check, run, and encode a tree of calls. */
+    async function handleGroup(body: string): Promise<HttpResponse> {
+        let value: unknown;
+        try {
+            value = body === "" ? undefined : decode(body);
+        } catch {
+            return error(400, "malformed request");
+        }
+
+        let planned: PlannedGroup;
+        try {
+            planned = planGroup(value, byKey);
+        } catch (thrown) {
+            if (!(thrown instanceof BadGroup)) {
+                throw thrown;
+            }
+            return failure(400, thrown.message, thrown.path, thrown.issues);
+        }
+
+        try {
+            return { status: 200, body: encode(await execute(db, planned, [])) };
+        } catch (thrown) {
+            if (thrown instanceof GroupFailure) {
+                return failure(statusFor(thrown), thrown.message, thrown.path);
+            }
+            const message = thrown instanceof Error ? thrown.message : "request failed";
+            return error(statusFor(thrown), message);
+        }
+    }
 
     return {
         /** Match, decode, validate, call, and encode one request. Never throws. */
         async handle(request: HttpRequest): Promise<HttpResponse> {
             const url = new URL(request.url, "http://localhost");
+            if (request.method === "POST" && url.pathname === GROUP_PATH) {
+                return await handleGroup(request.body);
+            }
+
             const route = byKey.get(`${request.method} ${url.pathname}`);
             if (!route) {
                 return error(404, "no route");
@@ -107,8 +339,9 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
             }
 
             try {
+                const result = await route.handler(db, parsed.data);
                 // A `get` miss and a void write both encode as `null`.
-                return { status: 200, body: encode((await route.handler(db, parsed.data)) ?? null) };
+                return { status: 200, body: encode(result ?? null) };
             } catch (thrown) {
                 const message = thrown instanceof Error ? thrown.message : "request failed";
                 return error(statusFor(thrown), message);

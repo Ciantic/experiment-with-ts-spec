@@ -2,29 +2,28 @@
 import type { Seller } from "spec/domain/Seller.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { SellerInsert, SellerPatch } from "validation/seller.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { SellerInsert, SellerPatch };
 
 /** Query `Seller` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
-    http: HttpClient,
     opts: { filter?: Filters<Seller, "id">; limit?: number; offset?: number; select: S },
-): Promise<Selected<Seller, S>[]> {
-    return http.query<Selected<Seller, S>[]>("GET", "/seller/query", opts);
+): Call<Selected<Seller, S>[]> {
+    return call<Selected<Seller, S>[]>("GET", "/seller/query", opts);
 }
 
 /** Create `Seller` rows. */
-export function createSeller(http: HttpClient, rows: SellerInsert[]): Promise<void> {
-    return http.send<void>("POST", "/seller", rows);
+export function createSeller(rows: SellerInsert[]): Call<void> {
+    return call<void>("POST", "/seller", rows);
 }
 
 /** Patch `Seller` rows; a stale version raises. See docs/versioning.md. */
-export function updateSeller(http: HttpClient, rows: SellerPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/seller", rows);
+export function updateSeller(rows: SellerPatch[]): Call<void> {
+    return call<void>("PATCH", "/seller", rows);
 }
 
 /** Delete `Seller` rows, keyed on `id`. */
-export function deleteSeller(http: HttpClient, rows: Pick<Seller, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/seller", rows);
+export function deleteSeller(rows: Pick<Seller, "id">[]): Call<void> {
+    return call<void>("DELETE", "/seller", rows);
 }

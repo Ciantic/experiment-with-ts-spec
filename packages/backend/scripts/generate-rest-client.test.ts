@@ -3,9 +3,9 @@
  * See docs/testing.md.
  *
  * The last group is the invariant that makes the client worth generating: it may
- * import `spec` and its own transport, and nothing else. Both generators are then
- * driven from one model and the calls they expose are compared, so the two
- * cannot disagree about the wire.
+ * import `spec`, the shared `validation` types, and its own modules, and nothing
+ * else. Both generators are then driven from one model and the calls they expose
+ * are compared, so the two cannot disagree about the wire.
  */
 import { describe, expect, it } from "vitest";
 import type { Column, Table } from "./postgres-model.ts";
@@ -58,20 +58,22 @@ function widgetModule(): string {
 }
 
 describe("renderClientModule", () => {
-    it("takes the transport where the server takes the executor", () => {
+    it("builds a call rather than sending one, and binds no client", () => {
         const code = widgetModule();
 
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
-        expect(code).toContain("    http: HttpClient,");
-        expect(code).toContain('return http.query<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
+        expect(code).toContain("): Call<Selected<Widget, S>[]> {");
+        expect(code).toContain('return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
+        expect(code).toContain('import { call, type Call } from "./client.ts";');
+        expect(code).not.toContain("HttpClient");
     });
 
-    it("sends a read through the query parameter and a write through the body", () => {
+    it("names the verb and the path of each call, leaving the carrier to exec", () => {
         const code = widgetModule();
 
-        expect(code).toContain('http.send<void>("POST", "/widget", rows)');
-        expect(code).toContain('http.send<void>("PATCH", "/widget", rows)');
-        expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
+        expect(code).toContain('call<void>("POST", "/widget", rows)');
+        expect(code).toContain('call<void>("PATCH", "/widget", rows)');
+        expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
 
     it("narrows the filters to the filterable fields", () => {
@@ -119,7 +121,7 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain('rows: Pick<Widget, "id">[]');
-        expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
+        expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
 
     it("deletes by every field of a composite key", () => {
@@ -144,7 +146,7 @@ describe("renderClientModule", () => {
 
         expect(code).toContain('import type { WidgetInsert, WidgetPatch } from "validation/widget.ts";');
         expect(code).toContain(
-            "export function createWidget(http: HttpClient, rows: WidgetInsert[]): Promise<void> {",
+            "export function createWidget(rows: WidgetInsert[]): Call<void> {",
         );
         expect(code).not.toContain("export type WidgetInsert =");
     });
@@ -169,15 +171,16 @@ describe("renderClientModule", () => {
 });
 
 describe("generateRestClient", () => {
-    it("re-exports the transport and every entity from the barrel", () => {
+    it("re-exports the call model, the transport, and every entity from the barrel", () => {
         const files = generateRestClient(model);
 
+        expect(files.get("index.ts")).toContain('export * from "./client.ts";');
         expect(files.get("index.ts")).toContain('export * from "./http.ts";');
         expect(files.get("index.ts")).toContain('export * from "./widget.ts";');
         expect(files.has("widget.ts")).toBe(true);
     });
 
-    it("imports nothing but spec, the shared validation types, and its own transport", () => {
+    it("imports nothing but spec, the shared validation types, and its own modules", () => {
         const files = generateRestClient(model);
         const specifiers: string[] = [];
         for (const content of files.values()) {
@@ -215,7 +218,7 @@ describe("generateRestClient", () => {
             (match) => `${match[1]} ${match[2]}`,
         );
         const called = [...generateRestClient(model).values()].flatMap((content) =>
-            [...content.matchAll(/http\.(?:query|send)<.*?>\("(GET|POST|PATCH|DELETE)", "([^"]+)"/g)].map(
+            [...content.matchAll(/call<.*?>\("(GET|POST|PATCH|DELETE)", "([^"]+)"/g)].map(
                 (match) => `${match[1]} ${match[2]}`,
             ),
         );

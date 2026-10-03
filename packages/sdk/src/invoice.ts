@@ -2,29 +2,28 @@
 import type { Invoice } from "spec/domain/Invoice.ts";
 import type { Filters, Order, Selected, Selection, Where } from "spec/selection.ts";
 import type { InvoiceInsert, InvoicePatch } from "validation/invoice.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { InvoiceInsert, InvoicePatch };
 
 /** Query `Invoice` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
-    http: HttpClient,
     opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
-): Promise<Selected<Invoice, S>[]> {
-    return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
+): Call<Selected<Invoice, S>[]> {
+    return call<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }
 
 /** Create `Invoice` rows. */
-export function createInvoice(http: HttpClient, rows: InvoiceInsert[]): Promise<void> {
-    return http.send<void>("POST", "/invoice", rows);
+export function createInvoice(rows: InvoiceInsert[]): Call<void> {
+    return call<void>("POST", "/invoice", rows);
 }
 
 /** Patch `Invoice` rows; a stale version raises. See docs/versioning.md. */
-export function updateInvoice(http: HttpClient, rows: InvoicePatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/invoice", rows);
+export function updateInvoice(rows: InvoicePatch[]): Call<void> {
+    return call<void>("PATCH", "/invoice", rows);
 }
 
 /** Delete `Invoice` rows, keyed on `id`. */
-export function deleteInvoice(http: HttpClient, rows: Pick<Invoice, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/invoice", rows);
+export function deleteInvoice(rows: Pick<Invoice, "id">[]): Call<void> {
+    return call<void>("DELETE", "/invoice", rows);
 }

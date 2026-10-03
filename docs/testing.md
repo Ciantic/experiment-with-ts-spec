@@ -38,8 +38,11 @@ values, all of which are domain decisions rather than code behaviour.
   domain. A second group transpiles the generated module, builds a matching
   `create table` from the fixture's column metadata, and runs create/update/delete
   against PGlite. It asserts the generated SQL *executes*, not what the data means.
-- `packages/backend/src/db/sql-executor.test.ts` — asserts that PGlite
-  satisfies the `SqlExecutor` interface the generated repositories accept.
+- `packages/backend/src/db/sql-executor.test.ts` — asserts that PGlite satisfies
+  the `SqlExecutor` interface the generated repositories accept, and the `Db`
+  port the router takes. The second is what lets a group open a real
+  transaction, so it asserts a commit, a rollback, and that a nested boundary is
+  a savepoint the outer transaction survives.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source

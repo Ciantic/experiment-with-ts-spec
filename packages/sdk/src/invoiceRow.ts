@@ -2,29 +2,28 @@
 import type { InvoiceRow } from "spec/domain/InvoiceRow.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { InvoiceRowInsert, InvoiceRowPatch } from "validation/invoiceRow.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { InvoiceRowInsert, InvoiceRowPatch };
 
 /** Query `InvoiceRow` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
-    http: HttpClient,
     opts: { filter?: Filters<InvoiceRow, "id">; limit?: number; offset?: number; select: S },
-): Promise<Selected<InvoiceRow, S>[]> {
-    return http.query<Selected<InvoiceRow, S>[]>("GET", "/invoice_row/query", opts);
+): Call<Selected<InvoiceRow, S>[]> {
+    return call<Selected<InvoiceRow, S>[]>("GET", "/invoice_row/query", opts);
 }
 
 /** Create `InvoiceRow` rows. */
-export function createInvoiceRow(http: HttpClient, rows: InvoiceRowInsert[]): Promise<void> {
-    return http.send<void>("POST", "/invoice_row", rows);
+export function createInvoiceRow(rows: InvoiceRowInsert[]): Call<void> {
+    return call<void>("POST", "/invoice_row", rows);
 }
 
 /** Patch `InvoiceRow` rows; a stale version raises. See docs/versioning.md. */
-export function updateInvoiceRow(http: HttpClient, rows: InvoiceRowPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/invoice_row", rows);
+export function updateInvoiceRow(rows: InvoiceRowPatch[]): Call<void> {
+    return call<void>("PATCH", "/invoice_row", rows);
 }
 
 /** Delete `InvoiceRow` rows, keyed on `id`. */
-export function deleteInvoiceRow(http: HttpClient, rows: Pick<InvoiceRow, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/invoice_row", rows);
+export function deleteInvoiceRow(rows: Pick<InvoiceRow, "id">[]): Call<void> {
+    return call<void>("DELETE", "/invoice_row", rows);
 }

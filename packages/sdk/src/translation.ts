@@ -2,29 +2,28 @@
 import type { Translation } from "spec/domain/Translation.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { TranslationInsert, TranslationPatch } from "validation/translation.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { TranslationInsert, TranslationPatch };
 
 /** Query `Translation` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryTranslation<S extends Selection<Translation>>(
-    http: HttpClient,
     opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
-): Promise<Selected<Translation, S>[]> {
-    return http.query<Selected<Translation, S>[]>("GET", "/translation/query", opts);
+): Call<Selected<Translation, S>[]> {
+    return call<Selected<Translation, S>[]>("GET", "/translation/query", opts);
 }
 
 /** Create `Translation` rows. */
-export function createTranslation(http: HttpClient, rows: TranslationInsert[]): Promise<void> {
-    return http.send<void>("POST", "/translation", rows);
+export function createTranslation(rows: TranslationInsert[]): Call<void> {
+    return call<void>("POST", "/translation", rows);
 }
 
 /** Patch `Translation` rows; a stale version raises. See docs/versioning.md. */
-export function updateTranslation(http: HttpClient, rows: TranslationPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/translation", rows);
+export function updateTranslation(rows: TranslationPatch[]): Call<void> {
+    return call<void>("PATCH", "/translation", rows);
 }
 
 /** Delete `Translation` rows, keyed on `lang`, `key`. */
-export function deleteTranslation(http: HttpClient, rows: Pick<Translation, "lang" | "key">[]): Promise<void> {
-    return http.query<void>("DELETE", "/translation", rows);
+export function deleteTranslation(rows: Pick<Translation, "lang" | "key">[]): Call<void> {
+    return call<void>("DELETE", "/translation", rows);
 }

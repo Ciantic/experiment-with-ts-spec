@@ -2,29 +2,28 @@
 import type { Customer } from "spec/domain/Customer.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { CustomerInsert, CustomerPatch } from "validation/customer.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { CustomerInsert, CustomerPatch };
 
 /** Query `Customer` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryCustomer<S extends Selection<Customer>>(
-    http: HttpClient,
     opts: { filter?: Filters<Customer, "id">; limit?: number; offset?: number; select: S },
-): Promise<Selected<Customer, S>[]> {
-    return http.query<Selected<Customer, S>[]>("GET", "/customer/query", opts);
+): Call<Selected<Customer, S>[]> {
+    return call<Selected<Customer, S>[]>("GET", "/customer/query", opts);
 }
 
 /** Create `Customer` rows. */
-export function createCustomer(http: HttpClient, rows: CustomerInsert[]): Promise<void> {
-    return http.send<void>("POST", "/customer", rows);
+export function createCustomer(rows: CustomerInsert[]): Call<void> {
+    return call<void>("POST", "/customer", rows);
 }
 
 /** Patch `Customer` rows; a stale version raises. See docs/versioning.md. */
-export function updateCustomer(http: HttpClient, rows: CustomerPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/customer", rows);
+export function updateCustomer(rows: CustomerPatch[]): Call<void> {
+    return call<void>("PATCH", "/customer", rows);
 }
 
 /** Delete `Customer` rows, keyed on `id`. */
-export function deleteCustomer(http: HttpClient, rows: Pick<Customer, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/customer", rows);
+export function deleteCustomer(rows: Pick<Customer, "id">[]): Call<void> {
+    return call<void>("DELETE", "/customer", rows);
 }

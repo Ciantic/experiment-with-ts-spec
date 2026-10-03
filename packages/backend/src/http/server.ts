@@ -6,7 +6,7 @@
  */
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import type { Db } from "../db/sql-executor.ts";
 import { routes } from "./routes.ts";
 import { createRouter, type HttpResponse } from "./router.ts";
 
@@ -34,7 +34,7 @@ function write(response: ServerResponse, result: HttpResponse): void {
 }
 
 /** A server exposing the generated route table over `db`. */
-export function createApiServer(db: SqlExecutor): Server {
+export function createApiServer(db: Db): Server {
     const router = createRouter(db, routes);
     return createServer((request, response) => {
         void (async () => {

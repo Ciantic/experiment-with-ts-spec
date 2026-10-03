@@ -26,13 +26,28 @@ export interface HttpClient {
 export class HttpError extends Error {
     readonly status: number;
     readonly body: unknown;
+    /** The tree path of the entry that failed, when the failure came from a group. */
+    readonly path: number[] | undefined;
 
     constructor(status: number, body: unknown) {
         super(`request failed with status ${status}`);
         this.name = "HttpError";
         this.status = status;
         this.body = body;
+        this.path = readPath(body);
     }
+}
+
+/** The `path` a group failure carries, if the body names one. */
+function readPath(body: unknown): number[] | undefined {
+    if (typeof body !== "object" || body === null) {
+        return undefined;
+    }
+    const path = (body as { path?: unknown }).path;
+    if (!Array.isArray(path) || !path.every((step) => typeof step === "number")) {
+        return undefined;
+    }
+    return path;
 }
 
 /** An error body is plain JSON; anything else is kept as text. */

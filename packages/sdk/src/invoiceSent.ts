@@ -2,29 +2,28 @@
 import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { InvoiceSentInsert, InvoiceSentPatch } from "validation/invoiceSent.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { InvoiceSentInsert, InvoiceSentPatch };
 
 /** Query `InvoiceSent` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
-    http: HttpClient,
     opts: { filter?: Filters<InvoiceSent, "id">; limit?: number; offset?: number; select: S },
-): Promise<Selected<InvoiceSent, S>[]> {
-    return http.query<Selected<InvoiceSent, S>[]>("GET", "/invoice_sent/query", opts);
+): Call<Selected<InvoiceSent, S>[]> {
+    return call<Selected<InvoiceSent, S>[]>("GET", "/invoice_sent/query", opts);
 }
 
 /** Create `InvoiceSent` rows. */
-export function createInvoiceSent(http: HttpClient, rows: InvoiceSentInsert[]): Promise<void> {
-    return http.send<void>("POST", "/invoice_sent", rows);
+export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<void> {
+    return call<void>("POST", "/invoice_sent", rows);
 }
 
 /** Patch `InvoiceSent` rows; a stale version raises. See docs/versioning.md. */
-export function updateInvoiceSent(http: HttpClient, rows: InvoiceSentPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/invoice_sent", rows);
+export function updateInvoiceSent(rows: InvoiceSentPatch[]): Call<void> {
+    return call<void>("PATCH", "/invoice_sent", rows);
 }
 
 /** Delete `InvoiceSent` rows, keyed on `id`. */
-export function deleteInvoiceSent(http: HttpClient, rows: Pick<InvoiceSent, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/invoice_sent", rows);
+export function deleteInvoiceSent(rows: Pick<InvoiceSent, "id">[]): Call<void> {
+    return call<void>("DELETE", "/invoice_sent", rows);
 }

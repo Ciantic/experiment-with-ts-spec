@@ -7,7 +7,8 @@
 import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import type { PGlite } from "@electric-sql/pglite";
+import type { Db } from "./db/sql-executor.ts";
+import { createTransactionalDb } from "./db/transaction.ts";
 import { createApiServer } from "./http/server.ts";
 import { seedMockData } from "./mock/seed.ts";
 import { createPglite } from "./postgres/pglite-setup.ts";
@@ -18,11 +19,21 @@ const SCHEMA_URL = new URL("./postgres/schema.sql", import.meta.url);
 /** The port used when `--port` is absent. */
 const DEFAULT_PORT = 3000;
 
+/** The database a server runs on: the port, plus the lifecycle its owner closes. */
+export interface ServerDatabase extends Db {
+    close(): Promise<void>;
+}
+
 /** A fresh in-memory database with the generated schema applied. */
-export async function createDatabase(): Promise<PGlite> {
-    const db = createPglite();
-    await db.exec(readFileSync(SCHEMA_URL, "utf8"));
-    return db;
+export async function createDatabase(): Promise<ServerDatabase> {
+    const driver = createPglite();
+    await driver.exec(readFileSync(SCHEMA_URL, "utf8"));
+    const db = createTransactionalDb(driver);
+    return {
+        query: (sql, parameters) => db.query(sql, parameters),
+        transaction: (run) => db.transaction(run),
+        close: () => driver.close(),
+    };
 }
 
 /** Listen on `port`; `0` picks a free one. Resolves with the bound port. */
@@ -45,7 +56,7 @@ export interface StartOptions {
 /** A running server and the database behind it. */
 export interface StartedServer {
     server: Server;
-    db: PGlite;
+    db: ServerDatabase;
     port: number;
 }
 

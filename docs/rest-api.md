@@ -13,7 +13,11 @@ halves that must not be generated: the router and the transport.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
 - `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
 - `packages/sdk/src/` — generated: one module per entity plus a barrel.
+- `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
+  combinators. Hand-written.
 - `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
+- `packages/backend/src/http/router.ts` — the group entry point. Hand-written;
+  see `docs/transactions.md`.
 
 - `pnpm generate:rest-api` — writes the route table.
 - `pnpm generate:rest-client` — writes the client.
@@ -32,11 +36,19 @@ their argument in a single `q` query parameter; a write carries it in the body.
 | create | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
+| group | `POST` | `/$group` | a tree of the calls above, in the body |
+
+The group path is the one call not derived from an entity: it takes a tree of
+calls and runs them in one request, and it is owned by the router rather than the
+generated table. `docs/transactions.md` records its body, its results, and how a
+`transaction` group differs from a `batch`.
 
 Which side carries the argument is a field on the model (`source: "query" |
 "body"`), so the generated table and the generated client read it rather than
 each applying a rule. The router obeys the table: it decodes `q` for a `query`
-call and the body for a `body` call, and ignores the other.
+call and the body for a `body` call, and ignores the other. A group entry carries
+its argument as a field of the tree, so it is the one place `source` does not
+apply.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by
@@ -92,7 +104,7 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and `./http.ts` |
+| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `./client.ts` |
 | Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
@@ -108,14 +120,14 @@ A drift check is the second assertion: both generators are driven from one model
 and the `(method, path)` sets they render are compared, so a route added on the
 server and forgotten in the client fails a test rather than a request.
 
-## The client is the reads with `db` replaced
+## The client builds calls; `exec` sends them
 
 Because the read types live in the spec, the generated client keeps the server's
-narrowing. `db: SqlExecutor` becomes `http: HttpClient` and nothing else changes:
+narrowing. A generated function takes the argument and returns a call, and `exec`
+is the one function that talks to the network:
 
 ```typescript
 export function queryInvoice<S extends Selection<Invoice>>(
-    http: HttpClient,
     opts: {
         filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
         order?: Order<"createdAt" | "updatedAt">[];
@@ -124,25 +136,22 @@ export function queryInvoice<S extends Selection<Invoice>>(
         offset?: number;
         select: S;
     },
-): Promise<Selected<Invoice, S>[]> {
-    return http.query<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
+): Call<Selected<Invoice, S>[]> {
+    return call<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
 }
 ```
 
-`http.query` puts the argument in `?q=`, `http.send` in the body. The generated
-module picks between them from the model's `source`, so the call site never
-mentions the transport.
-
-So a call site narrows across the wire exactly as it does in the backend:
-
 ```typescript
-const [invoice] = await queryInvoice(http, {
+const [invoice] = await exec(http, queryInvoice({
     filter: { id: [id] },
     select: { number: true, totalAmount: true, rows: { description: true } },
-});
+}));
 // invoice.rows![0].description  ✓
 // invoice.rows![0].taxAmount    ✗  not selected
 ```
+
+Nothing about the narrowing changes: the selection is fixed where the builder is
+called, so `Selected<E, S>` is the same conditional type it is on the server.
 
 This is why the client is generated from the spec rather than derived from an
 OpenAPI document: `Selected<E, S>` is a conditional type, and conditional types
@@ -155,13 +164,16 @@ client cannot drift from the server:
 ```typescript
 import type { InvoiceInsert, InvoicePatch } from "validation/invoice.ts";
 
-export function updateInvoice(http: HttpClient, rows: InvoicePatch[]): Promise<void>
+export function updateInvoice(rows: InvoicePatch[]): Call<void>
 ```
 
 A create narrows the same way, to `<Entity>Insert`, so the type a caller sends
 and the schema that validates it agree (`docs/validation.md`). Both are imported
-type-only and re-exported, so the client's public surface is unchanged and `zod`
-stays out of its runtime.
+type-only and re-exported, so `zod` stays out of the client's runtime.
+
+A builder carries no client, which is what lets `exec` accept several of them at
+once. `transaction` and `batch` group calls into one request, and only
+`transaction` makes the group atomic; `docs/transactions.md` owns that model.
 
 ## Transport
 
@@ -171,6 +183,7 @@ and it carries the `q` parameter as well as the bodies.
 - A read or a delete sends its argument as `?q=<encodeURIComponent(stringify(…))>`.
 - A create or an update sends `devalue.stringify`'d rows as the body, under
   `content-type: application/json` (a `devalue` payload is a valid JSON string).
+- A group sends `devalue.stringify`'d tree as the body, the same way.
 - A success response is `devalue`; the client decodes it.
 - A failure is plain `JSON.stringify`, so an error is readable in a log or in
   `curl` without a decoder. The client branches on the status: not-ok means
@@ -209,6 +222,10 @@ A `q` parameter or a body that does not decode is 400, an argument the schema
 rejects is 400 with the Zod issues, and a method/path pair not in the table is
 404. An absent argument decodes as `undefined`, which the schema then rejects —
 the same path as an empty body.
+
+A group failure answers the same way and adds the `path` of the entry that
+failed, so a caller can name it without re-deriving it from the tree it sent.
+`docs/transactions.md` records the shape.
 
 ## Gotchas
 

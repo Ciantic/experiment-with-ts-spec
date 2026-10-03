@@ -2,29 +2,28 @@
 import type { InvoiceSentRow } from "spec/domain/InvoiceSentRow.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { InvoiceSentRowInsert, InvoiceSentRowPatch } from "validation/invoiceSentRow.ts";
-import type { HttpClient } from "./http.ts";
+import { call, type Call } from "./client.ts";
 
 export type { InvoiceSentRowInsert, InvoiceSentRowPatch };
 
 /** Query `InvoiceSentRow` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
-    http: HttpClient,
     opts: { filter?: Filters<InvoiceSentRow, "id">; limit?: number; offset?: number; select: S },
-): Promise<Selected<InvoiceSentRow, S>[]> {
-    return http.query<Selected<InvoiceSentRow, S>[]>("GET", "/invoice_sent_row/query", opts);
+): Call<Selected<InvoiceSentRow, S>[]> {
+    return call<Selected<InvoiceSentRow, S>[]>("GET", "/invoice_sent_row/query", opts);
 }
 
 /** Create `InvoiceSentRow` rows. */
-export function createInvoiceSentRow(http: HttpClient, rows: InvoiceSentRowInsert[]): Promise<void> {
-    return http.send<void>("POST", "/invoice_sent_row", rows);
+export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<void> {
+    return call<void>("POST", "/invoice_sent_row", rows);
 }
 
 /** Patch `InvoiceSentRow` rows; a stale version raises. See docs/versioning.md. */
-export function updateInvoiceSentRow(http: HttpClient, rows: InvoiceSentRowPatch[]): Promise<void> {
-    return http.send<void>("PATCH", "/invoice_sent_row", rows);
+export function updateInvoiceSentRow(rows: InvoiceSentRowPatch[]): Call<void> {
+    return call<void>("PATCH", "/invoice_sent_row", rows);
 }
 
 /** Delete `InvoiceSentRow` rows, keyed on `id`. */
-export function deleteInvoiceSentRow(http: HttpClient, rows: Pick<InvoiceSentRow, "id">[]): Promise<void> {
-    return http.query<void>("DELETE", "/invoice_sent_row", rows);
+export function deleteInvoiceSentRow(rows: Pick<InvoiceSentRow, "id">[]): Call<void> {
+    return call<void>("DELETE", "/invoice_sent_row", rows);
 }
