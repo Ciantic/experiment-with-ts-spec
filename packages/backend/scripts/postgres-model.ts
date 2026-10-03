@@ -15,7 +15,9 @@ import {
     type CompareOperator,
     type Diagnostic,
     type OrderDirection,
+    type SpecInterface,
     type SpecProperty,
+    type SpecTypeAlias,
 } from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
@@ -129,6 +131,25 @@ function inlinedColumnName(fieldName: string, targetField: string): string {
     return fieldName + targetField.charAt(0).toUpperCase() + targetField.slice(1);
 }
 
+/** How a spec type node maps to Postgres storage. */
+interface TypeResolver {
+    resolveTypeNode(node: Node): TypeResolution | undefined;
+    primaryKeyFields(entity: string): SpecProperty[];
+    primaryKeySqlType(entity: string): string;
+}
+
+/** Where a build reports problems it finds in the spec. */
+interface Reporter {
+    report(node: Node, message: string): void;
+    reportField(table: Table, fieldName: string, message: string): void;
+}
+
+/** Shared state and lookups for one model build. */
+interface BuildContext extends TypeResolver, Reporter {
+    interfaces: Map<string, SpecInterface>;
+    diagnostics: Diagnostic[];
+}
+
 /** Build the table model shared by the schema and repository generators. */
 export function buildSpecTables(
     project: Project,
@@ -136,31 +157,404 @@ export function buildSpecTables(
 ): { tables: Map<string, Table>; diagnostics: Diagnostic[] } {
     const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
     const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
-    const diagnostics: Diagnostic[] = [];
     const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+    const diagnostics: Diagnostic[] = [];
+    const context: BuildContext = {
+        interfaces,
+        diagnostics,
+        ...createTypeResolver(interfaces, aliases),
+        ...createReporter(interfaces, diagnostics),
+    };
     const tables = new Map<string, Table>();
 
-    const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
-    const report = (node: Node, message: string) => {
-        const sourceFile = node.getSourceFile();
-        diagnostics.push({
-            filePath: relative(sourceFile.getFilePath()),
-            line: node.getStartLineNumber(),
-            message,
-        });
+    for (const spec of interfaces.values()) {
+        tables.set(spec.name, buildTable(context, spec));
+    }
+
+    attachRollups(tables, interfaces);
+    resolveBranchColumns(tables, context);
+
+    return { tables, diagnostics };
+}
+
+/** Build one table: its columns, branch relations, and trigger assignments. */
+function buildTable(context: BuildContext, spec: SpecInterface): Table {
+    const table: Table = {
+        name: spec.tableName,
+        interfaceName: spec.name,
+        importSpecifier: spec.importSpecifier,
+        columns: [],
+        relations: new Map(),
+        sameRowAssignments: [],
+        rollups: new Map(),
     };
 
-    /** Report a problem with a branch field, pointing at the field's declaration when it can be found. */
-    const reportField = (table: Table, fieldName: string, message: string) => {
-        const spec = interfaces.get(table.interfaceName);
-        const property = spec?.properties.find((candidate) => candidate.name === fieldName);
-        if (property) {
-            report(property.declaration, `\`${fieldName}\`: ${message}`);
-        } else if (spec) {
-            report(spec.declaration, `\`${fieldName}\`: ${message}`);
+    for (const property of spec.properties) {
+        addProperty(context, table, property);
+    }
+
+    if (!table.columns.some((column) => column.primaryKey)) {
+        context.report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
+    }
+    return table;
+}
+
+/** Add the column or branch relation a field declares. */
+function addProperty(context: BuildContext, table: Table, property: SpecProperty): void {
+    const fieldName = property.name;
+    const typeNode = property.declaration.getTypeNode();
+    const tags = property.tags;
+
+    if (!typeNode) {
+        context.report(property.declaration, `\`${fieldName}\`: cannot resolve a type node`);
+        return;
+    }
+
+    // A primary key column and a foreign key column are told apart by their tags, not their
+    // names: `@primaryKey` is the table's key, `@foreignKey Customer` points at another table.
+    const isPrimaryKey = tags.primaryKey;
+    const foreignKeyTarget = isPrimaryKey ? undefined : tags.foreignKey;
+
+    // A foreign key's storage type comes from the table it points at, so its own type node
+    // is documentation and may be an alias this model cannot resolve.
+    const foreignKeyTable = foreignKeyTarget ? entityTableName(context, foreignKeyTarget) : undefined;
+    if (foreignKeyTarget && !foreignKeyTable) {
+        context.report(
+            property.declaration,
+            `\`${fieldName}\`: @foreignKey has no interface for \`${foreignKeyTarget}\``,
+        );
+        return;
+    }
+
+    const resolved = context.resolveTypeNode(typeNode);
+    if (!resolved && !foreignKeyTarget) {
+        context.report(property.declaration, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
+        return;
+    }
+
+    if (addBranch(context, table, property, typeNode, resolved)) {
+        return;
+    }
+
+    addScalarColumn(context, table, property, resolved, isPrimaryKey, foreignKeyTarget, foreignKeyTable);
+}
+
+/** Add the branch relation a branch tag declares; returns false for a plain column. */
+function addBranch(
+    context: BuildContext,
+    table: Table,
+    property: SpecProperty,
+    typeNode: Node,
+    resolved: TypeResolution | undefined,
+): boolean {
+    const fieldName = property.name;
+    const tags = property.tags;
+
+    // A branch tag carries no entity of its own, so the type must supply one.
+    const branchName = tags.relation
+        ? "relation"
+        : tags.children
+            ? "children"
+            : tags.inlined
+                ? "inlined"
+                : undefined;
+    if (branchName && !resolved?.entity) {
+        context.report(
+            property.declaration,
+            `\`${fieldName}\`: @${branchName} needs an entity type, found \`${typeNode.getText()}\``,
+        );
+        return true;
+    }
+
+    if (resolved?.isArray) {
+        if (!tags.children) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: array fields need @children and are not columns`,
+            );
+            return true;
         }
-    };
+        const childTable = resolved.entity ? entityTableName(context, resolved.entity) : undefined;
+        if (!childTable) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: @children needs an array of an entity, found \`${typeNode.getText()}\``,
+            );
+            return true;
+        }
+        // The child's foreign-key column is resolved once every table is built.
+        table.relations.set(fieldName, { kind: "children", table: childTable });
+        return true;
+    }
 
+    if (resolved?.entity) {
+        if (tags.inlined) {
+            inlineColumns(context, table, property, resolved.entity);
+            return true;
+        }
+        if (tags.foreignKey !== undefined) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: @foreignKey must be on the scalar key field, not the entity`,
+            );
+            return true;
+        }
+        if (!tags.relation) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation`,
+            );
+            return true;
+        }
+        const targetTable = entityTableName(context, resolved.entity);
+        if (!targetTable) {
+            context.report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
+            return true;
+        }
+        // @relation navigates through the `@foreignKey <entity>` field the interface declares;
+        // it adds no column of its own. The pair is joined once every table's columns exist.
+        table.relations.set(fieldName, { kind: "relation", table: targetTable });
+        return true;
+    }
+
+    return false;
+}
+
+/** Add the scalar column a field declares, or report why it cannot be one. */
+function addScalarColumn(
+    context: BuildContext,
+    table: Table,
+    property: SpecProperty,
+    resolved: TypeResolution | undefined,
+    isPrimaryKey: boolean,
+    foreignKeyTarget: string | undefined,
+    foreignKeyTable: string | undefined,
+): void {
+    const fieldName = property.name;
+    const notNull = !property.optional;
+    const tags = property.tags;
+
+    // A default makes the column not null even when the field is optional: the database fills it.
+    // The clock tags supply their own default, so they make the column not null the same way.
+    const defaultValue = tags.default ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
+    const column: Column = {
+        name: fieldName,
+        sqlType: resolved?.sqlType ?? "text",
+        notNull: notNull || isPrimaryKey || defaultValue !== undefined,
+        primaryKey: isPrimaryKey,
+        unique: tags.unique,
+        queryFilter: tags.queryfilter,
+        insertable: isInsertable(property),
+        updatable: isUpdatable(property),
+        read: fieldName,
+    };
+    if (tags.queryOrderBy !== undefined) {
+        column.queryOrder = tags.queryOrderBy;
+    }
+    // Only known operators reach the model; the linter reports an unknown one, and a
+    // generator run without lint should not emit a comparison it cannot build.
+    const operators = tags.where?.filter(isCompareOperator);
+    if (operators && operators.length > 0) {
+        column.where = operators;
+    }
+    if (resolved?.checkValues) {
+        column.checkValues = resolved.checkValues;
+    }
+    if (defaultValue !== undefined) {
+        column.default = defaultValue;
+    }
+    if (tags.pgvirtual !== undefined) {
+        column.generatedExpression = stripSemicolon(tags.pgvirtual);
+    }
+    if (tags.version) {
+        column.version = true;
+    }
+
+    if (foreignKeyTarget && foreignKeyTable) {
+        const targetKey = context.primaryKeyFields(foreignKeyTarget);
+        if (targetKey.length === 0) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
+            );
+            return;
+        }
+        // One column cannot carry a composite key, so a reference to one is a diagnostic.
+        if (targetKey.length > 1) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has a composite @primaryKey`,
+            );
+            return;
+        }
+        // The key column takes the referenced table's key type and names its key column.
+        column.sqlType = context.primaryKeySqlType(foreignKeyTarget);
+        column.references = { table: foreignKeyTable, column: targetKey[0]?.name as string };
+    }
+
+    table.columns.push(column);
+
+    // A trigger statement maintains the field on every write; the clock tag contributes its own.
+    if (tags.pgtrigger !== undefined) {
+        table.sameRowAssignments.push(stripSemicolon(tags.pgtrigger) + ";");
+    }
+    if (tags.updatedAt) {
+        table.sameRowAssignments.push(`NEW.${quote(fieldName)} := now();`);
+    }
+}
+
+/** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
+function inlineColumns(context: BuildContext, table: Table, property: SpecProperty, entity: string): void {
+    const fieldName = property.name;
+    const notNull = !property.optional;
+
+    const declaration = context.interfaces.get(entity);
+    if (!declaration) {
+        context.report(property.declaration, `\`${fieldName}\`: @inlined ${entity} has no interface`);
+        return;
+    }
+    const columns: Record<string, string> = {};
+    for (const inner of declaration.properties) {
+        const innerName = inner.name;
+        const innerType = inner.declaration.getTypeNode();
+        if (!innerType) {
+            context.report(inner.declaration, `\`${entity}.${innerName}\`: cannot resolve a type node`);
+            continue;
+        }
+        const resolved = context.resolveTypeNode(innerType);
+        if (!resolved) {
+            context.report(inner.declaration, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
+            continue;
+        }
+        if (resolved.isArray || resolved.entity) {
+            context.report(inner.declaration, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
+            continue;
+        }
+        const columnName = inlinedColumnName(fieldName, innerName);
+        const column: Column = {
+            name: columnName,
+            sqlType: resolved.sqlType ?? "text",
+            notNull: notNull && !inner.optional,
+            primaryKey: false,
+            unique: false,
+            insertable: isInsertable(property),
+            updatable: isUpdatable(property),
+            read: notNull ? `${fieldName}.${innerName}` : `${fieldName}?.${innerName}`,
+        };
+        if (resolved.checkValues) {
+            column.checkValues = resolved.checkValues;
+        }
+        columns[innerName] = columnName;
+        table.columns.push(column);
+    }
+    table.relations.set(fieldName, { kind: "inlined", table: declaration.tableName, columns });
+}
+
+function entityTableName(context: BuildContext, entity: string): string | undefined {
+    return context.interfaces.get(entity)?.tableName;
+}
+
+/** Attach each cross-table aggregate to the child table that changes it. */
+function attachRollups(tables: Map<string, Table>, interfaces: Map<string, SpecInterface>): void {
+    for (const spec of interfaces.values()) {
+        const parentTable = tables.get(spec.name);
+        if (!parentTable) {
+            continue;
+        }
+        for (const property of spec.properties) {
+            const rollupStatement = property.tags.pgrollup;
+            if (rollupStatement === undefined) {
+                continue;
+            }
+            // One statement is written for the child change and mirrored for the child removal.
+            const newStatement = stripSemicolon(rollupStatement) + ";";
+            const oldStatement = newStatement.replaceAll("NEW.", "OLD.");
+            for (const child of tables.values()) {
+                const hasForeignKey = child.columns.some(
+                    (column) => column.references?.table === parentTable.name,
+                );
+                if (!hasForeignKey) {
+                    continue;
+                }
+                const rollup = parentTable.rollups.get(child.name) ?? {
+                    newStatements: [],
+                    oldStatements: [],
+                };
+                rollup.newStatements.push(newStatement);
+                rollup.oldStatements.push(oldStatement);
+                parentTable.rollups.set(child.name, rollup);
+            }
+        }
+    }
+}
+
+/** Point each branch at the column it navigates through, once every table's columns exist. */
+function resolveBranchColumns(tables: Map<string, Table>, context: BuildContext): void {
+    const byTableName = new Map<string, Table>();
+    for (const table of tables.values()) {
+        byTableName.set(table.name, table);
+    }
+    for (const table of tables.values()) {
+        for (const [fieldName, relation] of table.relations) {
+            if (!relation.table) {
+                continue;
+            }
+            // @relation never adds a column: it requires a `@foreignKey` field to navigate through.
+            if (relation.kind === "relation") {
+                const candidates = table.columns.filter(
+                    (candidate) => candidate.references?.table === relation.table,
+                );
+                const column = candidates[0];
+                if (!column) {
+                    // Name the tables the FKs do point at, so a `@relation` aimed at the wrong one reads.
+                    const targets = [
+                        ...new Set(
+                            table.columns
+                                .map((candidate) => candidate.references?.table)
+                                .filter((target): target is string => target !== undefined),
+                        ),
+                    ];
+                    const hint =
+                        targets.length > 0
+                            ? `; this table references ${targets.map((target) => `\`${target}\``).join(", ")}`
+                            : "";
+                    context.reportField(
+                        table,
+                        fieldName,
+                        `@relation needs a @foreignKey field referencing \`${relation.table}\`${hint}`,
+                    );
+                    continue;
+                }
+                if (candidates.length > 1) {
+                    context.reportField(
+                        table,
+                        fieldName,
+                        `@relation matches more than one foreign key referencing \`${relation.table}\``,
+                    );
+                    continue;
+                }
+                relation.column = column.name;
+                continue;
+            }
+            if (relation.kind !== "children") {
+                continue;
+            }
+            const child = byTableName.get(relation.table);
+            const foreignKey = child?.columns.find((column) => column.references?.table === table.name);
+            if (!foreignKey) {
+                context.reportField(table, fieldName, `@children ${relation.table} has no foreign key to ${table.name}`);
+                continue;
+            }
+            relation.column = foreignKey.name;
+        }
+    }
+}
+
+/** Resolve spec type nodes to their Postgres storage. */
+function createTypeResolver(
+    interfaces: Map<string, SpecInterface>,
+    aliases: Map<string, SpecTypeAlias>,
+): TypeResolver {
     /** The fields an entity declares as its primary key, in declaration order. */
     function primaryKeyFields(entity: string): SpecProperty[] {
         return (interfaces.get(entity)?.properties ?? []).filter((property) => property.tags.primaryKey);
@@ -275,339 +669,34 @@ export function buildSpecTables(
         return undefined;
     }
 
-    function entityTableName(entity: string): string | undefined {
-        return interfaces.get(entity)?.tableName;
-    }
+    return { resolveTypeNode, primaryKeyFields, primaryKeySqlType };
+}
 
-    /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
-    function inlineColumns(
-        property: SpecProperty,
-        fieldName: string,
-        entity: string,
-        notNull: boolean,
-        table: Table,
-    ): void {
-        const declaration = interfaces.get(entity);
-        if (!declaration) {
-            report(property.declaration, `\`${fieldName}\`: @inlined ${entity} has no interface`);
-            return;
+/** Collect diagnostics, with file paths relative to the working directory. */
+function createReporter(
+    interfaces: Map<string, SpecInterface>,
+    diagnostics: Diagnostic[],
+): Reporter {
+    const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
+    const report = (node: Node, message: string) => {
+        const sourceFile = node.getSourceFile();
+        diagnostics.push({
+            filePath: relative(sourceFile.getFilePath()),
+            line: node.getStartLineNumber(),
+            message,
+        });
+    };
+
+    /** Report a problem with a branch field, pointing at the field's declaration when it can be found. */
+    const reportField = (table: Table, fieldName: string, message: string) => {
+        const spec = interfaces.get(table.interfaceName);
+        const property = spec?.properties.find((candidate) => candidate.name === fieldName);
+        if (property) {
+            report(property.declaration, `\`${fieldName}\`: ${message}`);
+        } else if (spec) {
+            report(spec.declaration, `\`${fieldName}\`: ${message}`);
         }
-        const columns: Record<string, string> = {};
-        for (const inner of declaration.properties) {
-            const innerName = inner.name;
-            const innerType = inner.declaration.getTypeNode();
-            if (!innerType) {
-                report(inner.declaration, `\`${entity}.${innerName}\`: cannot resolve a type node`);
-                continue;
-            }
-            const resolved = resolveTypeNode(innerType);
-            if (!resolved) {
-                report(inner.declaration, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
-                continue;
-            }
-            if (resolved.isArray || resolved.entity) {
-                report(inner.declaration, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
-                continue;
-            }
-            const columnName = inlinedColumnName(fieldName, innerName);
-            const column: Column = {
-                name: columnName,
-                sqlType: resolved.sqlType ?? "text",
-                notNull: notNull && !inner.optional,
-                primaryKey: false,
-                unique: false,
-                insertable: isInsertable(property),
-                updatable: isUpdatable(property),
-                read: notNull ? `${fieldName}.${innerName}` : `${fieldName}?.${innerName}`,
-            };
-            if (resolved.checkValues) {
-                column.checkValues = resolved.checkValues;
-            }
-            columns[innerName] = columnName;
-            table.columns.push(column);
-        }
-        table.relations.set(fieldName, { kind: "inlined", table: declaration.tableName, columns });
-    }
+    };
 
-    for (const spec of interfaces.values()) {
-        const table: Table = {
-            name: spec.tableName,
-            interfaceName: spec.name,
-            importSpecifier: spec.importSpecifier,
-            columns: [],
-            relations: new Map(),
-            sameRowAssignments: [],
-            rollups: new Map(),
-        };
-
-        for (const property of spec.properties) {
-            const fieldName = property.name;
-            const typeNode = property.declaration.getTypeNode();
-            const notNull = !property.optional;
-            const tags = property.tags;
-
-            if (!typeNode) {
-                report(property.declaration, `\`${fieldName}\`: cannot resolve a type node`);
-                continue;
-            }
-
-            // A primary key column and a foreign key column are told apart by their tags, not their
-            // names: `@primaryKey` is the table's key, `@foreignKey Customer` points at another table.
-            const isPrimaryKey = tags.primaryKey;
-            const foreignKeyTarget = isPrimaryKey ? undefined : tags.foreignKey;
-
-            // A foreign key's storage type comes from the table it points at, so its own type node
-            // is documentation and may be an alias this model cannot resolve.
-            const foreignKeyTable = foreignKeyTarget ? entityTableName(foreignKeyTarget) : undefined;
-            if (foreignKeyTarget && !foreignKeyTable) {
-                report(
-                    property.declaration,
-                    `\`${fieldName}\`: @foreignKey has no interface for \`${foreignKeyTarget}\``,
-                );
-                continue;
-            }
-
-            const resolved = resolveTypeNode(typeNode);
-            if (!resolved && !foreignKeyTarget) {
-                report(property.declaration, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
-                continue;
-            }
-
-            // A branch tag carries no entity of its own, so the type must supply one.
-            const branchName = tags.relation
-                ? "relation"
-                : tags.children
-                    ? "children"
-                    : tags.inlined
-                        ? "inlined"
-                        : undefined;
-            if (branchName && !resolved?.entity) {
-                report(
-                    property.declaration,
-                    `\`${fieldName}\`: @${branchName} needs an entity type, found \`${typeNode.getText()}\``,
-                );
-                continue;
-            }
-
-            if (resolved?.isArray) {
-                if (!tags.children) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: array fields need @children and are not columns`,
-                    );
-                    continue;
-                }
-                const childTable = resolved.entity ? entityTableName(resolved.entity) : undefined;
-                if (!childTable) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: @children needs an array of an entity, found \`${typeNode.getText()}\``,
-                    );
-                    continue;
-                }
-                // The child's foreign-key column is resolved once every table is built.
-                table.relations.set(fieldName, { kind: "children", table: childTable });
-                continue;
-            }
-
-            if (resolved?.entity) {
-                if (tags.inlined) {
-                    inlineColumns(property, fieldName, resolved.entity, notNull, table);
-                    continue;
-                }
-                if (tags.foreignKey !== undefined) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: @foreignKey must be on the scalar key field, not the entity`,
-                    );
-                    continue;
-                }
-                if (!tags.relation) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation`,
-                    );
-                    continue;
-                }
-                const targetTable = entityTableName(resolved.entity);
-                if (!targetTable) {
-                    report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
-                    continue;
-                }
-                // @relation navigates through the `@foreignKey <entity>` field the interface declares;
-                // it adds no column of its own. The pair is joined once every table's columns exist.
-                table.relations.set(fieldName, { kind: "relation", table: targetTable });
-                continue;
-            }
-
-            // A default makes the column not null even when the field is optional: the database fills it.
-            // The clock tags supply their own default, so they make the column not null the same way.
-            const defaultValue = tags.default ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
-            const column: Column = {
-                name: fieldName,
-                sqlType: resolved?.sqlType ?? "text",
-                notNull: notNull || isPrimaryKey || defaultValue !== undefined,
-                primaryKey: isPrimaryKey,
-                unique: tags.unique,
-                queryFilter: tags.queryfilter,
-                insertable: isInsertable(property),
-                updatable: isUpdatable(property),
-                read: fieldName,
-            };
-            if (tags.queryOrderBy !== undefined) {
-                column.queryOrder = tags.queryOrderBy;
-            }
-            // Only known operators reach the model; the linter reports an unknown one, and a
-            // generator run without lint should not emit a comparison it cannot build.
-            const operators = tags.where?.filter(isCompareOperator);
-            if (operators && operators.length > 0) {
-                column.where = operators;
-            }
-            if (resolved?.checkValues) {
-                column.checkValues = resolved.checkValues;
-            }
-            if (defaultValue !== undefined) {
-                column.default = defaultValue;
-            }
-            if (tags.pgvirtual !== undefined) {
-                column.generatedExpression = stripSemicolon(tags.pgvirtual);
-            }
-            if (tags.version) {
-                column.version = true;
-            }
-
-            if (foreignKeyTarget && foreignKeyTable) {
-                const targetKey = primaryKeyFields(foreignKeyTarget);
-                if (targetKey.length === 0) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
-                    );
-                    continue;
-                }
-                // One column cannot carry a composite key, so a reference to one is a diagnostic.
-                if (targetKey.length > 1) {
-                    report(
-                        property.declaration,
-                        `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has a composite @primaryKey`,
-                    );
-                    continue;
-                }
-                // The key column takes the referenced table's key type and names its key column.
-                column.sqlType = primaryKeySqlType(foreignKeyTarget);
-                column.references = { table: foreignKeyTable, column: targetKey[0]?.name as string };
-            }
-
-            table.columns.push(column);
-
-            // A trigger statement maintains the field on every write; the clock tag contributes its own.
-            if (tags.pgtrigger !== undefined) {
-                table.sameRowAssignments.push(stripSemicolon(tags.pgtrigger) + ";");
-            }
-            if (tags.updatedAt) {
-                table.sameRowAssignments.push(`NEW.${quote(fieldName)} := now();`);
-            }
-        }
-
-        if (!table.columns.some((column) => column.primaryKey)) {
-            report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
-        }
-
-        tables.set(spec.name, table);
-    }
-
-    /** Attach each cross-table aggregate to the child table that changes it. */
-    for (const spec of interfaces.values()) {
-        const parentTable = tables.get(spec.name);
-        if (!parentTable) {
-            continue;
-        }
-        for (const property of spec.properties) {
-            const rollupStatement = property.tags.pgrollup;
-            if (rollupStatement === undefined) {
-                continue;
-            }
-            // One statement is written for the child change and mirrored for the child removal.
-            const newStatement = stripSemicolon(rollupStatement) + ";";
-            const oldStatement = newStatement.replaceAll("NEW.", "OLD.");
-            for (const child of tables.values()) {
-                const hasForeignKey = child.columns.some(
-                    (column) => column.references?.table === parentTable.name,
-                );
-                if (!hasForeignKey) {
-                    continue;
-                }
-                const rollup = parentTable.rollups.get(child.name) ?? {
-                    newStatements: [],
-                    oldStatements: [],
-                };
-                rollup.newStatements.push(newStatement);
-                rollup.oldStatements.push(oldStatement);
-                parentTable.rollups.set(child.name, rollup);
-            }
-        }
-    }
-
-    /** Point each branch at a declaration that already exists: a relation at the `@foreignKey`
-     * field that references its table, a child collection at the child's foreign key. */
-    const byTableName = new Map<string, Table>();
-    for (const table of tables.values()) {
-        byTableName.set(table.name, table);
-    }
-    for (const table of tables.values()) {
-        for (const [fieldName, relation] of table.relations) {
-            if (!relation.table) {
-                continue;
-            }
-            // @relation never adds a column: it requires a `@foreignKey` field to navigate through.
-            if (relation.kind === "relation") {
-                const candidates = table.columns.filter(
-                    (candidate) => candidate.references?.table === relation.table,
-                );
-                const column = candidates[0];
-                if (!column) {
-                    // Name the tables the FKs do point at, so a `@relation` aimed at the wrong one reads.
-                    const targets = [
-                        ...new Set(
-                            table.columns
-                                .map((candidate) => candidate.references?.table)
-                                .filter((target): target is string => target !== undefined),
-                        ),
-                    ];
-                    const hint =
-                        targets.length > 0
-                            ? `; this table references ${targets.map((target) => `\`${target}\``).join(", ")}`
-                            : "";
-                    reportField(
-                        table,
-                        fieldName,
-                        `@relation needs a @foreignKey field referencing \`${relation.table}\`${hint}`,
-                    );
-                    continue;
-                }
-                if (candidates.length > 1) {
-                    reportField(
-                        table,
-                        fieldName,
-                        `@relation matches more than one foreign key referencing \`${relation.table}\``,
-                    );
-                    continue;
-                }
-                relation.column = column.name;
-                continue;
-            }
-            if (relation.kind !== "children") {
-                continue;
-            }
-            const child = byTableName.get(relation.table);
-            const foreignKey = child?.columns.find((column) => column.references?.table === table.name);
-            if (!foreignKey) {
-                reportField(table, fieldName, `@children ${relation.table} has no foreign key to ${table.name}`);
-                continue;
-            }
-            relation.column = foreignKey.name;
-        }
-    }
-
-    return { tables, diagnostics };
+    return { report, reportField };
 }
