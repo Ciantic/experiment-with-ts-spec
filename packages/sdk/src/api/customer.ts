@@ -2,7 +2,7 @@
 import type { Customer } from "spec/domain/Customer.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { CustomerInsert, CustomerPatch } from "validation/customer.ts";
-import { call, type Call } from "./client.ts";
+import { call, type Call } from "../client.ts";
 
 export type { CustomerInsert, CustomerPatch };
 

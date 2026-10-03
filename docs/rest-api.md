@@ -12,7 +12,7 @@ halves that must not be generated: the router and the transport.
   matches on.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
 - `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
-- `packages/sdk/src/` — generated: one module per entity plus a barrel.
+- `packages/sdk/src/api/` — generated: one module per entity plus a barrel.
 - `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
   combinators. Hand-written.
 - `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
@@ -104,8 +104,8 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `./client.ts` |
-| Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/*.ts` |
+| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `../client.ts` |
+| Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from the backend.** It cannot reach a table

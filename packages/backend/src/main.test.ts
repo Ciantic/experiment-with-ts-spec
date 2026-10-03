@@ -1,7 +1,7 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import * as api from "sdk/index.ts";
-import type { Call, Executable, HttpClient } from "sdk/index.ts";
+import * as api from "sdk/api/index.ts";
+import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes.ts";
 import { startServer, type StartedServer } from "./main.ts";

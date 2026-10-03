@@ -2,7 +2,7 @@
 import type { Translation } from "spec/domain/Translation.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { TranslationInsert, TranslationPatch } from "validation/translation.ts";
-import { call, type Call } from "./client.ts";
+import { call, type Call } from "../client.ts";
 
 export type { TranslationInsert, TranslationPatch };
 

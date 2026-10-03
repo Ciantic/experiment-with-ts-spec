@@ -64,7 +64,7 @@ describe("renderClientModule", () => {
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
         expect(code).toContain("): Call<Selected<Widget, S>[]> {");
         expect(code).toContain('return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
-        expect(code).toContain('import { call, type Call } from "./client.ts";');
+        expect(code).toContain('import { call, type Call } from "../client.ts";');
         expect(code).not.toContain("HttpClient");
     });
 
@@ -174,8 +174,8 @@ describe("generateRestClient", () => {
     it("re-exports the call model, the transport, and every entity from the barrel", () => {
         const files = generateRestClient(model);
 
-        expect(files.get("index.ts")).toContain('export * from "./client.ts";');
-        expect(files.get("index.ts")).toContain('export * from "./http.ts";');
+        expect(files.get("index.ts")).toContain('export * from "../client.ts";');
+        expect(files.get("index.ts")).toContain('export * from "../http.ts";');
         expect(files.get("index.ts")).toContain('export * from "./widget.ts";');
         expect(files.has("widget.ts")).toBe(true);
     });
@@ -196,7 +196,8 @@ describe("generateRestClient", () => {
             expect(
                 specifier.startsWith("spec/") ||
                     specifier.startsWith("validation/") ||
-                    specifier.startsWith("./"),
+                    specifier.startsWith("./") ||
+                    specifier.startsWith("../"),
             ).toBe(true);
         }
     });

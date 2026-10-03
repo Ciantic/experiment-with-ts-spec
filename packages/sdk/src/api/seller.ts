@@ -2,7 +2,7 @@
 import type { Seller } from "spec/domain/Seller.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { SellerInsert, SellerPatch } from "validation/seller.ts";
-import { call, type Call } from "./client.ts";
+import { call, type Call } from "../client.ts";
 
 export type { SellerInsert, SellerPatch };
 

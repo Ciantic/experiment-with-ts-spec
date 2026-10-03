@@ -2,7 +2,7 @@
 import type { InvoiceSentRow } from "spec/domain/InvoiceSentRow.ts";
 import type { Filters, Selected, Selection } from "spec/selection.ts";
 import type { InvoiceSentRowInsert, InvoiceSentRowPatch } from "validation/invoiceSentRow.ts";
-import { call, type Call } from "./client.ts";
+import { call, type Call } from "../client.ts";
 
 export type { InvoiceSentRowInsert, InvoiceSentRowPatch };
 
