@@ -102,12 +102,24 @@ describe("buildRestModel", () => {
         expect(byKind.get("update")?.source).toBe("body");
     });
 
-    it("records the filter fields, the key, and the version fields", () => {
+    it("records the filter fields, the keys, and the version fields", () => {
         const widget = buildRestModel(tables).entities.find((entity) => entity.entity === "Widget");
 
         expect(widget?.filters).toEqual(["id", "size"]);
-        expect(widget?.key).toBe("id");
+        expect(widget?.keys).toEqual(["id"]);
         expect(widget?.versionFields).toEqual(["version"]);
+    });
+
+    it("records every column of a composite key in declaration order", () => {
+        const composite = table("translation", "Translation", [
+            column("languageCode", { primaryKey: true, queryFilter: true }),
+            column("key", { primaryKey: true, queryFilter: true }),
+            column("value"),
+        ]);
+
+        const entity = buildRestModel(new Map([["Translation", composite]])).entities[0];
+
+        expect(entity?.keys).toEqual(["languageCode", "key"]);
     });
 
     it("records the orderable fields", () => {

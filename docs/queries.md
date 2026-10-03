@@ -92,9 +92,10 @@ number?: string;
 ```
 
 The default lives in `spec-model.ts`, which sets the tag when it parses a field
-carrying `@primaryKey`; a generator reads the tag and never the name. Because the default is
-the only spelling, writing `@queryfilter` on the `@primaryKey` field is a lint
-finding.
+carrying `@primaryKey`; a generator reads the tag and never the name. Because the
+default is the only spelling, writing `@queryfilter` on a `@primaryKey` field is
+a lint finding. A composite key contributes one filter per key column, so each
+part of the key filters on its own.
 
 A field without `@queryfilter` is not filterable. Branch fields
 (`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
@@ -384,7 +385,7 @@ branch per level. The resolver holds no domain knowledge — it only reads
 `queryModel`, so a new entity and `@queryfilter` field need no resolver change.
 
 Arguments filter by set membership: the generated filters are the scalar fields
-that carry `@queryfilter` (plus the `@primaryKey` field), and a relation's
+that carry `@queryfilter` (plus every `@primaryKey` field), and a relation's
 `@foreignKey` field is one of them. An unknown filter field throws rather than
 silently dropping a clause, as does a non-array value. `String`, `Date`, and
 `decimal` values pass through unchanged.
@@ -422,9 +423,18 @@ stays stable and is never truncated or filtered.
   `filter: { id: [value] }` already says; `eq` exists for symmetry and `ne` is
   the operator `filter` cannot express.
 - **Filters come only from `@queryfilter`, plus the primary key.** A field
-  without the tag is not filterable, the `@primaryKey` field is a filter without
+  without the tag is not filterable, each `@primaryKey` field is a filter without
   it, and a branch field may not carry it; filtering by a relation is not
   implemented.
+- **A composite key has no single row key for branch attachment.** The resolver
+  identifies a row by one column, so an entity whose `@primaryKey` is several
+  fields cannot be the target of a `@foreignKey` — and so cannot be reached by a
+  `@relation` or own a `@children` collection, both of which need one column to
+  point at it. The generator reports that rather than emitting a partial join.
+  Such an entity is therefore root-only, and `queryModel.key` names its first key
+  column purely as the alias a row is projected under; no join reads it, because
+  nothing can name the table as a branch target. Grouping children by a full
+  composite key is not implemented.
 - **The brand is an internal.** `Scalar` reads the spec's `Brand` alias, whose
   only dependency is a type-only Zod import. The fallback, if that ever moves, is
   separate `select` (scalars) and `with` (branches) keys, which needs no brand

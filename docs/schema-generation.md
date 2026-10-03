@@ -52,12 +52,15 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 
 ## Keys and relations
 
-- `@primaryKey` marks the table's key; the column is always `not null`. Exactly
-  one per interface, and a field without the tag is not a key however it is named.
+- `@primaryKey` marks a column of the table's key; the column is always `not
+  null`. At least one per interface, and a field without the tag is not a key
+  however it is named. Several key fields emit one `primary key (…)` constraint
+  listing the columns in interface declaration order.
 - `@foreignKey <Entity>` adds an inline `references` to that entity's table. The
   column type and the referenced column come from `<Entity>`'s own `@primaryKey`
   field, so the field's declared type is documentation and may be an alias this
-  model cannot resolve.
+  model cannot resolve. A single column cannot carry a composite key, so a
+  `@foreignKey` naming an entity with one is a diagnostic.
 - `@relation` on an entity-typed field adds no column of its own. It navigates
   through the `@foreignKey` field pointing at its table; that field's optionality
   sets the nullability. A `@relation` with no such field, or more than one

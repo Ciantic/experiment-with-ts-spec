@@ -11,7 +11,7 @@ import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
     buildSpecTables,
-    primaryKeyColumn,
+    primaryKeyColumns,
     type Table,
 } from "./postgres-model.ts";
 import { BACKEND_PACKAGE_ROOT } from "./postgres-model.ts";
@@ -78,7 +78,8 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
                     : { kind: relation.kind, table: relation.table, column: relation.column };
         }
 
-        const key = primaryKeyColumn(table).name;
+        // A composite key is root-only, so the first key column only aliases the row. See docs/queries.md.
+        const key = primaryKeyColumns(table)[0]?.name as string;
         const data: QueryTableData = { name: table.name, key, fields, relations };
 
         // Orderable fields come from `@queryorderby`; one may declare the entity default ordering.

@@ -8,6 +8,7 @@ import {
     SPEC_GLOB,
     buildSpecTables,
     quote,
+    type Column,
     type Diagnostic,
     type GenerateOptions,
     type Table,
@@ -121,9 +122,15 @@ function renderVersionTrigger(table: Table): string[] {
         return [];
     }
     const functionName = `${table.name}_version`;
-    const key = table.columns.find((column) => column.primaryKey);
+    const keys = table.columns.filter((column) => column.primaryKey);
     // `is distinct from` is null-safe, so a caller that omits the version conflicts rather than passing.
-    const target = key ? `OLD.${quote(key.name)}` : `NEW.${quote(version.name)}`;
+    // The message names the row by its key; a composite key reads as one row value.
+    const target =
+        keys.length === 0
+            ? `NEW.${quote(version.name)}`
+            : keys.length === 1
+                ? `OLD.${quote((keys[0] as Column).name)}`
+                : `row(${keys.map((column) => `OLD.${quote(column.name)}`).join(", ")})`;
     return [
         `create function ${quote(functionName)}() returns trigger as $$`,
         "begin",

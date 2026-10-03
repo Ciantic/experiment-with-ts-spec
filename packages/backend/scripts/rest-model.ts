@@ -7,7 +7,7 @@
  * generator may re-derive a path. See docs/rest-api.md.
  */
 import { lowerFirst } from "spec/scripts/spec-model.ts";
-import { primaryKeyColumn, type Table } from "./postgres-model.ts";
+import { primaryKeyColumns, type Table } from "./postgres-model.ts";
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
 export type RestMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -36,8 +36,8 @@ export interface RestEntity {
     importSpecifier: string;
     /** The collection path, e.g. `/invoice`, taken from the `@table` name. */
     path: string;
-    /** The primary-key field, which names the row a write targets. */
-    key: string;
+    /** The primary-key fields, which name the row a write targets; one for a single key. */
+    keys: string[];
     /** The `@queryfilter` fields: `query` accepts them all. */
     filters: string[];
     /** The `@queryorderby` fields: `query` accepts them as `order` keys. */
@@ -85,7 +85,7 @@ export function buildRestModel(tables: Map<string, Table>): RestModel {
             module: lowerFirst(table.interfaceName),
             importSpecifier: table.importSpecifier,
             path,
-            key: primaryKeyColumn(table).name,
+            keys: primaryKeyColumns(table).map((column) => column.name),
             filters: table.columns.filter((column) => column.queryFilter).map((column) => column.name),
             orderFields: table.columns.filter((column) => column.queryOrder).map((column) => column.name),
             whereFields: table.columns

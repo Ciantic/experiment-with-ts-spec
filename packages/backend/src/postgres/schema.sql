@@ -28,6 +28,13 @@ create table "seller" (
     constraint "seller_pkey" primary key ("id")
 );
 
+create table "translation" (
+    "languageCode" text not null,
+    "key" text not null,
+    "value" text,
+    constraint "translation_pkey" primary key ("languageCode", "key")
+);
+
 create table "invoice" (
     "id" uuid not null,
     "number" text unique,

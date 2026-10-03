@@ -83,8 +83,9 @@ export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> &
 Every written column is optional except two, which are the keys the rest of the
 design leans on:
 
-- **The primary key** says which row to write. It is the field tagged
-  `@primaryKey`.
+- **The primary key** says which row to write. It is the field or fields tagged
+  `@primaryKey`; a composite key requires every one of them, and the statement
+  matches a row on all of them.
 - **The `@version` column**, where one exists, is the optimistic-lock
   precondition (`docs/versioning.md`). It is required so a patch cannot
   accidentally skip the check. For an entity with no version — the snapshots —
@@ -133,12 +134,20 @@ nothing (`docs/validation.md`).
 `delete` takes an entity's **primary key**, `<Entity>PrimaryKey`, the key alone
 rather than the whole entity, because the key is the only thing its statement
 reads. The type and its matching `<name>PrimaryKeySchema` are generated from the
-`@primaryKey` field in `packages/validation`, next to the patch and insert types:
+`@primaryKey` fields in `packages/validation`, next to the patch and insert
+types:
 
 ```ts
 import type { CustomerPrimaryKey } from "validation/customer.ts";
 
 export type CustomerPrimaryKey = Pick<Customer, "id">;
+```
+
+A composite key names every one of its columns, and the delete's `where` matches
+on all of them, so a partial key cannot address a row:
+
+```ts
+export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;
 ```
 
 The wire schema is the same field set — the delete route validates

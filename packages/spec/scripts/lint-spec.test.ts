@@ -761,7 +761,7 @@ describe("@primaryKey and @foreignKey", () => {
         expect(messages(findings)).toEqual(["`id`: @primaryKey takes no value"]);
     });
 
-    it("rejects a second @primaryKey field", () => {
+    it("accepts @primaryKey on several fields, which is a composite key", () => {
         const findings = lintSourceText(
             `export interface Thing {
                 /**
@@ -779,7 +779,31 @@ describe("@primaryKey and @foreignKey", () => {
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`Thing`: @primaryKey may appear on at most one field"]);
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a numbered @primaryKey, since the declaration order is the key order", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey 1
+                 */
+                id: ThingId;
+                /**
+                 * @fieldName Code
+                 * @widget text
+                 * @primaryKey 2
+                 */
+                code: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`id`: @primaryKey takes no value",
+            "`code`: @primaryKey takes no value",
+        ]);
     });
 
     it("rejects @primaryKey on a relation field", () => {

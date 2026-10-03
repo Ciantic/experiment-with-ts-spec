@@ -131,7 +131,7 @@ export interface Tags {
     children: boolean;
     /** The field holds an entity whose scalar fields are flattened into snapshot columns. */
     inlined: boolean;
-    /** The field is the table's primary key; exactly one per interface. */
+    /** The field is part of the table's primary key; one or more per interface. */
     primaryKey: boolean;
     /** The interface this field references, as written in `@foreignKey Customer`. */
     foreignKey?: string;
@@ -240,6 +240,11 @@ export function isUpdatable(property: SpecProperty): boolean {
 /** The fields a patch omits; the wire schema and the generated patch type share this set, so they agree. */
 export function omittedFromPatch(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => !isUpdatable(property));
+}
+
+/** An interface's primary key fields, in declaration order, which is the key's column order. */
+export function primaryKeyProperties(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter((property) => property.tags.primaryKey);
 }
 
 /** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */

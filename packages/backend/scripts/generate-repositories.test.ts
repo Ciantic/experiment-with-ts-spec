@@ -32,6 +32,12 @@ const customer = table("customer", "Customer", [
     column("email"),
 ]);
 
+const translation = table("translation", "Translation", [
+    column("languageCode", { primaryKey: true }),
+    column("key", { primaryKey: true }),
+    column("value", { notNull: false }),
+]);
+
 /** A `create table` for a fixture, derived from its column metadata so this stays domain-free. */
 function createTableSql(table: Table): string {
     const definitions = table.columns.map((column) => {
@@ -239,6 +245,21 @@ describe("generateRepository", () => {
         expect(code).toContain("const values = [row.id];");
     });
 
+    it("matches every column of a composite key on delete", () => {
+        const code = generateRepository(translation);
+
+        expect(code).toContain(') as data("languageCode", "key")');
+        expect(code).toContain('where "translation"."languageCode" = data."languageCode" and "translation"."key" = data."key"');
+        expect(code).toContain("const values = [row.languageCode, row.key];");
+    });
+
+    it("patches a composite-key row by every key column", () => {
+        const code = generateRepository(translation);
+
+        expect(code).toContain(') as data("languageCode", "key", "value")');
+        expect(code).toContain('set "value" = coalesce(data."value", "translation"."value")');
+    });
+
     it("reads an inlined optional field through optional chaining", () => {
         const code = generateRepository(
             table("invoice_sent", "InvoiceSent", [
@@ -352,13 +373,16 @@ describe("generated repositories against PGlite", () => {
     let db: ReturnType<typeof createPglite>;
     let owners: GeneratedRepository;
     let widgets: GeneratedRepository;
+    let translations: GeneratedRepository;
 
     beforeAll(async () => {
         db = createPglite();
         await db.exec(createTableSql(owner));
         await db.exec(createTableSql(widget));
+        await db.exec(createTableSql(translation));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);
+        translations = loadRepository(translation);
     });
 
     afterAll(async () => {
@@ -368,6 +392,7 @@ describe("generated repositories against PGlite", () => {
     beforeEach(async () => {
         await db.query('delete from "widget"');
         await db.query('delete from "owner"');
+        await db.query('delete from "translation"');
     });
 
     it("inserts rows through the generated create function", async () => {
@@ -415,5 +440,32 @@ describe("generated repositories against PGlite", () => {
         await expect(widgets.create(db, [])).resolves.toBeUndefined();
         await expect(widgets.update(db, [])).resolves.toBeUndefined();
         await expect(widgets.delete(db, [])).resolves.toBeUndefined();
+    });
+
+    it("addresses a composite-key row by all of its key columns", async () => {
+        await translations.create(db, [{ languageCode: "en", key: "greeting", value: "hi" }]);
+        await translations.create(db, [{ languageCode: "fr", key: "greeting", value: "salut" }]);
+
+        await translations.update(db, [{ languageCode: "fr", key: "greeting", value: "bonjour" }]);
+
+        const { rows } = await db.query<{ languageCode: string; key: string; value: string }>(
+            'select "languageCode", "key", "value" from "translation" order by "languageCode"',
+        );
+
+        expect(rows).toEqual([
+            { languageCode: "en", key: "greeting", value: "hi" },
+            { languageCode: "fr", key: "greeting", value: "bonjour" },
+        ]);
+    });
+
+    it("deletes only the composite-key row it names", async () => {
+        await translations.create(db, [{ languageCode: "en", key: "greeting", value: "hi" }]);
+        await translations.create(db, [{ languageCode: "en", key: "farewell", value: "bye" }]);
+
+        await translations.delete(db, [{ languageCode: "en", key: "farewell" }]);
+
+        const { rows } = await db.query<{ key: string }>('select "key" from "translation"');
+
+        expect(rows).toEqual([{ key: "greeting" }]);
     });
 });

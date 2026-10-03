@@ -310,6 +310,19 @@ describe("generateEntity", () => {
         expect(code).not.toContain('Required<Pick<Marker, "id" | "version">>');
     });
 
+    it("projects a composite key to all of its fields, and requires them all in a patch", () => {
+        const { files } = generate({ domain: { Translation: TRANSLATION } });
+        const code = files.get("translation.ts") ?? "";
+
+        expect(code).toContain(
+            "export const translationPrimaryKeySchema = translationSchema.pick({ languageCode: true, key: true }).strict();",
+        );
+        expect(code).toContain('export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;');
+        expect(code).toContain(
+            "        languageCode: true,\n        key: true,\n    })\n    .strict();",
+        );
+    });
+
     it("keeps the entity type when the insert schema omits nothing", () => {
         const bare = "export interface Bare {\n    /** @primaryKey */\n    id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
         const { files } = generate({ domain: { Bare: bare } });
@@ -647,6 +660,31 @@ export interface Marker {
      * @pgtrigger NEW."required" := NEW."label"
      */
     required: Money;
+}
+`.trim();
+
+/** A composite primary key: several @primaryKey fields, ordered by declaration. */
+const TRANSLATION = `
+/**
+ * A translation entry.
+ *
+ * @table translation
+ */
+export interface Translation {
+    /**
+     * The language code.
+     *
+     * @primaryKey
+     */
+    languageCode: string;
+    /**
+     * The key.
+     *
+     * @primaryKey
+     */
+    key: string;
+    /** The translated value. */
+    value?: string;
 }
 `.trim();
 

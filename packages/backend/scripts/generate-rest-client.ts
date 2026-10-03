@@ -88,8 +88,13 @@ function comment(entity: RestEntity, kind: RestKind): string {
         case "update":
             return `/** Patch \`${name}\` rows; a stale version raises. See docs/versioning.md. */`;
         case "delete":
-            return `/** Delete \`${name}\` rows, keyed on \`${entity.key}\`. */`;
+            return `/** Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. */`;
     }
+}
+
+/** `Pick<Invoice, "id">`, or the quoted union a composite key names. */
+function keyPick(entity: RestEntity): string {
+    return `Pick<${entity.entity}, ${entity.keys.map((key) => `"${key}"`).join(" | ")}>`;
 }
 
 /** Render one entity's client module. */
@@ -166,9 +171,7 @@ export function renderClientModule(entity: RestEntity): string {
     if (remove) {
         lines.push("");
         lines.push(comment(entity, "delete"));
-        lines.push(
-            `export function delete${name}(http: HttpClient, rows: Pick<${name}, "${entity.key}">[]): Promise<void> {`,
-        );
+        lines.push(`export function delete${name}(http: HttpClient, rows: ${keyPick(entity)}[]): Promise<void> {`);
         lines.push(`    return http.${transport(remove)}<void>("${remove.method}", "${remove.path}", rows);`);
         lines.push("}");
     }

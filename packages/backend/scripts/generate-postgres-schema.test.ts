@@ -150,6 +150,41 @@ describe("generateSchema output", () => {
         expect(sql).toContain('constraint "thing_pkey" primary key ("id")');
     });
 
+    it("makes a composite key from every @primaryKey field, in declaration order", () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    /** @primaryKey */
+                    languageCode: string;
+                    /** @primaryKey */
+                    key: string;
+                    value?: string;
+                }`,
+            },
+        });
+
+        expect(diagnostics).toEqual([]);
+        expect(sql).toContain('constraint "thing_pkey" primary key ("languageCode", "key")');
+        expect(sql).toContain('"languageCode" text not null');
+        expect(sql).toContain('"key" text not null');
+    });
+
+    it("keeps a non-key field between two key fields out of the key", () => {
+        const { sql } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    label?: string;
+                    /** @primaryKey */
+                    code: string;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('constraint "thing_pkey" primary key ("id", "code")');
+    });
+
     it("names the primary key from @primaryKey, not from the field name", () => {
         const { sql } = generate({
             domain: { Thing: "export interface Thing {\n    /** @primaryKey */\n    key: GUID; }" },
@@ -532,6 +567,22 @@ describe("generateSchema diagnostics", () => {
         expect(messages(diagnostics)).toContain("`ghostId`: @foreignKey Ghost has no @primaryKey field");
     });
 
+    it("reports @foreignKey aimed at a composite key, which one column cannot carry", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Pair: `export interface Pair {
+                    /** @primaryKey */
+                    left: string;
+                    /** @primaryKey */
+                    right: string;
+                }`,
+                Thing: "export interface Thing {\n    /** @primaryKey */\n    id: GUID;\n    /** @foreignKey Pair */\n    pairId: string; }",
+            },
+        });
+
+        expect(messages(diagnostics)).toContain("`pairId`: @foreignKey Pair has a composite @primaryKey");
+    });
+
     it("reports an unsupported type", () => {
         const { diagnostics } = generate({
             domain: { Thing: "export interface Thing {\n    /** @primaryKey */\n    id: GUID; data: unknown; }" },
@@ -746,6 +797,26 @@ describe("generateSchema @version", () => {
         expect(sql).toContain(`raise exception 'version conflict on thing %', OLD."id"`);
         expect(sql).toContain("using errcode = '40001';");
         expect(sql).toContain('NEW."version" := OLD."version" + 1;');
+    });
+
+    it("names a composite-key row as one row value in the conflict message", () => {
+        const { sql } = generate({
+            domain: {
+                Pair: `export interface Pair {
+                    /** @primaryKey */
+                    languageCode: string;
+                    /** @primaryKey */
+                    key: string;
+                    /**
+                     * @version
+                     * @default 0
+                     */
+                    version?: Version;
+                }`,
+            },
+        });
+
+        expect(sql).toContain(`raise exception 'version conflict on pair %', row(OLD."languageCode", OLD."key")`);
     });
 
     it("emits no version trigger when no field carries @version", () => {

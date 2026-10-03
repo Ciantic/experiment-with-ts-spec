@@ -13,6 +13,7 @@ import {
     omittedFromInsert,
     omittedFromPatch,
     parseSpec,
+    primaryKeyProperties,
     type Diagnostic,
     type SpecTypeAlias,
     type SpecInterface,
@@ -63,8 +64,8 @@ export interface ZodEntity {
     usesPrimitives: boolean;
     /** Fields the patch schema requires: the key, and every `@version` field. */
     required: string[];
-    /** The `@primaryKey` field name, so a patch's mandatory fields can name it. */
-    key: string;
+    /** The `@primaryKey` field names, in declaration order, so a patch's mandatory fields can name them. */
+    keys: string[];
     /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
     selectFields: ZodSelectField[];
 }
@@ -467,7 +468,7 @@ function buildEntities(
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
             required,
-            key: spec.properties.find((property) => property.tags.primaryKey)?.name ?? "",
+            keys: primaryKeyProperties(spec).map((property) => property.name),
             selectFields: selectFieldsFor(spec, interfaces),
         });
     }

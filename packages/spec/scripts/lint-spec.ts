@@ -160,18 +160,6 @@ export function lintInterface(
             message: `\`${name}\`: @queryorderby default may appear on at most one field`,
         });
     }
-
-    // A table has exactly one primary key.
-    const primaryKeyed = declaration
-        .getProperties()
-        .filter((property) => readTags(property).primaryKey);
-    for (const property of primaryKeyed.slice(1)) {
-        findings.push({
-            filePath,
-            line: property.getStartLineNumber(),
-            message: `\`${name}\`: @primaryKey may appear on at most one field`,
-        });
-    }
 }
 
 /** Report a finding on the field under lint, at the tag's line or the field's. */

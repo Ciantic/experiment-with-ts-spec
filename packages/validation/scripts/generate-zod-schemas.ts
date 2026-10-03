@@ -187,7 +187,7 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     lines.push("});");
 
     lines.push("");
-    const versioned = entity.required.some((name) => name !== entity.key);
+    const versioned = entity.required.some((name) => !entity.keys.includes(name));
     lines.push(
         versioned
             ? "/** A partial update: every field is optional except the key and the version. */"
@@ -258,15 +258,16 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
 
     // The key alone addresses a stored row, so a by-key write names it rather than the whole entity.
     // The schema is strict, like a patch or an insert, so a field the write ignores is a 400.
-    if (entity.key !== "") {
+    if (entity.keys.length > 0) {
         lines.push("");
         lines.push("/** The key of one stored row: the shape a delete or other by-key write sends. */");
-        lines.push(
-            `export const ${entity.primaryKeyName} = ${entity.schemaName}.pick({ ${entity.key}: true }).strict();`,
-        );
+        const picked = entity.keys.map((name) => `${name}: true`).join(", ");
+        lines.push(`export const ${entity.primaryKeyName} = ${entity.schemaName}.pick({ ${picked} }).strict();`);
         lines.push("");
         lines.push("/** The key of one stored row: what a delete or other by-key write addresses. */");
-        lines.push(`export type ${entity.name}PrimaryKey = Pick<${entity.name}, ${quote(entity.key)}>;`);
+        lines.push(
+            `export type ${entity.name}PrimaryKey = Pick<${entity.name}, ${entity.keys.map(quote).join(" | ")}>;`,
+        );
     }
 
     return lines.join("\n") + "\n";

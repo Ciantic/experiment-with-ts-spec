@@ -50,6 +50,7 @@ export interface Column {
     name: string;
     sqlType: string;
     notNull: boolean;
+    /** The column is part of the table's primary key; a composite key has several. */
     primaryKey: boolean;
     unique: boolean;
     checkValues?: string[];
@@ -105,13 +106,13 @@ interface TypeResolution {
     isArray?: boolean;
 }
 
-/** The table's primary key column. The model reports a missing `@primaryKey` as a diagnostic. */
-export function primaryKeyColumn(table: Table): Column {
-    const column = table.columns.find((candidate) => candidate.primaryKey);
-    if (!column) {
+/** The table's primary key columns, in declaration order. A missing `@primaryKey` is a diagnostic. */
+export function primaryKeyColumns(table: Table): Column[] {
+    const columns = table.columns.filter((candidate) => candidate.primaryKey);
+    if (columns.length === 0) {
         throw new Error(`${table.interfaceName} has no @primaryKey column`);
     }
-    return column;
+    return columns;
 }
 
 /** Quote an identifier, matching the tags in the spec. */
@@ -160,15 +161,14 @@ export function buildSpecTables(
         }
     };
 
-    /** The field an entity declares as its primary key, or undefined when it declares none. */
-    function primaryKeyFieldName(entity: string): string | undefined {
-        return interfaces.get(entity)?.properties.find((property) => property.tags.primaryKey)?.name;
+    /** The fields an entity declares as its primary key, in declaration order. */
+    function primaryKeyFields(entity: string): SpecProperty[] {
+        return (interfaces.get(entity)?.properties ?? []).filter((property) => property.tags.primaryKey);
     }
 
-    /** The SQL type of an entity's primary key, read from its `@primaryKey` field rather than assumed. */
+    /** The SQL type of a single-column primary key, read from its `@primaryKey` field rather than assumed. */
     function primaryKeySqlType(entity: string): string {
-        const key = interfaces.get(entity)?.properties.find((property) => property.tags.primaryKey);
-        const typeNode = key?.declaration.getTypeNode();
+        const typeNode = primaryKeyFields(entity)[0]?.declaration.getTypeNode();
         return typeNode ? resolveTypeNode(typeNode)?.sqlType ?? "text" : "text";
     }
 
@@ -477,17 +477,25 @@ export function buildSpecTables(
             }
 
             if (foreignKeyTarget && foreignKeyTable) {
-                const targetColumn = primaryKeyFieldName(foreignKeyTarget);
-                if (!targetColumn) {
+                const targetKey = primaryKeyFields(foreignKeyTarget);
+                if (targetKey.length === 0) {
                     report(
                         property.declaration,
                         `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
                     );
                     continue;
                 }
+                // One column cannot carry a composite key, so a reference to one is a diagnostic.
+                if (targetKey.length > 1) {
+                    report(
+                        property.declaration,
+                        `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has a composite @primaryKey`,
+                    );
+                    continue;
+                }
                 // The key column takes the referenced table's key type and names its key column.
                 column.sqlType = primaryKeySqlType(foreignKeyTarget);
-                column.references = { table: foreignKeyTable, column: targetColumn };
+                column.references = { table: foreignKeyTable, column: targetKey[0]?.name as string };
             }
 
             table.columns.push(column);

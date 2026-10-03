@@ -182,7 +182,7 @@ the spec narrows all three at once.
 
 ## Primary key schema and type
 
-`<name>PrimaryKeySchema` is the entity schema projected to the field tagged
+`<name>PrimaryKeySchema` is the entity schema projected to the fields tagged
 `@primaryKey`, made `.strict()` like a patch or an insert, so a field the write
 would ignore is a 400. `<Entity>PrimaryKey` is the matching type:
 
@@ -192,6 +192,14 @@ export const invoicePrimaryKeySchema = invoiceSchema.pick({ id: true }).strict()
 
 /** The key of one stored row: what a delete or other by-key write addresses. */
 export type InvoicePrimaryKey = Pick<Invoice, "id">;
+```
+
+A composite key projects every one of its columns, and requires all of them to
+address a row:
+
+```typescript
+export const translationPrimaryKeySchema = translationSchema.pick({ languageCode: true, key: true }).strict();
+export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;
 ```
 
 A write that only addresses a stored row names this pair rather than the whole
@@ -291,7 +299,7 @@ a read validates its selection too.
 ## Annotations
 
 The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
-`@queryfilter` (which `spec-model.ts` defaults on the `@primaryKey` field). It never names a domain type. The parsing and tag
+`@queryfilter` (which `spec-model.ts` defaults on every `@primaryKey` field). It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.

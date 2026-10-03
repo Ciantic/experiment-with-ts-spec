@@ -180,6 +180,16 @@ export const queryModel: QueryModel = {
                 "version": "version"
             },
             "relations": {}
+        },
+        "translation": {
+            "name": "translation",
+            "key": "languageCode",
+            "fields": {
+                "languageCode": "languageCode",
+                "key": "key",
+                "value": "value"
+            },
+            "relations": {}
         }
     }
 };

@@ -46,8 +46,9 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 A create takes `<entity>InsertSchema`, the columns the database does not own, and
 a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly
 (`docs/repositories.md`). A delete needs only the key, so it takes
-`<entity>PrimaryKeySchema`: the entity projected to the key field, made strict so
-a key the statement ignores is a 400 (`docs/validation.md`).
+`<entity>PrimaryKeySchema`: the entity projected to its `@primaryKey` fields — one
+per column of a composite key — made strict so a key the statement ignores is a
+400 (`docs/validation.md`).
 
 ## Why a read is a `GET` with `q`
 

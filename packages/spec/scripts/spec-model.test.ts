@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, omittedFromPatch, parseSpec, readTags } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, omittedFromPatch, parseSpec, primaryKeyProperties, readTags } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -140,6 +140,18 @@ describe("parseSpec tags", () => {
 
         expect(tags?.foreignKey).toBe("Owner");
         expect(tags?.primaryKey).toBe(false);
+    });
+
+    it("lists a composite key's fields in declaration order", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @primaryKey\n     */",
+                "code: string;\n    /**\n     * @primaryKey\n     */\n    languageCode: string;",
+            ),
+        });
+        const spec = interfaces.get("Thing");
+
+        expect(primaryKeyProperties(spec!).map((property) => property.name)).toEqual(["code", "languageCode"]);
     });
 
     it("makes the @primaryKey field a filter without the tag", () => {

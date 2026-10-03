@@ -122,6 +122,23 @@ describe("renderClientModule", () => {
         expect(code).toContain('http.query<void>("DELETE", "/widget", rows)');
     });
 
+    it("deletes by every field of a composite key", () => {
+        const composite = table("translation", "Translation", [
+            column("languageCode", { primaryKey: true, queryFilter: true }),
+            column("key", { primaryKey: true, queryFilter: true }),
+            column("value"),
+        ]);
+        const entity = buildRestModel(new Map([["Translation", composite]])).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the translation entity");
+        }
+
+        const code = renderClientModule(entity);
+
+        expect(code).toContain('rows: Pick<Translation, "languageCode" | "key">[]');
+        expect(code).toContain("keyed on `languageCode`, `key`");
+    });
+
     it("types a create with the validation insert type, not the whole entity", () => {
         const code = widgetModule();
 

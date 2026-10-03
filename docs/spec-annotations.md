@@ -36,9 +36,11 @@ Field tags:
   column becomes `not null default now()`, and every write assigns
   `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
 - `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert.
-- `@primaryKey` — the table's primary key. A bare marker on a single scalar
-  field, exactly one per interface: the column is `not null`, and the generated
-  reads filter on it by default. See "`@primaryKey` and `@foreignKey`" below.
+- `@primaryKey` — a column of the table's primary key. A bare marker on a scalar
+  field: the column is `not null`, and the generated reads filter on it by
+  default. One field is a single-column key; marking several makes a composite
+  key, whose column order is the declaration order. Every interface declares at
+  least one. See "`@primaryKey` and `@foreignKey`" below.
 - `@foreignKey <Entity>` — the field is the column pointing at `<Entity>`'s
   primary key. The value names the interface; the column type and the referenced
   column come from that table, not from the field's own type. See "`@primaryKey`
@@ -114,8 +116,9 @@ The key tags say what a column *is*, without deriving it from a name or a type:
 `@primaryKey` marks the table's key, and `@foreignKey <Entity>` marks a column
 that points at another table's key. Neither convention survives — a field named
 `id` is not a key unless it is tagged, and an `<Entity>Id` type is not a foreign
-key unless it is tagged. Every entity declares exactly one `@primaryKey`, and a
-missing one is a generation error rather than a fallback.
+key unless it is tagged. Every entity declares at least one `@primaryKey`, and a
+missing one is a generation error rather than a fallback. Marking several fields
+builds a composite key, whose column order is the order the fields are declared:
 
 ```ts
 /**
@@ -135,11 +138,29 @@ id: InvoiceId;
 customerId?: CustomerId;
 ```
 
+```ts
+/**
+ * @fieldName Language code
+ * @primaryKey
+ * @widget text
+ */
+languageCode: string;
+
+/**
+ * @fieldName Key
+ * @primaryKey
+ * @widget text
+ */
+key: string;
+```
+
 `@foreignKey Customer` takes the column's storage type and referenced column
 from `Customer`'s own `@primaryKey` field, so the field's declared type is
 documentation and may be an alias this model cannot resolve. Both tags sit on a
 single scalar field and are mutually exclusive, so a self-referencing key is not
-expressible; that keeps the pair unambiguous.
+expressible; that keeps the pair unambiguous. A `@foreignKey` names one column,
+so pointing at an entity whose key is composite is a diagnostic rather than a
+partial reference.
 
 ## `@relation`
 
@@ -390,10 +411,10 @@ Enforced:
   interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
-- `@primaryKey` is a bare marker on a single scalar field and may appear at most
-  once per interface; `@foreignKey` requires the interface it references and sits
-  on a single scalar field. The two are mutually exclusive. See "`@primaryKey`
-  and `@foreignKey`".
+- `@primaryKey` is a bare marker on a scalar field, and may appear on several
+  fields of one interface to form a composite key; `@foreignKey` requires the
+  interface it references and sits on a single scalar field. The two are
+  mutually exclusive. See "`@primaryKey` and `@foreignKey`".
 - `@queryfilter` is a bare marker on a scalar field; a branch field may not
   carry it, and it must not be written on the `@primaryKey` field, which is a
   filter already. See `docs/queries.md`.
@@ -421,10 +442,11 @@ Gotchas:
   expression is semantically right for its field, nor whether the SQL is
   syntactically valid. `pnpm test` executes the generated `schema.sql` in PGlite,
   which is what catches a malformed expression.
-- **The primary key is a filter without a tag.** `spec-model.ts` marks the
-  `@primaryKey` field as `queryfilter` when it parses an entity. Writing
-  `@queryfilter` on it is therefore a lint finding, not a second way to say the
-  same thing: the default has one spelling.
+- **Every primary key column is a filter without a tag.** `spec-model.ts` marks
+  each `@primaryKey` field as `queryfilter` when it parses an entity, so a
+  composite key contributes one filter per column. Writing `@queryfilter` on a
+  key field is therefore a lint finding, not a second way to say the same thing:
+  the default has one spelling.
 - **`@queryfilter` is checked structurally, not by type.** The linter rejects it
   on a branch field (a `@relation`/`@children`/`@inlined` marker), on the
   primary key, and on a value, but it does not resolve the field's type: the

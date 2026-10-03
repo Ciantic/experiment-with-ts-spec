@@ -6,3 +6,4 @@ export * from "./queryInvoiceRow.ts";
 export * from "./queryInvoiceSent.ts";
 export * from "./queryInvoiceSentRow.ts";
 export * from "./querySeller.ts";
+export * from "./queryTranslation.ts";
