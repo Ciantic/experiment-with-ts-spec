@@ -1,14 +1,4 @@
-/**
- * The hand-written half of the API: one HTTP request in, one generated call out.
- * See docs/rest-api.md and docs/transactions.md.
- *
- * The router owns parsing, validation, and status mapping; the generated
- * `routes.ts` owns which calls exist. The body codec is `devalue`, so a request
- * and a response carry real `Date` and `bigint` values and need no wire schema.
- *
- * One request may carry a tree of calls. Every call in the tree is resolved and
- * validated before any of it runs, and the tree's groups decide the boundaries.
- */
+/** The hand-written request handler: decode, check, run, and encode. See docs/rest-api.md and docs/transactions.md. */
 import { parse as decode, stringify as encode } from "devalue";
 import { attempt, batch, transaction } from "../db/group.ts";
 import type { Db } from "../db/sql-executor.ts";
@@ -16,7 +6,7 @@ import type { Db } from "../db/sql-executor.ts";
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
-/** The part of a schema the router uses. Structural, so the router couples to no Zod version. */
+/** The part of a schema the router uses, structurally, so the router couples to no Zod version. */
 export interface RouteInput {
     safeParse(
         value: unknown,
@@ -27,18 +17,11 @@ export interface RouteInput {
 export interface Route {
     method: HttpMethod;
     path: string;
-    /**
-     * Where the call carries its argument. `query` reads the `q` parameter; `body`
-     * reads the request body. The generated table decides, not the router.
-     */
+    /** Whether the call carries its argument in `q` or in the request body. */
     source: "query" | "body";
     /** Validates the decoded argument. */
     input: RouteInput;
-    /**
-     * Runs the call. It receives the request's `Db`, which can open a boundary of
-     * its own and nests with a savepoint when the request already has one. See
-     * docs/transactions.md.
-     */
+    /** Runs the call; it receives the request's `Db` and may open a boundary. See docs/transactions.md. */
     handler: (db: Db, argument: unknown) => Promise<unknown>;
 }
 
@@ -146,11 +129,7 @@ function isMethod(value: unknown): value is HttpMethod {
     return typeof value === "string" && (METHODS as string[]).includes(value);
 }
 
-/**
- * Check one node of a group body: its shape, then the route it names, then that
- * route's `input`. Runs no handler, so a whole tree is checked before any of it
- * executes.
- */
+/** Check one node of a group body: its shape, then the route it names, then that route's `input`. */
 function planNode(wire: unknown, byKey: Map<string, Route>, path: number[]): Planned {
     if (!isRecord(wire)) {
         throw new BadGroup("a group entry must be an object", path);
@@ -215,11 +194,7 @@ function planGroup(value: unknown, byKey: Map<string, Route>): PlannedGroup {
     return node;
 }
 
-/**
- * Run one checked node. The `Db` it is given carries the boundary the request is
- * already in, so a `transaction` group opens one at the root and a savepoint when
- * it is nested.
- */
+/** Run one checked node on the boundary its `Db` already carries. See docs/transactions.md. */
 async function execute(db: Db, node: Planned, path: number[]): Promise<unknown> {
     try {
         return await runNode(db, node, path);
@@ -241,8 +216,7 @@ async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> 
         return result ?? null;
     }
 
-    // A step runs on whatever `Db` its group's boundary hands it. That handoff is the
-    // whole of what the three kinds decide; `db/group.ts` owns it and is tested there.
+    // A step runs on whatever `Db` its group's boundary hands it; `db/group.ts` owns that handoff.
     const steps = node.calls.map(
         (child, index) => async (inner: Db) => await execute(inner, child, [...path, index]),
     );

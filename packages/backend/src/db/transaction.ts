@@ -1,13 +1,4 @@
-/**
- * The `Db` port over a driver: one real transaction at the root, a savepoint for
- * every nested boundary. See docs/transactions.md.
- *
- * The root uses the driver's own transaction primitive because it is the thing
- * that pins a connection and, on PGlite, holds the exclusive lock that keeps two
- * requests from interleaving their `begin`…`commit`. Nesting is savepoints issued
- * on the handle that transaction supplied, which is what lets an inner boundary
- * roll back without discarding the outer one.
- */
+/** The `Db` port over a driver: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
 import type { Db, SqlExecutor } from "./sql-executor.ts";
 
 /** The driver primitive the port is built on: one transaction, pinned to a connection. */

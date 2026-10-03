@@ -1,12 +1,4 @@
-/**
- * The hand-written half of the client's call model: a generated function builds
- * a call as data, and {@link exec} is the only thing that sends one.
- * See docs/transactions.md.
- *
- * A builder binds no client, which is what lets one be handed to `transaction`
- * or `batch`. The combinators only group calls; `exec` decides the transport and
- * the group kind decides the database boundary.
- */
+/** The hand-written half of the client's call model: builders, combinators, and `exec`. See docs/transactions.md. */
 import type { HttpClient } from "./http.ts";
 
 /** The verbs a call may name. Declared here so the client imports no backend type. */
@@ -26,11 +18,7 @@ export interface Call<R> {
     readonly [Result]?: R;
 }
 
-/**
- * Several calls in one request. `batch` groups them; `transaction` groups them
- * and makes them atomic; `attempt` groups them, makes them atomic, and reports a
- * failure instead of raising it.
- */
+/** Several calls in one request; `kind` decides the boundary. See docs/transactions.md. */
 export interface Group<R> {
     readonly kind: GroupKind;
     readonly calls: readonly Executable[];
@@ -81,11 +69,7 @@ export function transaction<const T extends readonly Executable[]>(...calls: T):
     return { kind: "transaction", calls };
 }
 
-/**
- * Group calls into one request and one boundary, and report a failure instead of
- * raising it. Nested in a `transaction`, it rolls back to its own savepoint, so
- * the rest of the outer group still runs and commits.
- */
+/** Like `transaction`, but a failure is reported rather than raised. See docs/transactions.md. */
 export function attempt<const T extends readonly Executable[]>(
     ...calls: T
 ): Group<Attempted<GroupResult<T>>> {

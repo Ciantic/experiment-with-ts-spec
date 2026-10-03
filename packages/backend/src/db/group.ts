@@ -1,13 +1,4 @@
-/**
- * The boundary semantics a group of calls has, over the `Db` port. See
- * docs/transactions.md.
- *
- * A step is one unit of work that is handed the `Db` it must run on. The three
- * functions differ in exactly two ways: whether their steps share a boundary, and
- * whether a step's failure is raised or reported. Nothing here knows about HTTP,
- * routes, or call trees, and the names are the SDK's on purpose: the same
- * vocabulary names the same boundaries on both sides.
- */
+/** The three group boundaries over the `Db` port, named as the SDK names them. See docs/transactions.md. */
 import type { Db } from "./sql-executor.ts";
 
 /** One unit of work. Whatever `Db` it is handed is the boundary it runs inside. */

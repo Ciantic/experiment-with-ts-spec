@@ -1,13 +1,4 @@
-/**
- * End-to-end smoke test: the generated client talks to a live server. See
- * docs/testing.md and docs/mockdata.md.
- *
- * The round-trip below is driven by the generated artifacts and the seed data
- * rather than by named entities, so a domain change does not rewrite this file:
- * it walks whatever `mockTables` lists and asserts each query answers with the
- * number of rows that were seeded. That one import is seed *data*, not the domain
- * model — renaming or adding a field leaves every assertion here untouched.
- */
+/** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as api from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
@@ -21,16 +12,10 @@ type Builder = (argument: unknown) => Call<unknown>;
 /** The prefixes the generator gives its builders. Narrow, so no hand-written export is probed. */
 const GENERATED = /^(?:query|create|update|delete)[A-Z]/;
 
-/**
- * The exports that are hand-written rather than generated. `createHttpClient`
- * shares the generator's `create` prefix, and probing it would call it.
- */
+/** The hand-written exports; probing `createHttpClient` would call it, as it shares the `create` prefix. */
 const HAND_WRITTEN = new Set(["createHttpClient", "exec", "transaction", "attempt", "batch", "bundle", "toWire"]);
 
-/**
- * Every generated call builder in the client barrel. Verified by shape as well as
- * by name: a builder answers a `Call`.
- */
+/** Every generated builder in the barrel, picked by name and confirmed by shape. */
 function builders(): [string, Builder][] {
     const barrel = api as unknown as Record<string, unknown>;
     return Object.entries(barrel).flatMap(([name, value]) => {
