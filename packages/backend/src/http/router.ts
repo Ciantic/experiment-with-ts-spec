@@ -10,7 +10,7 @@
  * validated before any of it runs, and the tree's groups decide the boundaries.
  */
 import { parse as decode, stringify as encode } from "devalue";
-import { atomically, sequence, tolerating } from "../db/group.ts";
+import { attempt, batch, transaction } from "../db/group.ts";
 import type { Db } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
@@ -248,14 +248,14 @@ async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> 
     );
 
     if (node.kind === "batch") {
-        return await sequence(db, steps);
+        return await batch(db, ...steps);
     }
 
     if (node.kind === "transaction") {
-        return await atomically(db, steps);
+        return await transaction(db, ...steps);
     }
 
-    const outcome = await tolerating(db, steps);
+    const outcome = await attempt(db, ...steps);
     if (outcome.ok) {
         return { ok: true, value: outcome.value };
     }

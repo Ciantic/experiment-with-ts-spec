@@ -70,29 +70,48 @@ roll back on its own while the outer boundary still commits. Two sibling
 
 The router does not decide that itself. `db/group.ts` holds the three boundary
 semantics over the port, and the router only maps a group's `kind` onto one of
-them:
+them. The names are the SDK's, so the same vocabulary names the same boundaries
+on both sides:
 
 ```ts
 export type Step = (db: Db) => Promise<unknown>;
+export type Attempted<T> =
+    | { readonly ok: true; readonly value: T }
+    | { readonly ok: false; readonly error: unknown };
 
-export function sequence(db: Db, steps: readonly Step[]): Promise<unknown[]>;
-export function atomically(db: Db, steps: readonly Step[]): Promise<unknown[]>;
-export function tolerating(db: Db, steps: readonly Step[]): Promise<Outcome>;
+export function batch<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>>;
+export function transaction<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>>;
+export function attempt<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Attempted<Results<T>>>;
 ```
 
 A step is one unit of work that is handed the `Db` it must run on, so the three
 differ in exactly two ways: whether the steps share a boundary, and whether a
-step's failure is raised or reported. `tolerating` reports the error unchanged
-rather than interpreting it, because what a failure means — its path, its HTTP
-status, whether it was even this group's to tolerate — is a router question.
+step's failure is raised or reported. Unlike a call tree, which is heterogeneous
+by construction and reaches `devalue` as `unknown[]`, a hand-written group is a
+variadic tuple, so `Results<T>` keeps each step's own result:
+
+```ts
+const [found, written] = await transaction(
+    db,
+    (tx) => queryInvoice(tx, { select: { id: true } }),
+    async (tx) => {
+        await createInvoice(tx, [invoice]);
+    },
+);
+// found: Selected<Invoice, { id: true }>[]; written: void
+```
+
+`attempt` reports the error unchanged rather than interpreting it, because what a
+failure means — its path, its HTTP status, whether it was even this group's to
+tolerate — is a router question.
 
 That split is what makes the semantics testable without a spec.
 `src/db/group.test.ts` drives the three against a real PGlite over a `widget`
 table it creates itself, so it asserts the boundary behaviour — that a failed
-`atomically` leaves nothing behind, that a nested one is a savepoint the outer
+`transaction` leaves nothing behind, that a nested one is a savepoint the outer
 transaction survives — without naming a domain type or a route. The load-bearing
 property it can assert and a mock cannot is that the steps really do receive the
-boundary handle: were `atomically` to hand its steps the outer `db`, the rows
+boundary handle: were `transaction` to hand its steps the outer `db`, the rows
 would survive the rollback and the assertion would fail.
 
 ## Who owns the boundary
@@ -186,11 +205,12 @@ call. `sendInvoice` is the case: it reads the draft, writes `invoice_sent` and
 `invoice_sent_row`, freezes the parties, and delivers.
 
 Nothing marks it as such. The implementation is hand-written, takes `Db`, and
-opens the boundary itself, which is what makes it callable outside the router
-too — a seed script or a test passes any `Db` and the same function works. No
-route is a named operation yet, because `InvoiceOperations` is still a contract
-with no implementation (`docs/invoice-sending.md`); `Route.handler` taking `Db`
-is the seam it lands on.
+opens the boundary itself — `transaction(db, …)` where it wants a unit of work,
+`attempt(db, …)` where a step may fail without taking the rest down — which is
+what makes it callable outside the router too: a seed script or a test passes any
+`Db` and the same function works. No route is a named operation yet, because
+`InvoiceOperations` is still a contract with no implementation
+(`docs/invoice-sending.md`); `Route.handler` taking `Db` is the seam it lands on.
 
 A client composes its own boundary with a group instead, which is the subject of
 the rest of this note. The distinction is who authored the sequence, not what the
@@ -417,6 +437,11 @@ client imports nothing from the backend.
   one call. Serial execution bounds it; it does not scope it.
 - **The seed has no transaction.** The mock data is written call by call
   (`docs/mockdata.md`); wrapping it is a use of `Db`, not part of this surface.
+- **The backend keeps its tuples.** A hand-written `transaction(db, writeA, writeB)`
+  answers `[void, void]`; only the SDK's all-void group collapses to `void`. The
+  positions are what a caller destructures, so `db/group.ts` keeps them and casts
+  once, at the one place the variadic spread loses the pairing of a step to its
+  result.
 - **Savepoint names are per-`Db`, not per-transaction.** `createTransactionalDb`
   counts up for the process's lifetime, so the names are unique within a boundary
   without any coordination. If the counter ever had to wrap it would reuse a
