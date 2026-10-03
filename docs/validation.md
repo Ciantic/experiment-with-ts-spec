@@ -198,8 +198,8 @@ A composite key projects every one of its columns, and requires all of them to
 address a row:
 
 ```typescript
-export const translationPrimaryKeySchema = translationSchema.pick({ languageCode: true, key: true }).strict();
-export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;
+export const translationPrimaryKeySchema = translationSchema.pick({ lang: true, key: true }).strict();
+export type TranslationPrimaryKey = Pick<Translation, "lang" | "key">;
 ```
 
 A write that only addresses a stored row names this pair rather than the whole

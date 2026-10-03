@@ -9,7 +9,7 @@ export type { TranslationInsert, TranslationPatch };
 /** Query `Translation` rows, filtered by the `@queryfilter` fields, combined with and. */
 export function queryTranslation<S extends Selection<Translation>>(
     http: HttpClient,
-    opts: { filter?: Filters<Translation, "languageCode" | "key">; limit?: number; offset?: number; select: S },
+    opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
 ): Promise<Selected<Translation, S>[]> {
     return http.query<Selected<Translation, S>[]>("GET", "/translation/query", opts);
 }
@@ -24,7 +24,7 @@ export function updateTranslation(http: HttpClient, rows: TranslationPatch[]): P
     return http.send<void>("PATCH", "/translation", rows);
 }
 
-/** Delete `Translation` rows, keyed on `languageCode`, `key`. */
-export function deleteTranslation(http: HttpClient, rows: Pick<Translation, "languageCode" | "key">[]): Promise<void> {
+/** Delete `Translation` rows, keyed on `lang`, `key`. */
+export function deleteTranslation(http: HttpClient, rows: Pick<Translation, "lang" | "key">[]): Promise<void> {
     return http.query<void>("DELETE", "/translation", rows);
 }

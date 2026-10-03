@@ -29,10 +29,10 @@ create table "seller" (
 );
 
 create table "translation" (
-    "languageCode" text not null,
+    "lang" text not null,
     "key" text not null,
     "value" text,
-    constraint "translation_pkey" primary key ("languageCode", "key")
+    constraint "translation_pkey" primary key ("lang", "key")
 );
 
 create table "invoice" (

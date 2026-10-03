@@ -9,12 +9,12 @@ export async function createTranslation(db: SqlExecutor, rows: TranslationInsert
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.languageCode, row.key, row.value];
+        const values = [row.lang, row.key, row.value];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::text" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");
     }
-    await db.query('insert into "translation" ("languageCode", "key", "value") values ' + tuples.join(", "), parameters);
+    await db.query('insert into "translation" ("lang", "key", "value") values ' + tuples.join(", "), parameters);
 }
 
 export async function updateTranslation(db: SqlExecutor, rows: TranslationPatch[]): Promise<void> {
@@ -24,12 +24,12 @@ export async function updateTranslation(db: SqlExecutor, rows: TranslationPatch[
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.languageCode, row.key, row.value ?? null];
+        const values = [row.lang, row.key, row.value ?? null];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::text" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");
     }
-    await db.query('update "translation" set "value" = coalesce(data."value", "translation"."value") from (values ' + tuples.join(", ") + ') as data("languageCode", "key", "value") where "translation"."languageCode" = data."languageCode" and "translation"."key" = data."key"', parameters);
+    await db.query('update "translation" set "value" = coalesce(data."value", "translation"."value") from (values ' + tuples.join(", ") + ') as data("lang", "key", "value") where "translation"."lang" = data."lang" and "translation"."key" = data."key"', parameters);
 }
 
 export async function deleteTranslation(db: SqlExecutor, rows: TranslationPrimaryKey[]): Promise<void> {
@@ -39,10 +39,10 @@ export async function deleteTranslation(db: SqlExecutor, rows: TranslationPrimar
     const parameters: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
-        const values = [row.languageCode, row.key];
+        const values = [row.lang, row.key];
         parameters.push(...values);
         const offset = parameters.length - values.length;
         tuples.push("(" + "$" + (offset + 1) + "::text" + ", " + "$" + (offset + 2) + "::text" + ")");
     }
-    await db.query('delete from "translation" using (values ' + tuples.join(", ") + ') as data("languageCode", "key") where "translation"."languageCode" = data."languageCode" and "translation"."key" = data."key"', parameters);
+    await db.query('delete from "translation" using (values ' + tuples.join(", ") + ') as data("lang", "key") where "translation"."lang" = data."lang" and "translation"."key" = data."key"', parameters);
 }

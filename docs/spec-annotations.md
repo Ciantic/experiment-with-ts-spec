@@ -144,7 +144,7 @@ customerId?: CustomerId;
  * @primaryKey
  * @widget text
  */
-languageCode: string;
+lang: string;
 
 /**
  * @fieldName Key

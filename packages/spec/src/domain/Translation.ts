@@ -12,7 +12,7 @@ export interface Translation {
      * @primaryKey
      * @widget text
      */
-    languageCode: string;
+    lang: string;
 
     /**
      * The key identifying the translation entry.

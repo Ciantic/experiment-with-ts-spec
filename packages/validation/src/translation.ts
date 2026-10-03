@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Translation } from "spec/domain/Translation.ts";
 
 export const translationSchema = z.object({
-    languageCode: z.string(),
+    lang: z.string(),
     key: z.string(),
     value: z.string().optional(),
 });
@@ -12,7 +12,7 @@ export const translationSchema = z.object({
 export const translationPatchSchema = translationSchema
     .partial()
     .required({
-        languageCode: true,
+        lang: true,
         key: true,
     })
     .strict();
@@ -22,13 +22,13 @@ export const translationInsertSchema = translationSchema
     .strict();
 
 /** A partial update: every field is optional except the key. */
-export type TranslationPatch = Partial<Translation> & Required<Pick<Translation, "languageCode" | "key">>;
+export type TranslationPatch = Partial<Translation> & Required<Pick<Translation, "lang" | "key">>;
 
 /** The fields a create writes: only the columns the database does not own. */
 export type TranslationInsert = Translation;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */
-export const translationPrimaryKeySchema = translationSchema.pick({ languageCode: true, key: true }).strict();
+export const translationPrimaryKeySchema = translationSchema.pick({ lang: true, key: true }).strict();
 
 /** The key of one stored row: what a delete or other by-key write addresses. */
-export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;
+export type TranslationPrimaryKey = Pick<Translation, "lang" | "key">;

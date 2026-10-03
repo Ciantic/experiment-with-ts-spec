@@ -4,7 +4,7 @@ import { z } from "zod";
 /** A `select` over Translation: `true` for a scalar, a nested select for a branch. */
 export const queryTranslationSelectSchema = z.lazy(() =>
     z.strictObject({
-        languageCode: z.literal(true).optional(),
+        lang: z.literal(true).optional(),
         key: z.literal(true).optional(),
         value: z.literal(true).optional(),
     }),
@@ -12,7 +12,7 @@ export const queryTranslationSelectSchema = z.lazy(() =>
 
 export const queryTranslationSchema = z.strictObject({
     filter: z.strictObject({
-        languageCode: z.array(z.string()).optional(),
+        lang: z.array(z.string()).optional(),
         key: z.array(z.string()).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),

@@ -147,7 +147,7 @@ A composite key names every one of its columns, and the delete's `where` matches
 on all of them, so a partial key cannot address a row:
 
 ```ts
-export type TranslationPrimaryKey = Pick<Translation, "languageCode" | "key">;
+export type TranslationPrimaryKey = Pick<Translation, "lang" | "key">;
 ```
 
 The wire schema is the same field set — the delete route validates

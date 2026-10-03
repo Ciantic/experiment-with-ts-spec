@@ -183,9 +183,9 @@ export const queryModel: QueryModel = {
         },
         "translation": {
             "name": "translation",
-            "key": "languageCode",
+            "key": "lang",
             "fields": {
-                "languageCode": "languageCode",
+                "lang": "lang",
                 "key": "key",
                 "value": "value"
             },
