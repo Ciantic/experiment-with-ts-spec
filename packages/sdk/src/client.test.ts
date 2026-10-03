@@ -1,7 +1,7 @@
 /** Unit tests for the hand-written call model, over a stub `fetch`. See docs/transactions.md. */
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import { batch, bundle, attempt, call, exec, GROUP_PATH, transaction, type Attempted } from "./client.ts";
+import { batch, bundle, attempt, call, exec, GROUP_PATH, transaction, type Attempted, type Call } from "./client.ts";
 import { createHttpClient, HttpError, type HttpClient } from "./http.ts";
 
 interface Recorded {
@@ -28,6 +28,26 @@ function client(body: string, status = 200) {
 /** The body a recorded request sent. */
 function sentBody(recorded: Recorded): unknown {
     return parse(String(recorded.init?.body));
+}
+
+/** A stand-in for a spec entity, so the type assertions need no domain type. */
+interface Widget {
+    id: string;
+    name: string;
+}
+
+/** What a selection may name. */
+type SelectionOf<E> = { [K in keyof E]?: boolean };
+
+/** What a selection produces, mirroring the generated `Selected<E, S>`. */
+type SelectedOf<E, S> = Pick<E, Extract<keyof S, keyof E>>;
+
+/**
+ * A stand-in for a generated builder. The real ones are generic in what they
+ * select, and that is the shape the group result has to preserve.
+ */
+function selectWidget<S extends SelectionOf<Widget>>(opts: { select: S }): Call<SelectedOf<Widget, S>[]> {
+    return call<SelectedOf<Widget, S>[]>("GET", "/widget/query", opts);
 }
 
 /** A value with both of the types a JSON encoding would lose. */
@@ -263,7 +283,14 @@ describe("the result type", () => {
             attempt(row, write),
         );
 
-        void [single, allVoid, mixed, nested, tolerated, toleratedRows];
+        // A generated builder is generic in what it selects, so its result must still
+        // narrow by position once it is inside a group.
+        const selected: Promise<[void, Pick<Widget, "id">[]]> = exec(
+            http,
+            transaction(write, selectWidget({ select: { id: true } })),
+        );
+
+        void [single, allVoid, mixed, nested, tolerated, toleratedRows, selected];
     }
 
     it("keeps each call's result, positionally, and collapses an all-void group", () => {
