@@ -1,22 +1,29 @@
 # Repositories
 
-`packages/backend/scripts/generate-repositories.ts` writes one CRUD module per
-domain entity into `packages/backend/src/db/repositories/`.
+`packages/backend/scripts/generate-repositories.ts` writes one module per
+operation into `packages/backend/src/db/repositories/`, named after the function
+it exports: `createInvoice.ts`, `updateInvoice.ts`, `deleteInvoice.ts`.
 
-- `pnpm generate:repositories` — writes the repository modules and their barrel.
+- `pnpm generate:repositories` — writes the operation modules and their barrel.
 - `pnpm generate:repositories --out <dir>` — writes elsewhere. A missing directory is created.
 
 The output is committed. Regenerate rather than editing it by hand.
 
 ## What a repository is here
 
-Each module exports three functions for its entity:
+Each entity gets three modules, one per operation:
 
 ```ts
+// createCustomer.ts
 createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void>
+// updateCustomer.ts
 updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
+// deleteCustomer.ts
 deleteCustomer(db: SqlExecutor, rows: CustomerPrimaryKey[]): Promise<void>
 ```
+
+The barrel `index.ts` re-exports every operation module, so a caller imports the
+function it wants from one path.
 
 `create` takes an **insert** — the fields a create writes — and `update` takes a
 **patch**, so a caller changes the fields it has without having to read and
