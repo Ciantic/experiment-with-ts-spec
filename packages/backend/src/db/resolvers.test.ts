@@ -2,6 +2,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { createPglite } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
+import { createTransactionalDb } from "./sql-executor.ts";
 import { createResolver, type QueryModel } from "./resolvers.ts";
 
 /** Fixture entities, so the tests do not read the real spec. */
@@ -78,6 +79,7 @@ function counting(inner: SqlExecutor): SqlExecutor & { count: () => number } {
             count += 1;
             return inner.query(sql, parameters);
         },
+        transaction: (run) => inner.transaction(run),
     };
 }
 
@@ -117,7 +119,7 @@ beforeAll(async () => {
         insert into widget (id, seq)
             select 'w' || lpad(n::text, 5, '0'), n from generate_series(1, 1500) as n;
     `);
-    db = pglite;
+    db = createTransactionalDb(pglite);
 });
 
 describe("resolveMany", () => {

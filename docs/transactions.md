@@ -20,42 +20,56 @@ all-or-nothing.
 
 ## The port
 
-`SqlExecutor` stays the whole surface a generated module sees; a repository
-cannot open a transaction, because the only way to get one is to be handed an
-executor that is already inside it. A second port adds the capability for the
-things that own a unit of work — the router, the seed, and an operation
-implementation:
+`SqlExecutor` is the whole database surface: a statement, and the unit of work a
+caller can run statements in.
 
 ```ts
 export interface SqlExecutor {
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
-export interface Db extends SqlExecutor {
-    transaction<T>(run: (tx: Db) => Promise<T>): Promise<T>;
+/** A driver transaction handle: the query surface only, so nesting stays the port's job. */
+type DriverTransaction = Pick<SqlExecutor, "query">;
+
+/** One transaction pinned to a connection. */
+export interface DriverConnection {
+    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    transaction<T>(run: (tx: DriverTransaction) => Promise<T>): Promise<T>;
 }
 ```
 
-`Db` is a supertype of `SqlExecutor`, so a single call passes the `Db` straight
-through and only a call that opens a unit of work needs the extra method. The
-generated repositories and queries do not change.
+`DriverConnection` is structural rather than a named driver, so PGlite and a `pg`
+wrapper both satisfy it. A driver's callback receives `DriverTransaction` and not
+a `SqlExecutor`, because a driver handle cannot open a boundary of its own:
+`createTransactionalDb` is what turns one into the other, which is what lets
+`SqlExecutor.transaction` nest as a savepoint.
 
-The split is not cosmetic. Widening `SqlExecutor` would put `transaction` on the
-interface the generated modules are written against, so a repository could open
-its own boundary, and the structural test that PGlite satisfies the port would
-depend on the transaction method too.
+The generated repositories and queries take `SqlExecutor`, so a caller passes the
+handle it already has. A repository does not open a boundary of its own: the unit
+of work belongs to the caller, which is what keeps a request's atomicity in one
+place (`docs/repositories.md`).
 
-`createTransactionalDb` (`src/db/transaction.ts`) is the one implementation, over
+`createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation, over
 a *connection* rather than a driver:
 
-- **A connection** is whatever the driver gives that pins one session and can open
-  one transaction. `TransactionalConnection` is that, and PGlite satisfies it
-  directly: it runs everything on one connection, and its own `transaction(fn)` is
-  what holds the exclusive lock that keeps two requests from interleaving.
-- **`pg`** needs a small wrapper to reach that shape, because a pool hands each
-  `query` an arbitrary connection and `begin` on one does not scope a later
-  statement that lands on another. The wrapper checks out a `PoolClient`, and the
-  client is what pins the transaction.
+- **A connection** is whatever the driver gives that pins one session and can
+  open one transaction. `DriverConnection` is that, and PGlite satisfies it
+  directly: it runs everything on one connection, and its own `transaction(fn)`
+  is what holds the exclusive lock that keeps two requests from interleaving.
+- **`pg`** needs a wrapper to reach that shape, because a pool hands each `query`
+  an arbitrary connection and `begin` on one does not scope a later statement that
+  lands on another. `createPgConnection` (`src/postgres/pg-setup.ts`) checks out a
+  `PoolClient` with `begin`/`commit`/`rollback` and releases it, and the client is
+  what pins the transaction.
+
+Neither driver is named by the type, but `pg` is named by the wrapper's signature:
+`createPgConnection` takes a `pg` `Pool`, so `pg` is a development dependency and
+is never imported at runtime.
+
+A driver's transaction callback receives only the query surface, because nesting
+is the port's job: `createTransactionalDb` wraps that handle in a `SqlExecutor`
+whose `transaction` opens a savepoint.
 
 The port uses the driver's transaction primitive for the root boundary and issues
 savepoints inside it, rather than writing `begin`/`commit` by hand. Hand-issued
@@ -63,7 +77,7 @@ savepoints inside it, rather than writing `begin`/`commit` by hand. Hand-issued
 transaction, which on PGlite is the only thing serialising concurrent requests.
 
 The router opens one boundary per `transaction` group it meets while walking a
-request, and hands every handler the `Db` of the boundary it is in. A nested
+request, and hands every handler the `SqlExecutor` of the boundary it is in. A nested
 group does not join the outer one — it opens a savepoint inside it, so it can
 roll back on its own while the outer boundary still commits. Two sibling
 `transaction` groups are two boundaries, atomic separately, inside one request.
@@ -74,17 +88,17 @@ them. The names are the SDK's, so the same vocabulary names the same boundaries
 on both sides:
 
 ```ts
-export type Step = (db: Db) => Promise<unknown>;
+export type Step = (db: SqlExecutor) => Promise<unknown>;
 export type Attempted<T> =
     | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly error: unknown };
 
-export function batch<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>>;
-export function transaction<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>>;
-export function attempt<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Attempted<Results<T>>>;
+export function batch<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
+export function transaction<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
+export function attempt<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Attempted<Results<T>>>;
 ```
 
-A step is one unit of work that is handed the `Db` it must run on, so the three
+A step is one unit of work that is handed the `SqlExecutor` it must run on, so the three
 differ in exactly two ways: whether the steps share a boundary, and whether a
 step's failure is raised or reported. Unlike a call tree, which is heterogeneous
 by construction and reaches `devalue` as `unknown[]`, a hand-written group is a
@@ -116,7 +130,7 @@ would survive the rollback and the assertion would fail.
 
 ## Who owns the boundary
 
-A handler owns its boundary. It receives a `Db` scoped to the request, and it
+A handler owns its boundary. It receives a `SqlExecutor` scoped to the request, and it
 opens a unit of work when it needs one:
 
 ```ts
@@ -125,12 +139,12 @@ export interface Route {
     path: string;
     source: "query" | "body";
     input: RouteInput;
-    handler: (db: Db, argument: unknown) => Promise<unknown>;
+    handler: (db: SqlExecutor, argument: unknown) => Promise<unknown>;
 }
 ```
 
 ```ts
-export function sendInvoice(db: Db, opts: SendInvoiceOptions): Promise<void> {
+export function sendInvoice(db: SqlExecutor, opts: SendInvoiceOptions): Promise<void> {
     return db.transaction(async (tx) => { … });
 }
 ```
@@ -142,19 +156,14 @@ to the scope, not the route.
 
 ### A nested boundary is a savepoint
 
-Nesting is real: the handle a `transaction` callback receives is a `Db` as well,
-and its `transaction` opens a savepoint rather than a second transaction.
+Nesting is real: the handle a `transaction` callback receives is a `SqlExecutor`
+as well, and its `transaction` opens a savepoint rather than a second
+transaction.
 
 ```ts
-export interface Db extends SqlExecutor {
-    transaction<T>(run: (tx: Db) => Promise<T>): Promise<T>;
-}
-```
-
-```ts
-export function createTransactionalDb(connection: TransactionalConnection): Db {
+export function createTransactionalDb(connection: DriverConnection): SqlExecutor {
     let savepoints = 0;
-    async function savepoint<T>(tx: SqlExecutor, run: (tx: Db) => Promise<T>): Promise<T> {
+    async function savepoint<T>(tx: DriverTransaction, run: (tx: SqlExecutor) => Promise<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
         await tx.query(`savepoint ${name}`);
         try {
@@ -204,13 +213,13 @@ A boundary is worth asking for where one request is more than one repository
 call. `sendInvoice` is the case: it reads the draft, writes `invoice_sent` and
 `invoice_sent_row`, freezes the parties, and delivers.
 
-Nothing marks it as such. The implementation is hand-written, takes `Db`, and
+Nothing marks it as such. The implementation is hand-written, takes `SqlExecutor`, and
 opens the boundary itself — `transaction(db, …)` where it wants a unit of work,
 `attempt(db, …)` where a step may fail without taking the rest down — which is
 what makes it callable outside the router too: a seed script or a test passes any
-`Db` and the same function works. No route is a named operation yet, because
+`SqlExecutor` and the same function works. No route is a named operation yet, because
 `InvoiceOperations` is still a contract with no implementation
-(`docs/invoice-sending.md`); `Route.handler` taking `Db` is the seam it lands on.
+(`docs/invoice-sending.md`); `Route.handler` taking `SqlExecutor` is the seam it lands on.
 
 A client composes its own boundary with a group instead, which is the subject of
 the rest of this note. The distinction is who authored the sequence, not what the
@@ -436,13 +445,13 @@ client imports nothing from the backend.
   route, so whatever a single unauthenticated request can do, a group can do in
   one call. Serial execution bounds it; it does not scope it.
 - **The seed has no transaction.** The mock data is written call by call
-  (`docs/mockdata.md`); wrapping it is a use of `Db`, not part of this surface.
+  (`docs/mockdata.md`); wrapping it is a use of `SqlExecutor`, not part of this surface.
 - **The backend keeps its tuples.** A hand-written `transaction(db, writeA, writeB)`
   answers `[void, void]`; only the SDK's all-void group collapses to `void`. The
   positions are what a caller destructures, so `db/group.ts` keeps them and casts
   once, at the one place the variadic spread loses the pairing of a step to its
   result.
-- **Savepoint names are per-`Db`, not per-transaction.** `createTransactionalDb`
+- **Savepoint names are per-`SqlExecutor`, not per-transaction.** `createTransactionalDb`
   counts up for the process's lifetime, so the names are unique within a boundary
   without any coordination. If the counter ever had to wrap it would reuse a
   name inside a live transaction, which is why it does not.

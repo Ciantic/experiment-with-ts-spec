@@ -1,7 +1,7 @@
 /** The hand-written request handler: decode, check, run, and encode. See docs/rest-api.md and docs/transactions.md. */
 import { parse as decode, stringify as encode } from "devalue";
 import { attempt, batch, transaction } from "../db/group.ts";
-import type { Db } from "../db/sql-executor.ts";
+import type { SqlExecutor } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -21,8 +21,8 @@ export interface Route {
     source: "query" | "body";
     /** Validates the decoded argument. */
     input: RouteInput;
-    /** Runs the call; it receives the request's `Db` and may open a boundary. See docs/transactions.md. */
-    handler: (db: Db, argument: unknown) => Promise<unknown>;
+    /** Runs the call; it receives the request's `SqlExecutor` and may open a boundary. See docs/transactions.md. */
+    handler: (db: SqlExecutor, argument: unknown) => Promise<unknown>;
 }
 
 /** One request, with the body already read into a string. */
@@ -194,8 +194,8 @@ function planGroup(value: unknown, byKey: Map<string, Route>): PlannedGroup {
     return node;
 }
 
-/** Run one checked node on the boundary its `Db` already carries. See docs/transactions.md. */
-async function execute(db: Db, node: Planned, path: number[]): Promise<unknown> {
+/** Run one checked node on the boundary its `SqlExecutor` already carries. See docs/transactions.md. */
+async function execute(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
     try {
         return await runNode(db, node, path);
     } catch (thrown) {
@@ -210,15 +210,15 @@ function within(path: number[], ancestor: number[]): boolean {
 }
 
 /** The body of {@link execute}, without the path bookkeeping. */
-async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> {
+async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
     if (node.kind === "call") {
         const result = await node.route.handler(db, node.argument);
         return result ?? null;
     }
 
-    // A step runs on whatever `Db` its group's boundary hands it; `db/group.ts` owns that handoff.
+    // A step runs on whatever `SqlExecutor` its group's boundary hands it; `db/group.ts` owns that handoff.
     const steps = node.calls.map(
-        (child, index) => async (inner: Db) => await execute(inner, child, [...path, index]),
+        (child, index) => async (inner: SqlExecutor) => await execute(inner, child, [...path, index]),
     );
 
     if (node.kind === "batch") {
@@ -241,7 +241,7 @@ async function runNode(db: Db, node: Planned, path: number[]): Promise<unknown> 
 }
 
 /** A router over a route table, reusing one `db` for every call. */
-export function createRouter(db: Db, routes: Route[]) {
+export function createRouter(db: SqlExecutor, routes: Route[]) {
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
 
     /** Decode, check, run, and encode a tree of calls. */

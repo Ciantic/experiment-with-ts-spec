@@ -1,11 +1,11 @@
-/** Checks that the driver satisfies its port, and that the port nests with savepoints. */
+/** Checks that the port nests with savepoints, over a real driver. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
 import { createPglite } from "../postgres/pglite-setup.ts";
-import type { Db, SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb, type TransactionalConnection } from "./transaction.ts";
+import type { SqlExecutor } from "./sql-executor.ts";
+import { createTransactionalDb } from "./sql-executor.ts";
 
-/** A fresh database with one table, and the `Db` port over it. */
-async function fixture(): Promise<{ db: Db; close: () => Promise<void> }> {
+/** A fresh database with one table, and the `SqlExecutor` port over it. */
+async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
     const driver = createPglite();
     await driver.query("create table widget (id text primary key)");
     return { db: createTransactionalDb(driver), close: () => driver.close() };
@@ -16,27 +16,6 @@ async function ids(db: SqlExecutor): Promise<unknown[]> {
     const result = (await db.query("select id from widget order by id")) as { rows: { id: string }[] };
     return result.rows.map((row) => row.id);
 }
-
-describe("SqlExecutor", () => {
-    it("is satisfied by a PGlite instance", async () => {
-        const executor: SqlExecutor = createPglite();
-
-        await expect(executor.query("select 1 as value")).resolves.toBeDefined();
-    });
-});
-
-describe("TransactionalConnection", () => {
-    it("is satisfied by a PGlite instance, which is what the port is built on", async () => {
-        const connection: TransactionalConnection = createPglite();
-
-        const value = await connection.transaction(async (tx) => {
-            await tx.query("select 1 as value");
-            return "done";
-        });
-
-        expect(value).toBe("done");
-    });
-});
 
 describe("createTransactionalDb", () => {
     it("commits a transaction", async () => {

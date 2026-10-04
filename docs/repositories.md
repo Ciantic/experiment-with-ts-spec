@@ -31,10 +31,10 @@ a mapping of the spec. Reads are generated separately from the entities in
 `packages/backend/src/db/queries/`; see `docs/queries.md`.
 
 `SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
-`query(sql, parameters?)`. Both PGlite and `pg` satisfy it, so the generated
-modules never import a driver, and `pg` stays an optional dependency. A test
-asserts that PGlite actually satisfies the interface, so the structural type
-cannot drift away from the driver.
+`query(sql, parameters?)` and `transaction(run)`. The generated modules never
+import a driver, so `pg` stays an optional dependency. A driver reaches the port
+through `DriverConnection` (`src/db/sql-executor.ts`); a test asserts PGlite
+satisfies it, so the structural type cannot drift away from the driver.
 
 ## Why arrays
 
@@ -225,8 +225,8 @@ patch column sets separately; see `docs/versioning.md`.
 - **`delete` keys on the primary key only.** `deleteCustomer` takes
   `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
 - **No transaction wrapping.** A multi-row statement is atomic on its own, but
-  anything spanning more than one call needs a boundary the caller opens: the
-  repositories take `SqlExecutor`, and `Db` adds `transaction`
+  anything spanning more than one call needs a boundary the caller opens:
+  `SqlExecutor` carries `transaction`, and a repository still does not call it
   (`docs/transactions.md`).
 
 ## Deliberately not implemented
@@ -237,8 +237,9 @@ patch column sets separately; see `docs/versioning.md`.
   exactly this object" variant, and no insert-or-update.
 - **Cascade delete** for `@children`. A child table's foreign key has no
   `ON DELETE`, so a parent with children cannot be deleted.
-- **A unit of work inside a repository.** No function opens a boundary: they take
-  `SqlExecutor`, and a caller that needs one takes `Db` and hands the call a
-  transactional executor (`docs/transactions.md`).
+- **A unit of work inside a repository.** No function opens a boundary: a
+  repository runs its statement on the executor it is handed, and a caller that
+  needs more than one call to be atomic opens the boundary itself
+  (`docs/transactions.md`).
 - **A drift test.** Like `schema.sql`, staleness is caught by running
   `pnpm generate:repositories`, not by a test.

@@ -1,4 +1,6 @@
-/** Result type mapping for the `pg` driver, mirroring src/postgres/pglite-setup.ts. */
+/** `pg` driver setup: result type mapping and the connection port. Mirrors src/postgres/pglite-setup.ts. */
+import type { Pool } from "pg";
+import type { DriverConnection } from "../db/sql-executor.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -78,6 +80,27 @@ export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
             }
 
             return pg.types.getTypeParser(oid, format);
+        },
+    };
+}
+
+/** A `pg` pool as a `DriverConnection`: `transaction` checks out one client, which pins the boundary. */
+export function createPgConnection(pool: Pool): DriverConnection {
+    return {
+        query: async (sql, parameters) => await pool.query(sql, parameters),
+        transaction: async (run) => {
+            const client = await pool.connect();
+            try {
+                await client.query("begin");
+                const value = await run(client);
+                await client.query("commit");
+                return value;
+            } catch (thrown) {
+                await client.query("rollback");
+                throw thrown;
+            } finally {
+                client.release();
+            }
         },
     };
 }

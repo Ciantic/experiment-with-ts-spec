@@ -7,8 +7,7 @@
 import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import type { Db } from "./db/sql-executor.ts";
-import { createTransactionalDb } from "./db/transaction.ts";
+import { createTransactionalDb, type SqlExecutor } from "./db/sql-executor.ts";
 import { createApiServer } from "./http/server.ts";
 import { seedMockData } from "./mock/seed.ts";
 import { createPglite } from "./postgres/pglite-setup.ts";
@@ -20,7 +19,7 @@ const SCHEMA_URL = new URL("./postgres/schema.sql", import.meta.url);
 const DEFAULT_PORT = 3000;
 
 /** The database a server runs on: the port, plus the lifecycle its owner closes. */
-export interface ServerDatabase extends Db {
+export interface ServerDatabase extends SqlExecutor {
     close(): Promise<void>;
 }
 

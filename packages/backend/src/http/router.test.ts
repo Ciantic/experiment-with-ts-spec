@@ -1,7 +1,7 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Db, SqlExecutor } from "../db/sql-executor.ts";
+import type { SqlExecutor } from "../db/sql-executor.ts";
 import { createRouter, GROUP_PATH, type Route, type RouteInput } from "./router.ts";
 
 /** A schema stand-in that accepts any argument; the router test is not about Zod. */
@@ -15,14 +15,14 @@ const rejects: RouteInput = {
 };
 
 /**
- * A `Db` over no database, recording the boundary each group opens and the SQL
+ * A `SqlExecutor` over no database, recording the boundary each group opens and the SQL
  * each handler runs. It nests the way the real port does, one level deeper per
  * boundary, so a test can tell a top-level transaction from a savepoint.
  */
 function createDb() {
     const boundaries: string[] = [];
     const statements: string[] = [];
-    const handle = (depth: number): Db => ({
+    const handle = (depth: number): SqlExecutor => ({
         query: async (sql) => {
             statements.push(sql);
             return { rows: [] };
@@ -36,7 +36,7 @@ function createDb() {
 }
 
 let fake: ReturnType<typeof createDb>;
-let db: Db;
+let db: SqlExecutor;
 
 beforeEach(() => {
     fake = createDb();

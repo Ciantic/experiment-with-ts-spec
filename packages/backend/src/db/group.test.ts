@@ -2,18 +2,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPglite } from "../postgres/pglite-setup.ts";
 import { attempt, batch, transaction, type Attempted, type Step } from "./group.ts";
-import type { Db } from "./sql-executor.ts";
-import { createTransactionalDb } from "./transaction.ts";
+import type { SqlExecutor } from "./sql-executor.ts";
+import { createTransactionalDb } from "./sql-executor.ts";
 
-/** A fresh database with one table, and the `Db` port over it. */
-async function fixture(): Promise<{ db: Db; close: () => Promise<void> }> {
+/** A fresh database with one table, and the `SqlExecutor` port over it. */
+async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
     const driver = createPglite();
     await driver.query("create table widget (id text primary key)");
     return { db: createTransactionalDb(driver), close: () => driver.close() };
 }
 
 /** The ids stored, in order. */
-async function ids(db: Db): Promise<string[]> {
+async function ids(db: SqlExecutor): Promise<string[]> {
     const result = (await db.query("select id from widget order by id")) as { rows: { id: string }[] };
     return result.rows.map((row) => row.id);
 }
@@ -66,7 +66,7 @@ function entry({ sql, parameters }: Logged): string | undefined {
 }
 
 /** Run `run` against a fresh database while capturing PGlite's own log; answer its trace of boundaries and inserts. */
-async function boundaryTrace(run: (db: Db) => Promise<void>): Promise<string[]> {
+async function boundaryTrace(run: (db: SqlExecutor) => Promise<void>): Promise<string[]> {
     const calls: unknown[][] = [];
     const spies = [
         vi.spyOn(console, "log"),
@@ -216,11 +216,11 @@ describe("attempt", () => {
 describe("the typed results", () => {
     it("keeps each step's result type, whichever kind groups it", async () => {
         const { db, close } = await fixture();
-        const write = (id: string) => async (inner: Db) => {
+        const write = (id: string) => async (inner: SqlExecutor) => {
             await inner.query("insert into widget (id) values ($1)", [id]);
             return id;
         };
-        const count = async (inner: Db) => (await ids(inner)).length;
+        const count = async (inner: SqlExecutor) => (await ids(inner)).length;
 
         // `tsc` is the assertion here: `unknown[]` is not assignable to either tuple.
         const grouped: [string, number] = await transaction(db, write("a"), count);

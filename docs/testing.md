@@ -38,11 +38,18 @@ values, all of which are domain decisions rather than code behaviour.
   domain. A second group transpiles the generated module, builds a matching
   `create table` from the fixture's column metadata, and runs create/update/delete
   against PGlite. It asserts the generated SQL *executes*, not what the data means.
-- `packages/backend/src/db/sql-executor.test.ts` — asserts that PGlite satisfies
-  the `SqlExecutor` interface the generated repositories accept, and the `Db`
-  port the router takes. The second is what lets a group open a real
-  transaction, so it asserts a commit, a rollback, and that a nested boundary is
-  a savepoint the outer transaction survives.
+- `packages/backend/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
+  over a real PGlite, so a driver's boundary semantics are observable: a commit,
+  a rollback, and that a nested boundary is a savepoint the outer transaction
+  survives.
+- `packages/backend/src/postgres/pglite-setup.test.ts` — one check: PGlite
+  satisfies `DriverConnection`, the driver port the boundary is built on.
+- `packages/backend/src/postgres/pg-setup.test.ts` — the same fit for `pg`, written
+  over the real driver types, plus the statement bracketing of
+  `createPgConnection`. A pool opens no boundary of its own, so the wrapper is what
+  reaches the port; a `@ts-expect-error` pins that both a bare `Pool` and a
+  checked-out `PoolClient` fall short. Only the wrapper's own statements are
+  asserted, since no Postgres server is in the loop.
 - `packages/backend/src/db/group.test.ts` — drives `batch`, `transaction`, and
   `attempt` against a real PGlite over a `widget` table it creates itself. It
   asserts boundary behaviour — a failed `transaction` leaves nothing behind, a

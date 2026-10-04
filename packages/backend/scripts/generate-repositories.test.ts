@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ts } from "ts-morph";
 import { createPglite } from "../src/postgres/pglite-setup.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
+import { createTransactionalDb } from "../src/db/sql-executor.ts";
 import { generateIndex, generateRepositories, generateRepository } from "./generate-repositories.ts";
 import type { Column, Table } from "./postgres-model.ts";
 
@@ -370,23 +371,25 @@ const OWNER_ID = "00000000-0000-0000-0000-0000000000aa";
 const WIDGET_ID = "00000000-0000-0000-0000-0000000000bb";
 
 describe("generated repositories against PGlite", () => {
-    let db: ReturnType<typeof createPglite>;
+    let driver: ReturnType<typeof createPglite>;
+    let db: SqlExecutor;
     let owners: GeneratedRepository;
     let widgets: GeneratedRepository;
     let translations: GeneratedRepository;
 
     beforeAll(async () => {
-        db = createPglite();
-        await db.exec(createTableSql(owner));
-        await db.exec(createTableSql(widget));
-        await db.exec(createTableSql(translation));
+        driver = createPglite();
+        db = createTransactionalDb(driver);
+        await driver.exec(createTableSql(owner));
+        await driver.exec(createTableSql(widget));
+        await driver.exec(createTableSql(translation));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);
         translations = loadRepository(translation);
     });
 
     afterAll(async () => {
-        await db.close();
+        await driver.close();
     });
 
     beforeEach(async () => {
@@ -398,7 +401,7 @@ describe("generated repositories against PGlite", () => {
     it("inserts rows through the generated create function", async () => {
         await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: { id: OWNER_ID } }]);
 
-        const { rows } = await db.query<{ id: string; name: string; note: string | null; ownerId: string | null }>(
+        const { rows } = await driver.query<{ id: string; name: string; note: string | null; ownerId: string | null }>(
             'select "id", "name", "note", "ownerId" from "widget"',
         );
 
@@ -409,7 +412,7 @@ describe("generated repositories against PGlite", () => {
         await owners.create(db, [{ id: OWNER_ID, name: "owner" }]);
         await widgets.create(db, [{ id: WIDGET_ID, name: "child", note: null, owner: { id: OWNER_ID } }]);
 
-        const { rows } = await db.query<{ ownerId: string | null }>('select "ownerId" from "widget"');
+        const { rows } = await driver.query<{ ownerId: string | null }>('select "ownerId" from "widget"');
 
         expect(rows).toEqual([{ ownerId: OWNER_ID }]);
     });
@@ -419,7 +422,7 @@ describe("generated repositories against PGlite", () => {
 
         await widgets.update(db, [{ id: WIDGET_ID, name: "after", version: 0n }]);
 
-        const { rows } = await db.query<{ name: string; note: string | null; version: bigint }>(
+        const { rows } = await driver.query<{ name: string; note: string | null; version: bigint }>(
             'select "name", "note", "version" from "widget"',
         );
 
@@ -431,7 +434,7 @@ describe("generated repositories against PGlite", () => {
 
         await widgets.delete(db, [{ id: WIDGET_ID }]);
 
-        const { rows } = await db.query('select "id" from "widget"');
+        const { rows } = await driver.query('select "id" from "widget"');
 
         expect(rows).toEqual([]);
     });
@@ -448,7 +451,7 @@ describe("generated repositories against PGlite", () => {
 
         await translations.update(db, [{ languageCode: "fr", key: "greeting", value: "bonjour" }]);
 
-        const { rows } = await db.query<{ languageCode: string; key: string; value: string }>(
+        const { rows } = await driver.query<{ languageCode: string; key: string; value: string }>(
             'select "languageCode", "key", "value" from "translation" order by "languageCode"',
         );
 
@@ -464,7 +467,7 @@ describe("generated repositories against PGlite", () => {
 
         await translations.delete(db, [{ languageCode: "en", key: "farewell" }]);
 
-        const { rows } = await db.query<{ key: string }>('select "key" from "translation"');
+        const { rows } = await driver.query<{ key: string }>('select "key" from "translation"');
 
         expect(rows).toEqual([{ key: "greeting" }]);
     });

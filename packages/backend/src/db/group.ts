@@ -1,8 +1,8 @@
-/** The three group boundaries over the `Db` port, named as the SDK names them. See docs/transactions.md. */
-import type { Db } from "./sql-executor.ts";
+/** The three group boundaries over the `SqlExecutor` port, named as the SDK names them. See docs/transactions.md. */
+import type { SqlExecutor } from "./sql-executor.ts";
 
-/** One unit of work. Whatever `Db` it is handed is the boundary it runs inside. */
-export type Step = (db: Db) => Promise<unknown>;
+/** One unit of work. Whatever `SqlExecutor` it is handed is the boundary it runs inside. */
+export type Step = (db: SqlExecutor) => Promise<unknown>;
 
 /** The results of `T`, in order. */
 type Results<T extends readonly Step[]> = { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
@@ -13,7 +13,7 @@ export type Attempted<T> =
     | { readonly ok: false; readonly error: unknown };
 
 /** Run every step on `db`, in order. */
-async function run(db: Db, steps: readonly Step[]): Promise<unknown[]> {
+async function run(db: SqlExecutor, steps: readonly Step[]): Promise<unknown[]> {
     const results: unknown[] = [];
     for (const step of steps) {
         results.push(await step(db));
@@ -22,19 +22,19 @@ async function run(db: Db, steps: readonly Step[]): Promise<unknown[]> {
 }
 
 /** Run every step on `db` itself, so no step shares a boundary with another. */
-export async function batch<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>> {
+export async function batch<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>> {
     // Index `i` is step `i`; only the variadic spread loses that from the types.
     return (await run(db, steps)) as Results<T>;
 }
 
 /** Run every step on one boundary, so a failure discards all of them. */
-export async function transaction<const T extends readonly Step[]>(db: Db, ...steps: T): Promise<Results<T>> {
+export async function transaction<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>> {
     return (await db.transaction(async (tx) => await run(tx, steps))) as Results<T>;
 }
 
 /** {@link transaction}, reporting its own failure instead of raising it. */
 export async function attempt<const T extends readonly Step[]>(
-    db: Db,
+    db: SqlExecutor,
     ...steps: T
 ): Promise<Attempted<Results<T>>> {
     try {
