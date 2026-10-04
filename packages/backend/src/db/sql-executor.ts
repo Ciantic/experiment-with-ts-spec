@@ -3,8 +3,9 @@ import type { SqlPool, SqlSession } from "./sql-pool.ts";
 
 /** One handle: statements, and the boundary a caller can run them in. */
 export interface SqlExecutor {
+    /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    /** Run `run` inside one boundary; nested, that boundary is a savepoint. */
+    /** Run `run` in one boundary on one connection; nested, that boundary is a savepoint. */
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
