@@ -2,7 +2,7 @@
  * The backend entry point: run an API server, optionally seeded with mock data.
  * See docs/mockdata.md.
  *
- * Usage: `node src/main.ts [--port <n>] [--seed]`.
+ * Usage: `node src/main.ts [--port <n>] [--seed] [--log-sql]`.
  */
 import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
@@ -24,9 +24,15 @@ export interface ServerDatabase extends Db {
     close(): Promise<void>;
 }
 
+/** How to build the database. */
+export interface DatabaseOptions {
+    /** Let PGlite print every statement it runs, the transaction boundaries it issues included. */
+    logSql?: boolean;
+}
+
 /** A fresh in-memory database with the generated schema applied. */
-export async function createDatabase(): Promise<ServerDatabase> {
-    const driver = createPglite();
+export async function createDatabase(options: DatabaseOptions = {}): Promise<ServerDatabase> {
+    const driver = createPglite(options.logSql ? { debug: 1 } : {});
     await driver.exec(readFileSync(SCHEMA_URL, "utf8"));
     const db = createTransactionalDb(driver);
     return {
@@ -48,7 +54,7 @@ function listen(server: Server, port: number): Promise<number> {
 }
 
 /** How a server is started. */
-export interface StartOptions {
+export interface StartOptions extends DatabaseOptions {
     port?: number;
     seed?: boolean;
 }
@@ -62,7 +68,7 @@ export interface StartedServer {
 
 /** Build a database, optionally seed it, and start the API server. */
 export async function startServer(options: StartOptions = {}): Promise<StartedServer> {
-    const db = await createDatabase();
+    const db = await createDatabase(options);
     if (options.seed) {
         await seedMockData(db);
     }
@@ -71,13 +77,15 @@ export async function startServer(options: StartOptions = {}): Promise<StartedSe
     return { server, db, port };
 }
 
-/** Read `--port <n>` and `--seed` (alias `--mock`) from the command line. */
+/** Read `--port <n>`, `--seed` (alias `--mock`), and `--log-sql` from the command line. */
 export function parseArgs(argv: string[]): StartOptions {
     const options: StartOptions = {};
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === "--seed" || arg === "--mock") {
             options.seed = true;
+        } else if (arg === "--log-sql") {
+            options.logSql = true;
         } else if (arg === "--port") {
             const value = argv[index + 1];
             if (value === undefined || !Number.isInteger(Number(value))) {

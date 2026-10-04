@@ -1,10 +1,10 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes.ts";
-import { startServer, type StartedServer } from "./main.ts";
+import { createDatabase, parseArgs, startServer, type StartedServer } from "./main.ts";
 
 /** A generated builder, as this test sees it: pure data, so calling one makes no request. */
 type Builder = (argument: unknown) => Call<unknown>;
@@ -112,5 +112,50 @@ describe("a live server", () => {
 
         expect(name).toMatch(GENERATED);
         expect(thrown.status).toBe(400);
+    });
+});
+
+describe("--log-sql", () => {
+    /** Everything `run` prints to `console.log`. */
+    async function capture(run: () => Promise<void>): Promise<string[]> {
+        const printed: string[] = [];
+        const log = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+            printed.push(args.map(String).join(" "));
+        });
+        try {
+            await run();
+        } finally {
+            log.mockRestore();
+        }
+        return printed;
+    }
+
+    it("is the only thing that turns statement logging on", () => {
+        expect(parseArgs([]).logSql).toBeUndefined();
+        expect(parseArgs(["--log-sql"]).logSql).toBe(true);
+    });
+
+    it("shows both what the server runs and the boundaries PGlite issues itself", async () => {
+        const printed = await capture(async () => {
+            const db = await createDatabase({ logSql: true });
+            await db.query("select 1 as one");
+            await db.transaction((tx) => tx.query("select 2 as two"));
+            await db.close();
+        });
+
+        expect(printed.some((line) => line.includes("select 1 as one"))).toBe(true);
+        expect(printed.some((line) => line.includes("select 2 as two"))).toBe(true);
+        expect(printed.some((line) => line.includes("BEGIN"))).toBe(true);
+        expect(printed.some((line) => line.includes("COMMIT"))).toBe(true);
+    });
+
+    it("stays quiet without the flag, so an ordinary run prints no SQL", async () => {
+        const printed = await capture(async () => {
+            const db = await createDatabase();
+            await db.query("select 3 as three");
+            await db.close();
+        });
+
+        expect(printed.some((line) => line.includes("select 3 as three"))).toBe(false);
     });
 });

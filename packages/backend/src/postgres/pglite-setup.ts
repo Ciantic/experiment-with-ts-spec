@@ -1,5 +1,5 @@
 /** PGlite configuration and result type mapping. See docs/schema-generation.md. */
-import { PGlite, type ParserOptions } from "@electric-sql/pglite";
+import { PGlite, type DebugLevel, type ParserOptions } from "@electric-sql/pglite";
 
 /** Postgres type OIDs, from src/include/catalog/pg_type.dat. */
 const OID = {
@@ -17,7 +17,7 @@ export function createPgliteParsers(): ParserOptions {
     };
 }
 
-/** A PGlite instance whose results match the spec types. */
-export function createPglite(): PGlite {
-    return new PGlite({ parsers: createPgliteParsers() });
+/** A PGlite instance whose results match the spec types. `debug` is PGlite's own log level. */
+export function createPglite(options: { debug?: DebugLevel } = {}): PGlite {
+    return new PGlite({ parsers: createPgliteParsers(), debug: options.debug ?? 0 });
 }

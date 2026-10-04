@@ -37,6 +37,9 @@ pnpm --filter backend run example:server --port 4123 --seed
 
 - `--port <n>` — the listen port. Default `3000`; `0` picks a free one.
 - `--seed` (alias `--mock`) — insert the mock data before serving.
+- `--log-sql` — let PGlite print every statement it runs, the `BEGIN`, `COMMIT`,
+  and `ROLLBACK` it issues around a transaction included. PGlite's own startup
+  and server logs come with it, so the output is verbose.
 
 Without `--seed` the server runs against the empty generated schema. The
 database is an in-memory PGlite created fresh on every start.

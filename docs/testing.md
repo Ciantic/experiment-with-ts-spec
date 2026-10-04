@@ -48,7 +48,14 @@ values, all of which are domain decisions rather than code behaviour.
   asserts boundary behaviour — a failed `transaction` leaves nothing behind, a
   nested one is a savepoint the outer transaction survives, a tolerated one does
   not poison its enclosing boundary — naming no domain type and no route. What
-  only this can assert is that the steps really receive the boundary handle.
+  only this can assert is that the steps really receive the boundary handle. A
+  second group turns on PGlite's own logging and asserts the statements the
+  driver is asked to run: `batch` opens no boundary, `transaction` and `attempt`
+  bracket their steps with `BEGIN`/`COMMIT` or `BEGIN`/`ROLLBACK`, and a nested
+  one shows as a `SAVEPOINT` that is released, or rolled back to before it is
+  released. Each step's insert is in the trace too, so the order reads as the
+  rows land. That log is the only place the driver's own statements are visible,
+  which is why the assertions read it rather than the rows.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
