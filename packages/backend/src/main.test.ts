@@ -135,7 +135,7 @@ describe("--log-sql", () => {
         expect(parseArgs(["--log-sql"]).logSql).toBe(true);
     });
 
-    it("shows both what the server runs and the boundaries PGlite issues itself", async () => {
+    it("shows both what the server runs and the boundaries the executor issues", async () => {
         const printed = await capture(async () => {
             const db = await createDatabase({ logSql: true });
             await db.query("select 1 as one");
@@ -145,8 +145,8 @@ describe("--log-sql", () => {
 
         expect(printed.some((line) => line.includes("select 1 as one"))).toBe(true);
         expect(printed.some((line) => line.includes("select 2 as two"))).toBe(true);
-        expect(printed.some((line) => line.includes("BEGIN"))).toBe(true);
-        expect(printed.some((line) => line.includes("COMMIT"))).toBe(true);
+        expect(printed.some((line) => line.includes("begin"))).toBe(true);
+        expect(printed.some((line) => line.includes("commit"))).toBe(true);
     });
 
     it("stays quiet without the flag, so an ordinary run prints no SQL", async () => {

@@ -29,52 +29,54 @@ export interface SqlExecutor {
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
-/** A driver transaction handle: the query surface only, so nesting stays the port's job. */
-type DriverTransaction = Pick<SqlExecutor, "query">;
-
-/** One transaction pinned to a connection. */
-export interface DriverConnection {
+/** One session borrowed from a pool; `release` returns it. */
+export interface SqlSession {
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    transaction<T>(run: (tx: DriverTransaction) => Promise<T>): Promise<T>;
+    release(): void;
+}
+
+/** The whole surface a boundary is built on: statements, and a checkout that pins one session to it. */
+export interface SqlPool {
+    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    connect(): Promise<SqlSession>;
 }
 ```
 
-`DriverConnection` is structural rather than a named driver, so PGlite and a `pg`
-wrapper both satisfy it. A driver's callback receives `DriverTransaction` and not
-a `SqlExecutor`, because a driver handle cannot open a boundary of its own:
-`createTransactionalDb` is what turns one into the other, which is what lets
-`SqlExecutor.transaction` nest as a savepoint.
+`SqlPool` is structural rather than a named driver, so a `pg` `Pool` satisfies it
+as it stands and the port names no driver: `createPgPool`
+(`src/postgres/pg-setup.ts`) is a `pg` pool with the spec's result mapping
+applied. A one-connection driver reaches it through
+`createSingleConnectionPool` (`src/db/sql-pool.ts`), which serialises its one
+session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
+
+`createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
+over a pool:
+
+- **A checkout pins the session, and that is what the boundary rests on.** A `pg`
+  pool hands out a `PoolClient`, so `begin`…`commit` covers exactly the
+  statements that run on it; PGlite has one connection, so its pool holds that
+  connection until the checkout releases it.
+- **The port issues the root boundary** — `begin`, `commit`, or `rollback` on the
+  checked-out session — and releases the session in a `finally`.
+- **A nested boundary is a savepoint** on the same session, so one set of
+  boundary statements is what both drivers run.
 
 The generated repositories and queries take `SqlExecutor`, so a caller passes the
 handle it already has. A repository does not open a boundary of its own: the unit
 of work belongs to the caller, which is what keeps a request's atomicity in one
 place (`docs/repositories.md`).
 
-`createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation, over
-a *connection* rather than a driver:
+Affinity is scoped to the boundary, not to the handle. `SqlExecutor` is a pool
+handle, not a session handle: a `query` on the root handle borrows a session for
+that statement and releases it, so two of them may run on different connections.
+Every statement inside a `transaction` callback, its savepoints included, runs on
+the one session that boundary checked out. Session-scoped state — a temp table,
+`set local`, an advisory lock, a prepared statement — is therefore only coherent
+inside a boundary, and a caller that needs it opens one.
 
-- **A connection** is whatever the driver gives that pins one session and can
-  open one transaction. `DriverConnection` is that, and PGlite satisfies it
-  directly: it runs everything on one connection, and its own `transaction(fn)`
-  is what holds the exclusive lock that keeps two requests from interleaving.
-- **`pg`** needs a wrapper to reach that shape, because a pool hands each `query`
-  an arbitrary connection and `begin` on one does not scope a later statement that
-  lands on another. `createPgConnection` (`src/postgres/pg-setup.ts`) checks out a
-  `PoolClient` with `begin`/`commit`/`rollback` and releases it, and the client is
-  what pins the transaction.
-
-Neither driver is named by the type, but `pg` is named by the wrapper's signature:
-`createPgConnection` takes a `pg` `Pool`, so `pg` is a development dependency and
-is never imported at runtime.
-
-A driver's transaction callback receives only the query surface, because nesting
-is the port's job: `createTransactionalDb` wraps that handle in a `SqlExecutor`
-whose `transaction` opens a savepoint.
-
-The port uses the driver's transaction primitive for the root boundary and issues
-savepoints inside it, rather than writing `begin`/`commit` by hand. Hand-issued
-`begin` would bypass whatever exclusivity the driver applies to its own
-transaction, which on PGlite is the only thing serialising concurrent requests.
+A statement must go through the handle it was given. The pool is not the boundary:
+a `query` made on the pool while a checkout is open waits for the one connection,
+and on `pg` it would land on another connection and escape the transaction.
 
 The router opens one boundary per `transaction` group it meets while walking a
 request, and hands every handler the `SqlExecutor` of the boundary it is in. A nested
@@ -161,24 +163,37 @@ as well, and its `transaction` opens a savepoint rather than a second
 transaction.
 
 ```ts
-export function createTransactionalDb(connection: DriverConnection): SqlExecutor {
+export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;
-    async function savepoint<T>(tx: DriverTransaction, run: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    async function savepoint<T>(session: SqlSession, run: (tx: SqlExecutor) => Promise<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
-        await tx.query(`savepoint ${name}`);
+        await session.query(`savepoint ${name}`);
         try {
-            const value = await run(handle(tx));
-            await tx.query(`release savepoint ${name}`);
+            const value = await run(handle(session));
+            await session.query(`release savepoint ${name}`);
             return value;
         } catch (thrown) {
-            await tx.query(`rollback to savepoint ${name}`);
-            await tx.query(`release savepoint ${name}`);
+            await session.query(`rollback to savepoint ${name}`);
+            await session.query(`release savepoint ${name}`);
             throw thrown;
         }
     }
     return {
-        query: (sql, parameters) => connection.query(sql, parameters),
-        transaction: (run) => connection.transaction(async (tx) => await run(handle(tx))),
+        query: (sql, parameters) => pool.query(sql, parameters),
+        transaction: async (run) => {
+            const session = await pool.connect();
+            try {
+                await session.query("begin");
+                const value = await run(handle(session));
+                await session.query("commit");
+                return value;
+            } catch (thrown) {
+                await session.query("rollback");
+                throw thrown;
+            } finally {
+                session.release();
+            }
+        },
     };
 }
 ```
@@ -196,10 +211,13 @@ work. A per-entity CRUD route asks for nothing: each is one multi-row statement,
 so it is already atomic, and a boundary around it would add a round trip and a
 held connection without changing what a concurrent writer can observe.
 
-The root boundary uses the driver's own transaction primitive, not a hand-issued
-`begin`. That primitive is what pins a connection, and on PGlite it holds the
-exclusive lock that keeps two requests from interleaving their `begin`…`commit`.
-Savepoints are then issued on the handle that transaction supplied.
+The root boundary is the port's own `begin`/`commit`, issued on the session the
+pool checked out. What makes that safe is the checkout, not the statement: a `pg`
+`PoolClient` pins one connection, and the one-connection pool holds PGlite's
+single connection until the boundary releases it. A hand-issued `begin` on a pool
+that did not pin its session would let another request's statement run inside the
+open boundary and be rolled back with it, which is exactly what a checkout
+prevents.
 
 `rollback to savepoint` is load-bearing, not tidiness. An error aborts the whole
 transaction — every later statement fails with `25P02` — so rolling back to the

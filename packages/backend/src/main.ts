@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { createTransactionalDb, type SqlExecutor } from "./db/sql-executor.ts";
 import { createApiServer } from "./http/server.ts";
 import { seedMockData } from "./mock/seed.ts";
-import { createPglite } from "./postgres/pglite-setup.ts";
+import { createPglite, createPglitePool } from "./postgres/pglite-setup.ts";
 
 /** The generated DDL, next to the driver setup. */
 const SCHEMA_URL = new URL("./postgres/schema.sql", import.meta.url);
@@ -33,7 +33,7 @@ export interface DatabaseOptions {
 export async function createDatabase(options: DatabaseOptions = {}): Promise<ServerDatabase> {
     const driver = createPglite(options.logSql ? { debug: 1 } : {});
     await driver.exec(readFileSync(SCHEMA_URL, "utf8"));
-    const db = createTransactionalDb(driver);
+    const db = createTransactionalDb(createPglitePool(driver));
     return {
         query: (sql, parameters) => db.query(sql, parameters),
         transaction: (run) => db.transaction(run),

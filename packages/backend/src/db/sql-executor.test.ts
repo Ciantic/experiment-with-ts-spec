@@ -1,14 +1,15 @@
 /** Checks that the port nests with savepoints, over a real driver. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
-import { createPglite } from "../postgres/pglite-setup.ts";
+import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
+import type { SqlPool } from "./sql-pool.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
     const driver = createPglite();
     await driver.query("create table widget (id text primary key)");
-    return { db: createTransactionalDb(driver), close: () => driver.close() };
+    return { db: createTransactionalDb(createPglitePool(driver)), close: () => driver.close() };
 }
 
 /** The ids stored, in order. */
@@ -134,5 +135,76 @@ describe("createTransactionalDb", () => {
 
         expect(await ids(db)).toEqual(["second"]);
         await close();
+    });
+});
+
+/** A pool that records the statements and the release, so the bracketing around a checkout is observable. */
+function fakePool(): { pool: SqlPool; statements: string[]; releases: () => number } {
+    const statements: string[] = [];
+    let releases = 0;
+    const record = async (sql: string) => {
+        statements.push(sql);
+        return { rows: [] };
+    };
+    return {
+        pool: {
+            query: record,
+            connect: async () => ({
+                query: record,
+                release: () => {
+                    releases += 1;
+                },
+            }),
+        },
+        statements,
+        releases: () => releases,
+    };
+}
+
+describe("the checkout a boundary runs on", () => {
+    it("brackets one checked-out session with begin and commit, releasing it once", async () => {
+        const { pool, statements, releases } = fakePool();
+
+        await createTransactionalDb(pool).transaction(async (tx) => {
+            await tx.query("write");
+        });
+
+        expect(statements).toEqual(["begin", "write", "commit"]);
+        expect(releases()).toBe(1);
+    });
+
+    it("rolls back and releases the session when the callback throws", async () => {
+        const { pool, statements, releases } = fakePool();
+
+        await expect(
+            createTransactionalDb(pool).transaction(async (tx) => {
+                await tx.query("write");
+                throw new Error("boom");
+            }),
+        ).rejects.toThrow("boom");
+
+        expect(statements).toEqual(["begin", "write", "rollback"]);
+        expect(releases()).toBe(1);
+    });
+
+    it("keeps the nesting on that one session, releasing it once", async () => {
+        const { pool, statements, releases } = fakePool();
+
+        await createTransactionalDb(pool).transaction(async (tx) => {
+            await tx.query("outer");
+            await tx.transaction(async (inner) => {
+                await inner.query("inner");
+            });
+        });
+
+        expect(statements).toEqual([
+            "begin",
+            "outer",
+            "savepoint sp_1",
+            "inner",
+            "release savepoint sp_1",
+            "commit",
+        ]);
+        expect(releases()).toBe(1);
     });
 });

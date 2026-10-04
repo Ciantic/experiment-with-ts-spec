@@ -1,7 +1,7 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ts } from "ts-morph";
-import { createPglite } from "../src/postgres/pglite-setup.ts";
+import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
 import { generateIndex, generateRepositories, generateRepository } from "./generate-repositories.ts";
@@ -379,7 +379,7 @@ describe("generated repositories against PGlite", () => {
 
     beforeAll(async () => {
         driver = createPglite();
-        db = createTransactionalDb(driver);
+        db = createTransactionalDb(createPglitePool(driver));
         await driver.exec(createTableSql(owner));
         await driver.exec(createTableSql(widget));
         await driver.exec(createTableSql(translation));

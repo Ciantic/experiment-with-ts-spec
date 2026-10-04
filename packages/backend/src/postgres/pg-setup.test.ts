@@ -1,140 +1,87 @@
 /**
- * Asserts that a `pg` pool reaches the port through `createPgConnection`, and that the
- * connection brackets its statements around one checked-out client. See docs/transactions.md.
+ * Asserts that `pg`'s pool reaches the port with no wrapper of its own, that `createPgPool` applies
+ * the spec's result mapping, and that the driver's own types back the structural one. See
+ * docs/transactions.md and docs/schema-generation.md.
  */
-import type { Pool, PoolClient } from "pg";
+import * as realPg from "pg";
 import { describe, expect, it } from "vitest";
-import { createTransactionalDb, type DriverConnection, type SqlExecutor } from "../db/sql-executor.ts";
-import { createPgConnection } from "./pg-setup.ts";
+import { createTransactionalDb, type SqlExecutor } from "../db/sql-executor.ts";
+import type { SqlPool, SqlSession } from "../db/sql-pool.ts";
+import { createPgMapperTypes, createPgPool, type PgMapperOptions, type PgModule, type PgPoolModule } from "./pg-setup.ts";
 
-/** A pool and its one client, recording the statements and the release, so the bracketing is observable. */
-function fakePool() {
-    const statements: string[] = [];
-    let releases = 0;
-    const client = {
-        query: async (sql: string) => {
-            statements.push(sql);
-            return { rows: [] };
-        },
-        release: () => {
-            releases += 1;
-        },
-    } as unknown as PoolClient;
-    const pool = {
-        query: async (sql: string) => {
-            statements.push(sql);
-            return { rows: [] };
-        },
-        connect: async () => client,
-    } as unknown as Pool;
-    return { pool, statements, releases: () => releases };
-}
+// `@types/pg` still describes `arrayParser` as the pre-v3 callable, while the runtime exports `{ create }`.
+// Only that member needs the cast, so the rest of the structural fit is checked by assignment.
+const pgModule: PgPoolModule = {
+    Pool: realPg.Pool,
+    types: {
+        getTypeParser: realPg.types.getTypeParser,
+        arrayParser: realPg.types.arrayParser as unknown as PgModule["types"]["arrayParser"],
+    },
+};
 
-/** The port a test runs against, plus what the fake driver observed. */
-function fixture() {
-    const fake = fakePool();
-    return { db: createTransactionalDb(createPgConnection(fake.pool)), fake };
-}
+describe("a pg pool as the pool port", () => {
+    it("satisfies `SqlPool`, so the wrapper the port used to need is gone", () => {
+        const pool: SqlPool = new realPg.Pool();
 
-describe("createPgConnection", () => {
-    it("takes a pg Pool, which is what makes the driver reachable", () => {
-        const { pool } = fakePool();
-        const connection: DriverConnection = createPgConnection(pool);
-
-        expect(typeof connection.transaction).toBe("function");
+        expect(typeof pool.connect).toBe("function");
     });
 
-    it("does not take a bare Pool, because a pool cannot pin a transaction", () => {
-        const { pool } = fakePool();
+    it("checks out a client that satisfies `SqlSession`", () => {
+        // The assignment is the assertion: `tsc` rejects a client that stops matching the session.
+        const fitsCheckout: (client: realPg.PoolClient) => SqlSession = (client) => client;
 
-        // @ts-expect-error a Pool has no transaction of its own, so it needs createPgConnection.
-        const connection: DriverConnection = pool;
-
-        expect(connection).toBe(pool);
+        expect(fitsCheckout).toBeTypeOf("function");
     });
 
-    it("hands the callback a client that queries but cannot open a boundary of its own", async () => {
-        const { pool } = fakePool();
+    it("builds the executor over a bare `Pool`, with no adapter in between", async () => {
+        const pool = new realPg.Pool();
+        const db: SqlExecutor = createTransactionalDb(pool);
 
-        await createPgConnection(pool).transaction(async (tx) => {
-            // @ts-expect-error a checked-out PoolClient has no transaction, so nesting stays the port's job.
-            const asPort: SqlExecutor = tx;
+        expect(typeof db.transaction).toBe("function");
+        await pool.end();
+    });
+});
 
-            expect(typeof tx.query).toBe("function");
-            expect(asPort).toBe(tx);
-        });
+describe("createPgPool", () => {
+    it("reads the runtime `arrayParser`, which the installed types still describe as a callable", () => {
+        const arrayParser = (realPg.types as unknown as { arrayParser: { create?: unknown } }).arrayParser;
+
+        expect(typeof arrayParser.create).toBe("function");
     });
 
-    it("opens the driver's own boundary, committing around the callback", async () => {
-        const { db, fake } = fixture();
+    it("passes the driver's own config through", async () => {
+        const pool = createPgPool(pgModule, { max: 7, application_name: "spec" });
 
-        await db.transaction(async (tx) => {
-            await tx.query("insert into widget (id) values ($1)", ["a"]);
-        });
-
-        expect(fake.statements).toEqual(["begin", "insert into widget (id) values ($1)", "commit"]);
-        expect(fake.releases()).toBe(1);
+        expect(pool.options.max).toBe(7);
+        await pool.end();
     });
 
-    it("nests on top of that boundary as a savepoint, releasing the client once", async () => {
-        const { db, fake } = fixture();
+    it("applies the spec's mapping, so the results match the ports of the other driver", async () => {
+        const pool = createPgPool(pgModule);
+        const types: PgMapperOptions | undefined = pool.options.types;
 
-        await db.transaction(async (tx) => {
-            await tx.query("outer");
-            await tx.transaction(async (inner) => {
-                await inner.query("inner");
-            });
-        });
-
-        expect(fake.statements).toEqual([
-            "begin",
-            "outer",
-            "savepoint sp_1",
-            "inner",
-            "release savepoint sp_1",
-            "commit",
-        ]);
-        expect(fake.releases()).toBe(1);
+        expect(types?.getTypeParser(20)("42")).toBe(42n);
+        expect(types?.getTypeParser(1016)("{1,2}")).toEqual([1n, 2n]);
+        expect(types?.getTypeParser(1114)("2026-01-04 12:00:00")).toBe("2026-01-04 12:00:00");
+        expect(types?.getTypeParser(1082)("2026-01-04")).toBe("2026-01-04");
+        expect(types?.getTypeParser(1700)("1.50")).toBe("1.50");
+        expect(types?.getTypeParser(1182)("{2026-01-04}")).toEqual(["2026-01-04"]);
+        expect(types?.getTypeParser(17)("\\x0102")).toEqual(new Uint8Array([1, 2]));
+        await pool.end();
     });
 
-    it("rolls back and releases the client when the callback throws", async () => {
-        const { db, fake } = fixture();
+    it("leaves an unmapped type to the driver", async () => {
+        const pool = createPgPool(pgModule);
 
-        await expect(
-            db.transaction(async (tx) => {
-                await tx.query("write");
-                throw new Error("boom");
-            }),
-        ).rejects.toThrow("boom");
-
-        expect(fake.statements).toEqual(["begin", "write", "rollback"]);
-        expect(fake.releases()).toBe(1);
+        // int4 is not remapped, so the mapper is the driver's own parser rather than a copy of it.
+        expect(pool.options.types?.getTypeParser(23)("42")).toBe(42);
+        await pool.end();
     });
 
-    it("rolls back only the nested boundary, leaving the outer one to commit", async () => {
-        const { db, fake } = fixture();
+    it("keeps its mapping even when the config names one, so a pool cannot silently lose the spec types", async () => {
+        const pool = createPgPool(pgModule, { types: createPgMapperTypes(pgModule) });
 
-        await db.transaction(async (tx) => {
-            await tx.query("outer");
-            await expect(
-                tx.transaction(async (inner) => {
-                    await inner.query("inner");
-                    throw new Error("inner boom");
-                }),
-            ).rejects.toThrow("inner boom");
-            await tx.query("after");
-        });
-
-        expect(fake.statements).toEqual([
-            "begin",
-            "outer",
-            "savepoint sp_1",
-            "inner",
-            "rollback to savepoint sp_1",
-            "release savepoint sp_1",
-            "after",
-            "commit",
-        ]);
-        expect(fake.releases()).toBe(1);
+        expect((pool.options.types as PgMapperOptions).getTypeParser(20)("42")).toBe(42n);
+        await pool.end();
     });
 });

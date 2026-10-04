@@ -1,6 +1,5 @@
-/** `pg` driver setup: result type mapping and the connection port. Mirrors src/postgres/pglite-setup.ts. */
-import type { Pool } from "pg";
-import type { DriverConnection } from "../db/sql-executor.ts";
+/** `pg` driver setup: result type mapping and pool construction. Mirrors src/postgres/pglite-setup.ts. */
+import type { Pool, PoolConfig } from "pg";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -84,23 +83,12 @@ export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
     };
 }
 
-/** A `pg` pool as a `DriverConnection`: `transaction` checks out one client, which pins the boundary. */
-export function createPgConnection(pool: Pool): DriverConnection {
-    return {
-        query: async (sql, parameters) => await pool.query(sql, parameters),
-        transaction: async (run) => {
-            const client = await pool.connect();
-            try {
-                await client.query("begin");
-                const value = await run(client);
-                await client.query("commit");
-                return value;
-            } catch (thrown) {
-                await client.query("rollback");
-                throw thrown;
-            } finally {
-                client.release();
-            }
-        },
-    };
+/** The `pg` module as pool construction needs it: the `Pool` class, plus the parser surface the mapper reads. */
+export interface PgPoolModule extends PgModule {
+    Pool: new (config: PoolConfig) => Pool;
+}
+
+/** A `pg` Pool whose results match the spec types. The mapper's `types` wins over one the caller passes. */
+export function createPgPool(pg: PgPoolModule, config: PoolConfig = {}): Pool {
+    return new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
 }

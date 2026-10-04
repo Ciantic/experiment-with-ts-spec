@@ -1,6 +1,6 @@
 /** Unit tests for the group boundary semantics, against a real PGlite. See docs/transactions.md. */
 import { describe, expect, it, vi } from "vitest";
-import { createPglite } from "../postgres/pglite-setup.ts";
+import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import { attempt, batch, transaction, type Attempted, type Step } from "./group.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
@@ -9,7 +9,7 @@ import { createTransactionalDb } from "./sql-executor.ts";
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
     const driver = createPglite();
     await driver.query("create table widget (id text primary key)");
-    return { db: createTransactionalDb(driver), close: () => driver.close() };
+    return { db: createTransactionalDb(createPglitePool(driver)), close: () => driver.close() };
 }
 
 /** The ids stored, in order. */
@@ -82,7 +82,7 @@ async function boundaryTrace(run: (db: SqlExecutor) => Promise<void>): Promise<s
     const driver = createPglite({ debug: 1 });
     try {
         await driver.query("create table widget (id text primary key)");
-        await run(createTransactionalDb(driver));
+        await run(createTransactionalDb(createPglitePool(driver)));
     } finally {
         await driver.close();
         for (const spy of spies) {

@@ -1,6 +1,6 @@
 /** Unit tests for the read resolver, driven by hand-built metadata and PGlite. See docs/testing.md. */
 import { beforeAll, describe, expect, it } from "vitest";
-import { createPglite } from "../postgres/pglite-setup.ts";
+import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
 import { createResolver, type QueryModel } from "./resolvers.ts";
@@ -119,7 +119,7 @@ beforeAll(async () => {
         insert into widget (id, seq)
             select 'w' || lpad(n::text, 5, '0'), n from generate_series(1, 1500) as n;
     `);
-    db = createTransactionalDb(pglite);
+    db = createTransactionalDb(createPglitePool(pglite));
 });
 
 describe("resolveMany", () => {

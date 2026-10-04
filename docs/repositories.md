@@ -33,8 +33,9 @@ a mapping of the spec. Reads are generated separately from the entities in
 `SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
 `query(sql, parameters?)` and `transaction(run)`. The generated modules never
 import a driver, so `pg` stays an optional dependency. A driver reaches the port
-through `DriverConnection` (`src/db/sql-executor.ts`); a test asserts PGlite
-satisfies it, so the structural type cannot drift away from the driver.
+as a `SqlPool` (`src/db/sql-pool.ts`): `pg`'s `Pool` satisfies it directly, and
+PGlite through `createPglitePool`. Tests assert both fits, so the structural
+types cannot drift away from the drivers.
 
 ## Why arrays
 

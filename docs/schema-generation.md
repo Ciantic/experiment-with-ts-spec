@@ -184,7 +184,8 @@ https://github.com/Ciantic/pg-unified-mapping.
 - `packages/backend/src/postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an
   instance configured with result parsers.
 - `packages/backend/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
-  `types` option for `new pg.Client(...)` or `new pg.Pool(...)`.
+  `types` option for `new pg.Client(...)`, and `createPgPool(pg, config)` builds a
+  `Pool` with that option applied.
 
 The rules are the same in both:
 
@@ -197,11 +198,15 @@ The rules are the same in both:
 
 Gotchas:
 
-- **`pg-setup.ts` does not import `pg`.** The module is taken as a parameter and
-  typed structurally, so `pg` stays an optional dependency and nothing here needs
-  it installed. Nothing exercises the mapping: it has no tests, and the
-  structural `PgModule` type is unverified against the real driver. Passing a real
-  `pg` instance would type-check it.
+- **`pg-setup.ts` does not import `pg` at runtime.** The module is taken as a
+  parameter and typed structurally, and the `pg` types it names are type-only, so
+  `pg` stays a development dependency. A test passes the real module, so the
+  mapping is exercised against the driver rather than described.
+- **The installed `pg` types are behind the driver on one member.** `@types/pg`
+  still describes `types.arrayParser` as a callable, while the runtime exports
+  `{ create }`, which is what the mapper reads. The test asserts the runtime
+  shape and casts at that one seam; the rest of `PgModule` is checked by
+  assignment.
 - **Everything numeric is `decimal`.** Amounts, quantities, and tax rates share
   one type, so the drivers return strings for all of them, matching the `Decimal`
   brand. Rounding to two decimals is in the expression (`round(..., 2)`), not in the

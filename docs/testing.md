@@ -41,15 +41,21 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/backend/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
   over a real PGlite, so a driver's boundary semantics are observable: a commit,
   a rollback, and that a nested boundary is a savepoint the outer transaction
-  survives.
-- `packages/backend/src/postgres/pglite-setup.test.ts` — one check: PGlite
-  satisfies `DriverConnection`, the driver port the boundary is built on.
-- `packages/backend/src/postgres/pg-setup.test.ts` — the same fit for `pg`, written
-  over the real driver types, plus the statement bracketing of
-  `createPgConnection`. A pool opens no boundary of its own, so the wrapper is what
-  reaches the port; a `@ts-expect-error` pins that both a bare `Pool` and a
-  checked-out `PoolClient` fall short. Only the wrapper's own statements are
-  asserted, since no Postgres server is in the loop.
+  survives. A recording fake pool pins the other half: the checkout brackets the
+  boundary and is released exactly once.
+- `packages/backend/src/db/sql-pool.test.ts` — the one-connection pool, over a
+  statement that records what it ran: a checkout holds the connection until it is
+  released, a plain statement takes the same turn, and a failure frees the turn.
+- `packages/backend/src/postgres/pglite-setup.test.ts` — one check: PGlite reaches
+  the pool port through `createPglitePool`, and its one connection is held for the
+  length of a checkout.
+- `packages/backend/src/postgres/pg-setup.test.ts` — the same fit for `pg`, over the
+  real driver: a bare `Pool` satisfies `SqlPool` and a checked-out `PoolClient`
+  satisfies `SqlSession`, so `pg` needs no wrapper. It also drives `createPgPool`
+  and asserts the mapping it installs — `int8` to `bigint`, `date`/`timestamp`/
+  `numeric` to strings, `bytea` to `Uint8Array`, a text array to its raw
+  elements, and an unmapped type left to the driver. No Postgres server is in the
+  loop: constructing a `Pool` opens no connection.
 - `packages/backend/src/db/group.test.ts` — drives `batch`, `transaction`, and
   `attempt` against a real PGlite over a `widget` table it creates itself. It
   asserts boundary behaviour — a failed `transaction` leaves nothing behind, a
