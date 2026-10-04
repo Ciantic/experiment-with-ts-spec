@@ -8,15 +8,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Project } from "ts-morph";
-import {
-    DEFAULT_SPEC_GLOB,
-    SPEC_GLOB,
-    buildSpecTables,
-} from "./postgres-model.ts";
-import { BACKEND_PACKAGE_ROOT } from "./postgres-model.ts";
+import { DEFAULT_SPEC_GLOB, SPEC_GLOB } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
 
-export type { Diagnostic } from "./postgres-model.ts";
+export type { Diagnostic } from "./rest-model.ts";
+
+/** This package's root, so paths do not depend on the current working directory. */
+const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 /** Where the route table is written when no `--out` is given. */
 const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/http");
@@ -136,15 +134,12 @@ export function renderRoutesModule(model: RestModel): string {
 function main(): void {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
     project.addSourceFilesAtPaths(SPEC_GLOB);
-    const { tables, diagnostics } = buildSpecTables(project, {
-        specGlob: DEFAULT_SPEC_GLOB,
-        aliasGlob: SPEC_GLOB,
-    });
+    const model = buildRestModel(project, { specGlob: DEFAULT_SPEC_GLOB, aliasGlob: SPEC_GLOB });
 
-    for (const diagnostic of diagnostics) {
+    for (const diagnostic of model.diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
-    if (diagnostics.length > 0) {
+    if (model.diagnostics.length > 0) {
         process.exitCode = 1;
         return;
     }
@@ -157,7 +152,6 @@ function main(): void {
         return;
     }
 
-    const model = buildRestModel(tables);
     const content = renderRoutesModule(model);
     const target = join(outDir, ROUTES_FILE);
     mkdirSync(dirname(target), { recursive: true });

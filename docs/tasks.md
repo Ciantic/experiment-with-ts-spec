@@ -43,21 +43,23 @@ The order is load-bearing:
 `pnpm run generate` runs the schema generator before the repository generator,
 then the query generator, the validation generator, and the two REST generators
 last. All of them read the
-spec through `packages/spec/scripts/spec-model.ts`: the backend maps it to columns
-in `packages/backend/scripts/postgres-model.ts`, the query generator reads the
-`@queryfilter` annotations, and the validation generator maps it to Zod schemas in
-`packages/validation/scripts/zod-model.ts`. The REST pair shares
-`packages/backend/scripts/rest-model.ts`, and the API generator references the
-validation schemas by name, which is why it runs after them. None reads another's
+spec through `packages/spec/scripts/spec-model.ts`: the schema, repository, and
+query generators map it to columns in
+`packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
+Zod schemas in `packages/validation/scripts/zod-model.ts`, and the REST pair maps
+it to the HTTP surface in `packages/backend/scripts/rest-model.ts`. The API
+generator references the validation schemas by name, which is why it runs after
+them. None reads another's
 output, so the
 order between them is presentational — it mirrors the order the artifacts appear
 in the repository.
 
-The validation generator is the one that lives in the package it writes: it needs
-neither `postgres-model.ts` nor anything else in `packages/backend`. The other
-generators stay in `packages/backend/scripts` because they share the table model;
-that includes `generate:rest-client`, whose output lands in
-`packages/sdk`.
+The validation generator is the one that lives in the package it writes. The
+other generators stay in `packages/backend/scripts`: the schema, repository, and
+query generators share the table model, and the two REST generators share
+`rest-model.ts`. The REST client generator draws only on the spec and that model,
+yet it stays with the API generator so the two cannot drift; its output still
+lands in `packages/sdk`.
 
 ## Why `--if-present`
 

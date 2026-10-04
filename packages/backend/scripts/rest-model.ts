@@ -1,13 +1,23 @@
 /**
- * Map the table model to the REST surface both generators render: the paths, the
+ * Map the parsed spec to the REST surface both generators render: the paths, the
  * methods, the filter fields, and the operations each entity exposes.
  *
  * The model is the shared half. `generate-rest-api.ts` renders it into the
  * server's route table and `generate-rest-client.ts` into the SDK, so neither
  * generator may re-derive a path. See docs/rest-api.md.
  */
-import { lowerFirst } from "spec/scripts/spec-model.ts";
-import { primaryKeyColumns, type Table } from "./postgres-model.ts";
+import type { Node, Project } from "ts-morph";
+import {
+    DEFAULT_SPEC_GLOB,
+    SPEC_GLOB,
+    isCompareOperator,
+    lowerFirst,
+    parseSpec,
+    type Diagnostic,
+    type SpecInterface,
+} from "spec/scripts/spec-model.ts";
+
+export type { Diagnostic };
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
 export type RestMethod = "GET" | "POST" | "PATCH" | "DELETE";
@@ -49,9 +59,19 @@ export interface RestEntity {
     operations: RestOperation[];
 }
 
-/** The parsed spec, mapped to a REST surface. */
+/** Input paths, overridable so tests can generate from fixtures. */
+export interface GenerateOptions {
+    /** Where the entities are read from. */
+    specGlob?: string;
+    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
+    aliasGlob?: string;
+}
+
+/** The parsed spec mapped to a REST surface, with the problems found while mapping it. */
 export interface RestModel {
     entities: RestEntity[];
+    /** Problems found in the spec; a generator reports them and refuses to write. */
+    diagnostics: Diagnostic[];
 }
 
 /** `/invoice/query`. The argument travels in `q`, so it is a `GET` on the collection. */
@@ -59,8 +79,8 @@ function queryPath(path: string): string {
     return `${path}/query`;
 }
 
-/** The calls one table exposes, in a stable order. */
-function operationsFor(table: Table, path: string): RestOperation[] {
+/** The calls one entity exposes, in a stable order. */
+function operationsFor(path: string): RestOperation[] {
     // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
     const operations: RestOperation[] = [
         { kind: "query", method: "GET", path: queryPath(path), source: "query" },
@@ -74,27 +94,57 @@ function operationsFor(table: Table, path: string): RestOperation[] {
     return operations;
 }
 
-/** Build the REST model from the tables shared by every backend generator. */
-export function buildRestModel(tables: Map<string, Table>): RestModel {
+/** Map one interface to its REST surface, reading only the annotations the wire depends on. */
+function restEntityFor(spec: SpecInterface): RestEntity {
+    const properties = spec.properties;
+    // The collection path is the table name, so a new entity is exposed with no generator edit.
+    const path = `/${spec.tableName}`;
+    const whereFields: { name: string; operators: string[] }[] = [];
+    for (const property of properties) {
+        const operators = (property.tags.where ?? []).filter(isCompareOperator);
+        if (operators.length > 0) {
+            whereFields.push({ name: property.name, operators });
+        }
+    }
+
+    return {
+        entity: spec.name,
+        module: lowerFirst(spec.name),
+        importSpecifier: spec.importSpecifier,
+        path,
+        // The parser defaults `@queryfilter` on a primary key, so a key is always a filter.
+        keys: properties.filter((property) => property.tags.primaryKey).map((property) => property.name),
+        filters: properties.filter((property) => property.tags.queryfilter).map((property) => property.name),
+        orderFields: properties
+            .filter((property) => property.tags.queryOrderBy !== undefined)
+            .map((property) => property.name),
+        whereFields,
+        versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
+        operations: operationsFor(path),
+    };
+}
+
+/** Build the REST model from an in-memory spec project. */
+export function buildRestModel(project: Project, options: GenerateOptions = {}): RestModel {
+    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
+    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
+    const diagnostics: Diagnostic[] = [];
+    const { interfaces } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+
+    const report = (node: Node, message: string) => {
+        const filePath = node.getSourceFile().getFilePath().replace(`${process.cwd()}/`, "");
+        diagnostics.push({ filePath, line: node.getStartLineNumber(), message });
+    };
+
     const entities: RestEntity[] = [];
-    for (const table of tables.values()) {
-        // The collection path is the table name, so a new entity is exposed with no generator edit.
-        const path = `/${table.name}`;
-        entities.push({
-            entity: table.interfaceName,
-            module: lowerFirst(table.interfaceName),
-            importSpecifier: table.importSpecifier,
-            path,
-            keys: primaryKeyColumns(table).map((column) => column.name),
-            filters: table.columns.filter((column) => column.queryFilter).map((column) => column.name),
-            orderFields: table.columns.filter((column) => column.queryOrder).map((column) => column.name),
-            whereFields: table.columns
-                .filter((column) => column.where !== undefined)
-                .map((column) => ({ name: column.name, operators: column.where ?? [] })),
-            versionFields: table.columns.filter((column) => column.version).map((column) => column.name),
-            operations: operationsFor(table, path),
-        });
+    for (const spec of interfaces.values()) {
+        const entity = restEntityFor(spec);
+        // A write addresses a row by its key, so a keyless entity has no delete or patch.
+        if (entity.keys.length === 0) {
+            report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
+        }
+        entities.push(entity);
     }
     entities.sort((a, b) => a.entity.localeCompare(b.entity));
-    return { entities };
+    return { entities, diagnostics };
 }

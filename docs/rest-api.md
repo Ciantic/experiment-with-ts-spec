@@ -99,6 +99,10 @@ the meaning they usually do.
 where the argument travels, and the filter fields. Neither generator may
 re-derive any of it — that is the way the two would drift.
 
+The model is mapped from the parsed spec, the same `parseSpec` the validation
+generator reads, so the REST pair and the Postgres generators each depend on the
+spec rather than on each other.
+
 The generators are split, rather than one writing both, because their outputs
 have different import rules:
 

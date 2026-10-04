@@ -1,42 +1,50 @@
 /** Unit tests for the server route renderer, driven by self-contained fixtures. See docs/testing.md. */
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.ts";
-import { buildRestModel } from "./rest-model.ts";
+import { Project } from "ts-morph";
+import { SPEC_SRC_ROOT } from "spec/scripts/spec-model.ts";
+import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { renderRoutesModule } from "./generate-rest-api.ts";
 
-function column(name: string, extras: Partial<Column> = {}): Column {
-    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
-    // otherwise passes the flag itself.
-    const insertable = extras.insertable ?? extras.default === undefined;
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
+/** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
+const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
+
+/** A versioned entity, so the routes cover a patch as well as a plain write. */
+const WIDGET = `
+/**
+ * @table widget
+ */
+export interface Widget {
+    /** @primaryKey */
+    id: string;
+
+    /** @version */
+    version: bigint;
 }
+`.trim();
 
-function table(name: string, interfaceName: string, columns: Column[]): Table {
-    return {
-        name,
-        interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.ts`,
-        columns,
-        relations: new Map(),
-        sameRowAssignments: [],
-        rollups: new Map(),
-    };
+/** A bare entity: a key and nothing else. */
+const MARKER = `
+/**
+ * @table marker
+ */
+export interface Marker {
+    /** @primaryKey */
+    id: string;
 }
+`.trim();
 
-const widget = table("widget", "Widget", [
-    column("id", { primaryKey: true, queryFilter: true }),
-    column("version", { version: true }),
-]);
-
-const marker = table("marker", "Marker", [column("id", { primaryKey: true })]);
-
-const tables = new Map([
-    ["Marker", marker],
-    ["Widget", widget],
-]);
+/** Build a model from in-memory domain files, so no test reads the real spec. */
+function build(domain: Record<string, string>): RestModel {
+    const project = new Project({ useInMemoryFileSystem: true });
+    for (const [name, text] of Object.entries(domain)) {
+        project.createSourceFile(join(SPEC_SRC_ROOT, "domain", `${name}.ts`), text);
+    }
+    return buildRestModel(project, { specGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB });
+}
 
 function render(): string {
-    return renderRoutesModule(buildRestModel(tables));
+    return renderRoutesModule(build({ Widget: WIDGET, Marker: MARKER }));
 }
 
 describe("renderRoutesModule", () => {

@@ -7,47 +7,88 @@
  * else. Both generators are then driven from one model and the calls they expose
  * are compared, so the two cannot disagree about the wire.
  */
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Column, Table } from "./postgres-model.ts";
-import { buildRestModel } from "./rest-model.ts";
+import { Project } from "ts-morph";
+import { SPEC_SRC_ROOT } from "spec/scripts/spec-model.ts";
+import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
 import { renderRoutesModule } from "./generate-rest-api.ts";
 
-function column(name: string, extras: Partial<Column> = {}): Column {
-    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
-    // otherwise passes the flag itself.
-    const insertable = extras.insertable ?? extras.default === undefined;
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
+/** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
+const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
+
+/** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
+const WIDGET = `
+/**
+ * @table widget
+ */
+export interface Widget {
+    /** @primaryKey */
+    id: string;
+
+    /** @queryfilter */
+    size: string;
+
+    /** @queryorderby default asc */
+    createdAt: Date;
+
+    /** @where gte lte */
+    amount: number;
+
+    /** @version */
+    version: bigint;
+}
+`.trim();
+
+/** A bare entity: a key and nothing else. */
+const MARKER = `
+/**
+ * @table marker
+ */
+export interface Marker {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
+/** An entity keyed by two fields, so a write addresses it by both. */
+const TRANSLATION = `
+/**
+ * @table translation
+ */
+export interface Translation {
+    /** @primaryKey */
+    languageCode: string;
+
+    /** @primaryKey */
+    key: string;
+
+    value?: string;
+}
+`.trim();
+
+/** An entity whose module name differs from its validation file, which is lower-cased. */
+const LIMITED = `
+/**
+ * @table limited
+ */
+export interface Limited {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
+/** Build a model from in-memory domain files, so no test reads the real spec. */
+function build(domain: Record<string, string>): RestModel {
+    const project = new Project({ useInMemoryFileSystem: true });
+    for (const [name, text] of Object.entries(domain)) {
+        project.createSourceFile(join(SPEC_SRC_ROOT, "domain", `${name}.ts`), text);
+    }
+    return buildRestModel(project, { specGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB });
 }
 
-function table(name: string, interfaceName: string, columns: Column[]): Table {
-    return {
-        name,
-        interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.ts`,
-        columns,
-        relations: new Map(),
-        sameRowAssignments: [],
-        rollups: new Map(),
-    };
-}
-
-const widget = table("widget", "Widget", [
-    column("id", { primaryKey: true, queryFilter: true }),
-    column("size", { queryFilter: true }),
-    column("createdAt", { queryOrder: { default: "asc" } }),
-    column("amount", { where: ["gte", "lte"] }),
-    column("version", { version: true }),
-]);
-
-const marker = table("marker", "Marker", [column("id", { primaryKey: true })]);
-
-const tables = new Map([
-    ["Marker", marker],
-    ["Widget", widget],
-]);
-
-const model = buildRestModel(tables);
+const model = build({ Widget: WIDGET, Marker: MARKER });
 
 function widgetModule(): string {
     const widgetEntity = model.entities.find((entity) => entity.entity === "Widget");
@@ -64,6 +105,7 @@ describe("renderClientModule", () => {
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
         expect(code).toContain("): Call<Selected<Widget, S>[]> {");
         expect(code).toContain('return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
+        expect(code).toContain('import type { Widget } from "spec/domain/Widget.ts";');
         expect(code).toContain('import { call, type Call } from "../client.ts";');
         expect(code).not.toContain("HttpClient");
     });
@@ -125,12 +167,7 @@ describe("renderClientModule", () => {
     });
 
     it("deletes by every field of a composite key", () => {
-        const composite = table("translation", "Translation", [
-            column("languageCode", { primaryKey: true, queryFilter: true }),
-            column("key", { primaryKey: true, queryFilter: true }),
-            column("value"),
-        ]);
-        const entity = buildRestModel(new Map([["Translation", composite]])).entities[0];
+        const entity = build({ Translation: TRANSLATION }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the translation entity");
         }
@@ -152,9 +189,7 @@ describe("renderClientModule", () => {
     });
 
     it("names the validation module after the entity", () => {
-        const limited = table("limited", "Limited", [column("id", { primaryKey: true })]);
-        const limitedModel = buildRestModel(new Map([["Limited", limited]]));
-        const code = renderClientModule(limitedModel.entities[0]!);
+        const code = renderClientModule(build({ Limited: LIMITED }).entities[0]!);
 
         expect(code).toContain('import type { LimitedInsert, LimitedPatch } from "validation/limited.ts";');
     });
