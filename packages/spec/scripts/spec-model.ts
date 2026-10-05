@@ -226,8 +226,7 @@ export function isInsertable(property: SpecProperty): boolean {
     if (tags.createdAt || tags.updatedAt || tags.pgVirtual !== undefined) {
         return false;
     }
-    // A computed column arrives from a trigger, so it is the caller's only while the column is
-    // required: a nullable one may be left out and derived from the rows that follow.
+    // A nullable computation is filled in later by its mechanism; a required one must be carried by the create.
     if (tags.computed) {
         return !property.optional;
     }

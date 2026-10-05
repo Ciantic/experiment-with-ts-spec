@@ -112,7 +112,7 @@ A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
 touches. That is a branch — a `@relation` or `@children` field, which has no
 column — a column the database owns outright: a clock field, a virtual generated
-column (`@pgVirtual`), or a nullable `@computed` field a trigger derives. An
+column (`@pgVirtual`), or a nullable `@computed` field its mechanism fills in. An
 entity that writes every column keeps the plain `Partial<Entity>` shape. A
 `@pgDefault` column is *not* on this list: a patch may override a default, the
 same way a create may.
@@ -199,8 +199,9 @@ A `@computed` column the database can fill later is left out too, so the
 of `<entity>InsertSchema`, which is why the statement and the wire schema cannot
 disagree (`docs/validation.md`). A nullable trigger- or rollup-derived column is
 in that set; a `@pgVirtual` column always is, required or not, because Postgres
-rejects a write to a generated column outright. A *required* trigger column
-stays: it has no default and no nullable column, so the insert has to carry it.
+rejects a write to a generated column outright. A *required* trigger- or
+rollup-derived column stays: it has no default and no nullable column, so the
+insert has to carry it.
 
 A *nullable* computed column is likewise left out of a patch, and out of the
 `update` statement with it: a `before insert or update` trigger reassigns the

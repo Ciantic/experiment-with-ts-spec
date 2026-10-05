@@ -127,7 +127,7 @@ The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
 `<Entity>Patch` type is rendered from it into the same module, so the repository
 type taking it, the client sending it, and the wire schema accepting it all
 permit exactly the same fields. A nullable `@computed` value is on the
-list because a `before insert or update` trigger derives it, and a `@pgVirtual`
+list because its mechanism fills it in later, and a `@pgVirtual`
 value is on it whether nullable or not because Postgres refuses the write: the
 update does not name the column, so accepting one would be accepting a field that
 does nothing (`docs/repositories.md`). A `@pgDefault` column is not on the list: a
@@ -165,9 +165,9 @@ A field is omitted when the database owns it, from either annotation:
   the database's own on insert: the two timestamps carry `default now()`,
   `@pgVirtual` is generated always, and a version's default *is* its first
   revision.
-- **A stored computation** is the trigger's to derive, but only while the column
-  is optional. A required one has no default and no nullable column, so the
-  insert has to carry it: `InvoiceSent.netAmount` and its siblings stay, while
+- **A stored computation** is left to its mechanism to derive, but only while the
+  column is optional. A required one has no default and no nullable column, so the
+  insert has to carry it: `InvoiceSentRow.netAmount` and its siblings stay, while
   `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
   not a default.
 
