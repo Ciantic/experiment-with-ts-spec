@@ -101,18 +101,28 @@ The statements are plpgsql, so every reference to a column of the row being
 written must be `NEW`-qualified. An unqualified `"quantity"` is a plpgsql error
 (`column "quantity" does not exist`), not an implicit `NEW` lookup. A virtual
 column's expression is the opposite: it is a SQL expression, so it must *not* be
-`NEW`-qualified, and the linter does not check which form a field used.
+`NEW`-qualified, and the linter does not check which form a field used. A
+statement-level trigger has no `NEW` or `OLD` at all — both are null — so a
+statement that reads either fails at run time, which is why a field-level
+trigger, whose column needs filling, may not be statement-level.
 
-A trigger with a header takes the timing, events, and table the header names, so
-one table can carry a `before insert or update` function, an `after insert`
-function, and so on. Every trigger on one table with the same timing and the same
-events shares one function and one `create trigger`. The function is named
-`<table>_compute` for the shared before insert or update shape — which is why
-`@version`'s separate `before update` trigger, named `<table>_version`, fires
-after it (Postgres orders same-timing triggers by name) — and
-`<table>_<timing>_<events>` otherwise. A `before` trigger returns `NEW`, or
+A trigger with a header takes the timing, events, table, and level the header
+names, so one table can carry a `before insert or update` function, an `after
+insert` function, and so on. Every trigger on one table with the same timing,
+events, and level shares one function and one `create trigger`. The function is
+named `<table>_compute` for the shared row-level before insert or update shape —
+which is why `@version`'s separate `before update` trigger, named
+`<table>_version`, fires after it (Postgres orders same-timing triggers by name)
+— and `<table>_<timing>_<events>`, with a `_statement` suffix when it is
+statement-level, otherwise. A `before` row trigger returns `NEW`, or
 `coalesce(NEW, OLD)` when it fires on delete, since `NEW` is null there and
-returning it would cancel the delete; an `after` trigger returns null.
+returning it would cancel the delete. An `after` trigger returns null, as does a
+statement-level one, whose return value Postgres ignores.
+
+A field's statements sit in interface field order, and an interface-level
+`@pgTrigger`'s statements come after all of them, in the same function when the
+shape agrees. That placement is what lets an interface-level statement read a
+derived value: were it emitted first, it would see whatever the client sent.
 
 A `@version` column gets its own `before update` trigger, separate from the
 `_compute` trigger: it raises on a version mismatch and increments the column.

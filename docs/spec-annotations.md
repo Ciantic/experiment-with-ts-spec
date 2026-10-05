@@ -88,6 +88,13 @@ Field tags:
 Interface tags:
 
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
+- `@pgTrigger <statement>` or `@pgTrigger <header>: <statement>` — a trigger that runs
+  for the table rather than for one field, so it may not assign a column (there is
+  no field to claim) and may not carry `on` (it is already attached). The header
+  is the same grammar as the field tag's, and the level defaults to
+  `for each statement` — Postgres' own default, and the only level at which
+  `NEW` and `OLD` are unavailable. Write `for each row` to log or check one row at
+  a time. See "Where a trigger is declared" below.
 
 Type tags:
 
@@ -266,6 +273,7 @@ Three mechanisms, chosen by what the expression needs:
 - `@pgTrigger` — a row-level trigger. Freer than a generated column (it may read
   other columns the trigger assigned earlier in the same pass) and indexable, and
   the only mechanism that can read another table, by naming it in the header.
+  The same tag on an interface declares a trigger with no column behind it.
 
 `invoice.totalAmount` is the one `@pgVirtual` field: it is a same-row sum of two
 regular columns. `invoice.netAmount`/`taxAmount` are `@pgTrigger` on
@@ -298,8 +306,8 @@ those columns always reproduces the same figure.
 
 ## `@pgTrigger` headers
 
-A header is the timing, the events, and the table the trigger attaches to, then
-a colon and the statement. It mirrors `CREATE TRIGGER`:
+A header is the timing, the events, the optional table, and the optional level,
+then a colon and the statement. It mirrors `CREATE TRIGGER`:
 
 ```
 @pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId")
@@ -319,16 +327,44 @@ a colon and the statement. It mirrors `CREATE TRIGGER`:
   A statement that reads a *second* table referencing the parent is also an
   error, since that table's writes would leave the field stale — write a second
   `@pgTrigger` for it.
+- `for each row` or `for each statement` names the level, in Postgres' own
+  words. Unstated, a field-level trigger is `for each row` and an
+  interface-level one is `for each statement`.
 - The statement is written verbatim, as a `@pgVirtual` expression is. It names
   its own tables and columns, so it can be read, corrected, and run without
   substituting anything, and `grep "invoice_row"` finds it.
 - `instead of` is not accepted: it needs a row-level trigger on a view, and the
   spec has no view entity to attach one to.
 
-Every trigger on one table with the same timing and the same events shares one
+Every trigger on one table with the same timing, events, and level shares one
 function, so several fields' statements are emitted together in interface field
-order. That order is load-bearing: on `invoice_row` each assignment reads the one
-before it, and `@updatedAt` joins the same `before insert or update` function.
+order, and the interface's own statements after them. That order is
+load-bearing: on `invoice_row` each assignment reads the one before it, and an
+interface-level statement runs last so it can read a derived value rather than
+the value the client sent. `@updatedAt` joins the same `before insert or update`
+function in field order.
+
+## Where a trigger is declared
+
+The owner of a trigger is the thing that declares it, which is why placement is a
+rule rather than a preference:
+
+| declared on | `@computed` | `NEW."<col>" :=` | level | for |
+| --- | --- | --- | --- | --- |
+| a field | required | the only way to fill it | always `for each row` | a derived column |
+| the interface | n/a | rejected | `for each statement`, or `for each row` as written | a write with no column: an audit row, an invariant |
+
+`@computed` on the field is what keeps a column out of the insert and patch
+paths, so a statement that assigns a column has to sit on that field, next to the
+claim it makes. A statement that assigns nothing has no field to sit on, and a
+statement-level trigger *cannot* assign: `NEW` and `OLD` are null there, so
+reading either is a runtime error rather than a compiled one. Hence the two
+rules above — a field-level trigger may not be statement-level, and an
+interface-level trigger may not assign.
+
+An interface-level trigger is also where `REFERENCING` transition tables would
+live, since Postgres allows them only on an `after` statement-level trigger on a
+plain table. Nothing generates them yet; see "Deliberately not implemented".
 
 ## Column naming
 
@@ -387,6 +423,11 @@ Rationale is in `docs/primitives.md`.
 - **Views for a read-time projection.** A derived view would recompute on every
   read; the mechanisms above cover what the spec needs today, and nothing emits
   a view.
+- **Transition tables.** `REFERENCING OLD TABLE`/`NEW TABLE` would give an
+  interface-level `after` statement-level trigger the whole set of affected rows
+  at once. The grammar has a place for it — the header already reads like
+  `CREATE TRIGGER` — but nothing parses the clause, because no rule needs the
+  row set yet.
 - **A cross-table `@pgVirtual`.** Postgres rejects it outright, so no generator
   support is planned.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
@@ -403,7 +444,8 @@ Rationale is in `docs/primitives.md`.
 2. For each `@computed` field it reads the mechanism tag off the field itself:
    `@pgVirtual` becomes a generated column, and `@pgTrigger` a row-level
    trigger — a `before insert or update` assignment on its own table by default,
-   or the timing, events, and table its header names.
+   or the timing, events, table, and level its header names. A `@pgTrigger` on
+   the interface itself adds a statement-level trigger to the same pass.
 3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
    assignment.
 
@@ -462,12 +504,20 @@ Enforced:
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
 - A mechanism tag (`@pgVirtual`, `@pgTrigger`) requires `@computed`, and at most
-  one may appear on a field. Both carry a non-empty expression or statement.
+  one may appear on a field. Both carry a non-empty expression or statement. The
+  requirement is per placement: a field-level `@pgTrigger` needs `@computed`
+  because it fills that field, while an interface-level one takes no `@computed`
+  at all, since there is no field to compute.
 - `@pgTrigger` names `before` or `after`, then `insert`, `update`, `delete`, or
-  `or`, then an optional `on <Entity>`, then `:`, then the statement. At least
-  one event is required, an unknown event is reported, and `instead of` is
-  rejected because it is a trigger on a view. The linter does not resolve the
-  entity — the generator does, against the whole spec.
+  `or`, optionally `on <Entity>`, optionally `for each row|statement`, then `:`,
+  then the statement. At least one event is required, an unknown event or level
+  is reported, and `instead of` is rejected because it is a trigger on a view.
+  The linter does not resolve the entity — the generator does, against the whole
+  spec.
+- A field-level `@pgTrigger` may not be `for each statement`, since a
+  statement-level trigger cannot assign its column. An interface-level one may
+  not assign a column and may not carry `on`, since it is already attached to its
+  own table.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
   mutually exclusive with each other and with `@computed`,
   `@pgDefault`, `@version`, and the mechanism tags, and may appear at most once per

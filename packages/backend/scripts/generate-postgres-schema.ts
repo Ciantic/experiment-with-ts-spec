@@ -96,9 +96,10 @@ function renderTable(table: Table): string[] {
     return lines;
 }
 
-/** The name of a trigger and its function; the shared before insert or update shape keeps the `_compute` name. */
+/** The name of a trigger and its function; the shared row-level before insert or update shape keeps `_compute`. */
 function triggerName(table: Table, trigger: Trigger): string {
     if (
+        trigger.level === "row" &&
         trigger.timing === "before" &&
         trigger.events.length === 2 &&
         trigger.events[0] === "insert" &&
@@ -106,12 +107,14 @@ function triggerName(table: Table, trigger: Trigger): string {
     ) {
         return `${table.name}_compute`;
     }
-    return `${table.name}_${trigger.timing}_${trigger.events.join("_")}`;
+    const level = trigger.level === "statement" ? "_statement" : "";
+    return `${table.name}_${trigger.timing}_${trigger.events.join("_")}${level}`;
 }
 
-/** The return each timing needs: a before delete must return the old row, since NEW is null there. */
+/** The return each shape needs: a before row trigger must return the row, since null cancels its event. */
 function triggerReturn(trigger: Trigger): string {
-    if (trigger.timing === "after") {
+    // A statement-level return value is ignored, and a before row trigger on delete has no NEW to return.
+    if (trigger.level === "statement" || trigger.timing === "after") {
         return "return null;";
     }
     return trigger.events.includes("delete") ? "return coalesce(NEW, OLD);" : "return NEW;";
@@ -133,7 +136,7 @@ function renderTriggers(table: Table): string[] {
             "$$ language plpgsql;",
             "",
             `create trigger ${name} ${trigger.timing} ${trigger.events.join(" or ")} on ${quote(table.name)}`,
-            `    for each row execute function ${name}();`,
+            `    for each ${trigger.level} execute function ${name}();`,
             "",
         );
     }

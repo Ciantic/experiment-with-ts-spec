@@ -47,7 +47,7 @@ export const FIELD_TAGS = [
 ] as const;
 
 /** Tags an interface may carry. */
-export const INTERFACE_TAGS = ["pgTable"] as const;
+export const INTERFACE_TAGS = ["pgTable", "pgTrigger"] as const;
 
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
@@ -96,6 +96,15 @@ export type TriggerTiming = (typeof TRIGGER_TIMINGS)[number];
 /** The row events a `@pgTrigger` header may name. */
 export const TRIGGER_EVENTS = ["insert", "update", "delete"] as const;
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
+
+/** The levels a `@pgTrigger` runs at. Postgres runs a trigger per statement unless it says `for each row`. */
+export const TRIGGER_LEVELS = ["row", "statement"] as const;
+export type TriggerLevel = (typeof TRIGGER_LEVELS)[number];
+
+/** True when the text is one of {@link TRIGGER_LEVELS}. */
+export function isTriggerLevel(value: string | undefined): value is TriggerLevel {
+    return (TRIGGER_LEVELS as readonly string[]).includes(value ?? "");
+}
 
 /** The sort directions an `@queryOrderBy default …` may name. */
 export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
@@ -189,6 +198,8 @@ export interface SpecInterface {
     importSpecifier: string;
     declaration: InterfaceDeclaration;
     properties: SpecProperty[];
+    /** The interface-level `@pgTrigger`, which runs for the table rather than for one field. */
+    trigger?: PgTrigger;
 }
 
 /** A type alias in the spec. */
@@ -315,11 +326,59 @@ export interface PgTrigger {
     timing: TriggerTiming;
     /** The events the trigger fires on, listed in {@link TRIGGER_EVENTS} order. */
     events: TriggerEvent[];
+    /** The level the header names; absent means the placement's default. See {@link triggerLevel}. */
+    level?: TriggerLevel;
     statement: string;
+}
+
+/** A `@pgTrigger` header, with its tokens as written so the linter can report an unknown one. */
+export interface TriggerHeader {
+    timing: string;
+    /** The tokens between the timing and `on` or `for`, as written, so `or` and unknown events survive. */
+    events: string[];
+    /** The entity after `on`; `""` when `on` is present with nothing after it. */
+    table?: string;
+    level?: TriggerLevel;
+    /** The token after `for each`, as written, so an unknown level survives to the linter. */
+    forEach?: string;
 }
 
 /** True when a `@pgTrigger` value opens a header instead of being a bare statement. */
 const TRIGGER_HEADER = /^(before|after)\b/;
+
+/** True when a `@pgTrigger` value opens a header rather than being a bare statement. */
+export function hasTriggerHeader(value: string): boolean {
+    return TRIGGER_HEADER.test(value.trim());
+}
+
+/** The header text of a `@pgTrigger` value: up to the colon that opens the statement, never the `:=` of one. */
+export function triggerHeaderText(value: string): string {
+    const separator = value.search(/:(?=\s|$)/);
+    return separator === -1 ? value.trim() : value.slice(0, separator).trim();
+}
+
+/** Read a `@pgTrigger` header without judging it; each token is kept as written. */
+export function parseTriggerHeader(header: string): TriggerHeader {
+    const tokens = header.split(/\s+/).filter((token) => token !== "");
+    const onIndex = tokens.indexOf("on");
+    const forIndex = tokens.indexOf("for");
+    const boundaries = [onIndex, forIndex].filter((index) => index !== -1);
+    // Events run from the timing to whichever of `on` and `for` comes first.
+    const boundary = boundaries.length === 0 ? tokens.length : Math.min(...boundaries);
+    const header2: TriggerHeader = { timing: tokens[0] ?? "", events: tokens.slice(1, boundary) };
+    if (onIndex !== -1) {
+        header2.table = tokens[onIndex + 1] ?? "";
+    }
+    const level = tokens[forIndex + 2];
+    if (forIndex !== -1) {
+        // Keep the token as written: an unknown level is the linter's to report.
+        header2.forEach = tokens[forIndex + 1] === "each" ? level ?? "" : tokens[forIndex + 1] ?? "";
+        if (tokens[forIndex + 1] === "each" && isTriggerLevel(level)) {
+            header2.level = level;
+        }
+    }
+    return header2;
+}
 
 /**
  * Split a `@pgTrigger` value into the trigger it declares.
@@ -330,22 +389,30 @@ export function parseTrigger(value: string): PgTrigger {
     if (!TRIGGER_HEADER.test(text)) {
         return { timing: "before", events: ["insert", "update"], statement: text };
     }
-    // The header ends at a colon that opens the statement, not at the `:=` of an assignment.
-    const separator = text.search(/:(?=\s|$)/);
-    const header = separator === -1 ? text : text.slice(0, separator);
-    const statement = separator === -1 ? "" : text.slice(separator + 1).trim();
-    const tokens = header.split(/\s+/).filter((token) => token !== "");
-    const timing = tokens[0] as TriggerTiming;
-    const onIndex = tokens.indexOf("on");
-    const table = onIndex === -1 ? undefined : tokens[onIndex + 1] ?? "";
-    const named = tokens.slice(1, onIndex === -1 ? undefined : onIndex);
-    // Events keep a canonical order, so two spellings of one trigger share a function.
-    const events = TRIGGER_EVENTS.filter((event) => named.includes(event));
-    const trigger: PgTrigger = { timing, events, statement };
-    if (table !== undefined) {
-        trigger.table = table;
+    const header = triggerHeaderText(text);
+    const parsed = parseTriggerHeader(header);
+    const trigger: PgTrigger = {
+        timing: parsed.timing as TriggerTiming,
+        events: TRIGGER_EVENTS.filter((event) => parsed.events.includes(event)),
+        statement: header === text ? "" : text.slice(header.length + 1).trim(),
+    };
+    if (parsed.table !== undefined) {
+        trigger.table = parsed.table;
+    }
+    if (parsed.level !== undefined) {
+        trigger.level = parsed.level;
     }
     return trigger;
+}
+
+/** The level a trigger runs at: the header's, or the placement's default. See docs/spec-annotations.md. */
+export function triggerLevel(trigger: PgTrigger, placement: "field" | "entity"): TriggerLevel {
+    return trigger.level ?? (placement === "field" ? "row" : "statement");
+}
+
+/** True when a statement assigns a column of the row being written, which only a field-level trigger may do. */
+export function assignsColumn(statement: string): boolean {
+    return /NEW\s*\.\s*(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*:=/.test(statement);
 }
 
 /** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
@@ -492,9 +559,10 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
 
         for (const declaration of sourceFile.getInterfaces()) {
             const name = declaration.getName();
-            interfaces.set(name, {
+            const declarationTags = readTags(declaration);
+            const entity: SpecInterface = {
                 name,
-                pgTableName: readTags(declaration).pgTable ?? snakeCase(name),
+                pgTableName: declarationTags.pgTable ?? snakeCase(name),
                 filePath,
                 importSpecifier: specImportSpecifier(filePath),
                 declaration,
@@ -513,7 +581,11 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                         tags,
                     };
                 }),
-            });
+            };
+            if (declarationTags.pgTrigger !== undefined) {
+                entity.trigger = declarationTags.pgTrigger;
+            }
+            interfaces.set(name, entity);
         }
     }
 

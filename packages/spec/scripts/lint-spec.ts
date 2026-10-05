@@ -20,9 +20,16 @@ import {
     isCompareOperator,
     isOrderDirection,
     parseParameters,
+    assignsColumn,
+    hasTriggerHeader,
+    parseTrigger,
+    parseTriggerHeader,
     readTags,
+    triggerHeaderText,
     TRIGGER_EVENTS,
+    triggerLevel,
     type ComputedKind,
+    type TriggerHeader,
 } from "./spec-model.ts";
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
@@ -138,6 +145,12 @@ export function lintInterface(
             message: `\`${name}\`: @version may appear on at most one field`,
         });
     }
+
+    // The interface-level tag is checked against the declaration, not against a field.
+    const interfaceReport: Report = (message, tag) => {
+        findings.push({ filePath, line: (tag ?? declaration).getStartLineNumber(), message: `\`${name}\`: ${message}` });
+    };
+    lintEntityTrigger(declaration, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.
     for (const clock of ["createdAt", "updatedAt"] as const) {
@@ -311,6 +324,21 @@ function lintComputedMechanism(tags: FieldTags, report: Report): void {
     }
 }
 
+/** The header rules both placements share: the events, and the level when the header names one. */
+function lintTriggerHeader(tag: JSDocTag, parsed: TriggerHeader, report: Report): void {
+    for (const token of parsed.events) {
+        if (token !== "or" && !(TRIGGER_EVENTS as readonly string[]).includes(token)) {
+            report(`@pgTrigger event \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+        }
+    }
+    if (!parsed.events.some((token) => (TRIGGER_EVENTS as readonly string[]).includes(token))) {
+        report(`@pgTrigger header needs at least one event: ${TRIGGER_EVENTS.join(", ")}`, tag);
+    }
+    if (parsed.forEach !== undefined && parsed.level === undefined) {
+        report("@pgTrigger level reads `for each row` or `for each statement`", tag);
+    }
+}
+
 /** `@pgTrigger` is a statement, optionally behind a header naming the trigger. See docs/spec-annotations.md. */
 function lintTrigger(tags: FieldTags, report: Report): void {
     const tag = tags.trigger;
@@ -319,7 +347,7 @@ function lintTrigger(tags: FieldTags, report: Report): void {
     }
     const text = (tag.getCommentText() ?? "").trim();
     // A bare statement is the field's own table, before insert or update; its text is checked above.
-    if (!/^(before|after)\b/.test(text)) {
+    if (!hasTriggerHeader(text)) {
         if (/^instead\s+of\b/.test(text)) {
             report("@pgTrigger cannot be `instead of`, which is a trigger on a view, and the spec has no views", tag);
         } else if (/^on\b/.test(text)) {
@@ -327,28 +355,47 @@ function lintTrigger(tags: FieldTags, report: Report): void {
         }
         return;
     }
-    // The header ends at the colon that opens the statement, never at the `:=` of an assignment.
-    const separator = text.search(/:(?=\s|$)/);
-    if (separator === -1) {
+    if (triggerHeaderText(text) === text) {
         report("@pgTrigger header needs `: <statement>`, such as `after insert on InvoiceRow: …`", tag);
         return;
     }
-    const header = text.slice(0, separator).split(/\s+/).filter((token) => token !== "");
-    if (!text.slice(separator + 1).trim()) {
+    if (!text.slice(triggerHeaderText(text).length + 1).trim()) {
         report("@pgTrigger is missing its statement", tag);
     }
-    const onIndex = header.indexOf("on");
-    if (onIndex !== -1 && !header[onIndex + 1]) {
+    const parsed = parseTriggerHeader(triggerHeaderText(text));
+    if (parsed.table === "") {
         report("@pgTrigger `on` is missing the entity it attaches to", tag);
     }
-    const named = header.slice(1, onIndex === -1 ? undefined : onIndex);
-    for (const token of named) {
-        if (token !== "or" && !(TRIGGER_EVENTS as readonly string[]).includes(token)) {
-            report(`@pgTrigger event \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
-        }
+    lintTriggerHeader(tag, parsed, report);
+    // A statement-level trigger cannot assign a column, so a field's trigger is always row-level.
+    if (triggerLevel(parseTrigger(text), "field") === "statement") {
+        report("@pgTrigger on a field runs `for each row`; a statement-level trigger belongs on the interface", tag);
     }
-    if (!named.some((token) => (TRIGGER_EVENTS as readonly string[]).includes(token))) {
-        report(`@pgTrigger header needs at least one event: ${TRIGGER_EVENTS.join(", ")}`, tag);
+}
+
+/** An interface-level `@pgTrigger` runs for the table, so it can neither assign a column nor name one. */
+function lintEntityTrigger(declaration: InterfaceDeclaration, report: Report): void {
+    const tag = declaration
+        .getJsDocs()
+        .flatMap((doc) => doc.getTags())
+        .find((candidate) => candidate.getTagName() === "pgTrigger");
+    if (!tag) {
+        return;
+    }
+    const trigger = parseTrigger((tag.getCommentText() ?? "").trim());
+    const text = (tag.getCommentText() ?? "").trim();
+    // A bare statement is a legitimate interface-level trigger; only `on` is out of place there.
+    if (hasTriggerHeader(text)) {
+        lintTriggerHeader(tag, parseTriggerHeader(triggerHeaderText(text)), report);
+    }
+    if (trigger.table !== undefined) {
+        report("@pgTrigger on an interface is already attached to its own table; `on` is for a field", tag);
+    }
+    if (!trigger.statement) {
+        report("@pgTrigger is missing its statement", tag);
+    }
+    if (assignsColumn(trigger.statement)) {
+        report("@pgTrigger on an interface cannot assign a column; move it to the field with @computed", tag);
     }
 }
 

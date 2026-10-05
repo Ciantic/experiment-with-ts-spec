@@ -36,6 +36,25 @@ describe("parseSpec interfaces", () => {
         expect(interfaces.get("Thing")?.importSpecifier).toBe("spec/fixtures/Thing.ts");
     });
 
+    it("decodes an interface-level @pgTrigger", () => {
+        const { interfaces } = parse({
+            "Thing.ts":
+                '/**\n * @pgTable thing\n * @pgTrigger after insert or update: insert into "log" ("id") values (NEW."id")\n */\nexport interface Thing { id: string; }',
+        });
+
+        expect(interfaces.get("Thing")?.trigger).toEqual({
+            timing: "after",
+            events: ["insert", "update"],
+            statement: 'insert into "log" ("id") values (NEW."id")',
+        });
+    });
+
+    it("leaves an interface without @pgTrigger undefined", () => {
+        const { interfaces } = parse({ "Thing.ts": "export interface Thing { id: string; }" });
+
+        expect(interfaces.get("Thing")?.trigger).toBeUndefined();
+    });
+
     it("collects the interface's properties with their option flags", () => {
         const { interfaces } = parse({
             "Thing.ts": "export interface Thing { id: string; note?: string; }",
@@ -125,6 +144,28 @@ describe("parseSpec tags", () => {
             events: ["insert"],
             statement: 'insert into "log" ("id") values (NEW."id")',
         });
+    });
+
+    it("decodes the level a @pgTrigger header names", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @computed\n     * @pgTrigger after insert for each statement: insert into \"log\" (\"id\") values (1)\n     */",
+                "logged?: Decimal;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgTrigger?.level).toBe("statement");
+    });
+
+    it("leaves the level unset when the header names none", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @computed\n     * @pgTrigger after insert on Child: update \"parent\" set \"n\" = 1\n     */",
+                "net?: Decimal;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgTrigger?.level).toBeUndefined();
     });
 
     it("decodes the clock tags and the virtual expression", () => {

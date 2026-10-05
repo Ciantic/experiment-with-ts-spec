@@ -20,7 +20,10 @@ import {
     type SpecProperty,
     type SpecTypeAlias,
     type TriggerEvent,
+    type TriggerLevel,
     type TriggerTiming,
+    assignsColumn,
+    triggerLevel,
 } from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
@@ -90,11 +93,12 @@ export interface Relation {
     columns?: Record<string, string>;
 }
 
-/** A row trigger on one table: the timing and events it shares with its statements. */
+/** A row or statement trigger on one table: the shape it shares with its statements. */
 export interface Trigger {
     timing: TriggerTiming;
     events: TriggerEvent[];
-    /** The statements it runs, in the order the spec declares the fields that contribute them. */
+    level: TriggerLevel;
+    /** The statements it runs, in the order the spec declares the interface and its fields. */
     statements: string[];
 }
 
@@ -200,6 +204,9 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
     for (const property of spec.properties) {
         addProperty(context, table, property);
     }
+
+    // Interface-level statements run after the fields', so one can read a derived value.
+    attachEntityTrigger(context, table, spec);
 
     if (!table.columns.some((column) => column.primaryKey)) {
         context.report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
@@ -405,29 +412,69 @@ function addScalarColumn(
     // A trigger statement maintains the field on every write; the clock tag contributes its own.
     // A trigger that names another table is attached after every table exists. See attachTriggers.
     const trigger = tags.pgTrigger;
-    if (trigger !== undefined && trigger.table === undefined && trigger.statement !== "" && trigger.events.length > 0) {
-        triggerOn(table, trigger.timing, trigger.events).statements.push(stripSemicolon(trigger.statement) + ";");
+    if (trigger !== undefined && trigger.table === undefined) {
+        if (triggerLevel(trigger, "field") === "statement") {
+            context.reportField(
+                table,
+                fieldName,
+                "@pgTrigger on a field runs `for each row`; a statement-level trigger belongs on the interface",
+            );
+        } else if (trigger.statement !== "" && trigger.events.length > 0) {
+            // The field's own trigger is contributed here so it sits in interface field order.
+            triggerOn(table, trigger.timing, trigger.events, "row").statements.push(
+                stripSemicolon(trigger.statement) + ";",
+            );
+        }
     }
     if (tags.updatedAt) {
-        triggerOn(table, "before", ["insert", "update"]).statements.push(`NEW.${quote(fieldName)} := now();`);
+        triggerOn(table, "before", ["insert", "update"], "row").statements.push(`NEW.${quote(fieldName)} := now();`);
     }
 }
 
-/** The trigger on `table` with this timing and these events, created on first use. */
-function triggerOn(table: Table, timing: TriggerTiming, events: TriggerEvent[]): Trigger {
-    const key = triggerKey(timing, events);
-    const existing = table.triggers.find((candidate) => triggerKey(candidate.timing, candidate.events) === key);
+/** The trigger on `table` with this shape, created on first use. */
+function triggerOn(table: Table, timing: TriggerTiming, events: TriggerEvent[], level: TriggerLevel): Trigger {
+    const key = triggerKey(timing, events, level);
+    const existing = table.triggers.find((candidate) => triggerKey(candidate.timing, candidate.events, candidate.level) === key);
     if (existing) {
         return existing;
     }
-    const trigger: Trigger = { timing, events, statements: [] };
+    const trigger: Trigger = { timing, events, level, statements: [] };
     table.triggers.push(trigger);
     return trigger;
 }
 
-/** Two triggers share a function when their timing and events agree; the parser lists events in one order. */
-function triggerKey(timing: TriggerTiming, events: TriggerEvent[]): string {
-    return `${timing} ${events.join(",")}`;
+/** Two triggers share a function when their shape agrees; the parser lists events in one order. */
+function triggerKey(timing: TriggerTiming, events: TriggerEvent[], level: TriggerLevel): string {
+    return `${level} ${timing} ${events.join(",")}`;
+}
+
+/** Add the interface-level `@pgTrigger`, which runs for the table rather than for one field. */
+function attachEntityTrigger(context: BuildContext, table: Table, spec: SpecInterface): void {
+    const trigger = spec.trigger;
+    if (trigger === undefined) {
+        return;
+    }
+    const report = (message: string) => context.report(spec.declaration, `\`${spec.name}\`: ${message}`);
+    // `on` attaches a field's trigger to another table; an interface's is already on its own.
+    if (trigger.table !== undefined) {
+        report("@pgTrigger on an interface is already attached to its own table; `on` is for a field");
+        return;
+    }
+    if (trigger.statement === "") {
+        report("@pgTrigger is missing its statement");
+        return;
+    }
+    if (trigger.events.length === 0) {
+        report("@pgTrigger header needs at least one event: insert, update, delete");
+        return;
+    }
+    if (assignsColumn(trigger.statement)) {
+        report("@pgTrigger on an interface cannot assign a column; move it to the field with @computed");
+        return;
+    }
+    triggerOn(table, trigger.timing, trigger.events, triggerLevel(trigger, "entity")).statements.push(
+        stripSemicolon(trigger.statement) + ";",
+    );
 }
 
 /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
@@ -513,6 +560,14 @@ function attachTriggers(
             if (trigger.table === undefined) {
                 continue;
             }
+            if (triggerLevel(trigger, "field") === "statement") {
+                context.reportField(
+                    ownTable,
+                    property.name,
+                    "@pgTrigger on a field runs `for each row`; a statement-level trigger belongs on the interface",
+                );
+                continue;
+            }
             if (trigger.table === "") {
                 context.reportField(ownTable, property.name, "@pgTrigger `on` is missing the entity it attaches to");
                 continue;
@@ -524,13 +579,15 @@ function attachTriggers(
             }
             if (attachment === ownTable) {
                 // Naming the field's own table is the same-row form; contribute it there.
-                triggerOn(attachment, trigger.timing, trigger.events).statements.push(
+                triggerOn(attachment, trigger.timing, trigger.events, "row").statements.push(
                     stripSemicolon(trigger.statement) + ";",
                 );
                 continue;
             }
             validateAttachment(ownTable, attachment, trigger, property, tables, context);
-            triggerOn(attachment, trigger.timing, trigger.events).statements.push(stripSemicolon(trigger.statement) + ";");
+            triggerOn(attachment, trigger.timing, trigger.events, "row").statements.push(
+                stripSemicolon(trigger.statement) + ";",
+            );
         }
     }
 }

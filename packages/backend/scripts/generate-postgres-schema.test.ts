@@ -1012,7 +1012,155 @@ describe("generateSchema triggers", () => {
             [PARENT_B, 7],
         ]);
     });
+    it("emits an interface-level statement trigger once per statement", async () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Invoice: `/**
+ * @pgTable invoice
+ * @pgTrigger after insert: insert into "audit_log" ("id") values ('${CHILD_A}')
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: GUID;
+}`,
+                AuditLog: "export interface AuditLog {\n    /** @primaryKey */\n    id: GUID; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
 
+        expect(sql).toContain('create trigger "invoice_after_insert_statement" after insert on "invoice"');
+        expect(sql).toContain("for each statement execute function");
+
+        // Statement level means one row per statement, not per row: NEW is null there, so the
+        // statement cannot name a row of the table it fires on.
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(
+            `insert into "invoice" ("id") values ('${PARENT}'), ('${PARENT_B}');`,
+        );
+        const rows = await db.query<{ count: string }>(`select count(*) as count from "audit_log";`);
+
+        expect(Number(rows.rows[0]?.count)).toBe(1);
+    });
+
+    it("emits an interface-level row trigger once per row", async () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Invoice: `/**
+ * @pgTable invoice
+ * @pgTrigger after insert for each row: insert into "audit_log" ("id") values (NEW."id")
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: GUID;
+}`,
+                AuditLog: "export interface AuditLog {\n    /** @primaryKey */\n    id: GUID; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
+
+        expect(sql).toContain('create trigger "invoice_after_insert" after insert on "invoice"');
+        expect(sql).toContain("for each row execute function");
+
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "invoice" ("id") values ('${PARENT}'), ('${PARENT_B}');`);
+        const rows = await db.query<{ count: string }>(`select count(*) as count from "audit_log";`);
+
+        expect(Number(rows.rows[0]?.count)).toBe(2);
+    });
+
+    it("runs interface-level statements after the fields' assignments", async () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Invoice: `/**
+ * @pgTable invoice
+ * @pgTrigger before insert or update for each row: insert into "audit_log" ("id", "net") values (NEW."id", NEW."net")
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: GUID;
+    /**
+     * @computed
+     * @pgTrigger NEW."net" := NEW."q" * 2
+     */
+    net?: Decimal;
+    q?: Decimal;
+}`,
+                AuditLog: "export interface AuditLog {\n    /** @primaryKey */\n    id: GUID; \n    net?: Decimal; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
+
+        // Both statements share the before insert or update function, so order within it decides.
+        expect(sql).toContain('create function "invoice_compute"() returns trigger as $$');
+
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "invoice" ("id", "q") values ('${PARENT}', 4);`);
+        const rows = await db.query<{ net: string }>(`select "net" from "audit_log";`);
+
+        // The interface's statement reads the value the field's statement assigned.
+        expect(Number(rows.rows[0]?.net)).toBe(8);
+    });
+
+    it("reports an interface-level trigger that assigns a column", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Invoice: `/**
+ * @pgTable invoice
+ * @pgTrigger before insert: NEW."total" := 1
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: GUID;
+}`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`Invoice`: @pgTrigger on an interface cannot assign a column; move it to the field with @computed",
+        ]);
+    });
+
+    it("reports an interface-level trigger that names a table", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Invoice: `/**
+ * @pgTable invoice
+ * @pgTrigger after insert on Row: insert into "log" ("id") values (1)
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: GUID;
+}`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`Invoice`: @pgTrigger on an interface is already attached to its own table; `on` is for a field",
+        ]);
+    });
+
+    it("reports a statement-level trigger on a field", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Thing: `export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgTrigger after insert for each statement: insert into "log" ("id") values (1)
+                     */
+                    net?: Decimal;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`net`: @pgTrigger on a field runs `for each row`; a statement-level trigger belongs on the interface",
+        ]);
+    });
 });
 
 describe("generateSchema @pgVirtual", () => {

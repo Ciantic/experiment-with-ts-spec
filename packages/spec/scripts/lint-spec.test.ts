@@ -366,6 +366,122 @@ describe("lintSourceText", () => {
         ]);
     });
 
+    it("reports a level that is not row or statement", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger after insert for each thing: update "t" set "n" = 1
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger level reads `for each row` or `for each statement`",
+        ]);
+    });
+
+    it("reports a statement-level trigger on a field, which has a column to fill", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger after insert for each statement: insert into "log" ("id") values (1)
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger on a field runs `for each row`; a statement-level trigger belongs on the interface",
+        ]);
+    });
+
+    it("accepts an interface-level @pgTrigger that assigns no column", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgTable invoice
+             * @pgTrigger after insert or update or delete: insert into "invoice_audit" ("id", "op") values (coalesce(NEW."id", OLD."id"), tg_op)
+             */
+            export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @primaryKey
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts an interface-level @pgTrigger that runs for each row", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgTable invoice
+             * @pgTrigger after insert for each row: insert into "invoice_audit" ("id") values (NEW."id")
+             */
+            export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @primaryKey
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports an interface-level @pgTrigger that assigns a column", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgTable invoice
+             * @pgTrigger before insert: NEW."total" := 1
+             */
+            export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @primaryKey
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Invoice`: @pgTrigger on an interface cannot assign a column; move it to the field with @computed",
+        ]);
+    });
+
+    it("reports an interface-level @pgTrigger that names a table", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgTable invoice
+             * @pgTrigger after insert on Row: insert into "log" ("id") values (1)
+             */
+            export interface Invoice {
+                /**
+                 * @fieldName ID
+                 * @primaryKey
+                 * @widget text
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Invoice`: @pgTrigger on an interface is already attached to its own table; `on` is for a field",
+        ]);
+    });
+
     it("accepts a complete @computed field", () => {
         const findings = lintSourceText(
             `export interface Ok {
