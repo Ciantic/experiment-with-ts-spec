@@ -28,7 +28,6 @@ export const DEFAULT_SPEC_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 export const FIELD_TAGS = [
     "fieldName",
     "widget",
-    "generated",
     "computed",
     "createdAt",
     "updatedAt",
@@ -64,7 +63,8 @@ export type Tag = (typeof TAGS)[number];
 
 /** Retired tags, mapped to the advice a linter reports in their place. */
 export const RETIRED_TAGS = new Map<string, string>([
-    ["readonly", "use @generated for system-assigned fields or @computed for derived fields"],
+    ["readonly", "use @computed for a derived field; a system-assigned column needs no tag"],
+    ["generated", "no tag marks a column as system-assigned; drop it"],
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
     ["formula", "put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup"],
@@ -112,7 +112,6 @@ export interface Tags {
     byName: Map<string, JSDocTag[]>;
     fieldName?: string;
     widget?: string;
-    generated: boolean;
     /** The field is derived; the database owns it, so a create never supplies it. */
     computed: boolean;
     /** The field holds the row's creation moment; the database supplies it. See docs/timestamps.md. */
@@ -295,7 +294,6 @@ export function parseParameters(tag: JSDocTag): TagParameters {
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
         byName: new Map(),
-        generated: false,
         computed: false,
         createdAt: false,
         updatedAt: false,
@@ -376,9 +374,6 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     }
                     break;
                 }
-                case "generated":
-                    tags.generated = true;
-                    break;
                 case "unique":
                     tags.unique = true;
                     break;

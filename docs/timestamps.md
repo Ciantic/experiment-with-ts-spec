@@ -8,7 +8,7 @@ Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
 - `InvoiceRow` — `createdAt`, `updatedAt`
 
 Both are supplied by the database through a single tag each, rather than through
-`@generated`/`@computed` plus `@default`. The tags are self-contained because the
+`@computed` plus `@default`. The tags are self-contained because the
 pairing of default and trigger is fixed and easy to get wrong by hand.
 
 ## `createdAt` — a database default

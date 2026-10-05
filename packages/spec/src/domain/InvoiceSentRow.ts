@@ -18,7 +18,6 @@ export interface InvoiceSentRow {
      * The unique identifier for the row.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */
@@ -28,7 +27,6 @@ export interface InvoiceSentRow {
      * The identifier of the sent invoice this row belongs to.
      * 
      * @fieldName Invoice
-     * @generated
      * @foreignKey InvoiceSent
      * @widget text
      */

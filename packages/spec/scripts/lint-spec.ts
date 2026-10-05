@@ -177,7 +177,6 @@ interface FieldTags {
     byName: Map<string, JSDocTag[]>;
     fieldName: JSDocTag | undefined;
     widget: JSDocTag | undefined;
-    generated: JSDocTag | undefined;
     computed: JSDocTag | undefined;
     /** The `@computed` mechanism tags present, in `COMPUTED_KINDS` order. */
     mechanism: { name: ComputedKind; tag: JSDocTag }[];
@@ -210,7 +209,6 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         byName,
         fieldName: first("fieldName"),
         widget: first("widget"),
-        generated: first("generated"),
         computed: first("computed"),
         mechanism: COMPUTED_KINDS.map((name) => ({ name, tag: first(name) })).filter(
             (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
@@ -276,26 +274,18 @@ function lintWidget(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@generated` and `@computed` are mutually exclusive, and both take no parameters. */
+/** `@computed` takes no parameters; the expression sits in the mechanism tag beside it. */
 function lintOwnership(tags: FieldTags, report: Report): void {
-    if (tags.generated && tags.computed) {
-        report("@generated and @computed are mutually exclusive", tags.generated);
+    const tag = tags.computed;
+    if (!tag) {
+        return;
     }
-    const parameterized: [string, JSDocTag | undefined][] = [
-        ["generated", tags.generated],
-        ["computed", tags.computed],
-    ];
-    for (const [name, tag] of parameterized) {
-        if (!tag) {
-            continue;
-        }
-        const parameters = parseParameters(tag);
-        if (parameters.size > 0) {
-            report(
-                `@${name} takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
-                tag,
-            );
-        }
+    const parameters = parseParameters(tag);
+    if (parameters.size > 0) {
+        report(
+            `@computed takes no parameters, found: ${[...parameters.keys()].map((key) => `${key}=`).join(", ")}`,
+            tag,
+        );
     }
 }
 
@@ -333,9 +323,6 @@ function lintClocks(tags: FieldTags, report: Report): void {
         }
         if ((tag.getCommentText() ?? "").trim()) {
             report(`@${name} takes no value`, tag);
-        }
-        if (tags.generated) {
-            report(`@${name} and @generated are mutually exclusive`, tag);
         }
         if (tags.computed) {
             report(`@${name} and @computed are mutually exclusive`, tag);
@@ -443,9 +430,6 @@ function lintVersion(tags: FieldTags, report: Report): void {
     const tag = tags.version;
     if (!tag) {
         return;
-    }
-    if (tags.generated) {
-        report("@version and @generated are mutually exclusive", tag);
     }
     if (tags.computed) {
         report("@version and @computed are mutually exclusive", tag);

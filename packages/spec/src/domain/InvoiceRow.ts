@@ -19,7 +19,6 @@ export interface InvoiceRow {
      * The unique identifier for the row.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */
@@ -29,7 +28,6 @@ export interface InvoiceRow {
      * The identifier of the invoice this row belongs to.
      * 
      * @fieldName Invoice
-     * @generated
      * @foreignKey Invoice
      * @widget text
      */

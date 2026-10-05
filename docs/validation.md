@@ -332,10 +332,10 @@ artifact; staleness is caught by running the generator, not by a test.
 
 ## Deliberately not implemented
 
-- **Stripping `@generated` fields.** `InvoiceSchema` mirrors the interface as
-  written, so `id` and the timestamps are required exactly as the type declares
-  them. A create-payload schema that omits system-assigned fields is a separate,
-  policy-bearing decision.
+- **Stripping a system-assigned field from a create.** `InvoiceSchema` mirrors
+  the interface as written, so `id` and the timestamps are required exactly as
+  the type declares them. A create-payload schema that omits an
+  application-assigned field is a separate, policy-bearing decision.
 - **Coercion.** `Date` maps to `z.date()`, not `z.coerce.date()`, so a JSON
   string does not parse as a date. Coercion is a boundary decision, not a
   property of the type.

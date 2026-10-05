@@ -17,7 +17,6 @@ export interface Customer {
      * The unique identifier for the customer.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */

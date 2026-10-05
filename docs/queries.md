@@ -83,7 +83,6 @@ filterable by marking it:
 ```ts
 /**
  * @fieldName Invoice number
- * @generated
  * @unique
  * @widget text
  * @queryfilter

@@ -71,12 +71,11 @@ describe("parseSpec tags", () => {
 
     it("decodes a bare marker as a boolean", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @generated\n     * @unique\n     */", "code: string;"),
+            "Thing.ts": thing("    /**\n     * @unique\n     */", "code: string;"),
         });
 
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
-        expect(tags?.generated).toBe(true);
         expect(tags?.unique).toBe(true);
         expect(tags?.version).toBe(false);
     });

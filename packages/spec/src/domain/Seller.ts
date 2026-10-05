@@ -17,7 +17,6 @@ export interface Seller {
      * The unique identifier for the seller.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */

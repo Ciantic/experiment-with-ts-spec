@@ -38,7 +38,24 @@ describe("lintSourceText", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @readonly is retired; use @generated for system-assigned fields or @computed for derived fields",
+            "`label`: @readonly is retired; use @computed for a derived field; a system-assigned column needs no tag",
+        ]);
+    });
+
+    it("reports @generated as retired, since no tag marks a column system-assigned", () => {
+        const findings = lintSourceText(
+            `export interface Legacy {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @generated
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`id`: @generated is retired; no tag marks a column as system-assigned; drop it",
         ]);
     });
 
@@ -95,37 +112,6 @@ describe("lintSourceText", () => {
         );
 
         expect(messages(findings)).toEqual(["`label`: @fieldName is empty"]);
-    });
-
-    it("rejects @generated and @computed together", () => {
-        const findings = lintSourceText(
-            `export interface Both {
-                /**
-                 * @fieldName Label
-                 * @widget number
-                 * @generated
-                 * @computed
-                 */
-                label: string;
-            }`,
-        );
-
-        expect(messages(findings)).toEqual(["`label`: @generated and @computed are mutually exclusive"]);
-    });
-
-    it("rejects parameters on @generated", () => {
-        const findings = lintSourceText(
-            `export interface Params {
-                /**
-                 * @fieldName Label
-                 * @widget text
-                 * @generated storage=stored
-                 */
-                label: string;
-            }`,
-        );
-
-        expect(messages(findings)).toEqual(["`label`: @generated takes no parameters, found: storage="]);
     });
 
     it("rejects parameters on @computed", () => {
@@ -247,7 +233,7 @@ describe("lintSourceText", () => {
         ]);
     });
 
-    it("accepts a client-supplied field with neither @generated nor @computed", () => {
+    it("accepts a field with no ownership tag", () => {
         const findings = lintSourceText(
             `export interface ClientSupplied {
                 /**
@@ -261,16 +247,15 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
-    it("accepts @default with an expression on a @generated field", () => {
+    it("accepts @default with an expression", () => {
         const findings = lintSourceText(
             `export interface Defaulted {
                 /**
-                 * @fieldName Created at
-                 * @widget date
-                 * @generated
-                 * @default now()
+                 * @fieldName Source
+                 * @widget text
+                 * @default 'manual'
                  */
-                createdAt?: Date;
+                source?: string;
             }`,
         );
 
@@ -524,22 +509,6 @@ describe("lintSourceText", () => {
         );
 
         expect(messages(findings)).toEqual(["`version`: @version must be on a `Version` field, found `string`"]);
-    });
-
-    it("rejects @version together with @generated", () => {
-        const findings = lintSourceText(
-            `export interface Both {
-                /**
-                 * @fieldName Version
-                 * @widget number
-                 * @version
-                 * @generated
-                 */
-                version?: Version;
-            }`,
-        );
-
-        expect(messages(findings)).toEqual(["`version`: @version and @generated are mutually exclusive"]);
     });
 
     it("rejects more than one @version field in an interface", () => {

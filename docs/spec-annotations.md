@@ -9,7 +9,6 @@ Field tags:
 
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
-- `@generated` — system-assigned. Not derivable from other fields; not client-supplied.
 - `@computed` — derived rather than client-supplied. A bare marker: how Postgres
   materializes it is a separate mechanism tag, exactly one of `@pgvirtual`,
   `@pgtrigger`, or `@pgrollup`. A nullable one is omitted from
@@ -53,7 +52,7 @@ Field tags:
   supplies the first revision) and written on update as the caller's
   precondition; a `before update` trigger validates and increments it. At most
   one per interface, the field type must be `Version`, and it is exclusive with
-  `@generated` and `@computed`. See `docs/versioning.md`.
+  `@computed`. See `docs/versioning.md`.
 - `@queryfilter` — a bare marker that makes the field a filter of the entity's
   generated reads. A filter is a set matched with `in (…)`; several are combined
   with `and`. Scalar fields only; a branch field may not carry it, and it is
@@ -91,8 +90,8 @@ Type tags sit on a type alias and are validated as a group: `@primitive` types
 must declare `@zod` and `@pgtype`, and any tag outside the three is reported. A
 field never carries a type tag; an alias never carries a field or interface tag.
 
-`@relation`, `@children`, and `@inlined` are bare markers, like `@generated`:
-they take no value. The entity and the cardinality both come from the field
+`@relation`, `@children`, and `@inlined` are bare markers: they take no value.
+The entity and the cardinality both come from the field
 type, so `owner?: Owner` with `@relation` links to `Owner`, and `rows?: Row[]`
 with `@children` makes `Row` the child. This removes a second source of truth
 that could disagree with the type — a tag naming an entity other than the
@@ -101,14 +100,11 @@ may be an opaque alias, so the tag names its target. `@relation` and `@inlined`
 must be on a single entity, `@children` on an array of one, and the three are
 mutually exclusive.
 
-`@generated` and `@computed` are separate tags because they produce different
-column behaviour: `id` is assigned once and never recomputed, whereas
-`totalAmount` is a function of other data.
-
-`@generated` says *who* assigns a value, not *how*. On its own it carries no SQL:
-it is presentation metadata telling a UI not to offer the field. How the value
-arrives is a separate decision — a client-supplied column or a `@default`. The
-clock tags cover the two timestamp spellings; see `docs/timestamps.md`.
+`@computed` says the database derives a value, not that a client supplies one.
+How the value arrives is the mechanism tag beside it: a generated column, a
+trigger, or a rollup. Everything else is an ordinary field — a key the
+application assigns, a column with a `@default` — and no tag marks it. The clock
+tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
 ## `@primaryKey` and `@foreignKey`
 
@@ -123,7 +119,6 @@ builds a composite key, whose column order is the order the fields are declared:
 ```ts
 /**
  * @fieldName ID
- * @generated
  * @primaryKey
  * @widget text
  */
@@ -131,7 +126,6 @@ id: InvoiceId;
 
 /**
  * @fieldName Customer ID
- * @generated
  * @foreignKey Customer
  * @widget text
  */
@@ -178,7 +172,6 @@ customer?: Customer;
 
 /**
  * @fieldName Customer ID
- * @generated
  * @foreignKey Customer
  * @widget text
  */
@@ -226,7 +219,7 @@ the inlined field are required, so an optional `customer?: Customer` yields all
 nullable customer columns.
 
 The inlined columns carry the target field's type (including a closed-union
-CHECK) but not its `@unique`. `@generated` and `@computed` on the target are
+CHECK) but not its `@unique`. `@computed` on the target is
 ignored: an inlined value is data, not a derivation. Non-scalar target fields
 (entity references or child arrays) are a diagnostic; `@inlined` flattens scalars
 only.
@@ -331,8 +324,8 @@ Rationale is in `docs/primitives.md`.
 - **Tags must be on their own line.** A tag written inline on the same line as
   the field, as in `/** @unique */ code: string;`, is not attached to the field
   and is silently ignored by both the generator and the linter. Use a JSDoc block.
-- **No tag is a valid state.** A client-supplied field carries no `@generated`
-  and no `@computed`. Only present tags are validated.
+- **No tag is a valid state.** An ordinary field carries neither `@computed` nor
+  a mechanism tag. Only present tags are validated.
 - **Virtual columns are indexable only by expression.** Postgres rejects a plain
   index on a virtual column, so a query that would index one needs the
   expression index spelled out or the `@pgtrigger` mechanism instead.
@@ -361,7 +354,6 @@ Rationale is in `docs/primitives.md`.
    delete` pair on each child table.
 3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
    assignment.
-4. `@generated` fields are emitted as ordinary columns the application populates.
 
 `packages/backend/scripts/generate-postgres-schema.ts` implements all of the
 above. See `docs/schema-generation.md`.
@@ -397,16 +389,17 @@ interfaces in `packages/spec/` with ts-morph. Run it whenever a tag changes.
 Enforced:
 
 - Tags are limited to the field and interface tags listed above.
-- Retired tags (`@readonly`, `@type`, `@values`, `@formula`) report their replacement.
+- Retired tags (`@generated`, `@readonly`, `@type`, `@values`, `@formula`)
+  report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
-- `@generated` and `@computed` are mutually exclusive; `@generated` takes no
-  parameters and `@computed` takes none either.
+- `@computed` takes no parameters; the expression sits in the mechanism tag
+  beside it.
 - A mechanism tag (`@pgvirtual`, `@pgtrigger`, `@pgrollup`) requires `@computed`,
   carries a non-empty expression, and at most one may appear on a field.
 - `@pgrollup` may not contain `OLD.`, which the generator would otherwise
   substitute twice.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
-  mutually exclusive with each other and with `@generated`, `@computed`,
+  mutually exclusive with each other and with `@computed`,
   `@default`, `@version`, and the mechanism tags, and may appear at most once per
   interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`

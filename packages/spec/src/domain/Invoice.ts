@@ -19,7 +19,6 @@ export interface Invoice {
      * The unique identifier for the invoice.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */
@@ -29,7 +28,6 @@ export interface Invoice {
      * The human-readable invoice number shown to the customer.
      * 
      * @fieldName Invoice number
-     * @generated
      * @unique
      * @widget text
      */
@@ -40,7 +38,6 @@ export interface Invoice {
      * 
      * @fieldName Customer ID
      * @queryfilter
-     * @generated
      * @foreignKey Customer
      * @widget text
      */
@@ -60,7 +57,6 @@ export interface Invoice {
      * 
      * @fieldName Seller ID
      * @queryfilter
-     * @generated
      * @foreignKey Seller
      * @widget text
      */

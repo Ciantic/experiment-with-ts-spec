@@ -21,7 +21,6 @@ export interface InvoiceSent {
      * The unique identifier for the sent invoice.
      * 
      * @fieldName ID
-     * @generated
      * @primaryKey
      * @widget text
      */
@@ -31,7 +30,6 @@ export interface InvoiceSent {
      * The draft this sent invoice was issued from.
      * 
      * @fieldName Invoice
-     * @generated
      * @foreignKey Invoice
      * @widget text
      */
