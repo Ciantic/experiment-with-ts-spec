@@ -13,7 +13,7 @@ export const eInvoiceAddressSchema = z.string().brand<"EInvoiceAddress">();
 
 export const eInvoiceOperatorSchema = z.enum(["maventa", "apix", "op", "basware"]).or(z.string());
 
-export const emailSchema = z.email().brand<"Email">();
+export const emailAddressSchema = z.email().brand<"EmailAddress">();
 
 export const guidSchema = z.uuid();
 

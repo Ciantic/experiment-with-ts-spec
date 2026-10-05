@@ -41,7 +41,7 @@ out the decimal string shape and then apply their brands rather than importing
 
 The schema mirrors the alias:
 
-- A **branded** alias (`Email`, `Decimal`, `Money`, `Version`, `BrandedId`) gets
+- A **branded** alias (`EmailAddress`, `Decimal`, `Money`, `Version`, `BrandedId`) gets
   the matching `.brand<…>()`. The brand is the whole point of the alias, so the
   schema must reproduce it. `Money` refines `Decimal`, so its schema chains the
   base brand first, `.brand<"Decimal">().brand<"Money">()`, and

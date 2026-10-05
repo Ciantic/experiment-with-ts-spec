@@ -5,6 +5,6 @@ import type { Brand } from "./Brand.ts";
  *
  * @primitive
  * @pgType text
- * @zod z.email().brand<"Email">()
+ * @zod z.email().brand<"EmailAddress">()
  */
-export type Email = string & Brand<"Email">;
+export type EmailAddress = string & Brand<"EmailAddress">;
