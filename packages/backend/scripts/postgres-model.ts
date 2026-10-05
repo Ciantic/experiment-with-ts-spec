@@ -15,10 +15,12 @@ import {
     type CompareOperator,
     type Diagnostic,
     type OrderDirection,
-    type PgRollup,
+    type PgTrigger,
     type SpecInterface,
     type SpecProperty,
     type SpecTypeAlias,
+    type TriggerEvent,
+    type TriggerTiming,
 } from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
@@ -88,6 +90,14 @@ export interface Relation {
     columns?: Record<string, string>;
 }
 
+/** A row trigger on one table: the timing and events it shares with its statements. */
+export interface Trigger {
+    timing: TriggerTiming;
+    events: TriggerEvent[];
+    /** The statements it runs, in the order the spec declares the fields that contribute them. */
+    statements: string[];
+}
+
 export interface Table {
     name: string;
     interfaceName: string;
@@ -96,10 +106,8 @@ export interface Table {
     columns: Column[];
     /** Branch fields, keyed by the interface field name. See docs/queries.md. */
     relations: Map<string, Relation>;
-    /** `NEW."x" := <expr>;` assignments, in interface field order. */
-    sameRowAssignments: string[];
-    /** Child-change statements keyed by the child table that carries them. */
-    rollups: Map<string, { newStatements: string[]; oldStatements: string[] }>;
+    /** Row triggers, one per timing and event set, in the order they were first contributed to. */
+    triggers: Trigger[];
 }
 
 interface TypeResolution {
@@ -172,7 +180,7 @@ export function buildSpecTables(
         tables.set(spec.name, buildTable(context, spec));
     }
 
-    attachRollups(tables, interfaces, context);
+    attachTriggers(tables, interfaces, context);
     resolveBranchColumns(tables, context);
 
     return { tables, diagnostics };
@@ -186,8 +194,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         importSpecifier: spec.importSpecifier,
         columns: [],
         relations: new Map(),
-        sameRowAssignments: [],
-        rollups: new Map(),
+        triggers: [],
     };
 
     for (const property of spec.properties) {
@@ -396,12 +403,31 @@ function addScalarColumn(
     table.columns.push(column);
 
     // A trigger statement maintains the field on every write; the clock tag contributes its own.
-    if (tags.pgTrigger !== undefined) {
-        table.sameRowAssignments.push(stripSemicolon(tags.pgTrigger) + ";");
+    // A trigger that names another table is attached after every table exists. See attachTriggers.
+    const trigger = tags.pgTrigger;
+    if (trigger !== undefined && trigger.table === undefined && trigger.statement !== "" && trigger.events.length > 0) {
+        triggerOn(table, trigger.timing, trigger.events).statements.push(stripSemicolon(trigger.statement) + ";");
     }
     if (tags.updatedAt) {
-        table.sameRowAssignments.push(`NEW.${quote(fieldName)} := now();`);
+        triggerOn(table, "before", ["insert", "update"]).statements.push(`NEW.${quote(fieldName)} := now();`);
     }
+}
+
+/** The trigger on `table` with this timing and these events, created on first use. */
+function triggerOn(table: Table, timing: TriggerTiming, events: TriggerEvent[]): Trigger {
+    const key = triggerKey(timing, events);
+    const existing = table.triggers.find((candidate) => triggerKey(candidate.timing, candidate.events) === key);
+    if (existing) {
+        return existing;
+    }
+    const trigger: Trigger = { timing, events, statements: [] };
+    table.triggers.push(trigger);
+    return trigger;
+}
+
+/** Two triggers share a function when their timing and events agree; the parser lists events in one order. */
+function triggerKey(timing: TriggerTiming, events: TriggerEvent[]): string {
+    return `${timing} ${events.join(",")}`;
 }
 
 /** Expand an `@inlined` entity field into prefixed scalar columns on the parent table. */
@@ -455,53 +481,69 @@ function entityTableName(context: BuildContext, entity: string): string | undefi
     return context.interfaces.get(entity)?.pgTableName;
 }
 
-/** Attach each cross-table aggregate to the child table its `@pgRollup` names. */
-function attachRollups(
+/** Attach each `@pgTrigger` that names another table to that table, and check the write it implies. */
+function attachTriggers(
     tables: Map<string, Table>,
     interfaces: Map<string, SpecInterface>,
     context: BuildContext,
 ): void {
     for (const spec of interfaces.values()) {
-        const parentTable = tables.get(spec.name);
-        if (!parentTable) {
+        const ownTable = tables.get(spec.name);
+        if (!ownTable) {
             continue;
         }
         for (const property of spec.properties) {
-            const rollup = property.tags.pgRollup;
-            if (rollup === undefined) {
+            const trigger = property.tags.pgTrigger;
+            if (trigger === undefined) {
                 continue;
             }
-            const child = resolveRollupChild(rollup, parentTable, property, tables, context);
-            if (!child) {
+            if (trigger.statement === "") {
+                context.reportField(ownTable, property.name, "@pgTrigger is missing its statement");
                 continue;
             }
-            // One statement is written for the child change and mirrored for the child removal.
-            const newStatement = stripSemicolon(rollup.statement) + ";";
-            const oldStatement = newStatement.replaceAll("NEW.", "OLD.");
-            const entry = parentTable.rollups.get(child.name) ?? {
-                newStatements: [],
-                oldStatements: [],
-            };
-            entry.newStatements.push(newStatement);
-            entry.oldStatements.push(oldStatement);
-            parentTable.rollups.set(child.name, entry);
+            if (trigger.events.length === 0) {
+                context.reportField(
+                    ownTable,
+                    property.name,
+                    "@pgTrigger header needs at least one event: insert, update, delete",
+                );
+                continue;
+            }
+            // A trigger without `on` is a same-row assignment, already contributed beside the clock.
+            if (trigger.table === undefined) {
+                continue;
+            }
+            if (trigger.table === "") {
+                context.reportField(ownTable, property.name, "@pgTrigger `on` is missing the entity it attaches to");
+                continue;
+            }
+            const attachment = tables.get(trigger.table);
+            if (!attachment) {
+                context.reportField(ownTable, property.name, `@pgTrigger on \`${trigger.table}\` is not an entity`);
+                continue;
+            }
+            if (attachment === ownTable) {
+                // Naming the field's own table is the same-row form; contribute it there.
+                triggerOn(attachment, trigger.timing, trigger.events).statements.push(
+                    stripSemicolon(trigger.statement) + ";",
+                );
+                continue;
+            }
+            validateAttachment(ownTable, attachment, trigger, property, tables, context);
+            triggerOn(attachment, trigger.timing, trigger.events).statements.push(stripSemicolon(trigger.statement) + ";");
         }
     }
 }
 
-/** Resolve the child a `@pgRollup` names, reporting one whose writes the statement reads but the tag leaves out. */
-function resolveRollupChild(
-    rollup: PgRollup,
+/** Check a trigger attached to another table: the table must point back, and no writer may be left out. */
+function validateAttachment(
     parentTable: Table,
+    child: Table,
+    trigger: PgTrigger,
     property: SpecProperty,
     tables: Map<string, Table>,
     context: BuildContext,
-): Table | undefined {
-    const child = tables.get(rollup.child);
-    if (!child) {
-        context.reportField(parentTable, property.name, `@pgRollup child \`${rollup.child}\` is not an entity`);
-        return undefined;
-    }
+): void {
     const referencing = [...tables.values()].filter((candidate) =>
         candidate.columns.some((column) => column.references?.table === parentTable.name),
     );
@@ -509,27 +551,26 @@ function resolveRollupChild(
         context.reportField(
             parentTable,
             property.name,
-            `@pgRollup child \`${child.interfaceName}\` has no @foreignKey referencing \`${parentTable.interfaceName}\``,
+            `@pgTrigger on \`${child.interfaceName}\` has no @foreignKey referencing \`${parentTable.interfaceName}\``,
         );
-        return undefined;
+        return;
     }
-    // A statement reading a child with no trigger would leave the parent's value stale.
+    // A statement reading a table whose writes no trigger covers would leave the parent's value stale.
     for (const other of referencing) {
-        if (other === child || !statementReadsChild(rollup.statement, other)) {
+        if (other === child || !statementReadsTable(trigger.statement, other)) {
             continue;
         }
         context.reportField(
             parentTable,
             property.name,
-            `@pgRollup reads \`${other.interfaceName}\` but attaches to \`${child.interfaceName}\`; write a second @pgRollup`,
+            `@pgTrigger reads \`${other.interfaceName}\` but attaches to \`${child.interfaceName}\`; write a second @pgTrigger`,
         );
     }
-    return child;
 }
 
-/** True when the statement names the child's table outright. */
-function statementReadsChild(statement: string, child: Table): boolean {
-    return statement.includes(quote(child.name));
+/** True when the statement names the table outright. */
+function statementReadsTable(statement: string, table: Table): boolean {
+    return statement.includes(quote(table.name));
 }
 
 /** Point each branch at the column it navigates through, once every table's columns exist. */

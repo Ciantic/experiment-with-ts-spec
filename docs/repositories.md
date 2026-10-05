@@ -197,11 +197,11 @@ never appear in a generated `insert`, because the default fills `createdAt` and
 A `@computed` column the database can fill later is left out too, so the
 `insert` names exactly the insertable fields and nothing else. That is the whole
 of `<entity>InsertSchema`, which is why the statement and the wire schema cannot
-disagree (`docs/validation.md`). A nullable trigger- or rollup-derived column is
+disagree (`docs/validation.md`). A nullable trigger-derived column is
 in that set; a `@pgVirtual` column always is, required or not, because Postgres
-rejects a write to a generated column outright. A *required* trigger- or
-rollup-derived column stays: it has no default and no nullable column, so the
-insert has to carry it.
+rejects a write to a generated column outright. A *required* trigger-derived
+column stays: it has no default and no nullable column, so the insert has to
+carry it.
 
 A *nullable* computed column is likewise left out of a patch, and out of the
 `update` statement with it: a `before insert or update` trigger reassigns the
@@ -225,7 +225,7 @@ patch column sets separately; see `docs/versioning.md`.
   `InvoiceSentRow.netAmount` is required and `not null`, so the insert has to
   carry it, while `InvoiceRow.netAmount` is optional and its column nullable. A
   *nullable* computed column is named in neither the `insert` nor the `update`,
-  so its value is left to the trigger or rollup that fills it
+  so its value is left to the trigger that fills it
   (`docs/validation.md`).
 - **A defaulted column is written only when the caller supplies it.** A create
   that omits one sends the `default` keyword, so the database fills that row; a

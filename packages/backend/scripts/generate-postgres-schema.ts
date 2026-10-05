@@ -12,6 +12,7 @@ import {
     type Diagnostic,
     type GenerateOptions,
     type Table,
+    type Trigger,
 } from "./postgres-model.ts";
 
 export type { Diagnostic } from "./postgres-model.ts";
@@ -95,24 +96,48 @@ function renderTable(table: Table): string[] {
     return lines;
 }
 
-function renderSameRowTrigger(table: Table): string[] {
-    if (table.sameRowAssignments.length === 0) {
-        return [];
+/** The name of a trigger and its function; the shared before insert or update shape keeps the `_compute` name. */
+function triggerName(table: Table, trigger: Trigger): string {
+    if (
+        trigger.timing === "before" &&
+        trigger.events.length === 2 &&
+        trigger.events[0] === "insert" &&
+        trigger.events[1] === "update"
+    ) {
+        return `${table.name}_compute`;
     }
-    const functionName = `${table.name}_compute`;
-    const body = table.sameRowAssignments.map((line) => `    ${line}`).join("\n");
-    return [
-        `create function ${quote(functionName)}() returns trigger as $$`,
-        "begin",
-        body,
-        "    return NEW;",
-        "end;",
-        "$$ language plpgsql;",
-        "",
-        `create trigger ${quote(functionName)} before insert or update on ${quote(table.name)}`,
-        `    for each row execute function ${quote(functionName)}();`,
-        "",
-    ];
+    return `${table.name}_${trigger.timing}_${trigger.events.join("_")}`;
+}
+
+/** The return each timing needs: a before delete must return the old row, since NEW is null there. */
+function triggerReturn(trigger: Trigger): string {
+    if (trigger.timing === "after") {
+        return "return null;";
+    }
+    return trigger.events.includes("delete") ? "return coalesce(NEW, OLD);" : "return NEW;";
+}
+
+function renderTriggers(table: Table): string[] {
+    const lines: string[] = [];
+    for (const trigger of table.triggers) {
+        if (trigger.statements.length === 0) {
+            continue;
+        }
+        const name = quote(triggerName(table, trigger));
+        lines.push(
+            `create function ${name}() returns trigger as $$`,
+            "begin",
+            ...trigger.statements.map((statement) => `    ${statement}`),
+            `    ${triggerReturn(trigger)}`,
+            "end;",
+            "$$ language plpgsql;",
+            "",
+            `create trigger ${name} ${trigger.timing} ${trigger.events.join(" or ")} on ${quote(table.name)}`,
+            `    for each row execute function ${name}();`,
+            "",
+        );
+    }
+    return lines;
 }
 
 /** The before-update guard for a @version column: validate the caller's revision, then increment it. */
@@ -149,38 +174,6 @@ function renderVersionTrigger(table: Table): string[] {
     ];
 }
 
-function renderRollupTriggers(table: Table): string[] {
-    const lines: string[] = [];
-    for (const [childTable, rollup] of table.rollups) {
-        const baseName = `${childTable}_rollup_${table.name}`;
-        const setFunction = quote(`${baseName}_set`);
-        const unsetFunction = quote(`${baseName}_unset`);
-        lines.push(
-            `create function ${setFunction}() returns trigger as $$`,
-            "begin",
-            ...rollup.newStatements.map((statement) => `    ${statement}`),
-            "    return null;",
-            "end;",
-            "$$ language plpgsql;",
-            "",
-            `create trigger ${setFunction} after insert or update on ${quote(childTable)}`,
-            `    for each row execute function ${setFunction}();`,
-            "",
-            `create function ${unsetFunction}() returns trigger as $$`,
-            "begin",
-            ...rollup.oldStatements.map((statement) => `    ${statement}`),
-            "    return null;",
-            "end;",
-            "$$ language plpgsql;",
-            "",
-            `create trigger ${unsetFunction} after delete on ${quote(childTable)}`,
-            `    for each row execute function ${unsetFunction}();`,
-            "",
-        );
-    }
-    return lines;
-}
-
 /** Render Postgres DDL from the spec. */
 export function generateSchema(
     project: Project,
@@ -200,15 +193,11 @@ export function generateSchema(
     }
 
     for (const table of ordered) {
-        lines.push(...renderSameRowTrigger(table));
+        lines.push(...renderTriggers(table));
     }
 
     for (const table of ordered) {
         lines.push(...renderVersionTrigger(table));
-    }
-
-    for (const table of ordered) {
-        lines.push(...renderRollupTriggers(table));
     }
 
     return { sql: lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n", diagnostics };

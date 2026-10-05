@@ -162,6 +162,17 @@ $$ language plpgsql;
 create trigger "invoice_row_compute" before insert or update on "invoice_row"
     for each row execute function "invoice_row_compute"();
 
+create function "invoice_row_after_insert_update_delete"() returns trigger as $$
+begin
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId");
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId");
+    return null;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_row_after_insert_update_delete" after insert or update or delete on "invoice_row"
+    for each row execute function "invoice_row_after_insert_update_delete"();
+
 create function "invoice_sent_row_compute"() returns trigger as $$
 begin
     NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2);
@@ -229,25 +240,3 @@ $$ language plpgsql;
 
 create trigger "invoice_row_version" before update on "invoice_row"
     for each row execute function "invoice_row_version"();
-
-create function "invoice_row_rollup_invoice_set"() returns trigger as $$
-begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
-    return null;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_row_rollup_invoice_set" after insert or update on "invoice_row"
-    for each row execute function "invoice_row_rollup_invoice_set"();
-
-create function "invoice_row_rollup_invoice_unset"() returns trigger as $$
-begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
-    return null;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_row_rollup_invoice_unset" after delete on "invoice_row"
-    for each row execute function "invoice_row_rollup_invoice_unset"();

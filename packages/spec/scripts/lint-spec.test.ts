@@ -86,6 +86,24 @@ describe("lintSourceText", () => {
         ]);
     });
 
+    it("points a retired @pgRollup at the trigger header", () => {
+        const findings = lintSourceText(
+            `export interface Legacy {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgRollup Child: update "t" set "n" = 1
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgRollup is retired; use @pgTrigger with `on <Child>` instead",
+        ]);
+    });
+
     it("reports an unrecognised tag", () => {
         const findings = lintSourceText(
             `export interface Unknown {
@@ -208,56 +226,144 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`label`: @pgVirtual is missing its expression"]);
     });
 
-    it("rejects OLD. in a @pgRollup statement, which the generator mirrors", () => {
+    it("accepts a @pgTrigger header naming table, timing, and events", () => {
         const findings = lintSourceText(
-            `export interface Rollup {
+            `export interface Ok {
                 /**
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgRollup Child: update "t" set "n" = OLD."n" where "id" = NEW."id"
+                 * @pgTrigger after insert or update or delete on Child: update "t" set "n" = 1 where "id" in (OLD."id", NEW."id")
+                 */
+                label: number;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("requires a statement after a @pgTrigger header", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger after insert on Child:
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`label`: @pgTrigger is missing its statement"]);
+    });
+
+    it("requires a @pgTrigger header to end its clause with a colon", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger after insert on Child
                  */
                 label: string;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @pgRollup is written with NEW.; the delete variant is generated from it",
+            "`label`: @pgTrigger header needs `: <statement>`, such as `after insert on InvoiceRow: …`",
         ]);
     });
 
-    it("requires a @pgRollup child table before the statement", () => {
+    it("requires at least one event in a @pgTrigger header", () => {
         const findings = lintSourceText(
-            `export interface Rollup {
+            `export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgRollup
+                 * @pgTrigger after on Child: update "t" set "n" = 1
                  */
                 label: string;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @pgRollup is missing its child table, such as `InvoiceRow`",
+            "`label`: @pgTrigger header needs at least one event: insert, update, delete",
         ]);
     });
 
-    it("requires a @pgRollup statement after the child", () => {
+    it("rejects an event that is not insert, update, or delete", () => {
         const findings = lintSourceText(
-            `export interface Rollup {
+            `export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgRollup Child:
+                 * @pgTrigger after insert or truncate on Child: update "t" set "n" = 1
                  */
                 label: string;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`label`: @pgRollup is missing its statement"]);
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger event `truncate` is not one of: insert, update, delete",
+        ]);
+    });
+
+    it("reports `instead of`, which is a trigger on a view", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger instead of insert on Child: insert into "t" values (1)
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger cannot be `instead of`, which is a trigger on a view, and the spec has no views",
+        ]);
+    });
+
+    it("requires a @pgTrigger header to start with its timing", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger on Child: update "t" set "n" = 1
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger header starts with its timing: `before insert or update on <Entity>: …`",
+        ]);
+    });
+
+    it("requires the entity after a @pgTrigger header's on", () => {
+        const findings = lintSourceText(
+            `export interface Empty {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgTrigger after insert on: update "t" set "n" = 1
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgTrigger `on` is missing the entity it attaches to",
+        ]);
     });
 
     it("accepts a complete @computed field", () => {
@@ -1060,7 +1166,7 @@ describe("retired @formula", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @formula is retired; put the expression on the field with @pgVirtual, @pgTrigger, or @pgRollup",
+            "`label`: @formula is retired; put the expression on the field with @pgVirtual or @pgTrigger",
         ]);
     });
 });

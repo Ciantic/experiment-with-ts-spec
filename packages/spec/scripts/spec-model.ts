@@ -33,7 +33,6 @@ export const FIELD_TAGS = [
     "updatedAt",
     "pgVirtual",
     "pgTrigger",
-    "pgRollup",
     "relation",
     "children",
     "inlined",
@@ -69,7 +68,8 @@ export const RETIRED_TAGS = new Map<string, string>([
     ["table", "use @pgTable instead"],
     ["pgvirtual", "use @pgVirtual instead"],
     ["pgtrigger", "use @pgTrigger instead"],
-    ["pgrollup", "use @pgRollup instead"],
+    ["pgrollup", "use @pgTrigger with `on <Child>` instead"],
+    ["pgRollup", "use @pgTrigger with `on <Child>` instead"],
     ["pgdefault", "use @pgDefault instead"],
     ["pgtable", "use @pgTable instead"],
     ["pgtype", "use @pgType instead"],
@@ -78,7 +78,7 @@ export const RETIRED_TAGS = new Map<string, string>([
     ["where", "use @queryWhere instead"],
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
-    ["formula", "put the expression on the field with @pgVirtual, @pgTrigger, or @pgRollup"],
+    ["formula", "put the expression on the field with @pgVirtual or @pgTrigger"],
 ]);
 
 /** Widget hints a field may carry. */
@@ -86,11 +86,16 @@ export const WIDGETS = ["text", "number", "date", "select", "table", "textarea"]
 export type Widget = (typeof WIDGETS)[number];
 
 /** The Postgres realization of a `@computed` field, one tag per field. See docs/spec-annotations.md. */
-export const COMPUTED_KINDS = ["pgVirtual", "pgTrigger", "pgRollup"] as const;
+export const COMPUTED_KINDS = ["pgVirtual", "pgTrigger"] as const;
 export type ComputedKind = (typeof COMPUTED_KINDS)[number];
 
-/** The `@pgRollup` separator: the child entity name ends at its first colon. */
-export const ROLLUP_SEPARATOR = ":";
+/** The timings a `@pgTrigger` header may name. */
+export const TRIGGER_TIMINGS = ["before", "after"] as const;
+export type TriggerTiming = (typeof TRIGGER_TIMINGS)[number];
+
+/** The row events a `@pgTrigger` header may name. */
+export const TRIGGER_EVENTS = ["insert", "update", "delete"] as const;
+export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
 
 /** The sort directions an `@queryOrderBy default …` may name. */
 export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
@@ -134,10 +139,8 @@ export interface Tags {
     updatedAt: boolean;
     /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
     pgVirtual?: string;
-    /** The before insert/update statement that maintains a `@computed` field, using `NEW.`. */
-    pgTrigger?: string;
-    /** The child-change statement that maintains an aggregated `@computed` field, and the child that drives it. */
-    pgRollup?: PgRollup;
+    /** The row trigger that maintains a `@computed` field: its attachment, timing, events, and statement. */
+    pgTrigger?: PgTrigger;
     /** The field holds a single related entity, stored as a foreign key. */
     relation: boolean;
     /** The field holds a child collection; the child table carries the foreign key. */
@@ -305,19 +308,44 @@ export function parseParameters(tag: JSDocTag): TagParameters {
     return parameters;
 }
 
-/** A `@pgRollup`: the child table that drives the aggregate, and the statement attached to it. */
-export interface PgRollup {
-    /** The child entity whose writes maintain the aggregate. */
-    child: string;
+/** A `@pgTrigger`: the trigger's header, and the one statement it runs for every event. */
+export interface PgTrigger {
+    /** The entity the trigger attaches to; absent for the field's own table. Empty when `on` names none. */
+    table?: string;
+    timing: TriggerTiming;
+    /** The events the trigger fires on, listed in {@link TRIGGER_EVENTS} order. */
+    events: TriggerEvent[];
     statement: string;
 }
 
-/** Split a `@pgRollup` value into its child entity and statement; the entity ends at the first colon. */
-export function parseRollup(value: string): PgRollup {
-    const separator = value.indexOf(ROLLUP_SEPARATOR);
-    const child = (separator === -1 ? "" : value.slice(0, separator)).trim();
-    const statement = separator === -1 ? "" : value.slice(separator + 1).trim();
-    return { child, statement };
+/** True when a `@pgTrigger` value opens a header instead of being a bare statement. */
+const TRIGGER_HEADER = /^(before|after)\b/;
+
+/**
+ * Split a `@pgTrigger` value into the trigger it declares.
+ * Without a header the trigger is the field's own table, `before insert or update`.
+ */
+export function parseTrigger(value: string): PgTrigger {
+    const text = value.trim();
+    if (!TRIGGER_HEADER.test(text)) {
+        return { timing: "before", events: ["insert", "update"], statement: text };
+    }
+    // The header ends at a colon that opens the statement, not at the `:=` of an assignment.
+    const separator = text.search(/:(?=\s|$)/);
+    const header = separator === -1 ? text : text.slice(0, separator);
+    const statement = separator === -1 ? "" : text.slice(separator + 1).trim();
+    const tokens = header.split(/\s+/).filter((token) => token !== "");
+    const timing = tokens[0] as TriggerTiming;
+    const onIndex = tokens.indexOf("on");
+    const table = onIndex === -1 ? undefined : tokens[onIndex + 1] ?? "";
+    const named = tokens.slice(1, onIndex === -1 ? undefined : onIndex);
+    // Events keep a canonical order, so two spellings of one trigger share a function.
+    const events = TRIGGER_EVENTS.filter((event) => named.includes(event));
+    const trigger: PgTrigger = { timing, events, statement };
+    if (table !== undefined) {
+        trigger.table = table;
+    }
+    return trigger;
 }
 
 /** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
@@ -426,12 +454,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (value !== undefined) tags.pgVirtual ??= value;
                     break;
                 case "pgTrigger":
-                    if (value !== undefined) tags.pgTrigger ??= value;
-                    break;
-                case "pgRollup":
-                    if (value !== undefined) {
-                        tags.pgRollup ??= parseRollup(value);
-                    }
+                    if (value !== undefined) tags.pgTrigger ??= parseTrigger(value);
                     break;
                 default:
                     break;

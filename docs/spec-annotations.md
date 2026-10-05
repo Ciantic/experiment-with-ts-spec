@@ -13,7 +13,7 @@ one-word tag is lowercase: `@widget`, `@computed`, `@unique`, `@version`,
 `@relation`, `@children`, `@inlined`, `@primitive`, `@zod`.
 
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
-`@pgDefault`, `@pgVirtual`, `@pgTrigger`, `@pgRollup`. The prefix and the word
+`@pgDefault`, `@pgVirtual`, `@pgTrigger`. The prefix and the word
 are both visible, so `pg` marks the dialect and the capital marks the word: a
 portable SQL concept stays unprefixed (`@primaryKey`, `@foreignKey`, `@unique`),
 and a tag that only a query read consumes carries `query` instead (`@queryFilter`,
@@ -26,8 +26,8 @@ Field tags:
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@computed` — derived rather than client-supplied. A bare marker: how Postgres
-  materializes it is a separate mechanism tag, exactly one of `@pgVirtual`,
-  `@pgTrigger`, or `@pgRollup`. A nullable one is omitted from
+  materializes it is a separate mechanism tag, one of `@pgVirtual` or
+  `@pgTrigger`. A nullable one is omitted from
   `<name>InsertSchema`, since the row that fills it arrives later; a required one
   has no default and must be supplied. See `docs/validation.md` and
   "`@computed` mechanisms".
@@ -37,12 +37,16 @@ Field tags:
   tables, and only immutable functions. Postgres owns the column outright, so a
   create never writes it and the generator keeps it out of the insert and patch
   paths.
-- `@pgTrigger <statement>` — the field is assigned by the table's `before insert
-  or update` trigger. The statement is written verbatim with `NEW.` and is emitted
-  in interface field order after the table's clock assignment.
-- `@pgRollup <Child>: <statement>` — the field aggregates the rows of the named
-  child entity, so the trigger lives on that child's table. The statement is
-  written verbatim with `NEW.`. See "`@pgRollup`" below.
+- `@pgTrigger <statement>` — the field is assigned by a `before insert or
+  update` trigger on its own table. The statement is written verbatim with
+  `NEW.` and is emitted in interface field order, beside the table's clock
+  assignment.
+- `@pgTrigger <header>: <statement>` — the same tag with a header moves the
+  trigger to another table and shapes it the way `CREATE TRIGGER` does. The
+  header is the timing, then the events, then the table: `after insert or update
+  or delete on InvoiceRow:`. The statement is written verbatim, and it must be
+  correct for every event the header names: `NEW.` on insert and update, `OLD.`
+  on delete. See "`@pgTrigger` headers" below.
 - `@createdAt` — the row's creation moment. A bare marker on a `Date` field: the
   column becomes `not null default now()`, and no create or patch writes it. See
   `docs/timestamps.md`.
@@ -116,8 +120,8 @@ must be on a single entity, `@children` on an array of one, and the three are
 mutually exclusive.
 
 `@computed` says the database derives a value, not that a client supplies one.
-How the value arrives is the mechanism tag beside it: a generated column, a
-trigger, or a rollup. Everything else is an ordinary field — a key the
+How the value arrives is the mechanism tag beside it: a generated column or a
+trigger. Everything else is an ordinary field — a key the
 application assigns, a column with a `@pgDefault` — and no tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
@@ -259,18 +263,16 @@ Three mechanisms, chosen by what the expression needs:
   maintain and impossible to leave stale, but constrained: same-row columns
   only, immutable functions only, no referencing another generated column, and
   no index on the result.
-- `@pgTrigger` — a `before insert or update` statement. Freer than a generated
-  column (it may read other columns the trigger assigned earlier in the same
-  pass) and indexable.
-- `@pgRollup` — a cross-table aggregate. The only mechanism that can read another
-  table, and the only one whose trigger is placed on the child rather than the
-  field's own table.
+- `@pgTrigger` — a row-level trigger. Freer than a generated column (it may read
+  other columns the trigger assigned earlier in the same pass) and indexable, and
+  the only mechanism that can read another table, by naming it in the header.
 
 `invoice.totalAmount` is the one `@pgVirtual` field: it is a same-row sum of two
-regular columns. `invoice.netAmount`/`taxAmount` are `@pgRollup` because a sum
-over `invoice_row` cannot be a generated column. The `invoice_row` amounts are
-`@pgTrigger` because `taxAmount` reads `netAmount` and `totalAmount` reads both,
-and a generated column cannot reference another generated column.
+regular columns. `invoice.netAmount`/`taxAmount` are `@pgTrigger` on
+`invoice_row` because a sum over that table cannot be a generated column. The
+`invoice_row` amounts are `@pgTrigger` on their own table because `taxAmount`
+reads `netAmount` and `totalAmount` reads both, and a generated column cannot
+reference another generated column.
 
 ## Why the row amounts are trigger assignments
 
@@ -286,39 +288,47 @@ NEW."unitPrice", 2)` into all three expressions. The trigger keeps one
 expression per amount and preserves the order, and `@pgTrigger` makes that
 choice explicit in the spec.
 
-## Why the rollup amounts are written
+## Why the aggregate amounts are written
 
 An invoice is a legal document, so an issued amount should not change when
-rounding or tax rules change. A trigger writes the rolled-up value once, when a
+rounding or tax rules change. A trigger writes the aggregated value once, when a
 child row changes, and the column keeps it. `@pgVirtual` is used only where the
 value is a pure function of two columns on the same row, so a recomputation from
 those columns always reproduces the same figure.
 
-## `@pgRollup`
+## `@pgTrigger` headers
 
-A `@pgRollup` value is the child entity, a colon, then the statement:
+A header is the timing, the events, and the table the trigger attaches to, then
+a colon and the statement. It mirrors `CREATE TRIGGER`:
 
 ```
-@pgRollup InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
+@pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId")
 ```
 
-- The child names the one table whose writes maintain the field. The generator
-  emits an `after insert or update` trigger there, and an `after delete` variant
-  built by substituting `OLD.` for `NEW.`.
-- The statement is written verbatim, as a `@pgTrigger` or `@pgVirtual`
-  expression is. It names its own tables and columns, so it can be read,
-  corrected, and run without substituting anything, and `grep "invoice_row"`
-  finds it.
-- The child is named even though the statement names it too, because the
-  attachment is a decision rather than a deduction: only a child the tag names
-  gets a trigger. Generation fails when the name is not an entity, when the child
-  has no `@foreignKey` into the parent's table, or when the statement reads the
-  table of a second referencing child — that child's writes would leave the
-  aggregate stale.
-- One tag covers one child: the child is a single entity name, and a second
-  child means a second `@pgRollup` field. A tag naming several could not work,
-  since each child's trigger would set the parent's column from that child alone
-  and the last writer would win.
+- The timing is `before` or `after`. Without a header the timing is `before` and
+  the events are `insert` and `update`. With a header the field's own table is
+  still the default when `on` is left out.
+- The events are `insert`, `update`, and `delete`, joined by `or`, and at least
+  one is required. The statement runs for every event listed, so it must be
+  correct for all of them: `NEW` is null on delete and `OLD` is null on insert.
+  The statement above covers both with `in (OLD."invoiceId", NEW."invoiceId")`,
+  which recomputes the invoice the row left as well as the one it joined.
+- `on <Entity>` attaches the trigger to that entity's table instead of the
+  field's. The named table must carry a `@foreignKey` into the field's own
+  table, because the trigger writes the parent back; generation fails otherwise.
+  A statement that reads a *second* table referencing the parent is also an
+  error, since that table's writes would leave the field stale — write a second
+  `@pgTrigger` for it.
+- The statement is written verbatim, as a `@pgVirtual` expression is. It names
+  its own tables and columns, so it can be read, corrected, and run without
+  substituting anything, and `grep "invoice_row"` finds it.
+- `instead of` is not accepted: it needs a row-level trigger on a view, and the
+  spec has no view entity to attach one to.
+
+Every trigger on one table with the same timing and the same events shares one
+function, so several fields' statements are emitted together in interface field
+order. That order is load-bearing: on `invoice_row` each assignment reads the one
+before it, and `@updatedAt` joins the same `before insert or update` function.
 
 ## Column naming
 
@@ -345,22 +355,21 @@ Rationale is in `docs/primitives.md`.
 
 - **An aggregate cannot be `@pgVirtual`.** Postgres forbids a generated column
   from referencing another table, so `Invoice.netAmount` (a sum over
-  `invoice_row`) must be `@pgRollup`.
+  `invoice_row`) must be a `@pgTrigger` whose header names `on InvoiceRow`.
 - **A generated column cannot read another generated column,** and a `before`
   trigger cannot read one either — `NEW."<col>"` is null for a virtual column.
   The `invoice_row` amounts stay `@pgTrigger` for this reason.
 - **Trigger order is part of the contract.** For `invoice_row`: `netAmount`,
   then `taxAmount`, then `totalAmount`. Reordering the fields produces stale
   values rather than an error.
-- **A `@pgRollup` statement is written once and mirrored.** The generator emits
-  the `after delete` variant by substituting `OLD.` for `NEW.`, so a statement
-  spelled with `OLD.` is a lint finding. The tag names one child table, and the
-  statement names its tables and columns verbatim, so a rename of the child's
-  foreign key field breaks the statement — as it breaks a `@pgTrigger`
-  expression, and for the same reason: column names are field names.
-- **The invoice total is not set by the rollup.** The rollups write `netAmount`
-  and `taxAmount` only; `totalAmount` is virtual, so it recomputes on read. No
-  ordering is load-bearing there, which is the point of choosing `@pgVirtual`.
+- **A cross-table trigger names its table in the header.** The tag names one
+  table, and the statement names its tables and columns verbatim, so a rename of
+  the child's foreign key field breaks the statement — as it breaks a same-row
+  `@pgTrigger` expression, and for the same reason: column names are field names.
+- **The invoice total is not set by the `invoice_row` trigger.** It writes
+  `netAmount` and `taxAmount` only; `totalAmount` is virtual, so it recomputes on
+  read. No ordering is load-bearing there, which is the point of choosing
+  `@pgVirtual`.
 - **Currency is not yet modelled.** `Invoice.currency` was removed, so amounts
   currently carry no currency. The doc comments that say "in the invoice
   currency" are forward references to work not yet done.
@@ -382,7 +391,7 @@ Rationale is in `docs/primitives.md`.
   support is planned.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. The `@pgTrigger`/`@pgRollup` expressions would gain
+  in the invoice currency. The `@pgTrigger` expressions would gain
   rate-aware arithmetic, and the rounding/tax ordering (convert-then-tax vs
   tax-then-convert) would need to be pinned down.
 - **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
@@ -392,9 +401,9 @@ Rationale is in `docs/primitives.md`.
 
 1. A generator parses the `@` tags from `packages/spec/`.
 2. For each `@computed` field it reads the mechanism tag off the field itself:
-   `@pgVirtual` becomes a generated column, `@pgTrigger` a `before insert or
-   update` assignment, `@pgRollup` an `after insert or update` and `after
-   delete` pair on the child table named beside it.
+   `@pgVirtual` becomes a generated column, and `@pgTrigger` a row-level
+   trigger — a `before insert or update` assignment on its own table by default,
+   or the timing, events, and table its header names.
 3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
    assignment.
 
@@ -406,8 +415,8 @@ above. See `docs/schema-generation.md`.
 The `@pg*` tags are deliberately Postgres-specific: `packages/spec/` names the
 storage the backend uses rather than describing a second, abstract vocabulary
 that only one backend consumes. The prefix marks a tag whose concept or spelling
-is Postgres-specific — `@pgType` a storage type name, `@pgVirtual`,
-`@pgTrigger` and `@pgRollup` the expressions that materialize a derivation,
+is Postgres-specific — `@pgType` a storage type name, `@pgVirtual` and
+`@pgTrigger` the expressions that materialize a derivation,
 `@pgDefault` a column default, and `@pgTable` the table name itself. A portable
 SQL concept stays unprefixed: `@primaryKey`, `@foreignKey`, `@unique`, and the
 two clock tags.
@@ -452,13 +461,13 @@ Enforced:
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
-- A mechanism tag (`@pgVirtual`, `@pgTrigger`, `@pgRollup`) requires `@computed`,
-  and at most one may appear on a field. `@pgVirtual` and `@pgTrigger` carry a
-  non-empty expression; `@pgRollup` carries one entity name and a statement. The
-  linter does not resolve the name — that is the generator's, which reads the
-  whole spec.
-- `@pgRollup` may not contain `OLD.`, which the generator would otherwise
-  substitute twice.
+- A mechanism tag (`@pgVirtual`, `@pgTrigger`) requires `@computed`, and at most
+  one may appear on a field. Both carry a non-empty expression or statement.
+- `@pgTrigger` names `before` or `after`, then `insert`, `update`, `delete`, or
+  `or`, then an optional `on <Entity>`, then `:`, then the statement. At least
+  one event is required, an unknown event is reported, and `instead of` is
+  rejected because it is a trigger on a view. The linter does not resolve the
+  entity — the generator does, against the whole spec.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
   mutually exclusive with each other and with `@computed`,
   `@pgDefault`, `@version`, and the mechanism tags, and may appear at most once per

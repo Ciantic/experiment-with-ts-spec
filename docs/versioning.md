@@ -101,14 +101,14 @@ where "t"."id" = data."id" and "t"."version" = data."version"
 That is atomic — predicate and increment share one statement under a row lock —
 so it is not a race. It is still the wrong shape here, for two reasons.
 
-**It misses the writers that matter.** The invoice rollup triggers run
+**It misses the writers that matter.** The invoice's cross-table triggers run
 `update "invoice" set "netAmount" = …` in raw SQL when a child row changes. Those
 statements never pass through `updateInvoice`, so a predicate there does not see
 them, and a child-row edit would change the aggregate without moving the version.
 That is the exact hole `docs/timestamps.md` cites for making `updatedAt` a
 trigger rather than an application assignment, and the version has it too.
 
-Under the trigger, a rollup update simply omits `version`, so `NEW."version"`
+Under the trigger, an aggregate update simply omits `version`, so `NEW."version"`
 equals `OLD."version"`, the check passes, and the trigger increments anyway. The
 counter tracks every write to the row, whatever path wrote it.
 
@@ -126,11 +126,11 @@ The rule is "the version you send must equal the version currently stored":
 | `3` | `3` | Passes, stored becomes `4`. |
 | `3` | `4` | `raise`, nothing written. |
 | omitted | `4` | `raise` (null is distinct from `4`). |
-| omitted | `4`, via the rollup | Passes, stored becomes `5`. |
+| omitted | `4`, via an aggregate | Passes, stored becomes `5`. |
 
-The last row is the rollup: it does not claim a version, so it never conflicts,
-but it still advances the counter. Any write moves the version, so a client
-holding a pre-rollup version is told its view is stale.
+The last row is the aggregate: it does not claim a version, so it never
+conflicts, but it still advances the counter. Any write moves the version, so a
+client holding a pre-aggregate version is told its view is stale.
 
 A raw SQL update that deliberately sets `version` to the stored value would also
 pass — the guard protects callers that opt in, which in practice means the
@@ -145,7 +145,7 @@ defaulted column a create never carries:
 | --- | --- | --- |
 | insert | omitted | `default 0` supplies the first revision. |
 | update | written as `data."version"` | It carries the caller's precondition into the trigger. |
-| rollup update | omitted | Raw SQL; the trigger advances it without a claim. |
+| aggregate update | omitted | Raw SQL; the trigger advances it without a claim. |
 
 This is the one defaulted column a create never carries
 (`docs/repositories.md`), so `packages/backend/scripts/generate-repositories.ts`
@@ -167,7 +167,7 @@ caller cannot build a patch that omits the precondition.
   `update…`, one stale row rolls back all of them. This is intended — a batch is
   one logical write and retrying it is the caller's job — but it is a change from
   "skip the losing row".
-- **The rollup bumps the version.** Editing an `invoice_row` reassigns
+- **The aggregate update bumps the version.** Editing an `invoice_row` reassigns
   `invoice.netAmount`, which fires the invoice's version trigger. A user editing
   the invoice in that window gets a conflict. Correct, since their `totalAmount`
   is stale, but version changes are not one-to-one with user edits.

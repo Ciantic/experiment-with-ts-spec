@@ -20,8 +20,8 @@ import {
     isCompareOperator,
     isOrderDirection,
     parseParameters,
-    parseRollup,
     readTags,
+    TRIGGER_EVENTS,
     type ComputedKind,
 } from "./spec-model.ts";
 
@@ -184,7 +184,7 @@ interface FieldTags {
     computed: JSDocTag | undefined;
     /** The `@computed` mechanism tags present, in `COMPUTED_KINDS` order. */
     mechanism: { name: ComputedKind; tag: JSDocTag }[];
-    rollup: JSDocTag | undefined;
+    trigger: JSDocTag | undefined;
     createdAt: JSDocTag | undefined;
     updatedAt: JSDocTag | undefined;
     pgDefault: JSDocTag | undefined;
@@ -217,7 +217,7 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         mechanism: COMPUTED_KINDS.map((name) => ({ name, tag: first(name) })).filter(
             (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
         ),
-        rollup: first("pgRollup"),
+        trigger: first("pgTrigger"),
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
         pgDefault: first("pgDefault"),
@@ -296,8 +296,7 @@ function lintOwnership(tags: FieldTags, report: Report): void {
 /** A `@computed` field names one mechanism, with an expression. See docs/spec-annotations.md. */
 function lintComputedMechanism(tags: FieldTags, report: Report): void {
     for (const { name, tag } of tags.mechanism) {
-        // A rollup's value is a child entity plus a statement, which lintRollup checks.
-        if (name !== "pgRollup" && !(tag.getCommentText() ?? "").trim()) {
+        if (!(tag.getCommentText() ?? "").trim()) {
             report(`@${name} is missing its expression`, tag);
         }
         if (!tags.computed) {
@@ -310,24 +309,46 @@ function lintComputedMechanism(tags: FieldTags, report: Report): void {
             report(`@${first.name} and @${current.name} are mutually exclusive`, current.tag);
         }
     }
-    // The generator derives the delete variant by substituting OLD. for NEW., so OLD. here would be partial.
-    if (tags.rollup && (tags.rollup.getCommentText() ?? "").includes("OLD.")) {
-        report("@pgRollup is written with NEW.; the delete variant is generated from it", tags.rollup);
-    }
 }
 
-/** A `@pgRollup` names one child table, then the statement attached to it. */
-function lintRollup(tags: FieldTags, report: Report): void {
-    const tag = tags.rollup;
+/** `@pgTrigger` is a statement, optionally behind a header naming the trigger. See docs/spec-annotations.md. */
+function lintTrigger(tags: FieldTags, report: Report): void {
+    const tag = tags.trigger;
     if (!tag) {
         return;
     }
-    // Whether the child exists is answered against the spec's interfaces, which the schema generator has.
-    const { child, statement } = parseRollup(tag.getCommentText() ?? "");
-    if (!child) {
-        report("@pgRollup is missing its child table, such as `InvoiceRow`", tag);
-    } else if (!statement) {
-        report("@pgRollup is missing its statement", tag);
+    const text = (tag.getCommentText() ?? "").trim();
+    // A bare statement is the field's own table, before insert or update; its text is checked above.
+    if (!/^(before|after)\b/.test(text)) {
+        if (/^instead\s+of\b/.test(text)) {
+            report("@pgTrigger cannot be `instead of`, which is a trigger on a view, and the spec has no views", tag);
+        } else if (/^on\b/.test(text)) {
+            report("@pgTrigger header starts with its timing: `before insert or update on <Entity>: …`", tag);
+        }
+        return;
+    }
+    // The header ends at the colon that opens the statement, never at the `:=` of an assignment.
+    const separator = text.search(/:(?=\s|$)/);
+    if (separator === -1) {
+        report("@pgTrigger header needs `: <statement>`, such as `after insert on InvoiceRow: …`", tag);
+        return;
+    }
+    const header = text.slice(0, separator).split(/\s+/).filter((token) => token !== "");
+    if (!text.slice(separator + 1).trim()) {
+        report("@pgTrigger is missing its statement", tag);
+    }
+    const onIndex = header.indexOf("on");
+    if (onIndex !== -1 && !header[onIndex + 1]) {
+        report("@pgTrigger `on` is missing the entity it attaches to", tag);
+    }
+    const named = header.slice(1, onIndex === -1 ? undefined : onIndex);
+    for (const token of named) {
+        if (token !== "or" && !(TRIGGER_EVENTS as readonly string[]).includes(token)) {
+            report(`@pgTrigger event \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+        }
+    }
+    if (!named.some((token) => (TRIGGER_EVENTS as readonly string[]).includes(token))) {
+        report(`@pgTrigger header needs at least one event: ${TRIGGER_EVENTS.join(", ")}`, tag);
     }
 }
 
@@ -521,7 +542,7 @@ function lintProperty(
     lintWidget(tags, report);
     lintOwnership(tags, report);
     lintComputedMechanism(tags, report);
-    lintRollup(tags, report);
+    lintTrigger(tags, report);
     lintClocks(tags, report);
     lintDefaultTag(tags, report);
     lintBranches(tags, report);

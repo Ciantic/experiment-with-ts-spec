@@ -111,15 +111,16 @@ statement sent.
 
 ## Why the trigger, and not the application
 
-The invoice rollup triggers run `update "invoice" set "netAmount" = …` directly
-in SQL when a child row changes. An application-assigned `updatedAt` would not be
-part of those statements, so editing an `invoice_row` would change an invoice
-without touching its `updatedAt`.
+The invoice's cross-table triggers run `update "invoice" set "netAmount" = …`
+directly in SQL when a child row changes. An application-assigned `updatedAt`
+would not be part of those statements, so editing an `invoice_row` would change
+an invoice without touching its `updatedAt`.
 
-The invoice's own `before update` trigger closes that hole: the rollup's `update`
-fires it, which refreshes `updatedAt`. The rollup and the clock tag chain, and
-the chain is load-bearing. (The invoice's `totalAmount` is a virtual generated
-column, so it needs no place in that trigger at all — it recomputes on read.)
+The invoice's own `before update` trigger closes that hole: the trigger's `update`
+fires it, which refreshes `updatedAt`. The cross-table trigger and the clock tag
+chain, and the chain is load-bearing. (The invoice's `totalAmount` is a virtual
+generated column, so it needs no place in that trigger at all — it recomputes on
+read.)
 
 ## Why not the snapshots
 

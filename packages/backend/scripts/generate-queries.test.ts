@@ -26,8 +26,7 @@ function table(
         importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations,
-        sameRowAssignments: [],
-        rollups: new Map(),
+        triggers: [],
     };
 }
 

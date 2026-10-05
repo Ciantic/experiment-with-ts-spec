@@ -24,7 +24,7 @@ generated repository whose name is `create<Entity>`, looked up on the
 
 Because the rows are typed as the spec's own interfaces, a domain change breaks
 the mock data at compile time instead of seeding a database the server disagrees
-with. Values the database computes (row amounts, invoice rollups, timestamps,
+with. Values the database computes (row amounts, invoice aggregates, timestamps,
 versions) are left out; the triggers and defaults fill them.
 
 ## Running the server

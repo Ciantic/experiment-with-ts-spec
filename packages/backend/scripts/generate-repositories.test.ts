@@ -21,8 +21,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         importSpecifier: `spec/domain/${interfaceName}.ts`,
         columns,
         relations: new Map(),
-        sameRowAssignments: [],
-        rollups: new Map(),
+        triggers: [],
     };
 }
 

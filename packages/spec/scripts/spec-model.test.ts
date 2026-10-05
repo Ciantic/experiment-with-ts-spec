@@ -88,22 +88,42 @@ describe("parseSpec tags", () => {
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
         expect(tags?.computed).toBe(true);
-        expect(tags?.pgTrigger).toBe('NEW."net" := NEW."q" * NEW."p"');
+        expect(tags?.pgTrigger).toEqual({
+            timing: "before",
+            events: ["insert", "update"],
+            statement: 'NEW."net" := NEW."q" * NEW."p"',
+        });
         expect(tags?.pgVirtual).toBeUndefined();
-        expect(tags?.pgRollup).toBeUndefined();
     });
 
-    it("decodes a @pgRollup child and statement", () => {
+    it("decodes a @pgTrigger header naming the table, timing, and events", () => {
         const { interfaces } = parse({
             "Thing.ts": thing(
-                "    /**\n     * @computed\n     * @pgRollup Child: update \"parent\" set \"n\" = 1 where \"id\" = NEW.\"parentId\"\n     */",
+                "    /**\n     * @computed\n     * @pgTrigger after insert or update or delete on Child: update \"parent\" set \"n\" = 1 where \"id\" in (OLD.\"parentId\", NEW.\"parentId\")\n     */",
                 "net: Decimal;",
             ),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.pgRollup).toEqual({
-            child: "Child",
-            statement: 'update "parent" set "n" = 1 where "id" = NEW."parentId"',
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgTrigger).toEqual({
+            table: "Child",
+            timing: "after",
+            events: ["insert", "update", "delete"],
+            statement: 'update "parent" set "n" = 1 where "id" in (OLD."parentId", NEW."parentId")',
+        });
+    });
+
+    it("decodes a @pgTrigger header without a table as the field's own", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @computed\n     * @pgTrigger after insert: insert into \"log\" (\"id\") values (NEW.\"id\")\n     */",
+                "logged?: Decimal;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgTrigger).toEqual({
+            timing: "after",
+            events: ["insert"],
+            statement: 'insert into "log" ("id") values (NEW."id")',
         });
     });
 

@@ -89,11 +89,13 @@ would then need manual reordering or deferred constraints.
 
 ## Triggers
 
-`@computed @pgTrigger` fields become one `before insert or update` trigger per
-table, assigning in interface field order. `@updatedAt` contributes its
-`NEW."updatedAt" := now();` to the same trigger, after the fields. Order matters:
-on `invoice_row` the assignments are `netAmount`, `taxAmount`, `totalAmount`, and
-each reads the previous one, so they cannot be virtual columns.
+`@computed @pgTrigger` fields become row-level triggers. Without a header the
+trigger is `before insert or update` on the field's own table, assigning in
+interface field order. `@updatedAt` contributes its `NEW."updatedAt" := now();`
+to that same `before insert or update` trigger, so the clock is the last
+assignment in the function on `invoice_row`. Order matters there: the assignments
+are `netAmount`, `taxAmount`, `totalAmount`, and each reads the previous one, so
+they cannot be virtual columns.
 
 The statements are plpgsql, so every reference to a column of the row being
 written must be `NEW`-qualified. An unqualified `"quantity"` is a plpgsql error
@@ -101,27 +103,38 @@ written must be `NEW`-qualified. An unqualified `"quantity"` is a plpgsql error
 column's expression is the opposite: it is a SQL expression, so it must *not* be
 `NEW`-qualified, and the linter does not check which form a field used.
 
+A trigger with a header takes the timing, events, and table the header names, so
+one table can carry a `before insert or update` function, an `after insert`
+function, and so on. Every trigger on one table with the same timing and the same
+events shares one function and one `create trigger`. The function is named
+`<table>_compute` for the shared before insert or update shape — which is why
+`@version`'s separate `before update` trigger, named `<table>_version`, fires
+after it (Postgres orders same-timing triggers by name) — and
+`<table>_<timing>_<events>` otherwise. A `before` trigger returns `NEW`, or
+`coalesce(NEW, OLD)` when it fires on delete, since `NEW` is null there and
+returning it would cancel the delete; an `after` trigger returns null.
+
 A `@version` column gets its own `before update` trigger, separate from the
 `_compute` trigger: it raises on a version mismatch and increments the column.
 It is `before update` only, since there is no `OLD` on insert, and it fires after
-`_compute` (Postgres orders same-timing triggers by name). See
-`docs/versioning.md`.
+`_compute`. See `docs/versioning.md`.
 
-Cross-table aggregates cannot run as a before trigger on the parent, because the
-child rows do not exist yet at insert. They are therefore `after insert or
-update` and `after delete` triggers on the child table, which `update` the
-parent with a fresh `sum`. An `@pgRollup` statement is written once with `NEW.`;
-the generator emits the `after delete` variant by substituting `OLD.`, and
-attaches it to the one child the tag names.
+A cross-table aggregate cannot run as a before trigger on the parent, because
+the child rows do not exist yet at insert. Its header therefore reads `after
+insert or update or delete on <Child>`, which attaches the trigger to the child
+table and `update`s the parent with a fresh `sum`. The statement must be correct
+for all three events, so it names the parent row it recomputes with `in
+(OLD."<fk>", NEW."<fk>")`: an update that moves a row from one parent to another
+refreshes both, which a statement reading `NEW.` alone would not.
 
 The invoice total is not part of that update. It is a virtual generated column
-over `"netAmount" + "taxAmount"`, so it recomputes on read. The rollup's `update`
+over `"netAmount" + "taxAmount"`, so it recomputes on read. The trigger's `update`
 does fire the invoice's before-update trigger, which refreshes `updatedAt`; the
 two mechanisms chain, and the chain is load-bearing for the clock.
 
-A child whose foreign key points at the parent but which no `@pgRollup` names
-gets no trigger. A statement that reads such a child's table is a generation
-error, because that child's writes would leave the aggregate stale.
+A child whose foreign key points at the parent but which no trigger names gets no
+trigger. A statement that reads such a child's table without attaching to it is a
+generation error, because that child's writes would leave the aggregate stale.
 
 ## Validation
 
@@ -131,8 +144,8 @@ Two test files:
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. `generateSchema` takes
   `{ specGlob, aliasGlob }` so a fixture can be generated from its own files.
-  Its rollup group also executes the generated triggers in PGlite, which is the
-  one place the attachment is observable: a trigger on the wrong child is valid
+  Its trigger group also executes the generated triggers in PGlite, which is the
+  one place the attachment is observable: a trigger on the wrong table is valid
   SQL, so no text assertion can see it.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the committed file
   executes in Postgres.
@@ -147,7 +160,7 @@ identifiers, foreign keys pointing at real tables, functions existing before the
 are used), because Postgres rejects all of those at parse or create time. Text
 assertions on the same properties can only fail where execution already would.
 
-Beyond the rollup wiring, none of these assert what the schema *means*. A trigger
+Beyond the trigger wiring, none of these assert what the schema *means*. A trigger
 that computes the wrong column, or an aggregate that sums the wrong thing, passes
 the text assertions — the SQL is valid and the text is as generated. A field's
 expression is only checked by reading it.
