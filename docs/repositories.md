@@ -72,9 +72,18 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
 `InvoiceInsert` is the entity minus every field the statement does not write, so
 it mirrors the SQL exactly. A whole entity is still assignable to it, so a caller
 holding one can pass it unchanged. What the type rules out is a field that would
-be read and then dropped — a branch, a defaulted column, or a derivable value —
-which is the same set `<entity>InsertSchema` accepts (`docs/validation.md`). An
-entity with nothing to omit gets `type <Entity>Insert = <Entity>`.
+be read and then dropped — a branch, a clock field, a `@pgvirtual` column, or a
+derivable value — which is the same set `<entity>InsertSchema` accepts
+(`docs/validation.md`). An entity with nothing to omit gets
+`type <Entity>Insert = <Entity>`.
+
+A column with a database default is written like any other, and a create may
+omit it: the statement then carries the `default` keyword for that value, so the
+database applies its default for that row alone. A required field with a default
+is relaxed to optional in `<Entity>Insert`, and its schema is `.partial()`, so
+the type and the wire agree that omitting it is allowed. A `@version` field is
+the exception: a defaulted version is left out of a create entirely, because its
+default *is* the first revision (`docs/versioning.md`).
 
 ## Patching
 
@@ -102,10 +111,11 @@ design leans on:
 A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
 touches. That is a branch — a `@relation` or `@children` field, which has no
-column — a column the database owns: a clock field or a `@default`, a virtual
-generated column (`@pgvirtual`), or a nullable `@computed` field a trigger
-derives. An entity that writes every column keeps the plain `Partial<Entity>`
-shape.
+column — a column the database owns outright: a clock field, a virtual generated
+column (`@pgvirtual`), or a nullable `@computed` field a trigger derives. An
+entity that writes every column keeps the plain `Partial<Entity>` shape. A
+`@default` column is *not* on this list: a patch may override a default, the
+same way a create may.
 
 The emitted statement writes every patchable column, using `coalesce` to keep a
 stored value when the patch omits one:
@@ -177,10 +187,12 @@ inlined optional customer is written as `row.customer?.name`, without the
 generator special-casing it. A relation contributes no column of its own: its
 `@foreignKey` field is an ordinary column, read as `row.customerId`.
 
-A column with a database default (`@default`) is left to the database and never
-appears in a generated `insert`. That covers both timestamps: the default fills
-`createdAt` and `updatedAt` on insert, and the trigger refreshes `updatedAt` on
-every write; see `docs/timestamps.md`.
+A column with a database default (`@default`) is written when the row supplies
+it, and its tuple carries the `default` keyword when the row omits it, so the
+database fills that row's value. The clock tags are the different case: they
+never appear in a generated `insert`, because the default fills `createdAt` and
+`updatedAt` on insert and the trigger refreshes `updatedAt` on every write; see
+`docs/timestamps.md`.
 
 A `@computed` column the database can fill later is left out too, so the
 `insert` names exactly the insertable fields and nothing else. That is the whole
@@ -214,10 +226,12 @@ patch column sets separately; see `docs/versioning.md`.
   *nullable* computed column is named in neither the `insert` nor the `update`,
   so its value is left to the trigger or rollup that fills it
   (`docs/validation.md`).
-- **A defaulted column is never written.** Both timestamps have database defaults
-  and are excluded from `insert` and `update`, so the generated functions cannot
-  set them even deliberately. Writing one takes raw SQL. A `@version` column is
-  the exception: it is defaulted but *is* written on update.
+- **A defaulted column is written only when the caller supplies it.** A create
+  that omits one sends the `default` keyword, so the database fills that row; a
+  patch that omits one keeps the stored value. The clock fields are the different
+  case: `createdAt` and `updatedAt` are excluded from `insert` and `update`
+  outright, so writing one takes raw SQL. A `@version` column is excluded from
+  `insert` too, though it *is* written on update.
 - **`update` does not check the version itself.** The `@version` column is sent
   as an ordinary value; the conflict check and the increment are in a database
   trigger. A stale row makes the update raise rather than silently skip. See

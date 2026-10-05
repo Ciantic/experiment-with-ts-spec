@@ -120,8 +120,8 @@ export const invoicePatchSchema = invoiceSchema
 
 The omit list is a create's, less the version. That one exception is the whole
 difference: a create must not carry the precondition, a patch must. So a patch
-rejects the same branches, `@default` columns, and derivable values a create
-does, and `.strict()` turns a key the update would silently ignore into a 400.
+rejects the same branches, clock fields, and derivable values a create does, and
+`.strict()` turns a key the update would silently ignore into a 400.
 
 The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
 `<Entity>Patch` type is rendered from it into the same module, so the repository
@@ -130,7 +130,8 @@ permit exactly the same fields. A nullable `@computed` value is on the
 list because a `before insert or update` trigger derives it, and a `@pgvirtual`
 value is on it whether nullable or not because Postgres refuses the write: the
 update does not name the column, so accepting one would be accepting a field that
-does nothing (`docs/repositories.md`).
+does nothing (`docs/repositories.md`). A `@default` column is not on the list: a
+patch may override a default, exactly as a create may.
 
 ## Insert schemas
 
@@ -160,13 +161,20 @@ A field is omitted when the database owns it, from either annotation:
 
 - **A branch** — a `@relation` or a `@children` collection — is not a column, so
   a create cannot write it. `customer`, `seller`, and `rows` are omitted.
-- **A `@default` column** is left to the database on insert, which covers both
-  timestamps and the `@version` column.
+- **A clock field, a virtual generated column, and a defaulted `@version`** are
+  the database's own on insert: the two timestamps carry `default now()`,
+  `@pgvirtual` is generated always, and a version's default *is* its first
+  revision.
 - **A stored computation** is the trigger's to derive, but only while the column
   is optional. A required one has no default and no nullable column, so the
   insert has to carry it: `InvoiceSent.netAmount` and its siblings stay, while
   `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
   not a default.
+
+A `@default` column is deliberately absent from the omit list. A create may
+supply it or leave it out; an omitted one sends the `default` keyword, so the
+database fills that row. A *required* defaulted field is relaxed with
+`.partial()` so the schema agrees that omitting it is allowed.
 
 An `@inlined` field is the exception: it is a snapshot of another entity, so a
 create still writes it, nested as that entity's own insert schema. `InvoiceSent`

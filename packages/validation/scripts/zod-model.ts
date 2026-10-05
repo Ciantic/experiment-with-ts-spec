@@ -7,6 +7,7 @@ import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNod
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    defaultedInsertProperties,
     inlinedFromInsert,
     isCompareOperator,
     lowerFirst,
@@ -54,6 +55,8 @@ export interface ZodEntity {
     fields: ZodField[];
     /** Field names a create omits, rendered as an `.omit()` of the entity schema. */
     insertOmit: string[];
+    /** Required insertable field names a create may omit, because the column's `@default` fills them. */
+    insertOptional: string[];
     /** Field names a patch omits: the same set, less the key and version a patch must carry. */
     patchOmit: string[];
     /** `@inlined` branches a create nests, each as the target's own insert schema. */
@@ -447,6 +450,10 @@ function buildEntities(
         // A create and a patch write the same fields; a patch only adds the version back, since the
         // optimistic-lock precondition is not part of what a create writes. See docs/validation.md.
         const insertOmit = omittedFromInsert(spec).map((property) => property.name);
+        // Only a required field needs relaxing; an optional one is already omittable.
+        const insertOptional = defaultedInsertProperties(spec)
+            .filter((property) => !property.optional)
+            .map((property) => property.name);
         const patchOmit = omittedFromPatch(spec).map((property) => property.name);
         entities.push({
             name: spec.name,
@@ -459,6 +466,7 @@ function buildEntities(
             importSpecifier: spec.importSpecifier,
             fields,
             insertOmit,
+            insertOptional,
             patchOmit,
             insertInlined: inlinedFromInsert(spec).flatMap((property) => {
                 const typeNode = property.declaration.getTypeNode();

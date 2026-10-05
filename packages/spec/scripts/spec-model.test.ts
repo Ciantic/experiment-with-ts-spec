@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, omittedFromPatch, parseSpec, primaryKeyProperties, readTags } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -264,8 +264,8 @@ describe("patch field rules", () => {
         expect(omitted("    /**\n     * @fieldName Label\n     */", "label?: string;")).toEqual([]);
     });
 
-    it("refuses a field a database default owns", () => {
-        expect(omitted("    /**\n     * @default now()\n     */", "createdAt?: Date;")).toEqual(["createdAt"]);
+    it("keeps a defaulted field patchable, so a caller may override the default", () => {
+        expect(omitted("    /**\n     * @default now()\n     */", "createdAt?: Date;")).toEqual([]);
     });
 
     it("keeps the version patchable, because a patch carries it to lock the row", () => {
@@ -295,6 +295,57 @@ describe("patch field rules", () => {
 
     it("refuses the children of an aggregate, which belong to the child's table", () => {
         expect(omitted("    /**\n     * @children\n     */", "rows?: Row[];")).toEqual(["rows"]);
+    });
+});
+
+describe("insert field rules", () => {
+    /** The tag block for one field, and the field itself. */
+    const field = (doc: string, declaration: string) => `export interface Thing {\n${doc}\n    ${declaration}\n}`;
+    const spec = (doc: string, declaration: string) =>
+        parse({ "Thing.ts": field(doc, declaration) }).interfaces.get("Thing")!;
+    const omitted = (doc: string, declaration: string) =>
+        omittedFromInsert(spec(doc, declaration)).map((property) => property.name);
+
+    it("writes a defaulted field, so a caller may override the default", () => {
+        const doc = "    /**\n     * @default now()\n     */";
+        expect(omitted(doc, "createdAt?: Date;")).toEqual([]);
+        expect(defaultedInsertProperties(spec(doc, "createdAt?: Date;")).map((property) => property.name)).toEqual([
+            "createdAt",
+        ]);
+    });
+
+    it("keeps a defaulted field out of the optional set when it is not insertable", () => {
+        const doc = "    /**\n     * @version\n     * @default 0\n     */";
+        expect(omitted(doc, "version?: number;")).toEqual(["version"]);
+        expect(defaultedInsertProperties(spec(doc, "version?: number;"))).toEqual([]);
+    });
+
+    it("writes a version that carries no default, since the database has nothing to fall back on", () => {
+        expect(omitted("    /**\n     * @version\n     */", "version?: number;")).toEqual([]);
+    });
+
+    it("refuses the clock fields and virtual columns the database owns outright", () => {
+        expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual(["madeAt"]);
+        expect(omitted('    /**\n     * @computed\n     * @pgvirtual "net" + "tax"\n     */', "total: Money;")).toEqual([
+            "total",
+        ]);
+    });
+
+    it("refuses a nullable computation but keeps a required one", () => {
+        const trigger = '    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */';
+        expect(omitted(trigger, "net?: Money;")).toEqual(["net"]);
+        expect(omitted(trigger, "net: Money;")).toEqual([]);
+    });
+
+    it("refuses a branch, which is written through the target's own repository", () => {
+        expect(omitted("    /**\n     * @relation\n     */", "customer?: Customer;")).toEqual(["customer"]);
+        expect(omitted("    /**\n     * @children\n     */", "rows?: Row[];")).toEqual(["rows"]);
+    });
+
+    it("leaves an inlined branch alone, since it has no single column to default", () => {
+        expect(defaultedInsertProperties(spec("    /**\n     * @inlined\n     * @default '{}'\n     */", "snapshot?: Snapshot;"))).toEqual(
+            [],
+        );
     });
 });
 

@@ -28,7 +28,7 @@ export const sellerPatchSchema = sellerSchema
     })
     .strict();
 
-/** The fields a `create` writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const sellerInsertSchema = sellerSchema
     .omit({
         createdAt: true,
@@ -40,7 +40,7 @@ export const sellerInsertSchema = sellerSchema
 /** A partial update: every field is optional except the key and the version. */
 export type SellerPatch = Omit<Partial<Seller>, "createdAt" | "updatedAt"> & Required<Pick<Seller, "id" | "version">>;
 
-/** The fields a create writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export type SellerInsert = Omit<Seller, "createdAt" | "updatedAt" | "version">;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */

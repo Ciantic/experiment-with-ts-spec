@@ -35,7 +35,7 @@ Field tags:
 - `@updatedAt` — the row's last-write moment. A bare marker on a `Date` field: the
   column becomes `not null default now()`, and every write assigns
   `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
-- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and the repository does not write the column, nor does `<name>InsertSchema` accept it. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert.
+- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and a create may omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md`.
 - `@primaryKey` — a column of the table's primary key. A bare marker on a scalar
   field: the column is `not null`, and the generated reads filter on it by
   default. One field is a single-column key; marking several makes a composite

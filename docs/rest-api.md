@@ -244,13 +244,15 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
   spec, so there is no OpenAPI artifact and no non-JS client. See "Deliberately
   not implemented".
 - **A create takes only what it writes.** `<entity>InsertSchema` carries the
-  columns the database does not own, so `id` and the `@default` / `@computed`
-  fields a client must not choose are absent and a stray one is a 400. The
-  generated client types the same way, as `<Entity>Insert`.
+  columns the database does not own, so `id` and the `@computed` fields a client
+  must not choose are absent and a stray one is a 400; a `@default` field is
+  present but optional, since the database fills it when the client omits it.
+  The generated client types the same way, as `<Entity>Insert`.
 - **A patch takes only what an update writes.** `<entity>PatchSchema` is the
-  create's field set plus the version, so the same branches and defaulted columns
-  are absent and a stray one is a 400 rather than a no-op. The generated
-  `<Entity>Patch` type narrows with it. What the patch still cannot do is clear a
+  create's field set plus the version, so the same branches and derivable values
+  are absent and a stray one is a 400 rather than a no-op; a defaulted column may
+  be sent to override the default. The generated `<Entity>Patch` type narrows
+  with it. What the patch still cannot do is clear a
   column: `coalesce` cannot tell an omitted field from a `null` one, so the patch
   contract carries that limitation over HTTP unchanged (`docs/repositories.md`).
 - **A `query` with no filters scans the table, up to `limit`.**

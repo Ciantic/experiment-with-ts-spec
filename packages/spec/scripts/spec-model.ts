@@ -203,8 +203,8 @@ export function snakeCase(name: string): string {
 /** True when a create writes the field, rather than the database owning it. See docs/repositories.md. */
 export function isInsertable(property: SpecProperty): boolean {
     const tags = property.tags;
-    // A `@default` column is left to the database on insert.
-    if (tags.default !== undefined) {
+    // A defaulted version's first revision comes from its default, so a create never carries it.
+    if (tags.version && tags.default !== undefined) {
         return false;
     }
     // The clock tags and a virtual generated column are the database's entirely.
@@ -226,6 +226,15 @@ export function omittedFromInsert(spec: SpecInterface): SpecProperty[] {
     );
 }
 
+/** The insertable scalar fields a create may omit, because the column's `@default` fills them in. */
+export function defaultedInsertProperties(spec: SpecInterface): SpecProperty[] {
+    const omitted = new Set(omittedFromInsert(spec));
+    return spec.properties.filter(
+        (property) =>
+            !omitted.has(property) && !property.tags.inlined && property.tags.default !== undefined,
+    );
+}
+
 /** The `@inlined` fields a create nests, each written as the target entity's own insert shape. */
 export function inlinedFromInsert(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.inlined);
@@ -233,7 +242,7 @@ export function inlinedFromInsert(spec: SpecInterface): SpecProperty[] {
 
 /** True when a patch writes the field: what a create writes, plus the version it carries as its precondition. */
 export function isUpdatable(property: SpecProperty): boolean {
-    // The version is the one defaulted column a patch supplies; every other one keeps its stored value.
+    // The version is the optimistic-lock precondition, so a patch always carries it.
     return Boolean(property.tags.version) || (isInsertable(property) && !property.tags.relation && !property.tags.children);
 }
 

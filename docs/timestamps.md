@@ -143,9 +143,10 @@ from `@inlined`.
   `default now()`. It is SQL, not a formula name, so it is not validated and a
   typo surfaces when the DDL runs, not at lint time. The clock tags are the
   exception: their `now()` comes from the generator, not from a tag value.
-- **A defaulted column is invisible to the repository.** Excluding it is the
+- **A clock column is invisible to the repository.** Excluding it is the
   point, but it means the generated `insert` cannot set it even deliberately.
-  Writing one requires raw SQL. This applies to both timestamps.
+  Writing one requires raw SQL. This applies to both timestamps; a plain
+  `@default` column is written when the caller supplies it.
 - **A trigger can be bypassed.** `ALTER TABLE ... DISABLE TRIGGER` during a bulk
   load leaves `updatedAt` at its default rather than the write time. That is the
   case the default is there to keep sane, but the value will not be per-write.

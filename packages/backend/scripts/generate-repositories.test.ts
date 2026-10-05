@@ -8,9 +8,8 @@ import { generateCreate, generateDelete, generateIndex, generateRepositories, ge
 import type { Column, Table } from "./postgres-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    // A defaulted column is neither insertable nor patchable, except the version; a fixture that says
-    // otherwise passes the flag itself.
-    const insertable = extras.insertable ?? extras.default === undefined;
+    // A defaulted column is written when the row supplies it; the version is the database's on create.
+    const insertable = extras.insertable ?? extras.version !== true;
     return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
 }
 
@@ -201,17 +200,20 @@ describe("generateCreate", () => {
         expect(code).toContain("const values = [row.id, row.customer?.id];");
     });
 
-    it("does not write a column that has a database default", () => {
+    it("falls back to the default keyword when a create omits a defaulted column", () => {
         const code = generateCreate(
             table("customer", "Customer", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
                 column("name"),
-                column("createdAt", { sqlType: "timestamptz", default: "now()" }),
+                column("source", { default: "'manual'" }),
             ]),
         );
 
-        expect(code).not.toContain("row.createdAt");
-        expect(code).toContain('insert into "customer" ("id", "name") values ');
+        expect(code).toContain('insert into "customer" ("id", "name", "source") values ');
+        expect(code).toContain("if (row.source === undefined) {");
+        expect(code).toContain('values.push("default");');
+        expect(code).toContain("parameters.push(row.source);");
+        expect(code).toContain("parameters.push(row.id);");
     });
 
     it("omits a @version column from insert", () => {
@@ -240,7 +242,7 @@ describe("generateUpdate", () => {
         expect(code).toContain(') as data("id", "name", "email") where "customer"."id" = data."id"');
     });
 
-    it("leaves a defaulted or derived column out of the patch statement", () => {
+    it("patches a defaulted column, since a caller may override the default", () => {
         const limited = table("limited", "Limited", [
             column("id", { sqlType: "uuid", primaryKey: true }),
             column("label"),
@@ -249,12 +251,9 @@ describe("generateUpdate", () => {
             column("version", { sqlType: "int8", default: "0", version: true }),
         ]);
         const code = generateUpdate(limited);
-        const setClause = code.match(/set (.*?) from \(values /)?.[1] ?? "";
-        const assigned = new Set([...setClause.matchAll(/"(\w+)" = /g)].map((match) => match[1]));
 
-        // The statement sets the patchable column and the version; the defaulted and derived columns are skipped.
-        expect(assigned).toEqual(new Set(["label", "version"]));
-        expect(code).toContain('where "limited"."id" = data."id"');
+        expect(code).toContain('"createdAt" = coalesce(data."createdAt", "limited"."createdAt")');
+        expect(code).toContain('as data("id", "label", "createdAt", "version")');
     });
 
     it("leaves a non-updatable column out of the patch statement", () => {
@@ -332,19 +331,6 @@ describe("generateUpdate", () => {
 
         expect(code).toContain('update "tag" set "id" = data."id" from (values ');
     });
-
-    it("leaves a defaulted column out of the patch statement", () => {
-        const code = generateUpdate(
-            table("customer", "Customer", [
-                column("id", { sqlType: "uuid", primaryKey: true }),
-                column("name"),
-                column("createdAt", { sqlType: "timestamptz", default: "now()" }),
-            ]),
-        );
-
-        expect(code).toContain(') as data("id", "name") where "customer"."id" = data."id"');
-        expect(code).not.toContain('"createdAt" = coalesce(data."createdAt"');
-    });
 });
 
 describe("generateDelete", () => {
@@ -421,8 +407,16 @@ const widget = table("widget", "Widget", [
     column("version", { sqlType: "int8", default: "0", version: true }),
 ]);
 
+const marker = table("marker", "Marker", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("label"),
+    column("source", { default: "'manual'" }),
+]);
+
 const OWNER_ID = "00000000-0000-0000-0000-0000000000aa";
 const WIDGET_ID = "00000000-0000-0000-0000-0000000000bb";
+const MARKER_ID = "00000000-0000-0000-0000-0000000000cc";
+const MARKER_ID_OVERRIDDEN = "00000000-0000-0000-0000-0000000000dd";
 
 describe("generated repositories against PGlite", () => {
     let driver: ReturnType<typeof createPglite>;
@@ -430,6 +424,7 @@ describe("generated repositories against PGlite", () => {
     let owners: GeneratedRepository;
     let widgets: GeneratedRepository;
     let translations: GeneratedRepository;
+    let markers: GeneratedRepository;
 
     beforeAll(async () => {
         driver = createPglite();
@@ -437,9 +432,11 @@ describe("generated repositories against PGlite", () => {
         await driver.exec(createTableSql(owner));
         await driver.exec(createTableSql(widget));
         await driver.exec(createTableSql(translation));
+        await driver.exec(createTableSql(marker));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);
         translations = loadRepository(translation);
+        markers = loadRepository(marker);
     });
 
     afterAll(async () => {
@@ -450,6 +447,7 @@ describe("generated repositories against PGlite", () => {
         await db.query('delete from "widget"');
         await db.query('delete from "owner"');
         await db.query('delete from "translation"');
+        await db.query('delete from "marker"');
     });
 
     it("inserts rows through the generated create function", async () => {
@@ -460,6 +458,20 @@ describe("generated repositories against PGlite", () => {
         );
 
         expect(rows).toEqual([{ id: WIDGET_ID, name: "run", note: null, ownerId: OWNER_ID }]);
+    });
+
+    it("lets a create supply a defaulted column, and falls back to the default when it omits one", async () => {
+        await markers.create(db, [{ id: MARKER_ID, label: "omitted" }]);
+        await markers.create(db, [{ id: MARKER_ID_OVERRIDDEN, label: "supplied", source: "import" }]);
+
+        const { rows } = await driver.query<{ id: string; source: string }>(
+            'select "id", "source" from "marker" order by "label"',
+        );
+
+        expect(rows).toEqual([
+            { id: MARKER_ID, source: "manual" },
+            { id: MARKER_ID_OVERRIDDEN, source: "import" },
+        ]);
     });
 
     it("carries a related entity's key through the generated read accessor", async () => {

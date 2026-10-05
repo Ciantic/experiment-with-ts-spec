@@ -49,7 +49,9 @@ intent and survives a change to the alias.
 
 `@default 0` gives a new row its first revision for free, and forces the column
 `not null` even though the field is optional — the same shape as `createdAt`
-(`docs/timestamps.md`). The repository omits it on insert.
+(`docs/timestamps.md`). A defaulted version is the one default a create never
+overrides: the repository leaves it out on insert, because its default *is* the
+first revision.
 
 ## The trigger
 
@@ -137,7 +139,7 @@ generated repositories.
 ## Insert vs update
 
 The version has a different lifecycle from both timestamps, and it is the one
-column that is *defaulted yet written*:
+defaulted column a create never carries:
 
 | Path | `version` | Why |
 | --- | --- | --- |
@@ -145,10 +147,10 @@ column that is *defaulted yet written*:
 | update | written as `data."version"` | It carries the caller's precondition into the trigger. |
 | rollup update | omitted | Raw SQL; the trigger advances it without a claim. |
 
-This is the first exception to "a defaulted column is never written"
+This is the one defaulted column a create never carries
 (`docs/repositories.md`), so `packages/backend/scripts/generate-repositories.ts`
-builds a different column set per statement: the insert excludes everything with
-a default, while the patch includes a defaulted column that is flagged `version`.
+builds a different column set per statement: the insert leaves out a defaulted
+column flagged `version`, while the patch includes it.
 
 The repository sends the caller's version in the `set` list rather than leaving
 it to the trigger, because the trigger's check is against `NEW`. If the update

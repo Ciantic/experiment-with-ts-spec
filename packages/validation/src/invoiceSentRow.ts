@@ -24,14 +24,14 @@ export const invoiceSentRowPatchSchema = invoiceSentRowSchema
     })
     .strict();
 
-/** The fields a `create` writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const invoiceSentRowInsertSchema = invoiceSentRowSchema
     .strict();
 
 /** A partial update: every field is optional except the key. */
 export type InvoiceSentRowPatch = Partial<InvoiceSentRow> & Required<Pick<InvoiceSentRow, "id">>;
 
-/** The fields a create writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export type InvoiceSentRowInsert = InvoiceSentRow;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */

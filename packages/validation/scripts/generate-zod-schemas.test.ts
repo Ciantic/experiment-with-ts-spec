@@ -305,7 +305,7 @@ describe("generateEntity", () => {
         const code = files.get("marker.ts") ?? "";
 
         expect(code).toContain(
-            'export type MarkerPatch = Omit<Partial<Marker>, "createdAt" | "total"> & Required<Pick<Marker, "id">>;',
+            'export type MarkerPatch = Omit<Partial<Marker>, "total"> & Required<Pick<Marker, "id">>;',
         );
         expect(code).not.toContain('Required<Pick<Marker, "id" | "version">>');
     });
@@ -746,14 +746,44 @@ describe("insert schemas", () => {
         expect(code).toContain("    .strict();");
     });
 
-    it("omits a defaulted or derivable column but keeps a required one", () => {
+    it("omits a derivable column, keeps a required one, and leaves a defaulted one omittable", () => {
         const { files } = generate({ domain: { Marker: MARKER } });
         const code = files.get("marker.ts") ?? "";
 
-        expect(code).toContain("        createdAt: true,");
         expect(code).toContain("        total: true,");
+        expect(code).toContain('export type MarkerInsert = Omit<Marker, "total">;');
         expect(code).not.toContain("        required: true,");
         expect(code).not.toContain("        label: true,");
+    });
+
+    it("relaxes a required defaulted column, which a create may omit", () => {
+        const entity = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a thing. */
+export type ThingId = BrandedId<"ThingId">;
+
+/** A thing. */
+export interface Thing {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: ThingId;
+    /**
+     * Where it came from.
+     *
+     * @default 'manual'
+     */
+    source: string;
+}
+`.trim();
+        const { files } = generate({ domain: { Thing: entity } });
+        const code = files.get("thing.ts") ?? "";
+
+        expect(code).toContain("    .partial({\n        source: true,\n    })");
+        expect(code).toContain('export type ThingInsert = Omit<Thing, "source"> & Partial<Pick<Thing, "source">>;');
     });
 
     it("nests an `@inlined` branch as the target's insert schema", () => {
@@ -806,12 +836,12 @@ describe("patch schemas", () => {
         expect(code).not.toContain("version");
     });
 
-    it("rejects a field the update would never write", () => {
+    it("rejects a field the update would never write, and keeps a defaulted one writable", () => {
         const { files } = generate({ domain: { Marker: MARKER } });
         const code = files.get("marker.ts") ?? "";
 
-        expect(code).toContain("        createdAt: true,");
         expect(code).toContain("        total: true,");
+        expect(code).not.toContain("        createdAt: true,");
         expect(code).not.toContain("        required: true,");
     });
 });

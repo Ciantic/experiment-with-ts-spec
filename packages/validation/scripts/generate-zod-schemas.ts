@@ -210,7 +210,7 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     lines.push("    .strict();");
 
     lines.push("");
-    lines.push("/** The fields a `create` writes: only the columns the database does not own. */");
+    lines.push("/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */");
     lines.push(`export const ${entity.insertName} = ${entity.schemaName}`);
     if (entity.insertOmit.length > 0) {
         lines.push("    .omit({");
@@ -225,6 +225,13 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
             const target = byName.get(branch.target);
             const insertName = target ? target.insertName : "z.never()";
             lines.push(`        ${branch.name}: ${insertName}.optional(),`);
+        }
+        lines.push("    })");
+    }
+    if (entity.insertOptional.length > 0) {
+        lines.push("    .partial({");
+        for (const name of entity.insertOptional) {
+            lines.push(`        ${name}: true,`);
         }
         lines.push("    })");
     }
@@ -249,12 +256,17 @@ export function generateEntity(entity: ZodEntity, byName: Map<string, ZodEntity>
     lines.push(`export type ${entity.name}Patch = ${patchBase}${required};`);
 
     lines.push("");
-    lines.push("/** The fields a create writes: only the columns the database does not own. */");
+    lines.push("/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */");
+    const insertOmitted = [...entity.insertOmit, ...entity.insertOptional];
     const insertBase =
-        entity.insertOmit.length === 0
+        insertOmitted.length === 0
             ? entity.name
-            : `Omit<${entity.name}, ${entity.insertOmit.map(quote).join(" | ")}>`;
-    lines.push(`export type ${entity.name}Insert = ${insertBase};`);
+            : `Omit<${entity.name}, ${insertOmitted.map(quote).join(" | ")}>`;
+    const insertOptionalType =
+        entity.insertOptional.length === 0
+            ? ""
+            : ` & Partial<Pick<${entity.name}, ${entity.insertOptional.map(quote).join(" | ")}>>`;
+    lines.push(`export type ${entity.name}Insert = ${insertBase}${insertOptionalType};`);
 
     // The key alone addresses a stored row, so a by-key write names it rather than the whole entity.
     // The schema is strict, like a patch or an insert, so a field the write ignores is a 400.

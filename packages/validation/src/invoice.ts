@@ -45,7 +45,7 @@ export const invoicePatchSchema = invoiceSchema
     })
     .strict();
 
-/** The fields a `create` writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const invoiceInsertSchema = invoiceSchema
     .omit({
         customer: true,
@@ -63,7 +63,7 @@ export const invoiceInsertSchema = invoiceSchema
 /** A partial update: every field is optional except the key and the version. */
 export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt"> & Required<Pick<Invoice, "id" | "version">>;
 
-/** The fields a create writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export type InvoiceInsert = Omit<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version">;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */

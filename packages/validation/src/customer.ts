@@ -30,7 +30,7 @@ export const customerPatchSchema = customerSchema
     })
     .strict();
 
-/** The fields a `create` writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const customerInsertSchema = customerSchema
     .omit({
         createdAt: true,
@@ -42,7 +42,7 @@ export const customerInsertSchema = customerSchema
 /** A partial update: every field is optional except the key and the version. */
 export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
 
-/** The fields a create writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export type CustomerInsert = Omit<Customer, "createdAt" | "updatedAt" | "version">;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */

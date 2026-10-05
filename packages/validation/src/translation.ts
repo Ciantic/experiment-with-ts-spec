@@ -17,14 +17,14 @@ export const translationPatchSchema = translationSchema
     })
     .strict();
 
-/** The fields a `create` writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const translationInsertSchema = translationSchema
     .strict();
 
 /** A partial update: every field is optional except the key. */
 export type TranslationPatch = Partial<Translation> & Required<Pick<Translation, "lang" | "key">>;
 
-/** The fields a create writes: only the columns the database does not own. */
+/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export type TranslationInsert = Translation;
 
 /** The key of one stored row: the shape a delete or other by-key write sends. */

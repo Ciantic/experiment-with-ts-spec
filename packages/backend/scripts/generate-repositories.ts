@@ -40,6 +40,8 @@ type Operation = (typeof OPERATIONS)[number];
 interface ValueEntry {
     expression: string;
     sqlType: string;
+    /** True for a defaulted column: an absent value emits the `default` keyword. */
+    optional?: boolean;
 }
 
 /** The accessor that reads a column from a row, e.g. `customer?.id` for an inlined optional field. */
@@ -52,6 +54,12 @@ function readEntry(column: Column): ValueEntry {
     return { expression: readExpression(column), sqlType: column.sqlType };
 }
 
+/** The value entry for a create: a defaulted column may be absent, so the database fills it. */
+function insertEntry(column: Column): ValueEntry {
+    const entry = readEntry(column);
+    return column.default === undefined ? entry : { ...entry, optional: true };
+}
+
 /** The value entry for a patch: a version is required, every other column is null when the caller omits it. */
 function patchEntry(column: Column): ValueEntry {
     const read = readExpression(column);
@@ -60,6 +68,9 @@ function patchEntry(column: Column): ValueEntry {
 
 /** The lines that gather the given values into `parameters` and `tuples`, one tuple per row. */
 function collectValues(entries: ValueEntry[]): string[] {
+    if (entries.some((entry) => entry.optional)) {
+        return collectValuesWithDefaults(entries);
+    }
     const values = entries.map((entry) => entry.expression).join(", ");
     // The `values` alias is otherwise untyped text; casting each placeholder keeps keys and
     // assignments matching the column type (a bare text value would not compare to a uuid key).
@@ -79,6 +90,35 @@ function collectValues(entries: ValueEntry[]): string[] {
         `        tuples.push("(" + ${tuple} + ")");`,
         "    }",
     ];
+}
+
+/** The tuple builder for a create that falls back to the `default` keyword for an absent defaulted column. */
+function collectValuesWithDefaults(entries: ValueEntry[]): string[] {
+    const lines = [
+        "    if (rows.length === 0) {",
+        "        return;",
+        "    }",
+        "    const parameters: unknown[] = [];",
+        "    const tuples: string[] = [];",
+        "    for (const row of rows) {",
+        "        const values: string[] = [];",
+    ];
+    for (const entry of entries) {
+        if (!entry.optional) {
+            lines.push(`        parameters.push(${entry.expression});`);
+            lines.push(`        values.push("$" + parameters.length + "::${entry.sqlType}");`);
+            continue;
+        }
+        lines.push(`        if (${entry.expression} === undefined) {`);
+        lines.push('            values.push("default");');
+        lines.push("        } else {");
+        lines.push(`            parameters.push(${entry.expression});`);
+        lines.push(`            values.push("$" + parameters.length + "::${entry.sqlType}");`);
+        lines.push("        }");
+    }
+    lines.push('        tuples.push("(" + values.join(", ") + ")");');
+    lines.push("    }");
+    return lines;
 }
 
 /** The header and type imports every operation module carries, naming the one write type it uses. */
@@ -108,7 +148,7 @@ export function generateCreate(table: Table): string {
     const lines = modulePrologue(entity, `${entity}Insert`);
 
     lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<void> {`);
-    lines.push(...collectValues(insertColumns.map(readEntry)));
+    lines.push(...collectValues(insertColumns.map(insertEntry)));
     lines.push(
         `    await db.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
     );
