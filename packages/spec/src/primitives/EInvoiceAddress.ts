@@ -6,7 +6,7 @@ import type { Brand } from "./Brand.ts";
  * See docs/invoice-sending.md.
  *
  * @primitive
- * @pgtype text
+ * @pgType text
  * @zod z.string().brand<"EInvoiceAddress">()
  */
 export type EInvoiceAddress = string & Brand<"EInvoiceAddress">;

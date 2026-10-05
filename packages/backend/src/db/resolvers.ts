@@ -72,7 +72,7 @@ export interface ResolveOptions<E, S extends Selection<E>> {
     limit?: number | undefined;
     /** The number of leading rows a root read skips; absent means 0. See docs/queries.md. */
     offset?: number | undefined;
-    /** Comparison arguments; each field is restricted to its `@where` operators. See docs/queries.md. */
+    /** Comparison arguments; each field is restricted to its `@queryWhere` operators. See docs/queries.md. */
     where?: WhereClause | undefined;
 }
 

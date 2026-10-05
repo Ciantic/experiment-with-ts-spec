@@ -35,7 +35,7 @@ string.
 - **Branded, not an alias.** `1n` is a plausible version and a plausible count;
   the brand keeps `Version` and `Quantity` from being interchangeable.
 
-The `@pgtype int8` tag on `Version` in `packages/spec/src/primitives/Version.ts` is
+The `@pgType int8` tag on `Version` in `packages/spec/src/primitives/Version.ts` is
 load-bearing, not cosmetic: the generator reads it before resolving the alias, so
 without it the alias would resolve to the `bigint` keyword and emit `int8`
 anyway — the same result by a different route. The explicit tag documents the
@@ -47,7 +47,7 @@ intent and survives a change to the alias.
 "version" int8 not null default 0
 ```
 
-`@pgdefault 0` gives a new row its first revision for free, and forces the column
+`@pgDefault 0` gives a new row its first revision for free, and forces the column
 `not null` even though the field is optional — the same shape as `createdAt`
 (`docs/timestamps.md`). A defaulted version is the one default a create never
 overrides: the repository leaves it out on insert, because its default *is* the
@@ -186,7 +186,7 @@ caller cannot build a patch that omits the precondition.
   `customerUpdatedAt` that already leak. There is no per-field opt-out.
 - **The guard is SQL, so it is not type-checked.** A wrong comparison or a
   mistyped column surfaces when the DDL runs, not at lint time — the same class
-  of risk as a `@pgdefault` expression.
+  of risk as a `@pgDefault` expression.
 - **Nothing behavioural tests the trigger.** Per `docs/testing.md`, trigger
   semantics are deliberately out of scope, so the generator tests assert the
   emitted text and `schema.test.ts` asserts only that the file executes. A
@@ -205,7 +205,7 @@ caller cannot build a patch that omits the precondition.
 ## Wiring
 
 1. `packages/spec/src/primitives/Version.ts` defines the brand; `@version` and
-   `@pgdefault 0` go on the field.
+   `@pgDefault 0` go on the field.
 2. `packages/backend/scripts/postgres-model.ts` maps `Version` to `int8` and sets
    `Column.version` from the tag.
 3. `packages/backend/scripts/generate-postgres-schema.ts` emits the column and

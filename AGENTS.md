@@ -13,7 +13,7 @@
 # Scripts
 
 - `scripts/*` must never be tightly coupled to spec domain names. Read what you
-  need from an annotation on the spec (e.g. `@pgtype`) or a generic helper in
+  need from an annotation on the spec (e.g. `@pgType`) or a generic helper in
   `packages/spec/scripts/spec-model.ts`. A new domain type must not require
   editing a generator. We should invent more annotations if need be.
 - A generator lives in the package that owns its artifact. Most of them are in

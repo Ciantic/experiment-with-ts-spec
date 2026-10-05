@@ -26,7 +26,7 @@ that library lists for the type. These are Postgres aliases (`int8` = `bigint`,
 server canonicalises them, and `information_schema.columns` reports the canonical
 name back.
 
-Named spec types are mapped by the `@pgtype` tag their alias declares, so the
+Named spec types are mapped by the `@pgType` tag their alias declares, so the
 mapping lives in `packages/spec/src/primitives/`, not in the generator. Adding a
 primitive is a spec-only change. The generator hardcodes only the TypeScript
 built-ins:
@@ -38,7 +38,7 @@ built-ins:
 Everything else resolves through the alias tree:
 
 - A `@primitive` alias (`GUID`, `Decimal`, `Money`, `Version`, and so on) → the
-  type its `@pgtype` names.
+  type its `@pgType` names.
 - `BrandedId<...>` and any `<Entity>Id` alias → `uuid`.
 - A union of string literals (such as `"draft" | "sent"`) → `text` plus a CHECK
   constraint listing the values.
@@ -67,14 +67,14 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   candidate, is a diagnostic.
 - `@children` on an array field is skipped; the child table owns the foreign key.
 - `@unique` adds a `unique` constraint.
-- `@pgdefault <expression>` appends `default <expression>`. The column is `not null`
+- `@pgDefault <expression>` appends `default <expression>`. The column is `not null`
   even when the field is optional. The repository generators name the column in
   their statements, and a row that omits it sends the `default` keyword, so the
   database fills that row. It may accompany `@computed`, where the default
   applies to the insert path and the trigger to every write. A defaulted
   `@version` field is the one exception: it is left out of the insert.
 - `@createdAt`/`@updatedAt` append `default now()`; see `docs/timestamps.md`.
-- `@computed @pgvirtual <expression>` appends
+- `@computed @pgVirtual <expression>` appends
   `generated always as (<expression>) virtual`. The column is never written by
   the repository.
 
@@ -89,7 +89,7 @@ would then need manual reordering or deferred constraints.
 
 ## Triggers
 
-`@computed @pgtrigger` fields become one `before insert or update` trigger per
+`@computed @pgTrigger` fields become one `before insert or update` trigger per
 table, assigning in interface field order. `@updatedAt` contributes its
 `NEW."updatedAt" := now();` to the same trigger, after the fields. Order matters:
 on `invoice_row` the assignments are `netAmount`, `taxAmount`, `totalAmount`, and
@@ -110,7 +110,7 @@ It is `before update` only, since there is no `OLD` on insert, and it fires afte
 Cross-table aggregates cannot run as a before trigger on the parent, because the
 child rows do not exist yet at insert. They are therefore `after insert or
 update` and `after delete` triggers on the child table, which `update` the
-parent with a fresh `sum`. An `@pgrollup` statement is written once with `NEW.`;
+parent with a fresh `sum`. An `@pgRollup` statement is written once with `NEW.`;
 the generator emits the `after delete` variant by substituting `OLD.`, and
 attaches it to every child table whose foreign key points at the parent.
 
@@ -121,7 +121,7 @@ two mechanisms chain, and the chain is load-bearing for the clock.
 
 Known constraint: the aggregate statements hardcode the foreign key column
 `"invoiceId"`. A second child table with a different key column would need its
-own statement, which is why `@pgrollup` is written per parent field rather than
+own statement, which is why `@pgRollup` is written per parent field rather than
 shared by name.
 
 ## Validation

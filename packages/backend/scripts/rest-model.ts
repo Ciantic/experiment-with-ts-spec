@@ -44,15 +44,15 @@ export interface RestEntity {
     module: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
-    /** The collection path, e.g. `/invoice`, taken from the `@pgtable` name. */
+    /** The collection path, e.g. `/invoice`, taken from the `@pgTable` name. */
     path: string;
     /** The primary-key fields, which name the row a write targets; one for a single key. */
     keys: string[];
-    /** The `@queryfilter` fields: `query` accepts them all. */
+    /** The `@queryFilter` fields: `query` accepts them all. */
     filters: string[];
-    /** The `@queryorderby` fields: `query` accepts them as `order` keys. */
+    /** The `@queryOrderBy` fields: `query` accepts them as `order` keys. */
     orderFields: string[];
-    /** The `@where` fields with their allowed operators: `query` accepts them as `where` keys. */
+    /** The `@queryWhere` fields with their allowed operators: `query` accepts them as `where` keys. */
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
@@ -101,7 +101,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
     const path = `/${spec.pgTableName}`;
     const whereFields: { name: string; operators: string[] }[] = [];
     for (const property of properties) {
-        const operators = (property.tags.where ?? []).filter(isCompareOperator);
+        const operators = (property.tags.queryWhere ?? []).filter(isCompareOperator);
         if (operators.length > 0) {
             whereFields.push({ name: property.name, operators });
         }
@@ -112,9 +112,9 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         module: lowerFirst(spec.name),
         importSpecifier: spec.importSpecifier,
         path,
-        // The parser defaults `@queryfilter` on a primary key, so a key is always a filter.
+        // The parser defaults `@queryFilter` on a primary key, so a key is always a filter.
         keys: properties.filter((property) => property.tags.primaryKey).map((property) => property.name),
-        filters: properties.filter((property) => property.tags.queryfilter).map((property) => property.name),
+        filters: properties.filter((property) => property.tags.queryFilter).map((property) => property.name),
         orderFields: properties
             .filter((property) => property.tags.queryOrderBy !== undefined)
             .map((property) => property.name),

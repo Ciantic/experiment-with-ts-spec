@@ -55,10 +55,10 @@ To read one row, take the first result — there is no `get`. A filter set that
 matches several rows yields them in the order the read names (or the entity
 default), at most `limit` of them, in pages of `offset`.
 
-## `@queryfilter`
+## `@queryFilter`
 
 ```
-@queryfilter
+@queryFilter
 ```
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
@@ -85,18 +85,18 @@ filterable by marking it:
  * @fieldName Invoice number
  * @unique
  * @widget text
- * @queryfilter
+ * @queryFilter
  */
 number?: string;
 ```
 
 The default lives in `spec-model.ts`, which sets the tag when it parses a field
 carrying `@primaryKey`; a generator reads the tag and never the name. Because the
-default is the only spelling, writing `@queryfilter` on a `@primaryKey` field is
+default is the only spelling, writing `@queryFilter` on a `@primaryKey` field is
 a lint finding. A composite key contributes one filter per key column, so each
 part of the key filters on its own.
 
-A field without `@queryfilter` is not filterable. Branch fields
+A field without `@queryFilter` is not filterable. Branch fields
 (`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
 through its `@foreignKey` field, which is a scalar like any other.
 
@@ -119,11 +119,11 @@ type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
 So `queryInvoice(db, { select })` lists every row, and a one-element array names a
 single value.
 
-## `@queryorderby`
+## `@queryOrderBy`
 
 ```
-@queryorderby
-@queryorderby default asc
+@queryOrderBy
+@queryOrderBy default asc
 ```
 
 A bare marker on a **scalar** field whitelists it as an ordering key. The
@@ -150,38 +150,38 @@ export type Direction = "asc" | "desc";
 
 ### The default ordering
 
-`@queryorderby default asc|desc` (at most one field per entity) additionally
+`@queryOrderBy default asc|desc` (at most one field per entity) additionally
 makes that field the **entity default**: a read that names no `order` sorts by
 it.
 
 ```ts
 /**
  * @fieldName Created at
- * @queryorderby default asc
+ * @queryOrderBy default asc
  * @widget date
  */
 createdAt?: Date;
 
 /**
  * @fieldName Updated at
- * @queryorderby
+ * @queryOrderBy
  * @widget date
  */
 updatedAt?: Date;
 ```
 
-An entity with no `@queryorderby` field takes no `order` (its opts type omits
+An entity with no `@queryOrderBy` field takes no `order` (its opts type omits
 the key) and is returned in database order. Ordering is a root-only feature:
 a branch cannot carry `order` any more than it can carry `filter`.
 
-## `@where`
+## `@queryWhere`
 
 ```
-@where gte lte
+@queryWhere gte lte
 ```
 
-`@queryfilter` matches a **set** (`in (…)`). A comparison cannot be a set, so it
-has its own tag and its own option: `@where` on a scalar field whitelists the
+`@queryFilter` matches a **set** (`in (…)`). A comparison cannot be a set, so it
+has its own tag and its own option: `@queryWhere` on a scalar field whitelists the
 operators that field may be narrowed with, and the read's `where` key carries
 them.
 
@@ -192,7 +192,7 @@ const invoices = await queryInvoice(db, {
 });
 ```
 
-The operator list is **required**: a bare `@where` is a lint finding. The
+The operator list is **required**: a bare `@queryWhere` is a lint finding. The
 vocabulary is `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, mapped to `=`, `<>`, `>`,
 `>=`, `<`, `<=`. Each operator takes one value; several operators on one field
 AND together, so `{ gte, lte }` **is** a range and no `between` operator is
@@ -214,14 +214,14 @@ set in one comparison, so a read may use both — `filter` to narrow cheaply, th
 ```ts
 /**
  * @fieldName Issue date
- * @where gte lte
+ * @queryWhere gte lte
  * @widget date
  */
 issueDate?: Date;
 ```
 
-A field may carry `@queryfilter`, `@where`, and `@queryorderby` at once — they
-are separate read facets. An entity with no `@where` field takes no `where` (its
+A field may carry `@queryFilter`, `@queryWhere`, and `@queryOrderBy` at once — they
+are separate read facets. An entity with no `@queryWhere` field takes no `where` (its
 opts type omits the key). Like `order`, comparisons are a **root-only** feature:
 a branch fetch never carries them.
 
@@ -315,9 +315,9 @@ The compiler rejects a field that is not on the entity, a nested selection on a
 scalar, a field not named in the selection, and a non-array filter.
 
 The generator emits the **contract and the wiring**, never SQL. It reads only
-annotations: `@queryfilter` for the filters, the existing table model for the
+annotations: `@queryFilter` for the filters, the existing table model for the
 columns, and the branch tags below. No domain name is hardcoded, so a new
-`@queryfilter` field and a new entity flow through with no generator edit.
+`@queryFilter` field and a new entity flow through with no generator edit.
 
 ## What is generated, and what is not
 
@@ -361,7 +361,7 @@ Relation and inlined columns are not the same here. Inlined columns are excluded
 from the table's selectable `fields`, because the spec never declares them. A
 relation's foreign key *is* excluded from nothing: it is the `@foreignKey` field
 the interface declares, so `Invoice.customerId` is a selectable field and — with
-`@queryfilter` — an ordinary filter. `InvoiceRow.invoiceId` is the same thing.
+`@queryFilter` — an ordinary filter. `InvoiceRow.invoiceId` is the same thing.
 
 ## The resolver reads one query per branch
 
@@ -381,17 +381,17 @@ key therefore look the same on the wire, matching the optional spec fields.
 There is **no JSON aggregation**. A branch costs one extra query, batched over
 all parents at that level; nested branches recurse the same way, one query per
 branch per level. The resolver holds no domain knowledge — it only reads
-`queryModel`, so a new entity and `@queryfilter` field need no resolver change.
+`queryModel`, so a new entity and `@queryFilter` field need no resolver change.
 
 Arguments filter by set membership: the generated filters are the scalar fields
-that carry `@queryfilter` (plus every `@primaryKey` field), and a relation's
+that carry `@queryFilter` (plus every `@primaryKey` field), and a relation's
 `@foreignKey` field is one of them. An unknown filter field throws rather than
 silently dropping a clause, as does a non-array value. `String`, `Date`, and
 `decimal` values pass through unchanged.
 
 A filter value is always an array, so a lookup names a one-element set and an
 empty set matches nothing. Multiple filters are ANDed. The linter rejects
-`@queryfilter` on a branch field, so a filter always names a scalar column.
+`@queryFilter` on a branch field, so a filter always names a scalar column.
 
 Ordering, paging, and comparisons are applied the same way: the resolver reads
 the table's `order`/`defaultOrder` and `where` whitelists from `queryModel`,
@@ -414,14 +414,14 @@ stays stable and is never truncated or filtered.
 - **A filter reads columns the selection may omit.** `select` governs the
   projection; the `args` still read whatever they name, and so do `order` and
   `where`.
-- **Set membership, or the `@where` operators.** A `filter` is an array matched
+- **Set membership, or the `@queryWhere` operators.** A `filter` is an array matched
   with `in (…)`; an empty set matches nothing, and a non-array value throws. A
   comparison goes through `where`, whose operators are whitelisted per field.
   A range is `{ gte, lte }`, not a `between`.
 - **`eq` overlaps `filter`.** `where: { id: { eq } }` says what
   `filter: { id: [value] }` already says; `eq` exists for symmetry and `ne` is
   the operator `filter` cannot express.
-- **Filters come only from `@queryfilter`, plus the primary key.** A field
+- **Filters come only from `@queryFilter`, plus the primary key.** A field
   without the tag is not filterable, each `@primaryKey` field is a filter without
   it, and a branch field may not carry it; filtering by a relation is not
   implemented.
@@ -442,7 +442,7 @@ stays stable and is never truncated or filtered.
   `InvoiceRow.invoiceId` is a scalar alias, not a `@relation`, so today's
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
-- **Ordering comes only from `@queryorderby`.** A field without the tag cannot
+- **Ordering comes only from `@queryOrderBy`.** A field without the tag cannot
   order, and a direction is `asc` or `desc`. Like a filter, ordering is a root
   concern: a branch field may not carry the tag.
 - **A read is capped by default.** `limit` defaults to 1000, so a filter that
@@ -475,9 +475,9 @@ middle ground if the args logic grows past equality.
 
 ## Deliberately not implemented
 
-- **Comparisons on a branch.** `@where` is scalar-only, so `queryInvoice` cannot
+- **Comparisons on a branch.** `@queryWhere` is scalar-only, so `queryInvoice` cannot
   compare a related record's columns, such as `customer.name`.
-- **Filters on a branch.** `@queryfilter` is scalar-only, so `queryInvoice`
+- **Filters on a branch.** `@queryFilter` is scalar-only, so `queryInvoice`
   cannot filter on a related record's columns, such as `customer.name`. The
   foreign key is a scalar field, so `customerId` is filterable.
 - **More comparison operators.** The vocabulary is `eq ne gt gte lt lte`. `like`,

@@ -12,7 +12,7 @@ export type InvoiceId = BrandedId<"InvoiceId">;
 /**
  * An invoice.
  * 
- * @pgtable invoice
+ * @pgTable invoice
  */
 export interface Invoice {
     /**
@@ -37,7 +37,7 @@ export interface Invoice {
      * The identifier of the customer this invoice is issued to.
      * 
      * @fieldName Customer ID
-     * @queryfilter
+     * @queryFilter
      * @foreignKey Customer
      * @widget text
      */
@@ -56,7 +56,7 @@ export interface Invoice {
      * The identifier of the seller this invoice is issued by.
      * 
      * @fieldName Seller ID
-     * @queryfilter
+     * @queryFilter
      * @foreignKey Seller
      * @widget text
      */
@@ -83,7 +83,7 @@ export interface Invoice {
      * The date the invoice was issued.
      * 
      * @fieldName Issue date
-     * @where gte lte
+     * @queryWhere gte lte
      * @widget date
      */
     issueDate?: Date;
@@ -101,7 +101,7 @@ export interface Invoice {
      * 
      * @fieldName Net amount
      * @computed
-     * @pgrollup update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
+     * @pgRollup update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
      * @widget number
      */
     netAmount?: Money;
@@ -111,7 +111,7 @@ export interface Invoice {
      * 
      * @fieldName Tax amount
      * @computed
-     * @pgrollup update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
+     * @pgRollup update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
      * @widget number
      */
     taxAmount?: Money;
@@ -121,7 +121,7 @@ export interface Invoice {
      * 
      * @fieldName Total amount
      * @computed
-     * @pgvirtual "netAmount" + "taxAmount"
+     * @pgVirtual "netAmount" + "taxAmount"
      * @widget number
      */
     totalAmount?: Money;
@@ -148,7 +148,7 @@ export interface Invoice {
      * 
      * @fieldName Created at
      * @createdAt
-     * @queryorderby default asc
+     * @queryOrderBy default asc
      * @widget date
      */
     createdAt?: Date;
@@ -158,7 +158,7 @@ export interface Invoice {
      * 
      * @fieldName Updated at
      * @updatedAt
-     * @queryorderby
+     * @queryOrderBy
      * @widget date
      */
     updatedAt?: Date;
@@ -168,7 +168,7 @@ export interface Invoice {
      * 
      * @fieldName Version
      * @version
-     * @pgdefault 0
+     * @pgDefault 0
      * @widget number
      */
     version?: Version;

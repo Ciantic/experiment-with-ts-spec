@@ -82,7 +82,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
         const key = primaryKeyColumns(table)[0]?.name as string;
         const data: QueryTableData = { name: table.name, key, fields, relations };
 
-        // Orderable fields come from `@queryorderby`; one may declare the entity default ordering.
+        // Orderable fields come from `@queryOrderBy`; one may declare the entity default ordering.
         const orderColumns = table.columns.filter((column) => column.queryOrder !== undefined);
         if (orderColumns.length > 0) {
             data.order = orderColumns.map((column) => column.name);
@@ -93,7 +93,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
             }
         }
 
-        // Comparable fields come from `@where`, each with the operators it whitelists.
+        // Comparable fields come from `@queryWhere`, each with the operators it whitelists.
         const whereColumns = table.columns.filter((column) => column.where !== undefined);
         if (whereColumns.length > 0) {
             data.where = Object.fromEntries(whereColumns.map((column) => [column.name, column.where ?? []]));
@@ -113,17 +113,17 @@ export function renderQueryModelModule(model: QueryModelData): string {
     return lines.join("\n") + "\n";
 }
 
-/** The field names an entity exposes as filters: its `@queryfilter` scalar columns. */
+/** The field names an entity exposes as filters: its `@queryFilter` scalar columns. */
 function filterFields(table: Table): string[] {
     return table.columns.filter((column) => column.queryFilter).map((column) => column.name);
 }
 
-/** The field names an entity exposes as ordering keys: its `@queryorderby` scalar columns. */
+/** The field names an entity exposes as ordering keys: its `@queryOrderBy` scalar columns. */
 function orderFields(table: Table): string[] {
     return table.columns.filter((column) => column.queryOrder !== undefined).map((column) => column.name);
 }
 
-/** The comparable fields with their allowed operators: its `@where` scalar columns. */
+/** The comparable fields with their allowed operators: its `@queryWhere` scalar columns. */
 function whereFields(table: Table): { name: string; operators: string[] }[] {
     return table.columns
         .filter((column) => column.where !== undefined)
@@ -166,7 +166,7 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push("");
     lines.push("const resolver = createResolver(queryModel);");
     lines.push("");
-    lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`);
+    lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`);
     lines.push(
         `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, order, where)}): Promise<Selected<${entity}, S>[]> {`,
     );

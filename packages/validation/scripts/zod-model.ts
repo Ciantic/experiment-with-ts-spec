@@ -55,7 +55,7 @@ export interface ZodEntity {
     fields: ZodField[];
     /** Field names a create omits, rendered as an `.omit()` of the entity schema. */
     insertOmit: string[];
-    /** Required insertable field names a create may omit, because the column's `@pgdefault` fills them. */
+    /** Required insertable field names a create may omit, because the column's `@pgDefault` fills them. */
     insertOptional: string[];
     /** Field names a patch omits: the same set, less the key and version a patch must carry. */
     patchOmit: string[];
@@ -105,16 +105,16 @@ export interface ZodWhereField {
     expression: string;
 }
 
-/** The generated `query` schema for one entity: its `@queryfilter` sets plus `select`. */
+/** The generated `query` schema for one entity: its `@queryFilter` sets plus `select`. */
 export interface ZodQuery {
     /** The entity the read queries, which groups the generated file and supplies `select`. */
     entity: string;
     schemaName: string;
     /** The filter fields, all optional sets; the renderer adds the entity's select schema. */
     fields: ZodField[];
-    /** The orderable field names, from `@queryorderby`; the renderer validates `order` against them. */
+    /** The orderable field names, from `@queryOrderBy`; the renderer validates `order` against them. */
     orderFields: string[];
-    /** The comparable fields, from `@where`; the renderer validates `where` against them. */
+    /** The comparable fields, from `@queryWhere`; the renderer validates `where` against them. */
     whereFields: ZodWhereField[];
     /** Entity names the filters reference, so the file imports their schemas. */
     dependencies: string[];
@@ -484,7 +484,7 @@ function buildEntities(
     return entities;
 }
 
-/** Build every entity's `query` read: its `@queryfilter` fields and its `@where` operators. */
+/** Build every entity's `query` read: its `@queryFilter` fields and its `@queryWhere` operators. */
 function buildQueries(
     interfaces: Map<string, SpecInterface>,
     resolver: Resolver,
@@ -494,7 +494,7 @@ function buildQueries(
         const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
         const fields: ZodField[] = [];
         for (const property of spec.properties) {
-            if (!property.tags.queryfilter) {
+            if (!property.tags.queryFilter) {
                 continue;
             }
             const typeNode = property.declaration.getTypeNode();
@@ -518,7 +518,7 @@ function buildQueries(
             .map((property) => property.name);
         const whereFields: ZodWhereField[] = [];
         for (const property of spec.properties) {
-            const operators = property.tags.where?.filter(isCompareOperator);
+            const operators = property.tags.queryWhere?.filter(isCompareOperator);
             if (!operators || operators.length === 0) {
                 continue;
             }

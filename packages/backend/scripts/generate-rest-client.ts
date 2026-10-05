@@ -84,7 +84,7 @@ function comment(entity: RestEntity, kind: RestKind): string {
     const name = entity.entity;
     switch (kind) {
         case "query":
-            return `/** Query \`${name}\` rows, filtered by the \`@queryfilter\` fields, combined with and. */`;
+            return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "update":

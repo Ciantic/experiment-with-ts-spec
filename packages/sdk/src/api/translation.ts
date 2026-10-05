@@ -6,7 +6,7 @@ import { call, type Call } from "../client.ts";
 
 export type { TranslationInsert, TranslationPatch };
 
-/** Query `Translation` rows, filtered by the `@queryfilter` fields, combined with and. */
+/** Query `Translation` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryTranslation<S extends Selection<Translation>>(
     opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Translation, S>[]> {

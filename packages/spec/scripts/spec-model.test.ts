@@ -22,9 +22,9 @@ describe("parseSpec interfaces", () => {
         expect(interfaces.get("LineItem")?.pgTableName).toBe("line_item");
     });
 
-    it("lets @pgtable override the table name", () => {
+    it("lets @pgTable override the table name", () => {
         const { interfaces } = parse({
-            "Person.ts": "/** @pgtable people */\nexport interface Person { id: string; }",
+            "Person.ts": "/** @pgTable people */\nexport interface Person { id: string; }",
         });
 
         expect(interfaces.get("Person")?.pgTableName).toBe("people");
@@ -82,23 +82,23 @@ describe("parseSpec tags", () => {
 
     it("decodes @computed as a bare marker", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @computed\n     * @pgtrigger NEW.\"net\" := NEW.\"q\" * NEW.\"p\"\n     */", "net: Decimal;"),
+            "Thing.ts": thing("    /**\n     * @computed\n     * @pgTrigger NEW.\"net\" := NEW.\"q\" * NEW.\"p\"\n     */", "net: Decimal;"),
         });
 
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
         expect(tags?.computed).toBe(true);
-        expect(tags?.pgtrigger).toBe('NEW."net" := NEW."q" * NEW."p"');
-        expect(tags?.pgvirtual).toBeUndefined();
-        expect(tags?.pgrollup).toBeUndefined();
+        expect(tags?.pgTrigger).toBe('NEW."net" := NEW."q" * NEW."p"');
+        expect(tags?.pgVirtual).toBeUndefined();
+        expect(tags?.pgRollup).toBeUndefined();
     });
 
     it("decodes the clock tags and the virtual expression", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @computed\n     * @pgvirtual \"net\" + \"tax\"\n     */", "total?: Decimal;"),
+            "Thing.ts": thing("    /**\n     * @computed\n     * @pgVirtual \"net\" + \"tax\"\n     */", "total?: Decimal;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.pgvirtual).toBe('"net" + "tax"');
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgVirtual).toBe('"net" + "tax"');
     });
 
     it("keeps duplicate tags in the raw map", () => {
@@ -111,12 +111,12 @@ describe("parseSpec tags", () => {
         expect(byName?.get("unique")).toHaveLength(2);
     });
 
-    it("decodes @queryfilter as a bare marker", () => {
+    it("decodes @queryFilter as a bare marker", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryfilter\n     */", "code: string;"),
+            "Thing.ts": thing("    /**\n     * @queryFilter\n     */", "code: string;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(true);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(true);
     });
 
     it("decodes @primaryKey as a bare marker", () => {
@@ -158,7 +158,7 @@ describe("parseSpec tags", () => {
             "Thing.ts": thing("    /**\n     * @fieldName ID\n     * @primaryKey\n     */", "id: ThingId;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(true);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(true);
     });
 
     it("does not treat a field named id as the primary key", () => {
@@ -169,7 +169,7 @@ describe("parseSpec tags", () => {
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
         expect(tags?.primaryKey).toBe(false);
-        expect(tags?.queryfilter).toBe(false);
+        expect(tags?.queryFilter).toBe(false);
     });
 
     it("does not make another field a filter by default", () => {
@@ -177,47 +177,47 @@ describe("parseSpec tags", () => {
             "Thing.ts": thing("    /**\n     * @fieldName Label\n     */", "label: string;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryfilter).toBe(false);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(false);
     });
 
-    it("decodes a bare @queryorderby", () => {
+    it("decodes a bare @queryOrderBy", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryorderby\n     */", "code: string;"),
+            "Thing.ts": thing("    /**\n     * @queryOrderBy\n     */", "code: string;"),
         });
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({});
     });
 
-    it("decodes @queryorderby default asc", () => {
+    it("decodes @queryOrderBy default asc", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryorderby default asc\n     */", "code: string;"),
+            "Thing.ts": thing("    /**\n     * @queryOrderBy default asc\n     */", "code: string;"),
         });
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({ default: "asc" });
     });
 
-    it("leaves an @queryorderby value the linter rejects as no default", () => {
+    it("leaves an @queryOrderBy value the linter rejects as no default", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryorderby sideways\n     */", "code: string;"),
+            "Thing.ts": thing("    /**\n     * @queryOrderBy sideways\n     */", "code: string;"),
         });
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryOrderBy).toEqual({});
     });
 
-    it("decodes @where operators in declaration order", () => {
+    it("decodes @queryWhere operators in declaration order", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @where gte lte\n     */", "at: Date;"),
+            "Thing.ts": thing("    /**\n     * @queryWhere gte lte\n     */", "at: Date;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toEqual(["gte", "lte"]);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryWhere).toEqual(["gte", "lte"]);
     });
 
-    it("decodes a bare @where as an empty operator list", () => {
+    it("decodes a bare @queryWhere as an empty operator list", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @where\n     */", "at: Date;"),
+            "Thing.ts": thing("    /**\n     * @queryWhere\n     */", "at: Date;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toEqual([]);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryWhere).toEqual([]);
     });
 
     it("leaves where undefined when the tag is absent", () => {
@@ -225,7 +225,7 @@ describe("parseSpec tags", () => {
             "Thing.ts": thing("    /**\n     * @fieldName At\n     */", "at: Date;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.where).toBeUndefined();
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryWhere).toBeUndefined();
     });
 });
 
@@ -264,23 +264,23 @@ describe("patch field rules", () => {
     });
 
     it("keeps a defaulted field patchable, so a caller may override the default", () => {
-        expect(omitted("    /**\n     * @pgdefault now()\n     */", "createdAt?: Date;")).toEqual([]);
+        expect(omitted("    /**\n     * @pgDefault now()\n     */", "createdAt?: Date;")).toEqual([]);
     });
 
     it("keeps the version patchable, because a patch carries it to lock the row", () => {
-        expect(omitted("    /**\n     * @version\n     * @pgdefault 0\n     */", "version?: number;")).toEqual([]);
+        expect(omitted("    /**\n     * @version\n     * @pgDefault 0\n     */", "version?: number;")).toEqual([]);
     });
 
     it("refuses a nullable computation the trigger derives", () => {
-        expect(omitted('    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net?: Money;")).toEqual(["net"]);
+        expect(omitted('    /**\n     * @computed\n     * @pgTrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net?: Money;")).toEqual(["net"]);
     });
 
     it("keeps a required trigger computation, which the caller alone can supply", () => {
-        expect(omitted('    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net: Money;")).toEqual([]);
+        expect(omitted('    /**\n     * @computed\n     * @pgTrigger NEW."net" := NEW."q" * NEW."p"\n     */', "net: Money;")).toEqual([]);
     });
 
     it("refuses a virtual generated column even when the field is required", () => {
-        expect(omitted('    /**\n     * @computed\n     * @pgvirtual "net" + "tax"\n     */', "total: Money;")).toEqual(["total"]);
+        expect(omitted('    /**\n     * @computed\n     * @pgVirtual "net" + "tax"\n     */', "total: Money;")).toEqual(["total"]);
     });
 
     it("refuses the clock fields the database owns", () => {
@@ -306,7 +306,7 @@ describe("insert field rules", () => {
         omittedFromInsert(spec(doc, declaration)).map((property) => property.name);
 
     it("writes a defaulted field, so a caller may override the default", () => {
-        const doc = "    /**\n     * @pgdefault now()\n     */";
+        const doc = "    /**\n     * @pgDefault now()\n     */";
         expect(omitted(doc, "createdAt?: Date;")).toEqual([]);
         expect(defaultedInsertProperties(spec(doc, "createdAt?: Date;")).map((property) => property.name)).toEqual([
             "createdAt",
@@ -314,7 +314,7 @@ describe("insert field rules", () => {
     });
 
     it("keeps a defaulted field out of the optional set when it is not insertable", () => {
-        const doc = "    /**\n     * @version\n     * @pgdefault 0\n     */";
+        const doc = "    /**\n     * @version\n     * @pgDefault 0\n     */";
         expect(omitted(doc, "version?: number;")).toEqual(["version"]);
         expect(defaultedInsertProperties(spec(doc, "version?: number;"))).toEqual([]);
     });
@@ -325,13 +325,13 @@ describe("insert field rules", () => {
 
     it("refuses the clock fields and virtual columns the database owns outright", () => {
         expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual(["madeAt"]);
-        expect(omitted('    /**\n     * @computed\n     * @pgvirtual "net" + "tax"\n     */', "total: Money;")).toEqual([
+        expect(omitted('    /**\n     * @computed\n     * @pgVirtual "net" + "tax"\n     */', "total: Money;")).toEqual([
             "total",
         ]);
     });
 
     it("refuses a nullable computation but keeps a required one", () => {
-        const trigger = '    /**\n     * @computed\n     * @pgtrigger NEW."net" := NEW."q" * NEW."p"\n     */';
+        const trigger = '    /**\n     * @computed\n     * @pgTrigger NEW."net" := NEW."q" * NEW."p"\n     */';
         expect(omitted(trigger, "net?: Money;")).toEqual(["net"]);
         expect(omitted(trigger, "net: Money;")).toEqual([]);
     });
@@ -342,7 +342,7 @@ describe("insert field rules", () => {
     });
 
     it("leaves an inlined branch alone, since it has no single column to default", () => {
-        expect(defaultedInsertProperties(spec("    /**\n     * @inlined\n     * @pgdefault '{}'\n     */", "snapshot?: Snapshot;"))).toEqual(
+        expect(defaultedInsertProperties(spec("    /**\n     * @inlined\n     * @pgDefault '{}'\n     */", "snapshot?: Snapshot;"))).toEqual(
             [],
         );
     });

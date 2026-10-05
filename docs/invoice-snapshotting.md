@@ -8,7 +8,7 @@ copying an entity come from the `@inlined` tag — see `docs/spec-annotations.md
 
 An issued invoice is a legal document: what the customer received must not change
 when some referenced record does. The draft already freezes amounts
-(`@pgtrigger`, see `docs/spec-annotations.md`), but a live `@relation
+(`@pgTrigger`, see `docs/spec-annotations.md`), but a live `@relation
 Customer` still re-renders every past invoice when an address or a VAT number is
 edited. The same holds for `Seller`, the company that issued it. `InvoiceSent`
 closes that gap by copying both parties at send time.
@@ -45,7 +45,7 @@ not have yet is optional.
 
 Optionality is nullability, so the optional draft columns are nullable in
 `invoice` and `invoice_row`; `id` stays `not null` as the primary key, and
-`createdAt`/`updatedAt`/`version` stay `not null` because their `@pgdefault` fills
+`createdAt`/`updatedAt`/`version` stay `not null` because their `@pgDefault` fills
 them even though the field is optional.
 
 Two consequences worth naming:
@@ -61,11 +61,11 @@ Two consequences worth naming:
 The snapshot copies values; it does not recompute them from the draft. Two
 consequences:
 
-- `invoice_sent_row` repeats the row amounts' `@pgtrigger` statements, so they
+- `invoice_sent_row` repeats the row amounts' `@pgTrigger` statements, so they
   are still rounded by SQL. The inputs are copied too, so recomputing reproduces
   the sent values.
 - `invoice_sent`'s totals are plain columns, copied from the draft. Its own
-  `@pgrollup` statements would have to hardcode the child key `"invoiceSentId"`
+  `@pgRollup` statements would have to hardcode the child key `"invoiceSentId"`
   and `update "invoice_sent"`, so the invoice's statements cannot be reused; the
   totals are copied instead, and a rollup is the fix when they need to be
   maintained in SQL.

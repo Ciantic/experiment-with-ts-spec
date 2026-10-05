@@ -6,7 +6,7 @@ import { call, type Call } from "../client.ts";
 
 export type { InvoiceInsert, InvoicePatch };
 
-/** Query `Invoice` rows, filtered by the `@queryfilter` fields, combined with and. */
+/** Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
     opts: { filter?: Filters<Invoice, "id" | "customerId" | "sellerId">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
 ): Call<Selected<Invoice, S>[]> {

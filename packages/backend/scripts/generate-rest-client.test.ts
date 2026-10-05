@@ -21,19 +21,19 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 /** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
 /**
- * @pgtable widget
+ * @pgTable widget
  */
 export interface Widget {
     /** @primaryKey */
     id: string;
 
-    /** @queryfilter */
+    /** @queryFilter */
     size: string;
 
-    /** @queryorderby default asc */
+    /** @queryOrderBy default asc */
     createdAt: Date;
 
-    /** @where gte lte */
+    /** @queryWhere gte lte */
     amount: number;
 
     /** @version */
@@ -44,7 +44,7 @@ export interface Widget {
 /** A bare entity: a key and nothing else. */
 const MARKER = `
 /**
- * @pgtable marker
+ * @pgTable marker
  */
 export interface Marker {
     /** @primaryKey */
@@ -55,7 +55,7 @@ export interface Marker {
 /** An entity keyed by two fields, so a write addresses it by both. */
 const TRANSLATION = `
 /**
- * @pgtable translation
+ * @pgTable translation
  */
 export interface Translation {
     /** @primaryKey */
@@ -71,7 +71,7 @@ export interface Translation {
 /** An entity whose module name differs from its validation file, which is lower-cased. */
 const LIMITED = `
 /**
- * @pgtable limited
+ * @pgTable limited
  */
 export interface Limited {
     /** @primaryKey */

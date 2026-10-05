@@ -6,7 +6,7 @@ import { call, type Call } from "../client.ts";
 
 export type { CustomerInsert, CustomerPatch };
 
-/** Query `Customer` rows, filtered by the `@queryfilter` fields, combined with and. */
+/** Query `Customer` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryCustomer<S extends Selection<Customer>>(
     opts: { filter?: Filters<Customer, "id">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Customer, S>[]> {

@@ -31,27 +31,27 @@ export const FIELD_TAGS = [
     "computed",
     "createdAt",
     "updatedAt",
-    "pgvirtual",
-    "pgtrigger",
-    "pgrollup",
+    "pgVirtual",
+    "pgTrigger",
+    "pgRollup",
     "relation",
     "children",
     "inlined",
     "primaryKey",
     "foreignKey",
     "unique",
-    "pgdefault",
+    "pgDefault",
     "version",
-    "queryfilter",
-    "queryorderby",
-    "where",
+    "queryFilter",
+    "queryOrderBy",
+    "queryWhere",
 ] as const;
 
 /** Tags an interface may carry. */
-export const INTERFACE_TAGS = ["pgtable"] as const;
+export const INTERFACE_TAGS = ["pgTable"] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["primitive", "zod", "pgtype"] as const;
+export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
 
 /** Every tag this model recognises. */
 export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
@@ -65,11 +65,20 @@ export type Tag = (typeof TAGS)[number];
 export const RETIRED_TAGS = new Map<string, string>([
     ["readonly", "use @computed for a derived field; a system-assigned column needs no tag"],
     ["generated", "no tag marks a column as system-assigned; drop it"],
-    ["default", "use @pgdefault instead"],
-    ["table", "use @pgtable instead"],
+    ["default", "use @pgDefault instead"],
+    ["table", "use @pgTable instead"],
+    ["pgvirtual", "use @pgVirtual instead"],
+    ["pgtrigger", "use @pgTrigger instead"],
+    ["pgrollup", "use @pgRollup instead"],
+    ["pgdefault", "use @pgDefault instead"],
+    ["pgtable", "use @pgTable instead"],
+    ["pgtype", "use @pgType instead"],
+    ["queryfilter", "use @queryFilter instead"],
+    ["queryorderby", "use @queryOrderBy instead"],
+    ["where", "use @queryWhere instead"],
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
-    ["formula", "put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup"],
+    ["formula", "put the expression on the field with @pgVirtual, @pgTrigger, or @pgRollup"],
 ]);
 
 /** Widget hints a field may carry. */
@@ -77,10 +86,10 @@ export const WIDGETS = ["text", "number", "date", "select", "table", "textarea"]
 export type Widget = (typeof WIDGETS)[number];
 
 /** The Postgres realization of a `@computed` field, one tag per field. See docs/spec-annotations.md. */
-export const COMPUTED_KINDS = ["pgvirtual", "pgtrigger", "pgrollup"] as const;
+export const COMPUTED_KINDS = ["pgVirtual", "pgTrigger", "pgRollup"] as const;
 export type ComputedKind = (typeof COMPUTED_KINDS)[number];
 
-/** The sort directions an `@queryorderby default …` may name. */
+/** The sort directions an `@queryOrderBy default …` may name. */
 export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
 export type OrderDirection = (typeof ORDER_DIRECTIONS)[number];
 
@@ -89,7 +98,7 @@ export function isOrderDirection(value: string | undefined): value is OrderDirec
     return value === "asc" || value === "desc";
 }
 
-/** The comparison operators a `@where` field may name. */
+/** The comparison operators a `@queryWhere` field may name. */
 export const COMPARE_OPERATORS = ["eq", "ne", "gt", "gte", "lt", "lte"] as const;
 export type CompareOperator = (typeof COMPARE_OPERATORS)[number];
 
@@ -121,11 +130,11 @@ export interface Tags {
     /** The field holds the row's last-write moment; the database maintains it. See docs/timestamps.md. */
     updatedAt: boolean;
     /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
-    pgvirtual?: string;
+    pgVirtual?: string;
     /** The before insert/update statement that maintains a `@computed` field, using `NEW.`. */
-    pgtrigger?: string;
+    pgTrigger?: string;
     /** The child-change statement that maintains an aggregated `@computed` field, using `NEW.`. */
-    pgrollup?: string;
+    pgRollup?: string;
     /** The field holds a single related entity, stored as a foreign key. */
     relation: boolean;
     /** The field holds a child collection; the child table carries the foreign key. */
@@ -138,20 +147,20 @@ export interface Tags {
     foreignKey?: string;
     unique: boolean;
     /** The database column default, written verbatim into the DDL. */
-    pgdefault?: string;
+    pgDefault?: string;
     version: boolean;
     /** The Postgres table name for the interface. */
-    pgtable?: string;
+    pgTable?: string;
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
-    pgtype?: string;
+    pgType?: string;
     /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
-    queryfilter: boolean;
+    queryFilter: boolean;
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
-    where?: string[];
+    queryWhere?: string[];
 }
 
 /** A field of a spec interface. */
@@ -167,7 +176,7 @@ export interface SpecProperty {
 /** An interface in the spec: an entity, or a reusable structure. */
 export interface SpecInterface {
     name: string;
-    /** The Postgres table name: the `@pgtable` value, or the snake_cased interface name. */
+    /** The Postgres table name: the `@pgTable` value, or the snake_cased interface name. */
     pgTableName: string;
     filePath: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
@@ -207,11 +216,11 @@ export function snakeCase(name: string): string {
 export function isInsertable(property: SpecProperty): boolean {
     const tags = property.tags;
     // A defaulted version's first revision comes from its default, so a create never carries it.
-    if (tags.version && tags.pgdefault !== undefined) {
+    if (tags.version && tags.pgDefault !== undefined) {
         return false;
     }
     // The clock tags and a virtual generated column are the database's entirely.
-    if (tags.createdAt || tags.updatedAt || tags.pgvirtual !== undefined) {
+    if (tags.createdAt || tags.updatedAt || tags.pgVirtual !== undefined) {
         return false;
     }
     // A computed column arrives from a trigger, so it is the caller's only while the column is
@@ -229,12 +238,12 @@ export function omittedFromInsert(spec: SpecInterface): SpecProperty[] {
     );
 }
 
-/** The insertable scalar fields a create may omit, because the column's `@pgdefault` fills them in. */
+/** The insertable scalar fields a create may omit, because the column's `@pgDefault` fills them in. */
 export function defaultedInsertProperties(spec: SpecInterface): SpecProperty[] {
     const omitted = new Set(omittedFromInsert(spec));
     return spec.properties.filter(
         (property) =>
-            !omitted.has(property) && !property.tags.inlined && property.tags.pgdefault !== undefined,
+            !omitted.has(property) && !property.tags.inlined && property.tags.pgDefault !== undefined,
     );
 }
 
@@ -308,7 +317,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         unique: false,
         version: false,
         primitive: false,
-        queryfilter: false,
+        queryFilter: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -344,22 +353,22 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "foreignKey":
                     if (value !== undefined) tags.foreignKey ??= value;
                     break;
-                case "pgdefault":
-                    if (value !== undefined) tags.pgdefault ??= value;
+                case "pgDefault":
+                    if (value !== undefined) tags.pgDefault ??= value;
                     break;
-                case "pgtable":
-                    if (value !== undefined) tags.pgtable ??= value;
+                case "pgTable":
+                    if (value !== undefined) tags.pgTable ??= value;
                     break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
                     break;
-                case "pgtype":
-                    if (value !== undefined) tags.pgtype ??= value;
+                case "pgType":
+                    if (value !== undefined) tags.pgType ??= value;
                     break;
-                case "queryfilter":
-                    tags.queryfilter = true;
+                case "queryFilter":
+                    tags.queryFilter = true;
                     break;
-                case "queryorderby": {
+                case "queryOrderBy": {
                     // Bare marks the field orderable; `default asc|desc` also names the entity default.
                     if (tags.queryOrderBy === undefined) {
                         const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
@@ -371,10 +380,10 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     }
                     break;
                 }
-                case "where": {
+                case "queryWhere": {
                     // The operators, as written; an empty list is a lint finding rather than an error here.
-                    if (tags.where === undefined) {
-                        tags.where = (value ?? "").split(/\s+/).filter((token) => token !== "");
+                    if (tags.queryWhere === undefined) {
+                        tags.queryWhere = (value ?? "").split(/\s+/).filter((token) => token !== "");
                     }
                     break;
                 }
@@ -396,14 +405,14 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "updatedAt":
                     tags.updatedAt = true;
                     break;
-                case "pgvirtual":
-                    if (value !== undefined) tags.pgvirtual ??= value;
+                case "pgVirtual":
+                    if (value !== undefined) tags.pgVirtual ??= value;
                     break;
-                case "pgtrigger":
-                    if (value !== undefined) tags.pgtrigger ??= value;
+                case "pgTrigger":
+                    if (value !== undefined) tags.pgTrigger ??= value;
                     break;
-                case "pgrollup":
-                    if (value !== undefined) tags.pgrollup ??= value;
+                case "pgRollup":
+                    if (value !== undefined) tags.pgRollup ??= value;
                     break;
                 default:
                     break;
@@ -443,7 +452,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
             const name = declaration.getName();
             interfaces.set(name, {
                 name,
-                pgTableName: readTags(declaration).pgtable ?? snakeCase(name),
+                pgTableName: readTags(declaration).pgTable ?? snakeCase(name),
                 filePath,
                 importSpecifier: specImportSpecifier(filePath),
                 declaration,
@@ -452,7 +461,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                     // The primary key is a filter every entity has, so writing the tag on it is
                     // redundant. The linter reports that rather than ignoring it.
                     if (tags.primaryKey) {
-                        tags.queryfilter = true;
+                        tags.queryFilter = true;
                     }
                     return {
                         name: property.getName(),

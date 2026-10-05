@@ -11,7 +11,7 @@ export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;
 /**
  * A single line item on a sent invoice.
  * 
- * @pgtable invoice_sent_row
+ * @pgTable invoice_sent_row
  */
 export interface InvoiceSentRow {
     /**
@@ -77,7 +77,7 @@ export interface InvoiceSentRow {
      * 
      * @fieldName Net amount
      * @computed
-     * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
+     * @pgTrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
      * @widget number
      */
     netAmount: Money;
@@ -87,7 +87,7 @@ export interface InvoiceSentRow {
      * 
      * @fieldName Tax amount
      * @computed
-     * @pgtrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
+     * @pgTrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
      * @widget number
      */
     taxAmount: Money;
@@ -97,7 +97,7 @@ export interface InvoiceSentRow {
      * 
      * @fieldName Total amount
      * @computed
-     * @pgtrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
+     * @pgTrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
      * @widget number
      */
     totalAmount: Money;

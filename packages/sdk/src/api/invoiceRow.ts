@@ -6,7 +6,7 @@ import { call, type Call } from "../client.ts";
 
 export type { InvoiceRowInsert, InvoiceRowPatch };
 
-/** Query `InvoiceRow` rows, filtered by the `@queryfilter` fields, combined with and. */
+/** Query `InvoiceRow` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
     opts: { filter?: Filters<InvoiceRow, "id">; limit?: number; offset?: number; select: S },
 ): Call<Selected<InvoiceRow, S>[]> {

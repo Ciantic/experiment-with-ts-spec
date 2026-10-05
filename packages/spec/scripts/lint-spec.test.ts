@@ -59,7 +59,7 @@ describe("lintSourceText", () => {
         ]);
     });
 
-    it("reports the renamed @default and @table under their new names", () => {
+    it("reports every legacy spelling of a renamed tag", () => {
         const findings = lintSourceText(
             `/** @table legacy */
             export interface Legacy {
@@ -67,14 +67,22 @@ describe("lintSourceText", () => {
                  * @fieldName Source
                  * @widget text
                  * @default 'manual'
+                 * @pgtype uuid
+                 * @where gte
+                 * @queryorderby
+                 * @pgtrigger NEW."x" := 1
                  */
                 source: string;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`Legacy`: @table is retired; use @pgtable instead",
-            "`source`: @default is retired; use @pgdefault instead",
+            "`Legacy`: @table is retired; use @pgTable instead",
+            "`source`: @default is retired; use @pgDefault instead",
+            "`source`: @pgtype is retired; use @pgType instead",
+            "`source`: @where is retired; use @queryWhere instead",
+            "`source`: @queryorderby is retired; use @queryOrderBy instead",
+            "`source`: @pgtrigger is retired; use @pgTrigger instead",
         ]);
     });
 
@@ -156,13 +164,13 @@ describe("lintSourceText", () => {
                 /**
                  * @fieldName Label
                  * @widget number
-                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
+                 * @pgTrigger NEW."net" := NEW."q" * NEW."p"
                  */
                 label: string;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`label`: @pgtrigger requires @computed"]);
+        expect(messages(findings)).toEqual(["`label`: @pgTrigger requires @computed"]);
     });
 
     it("rejects two mechanism tags on one field", () => {
@@ -172,15 +180,15 @@ describe("lintSourceText", () => {
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgvirtual "net" + "tax"
-                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
+                 * @pgVirtual "net" + "tax"
+                 * @pgTrigger NEW."net" := NEW."q" * NEW."p"
                  */
                 label: string;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @pgvirtual and @pgtrigger are mutually exclusive",
+            "`label`: @pgVirtual and @pgTrigger are mutually exclusive",
         ]);
     });
 
@@ -191,30 +199,30 @@ describe("lintSourceText", () => {
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgvirtual
+                 * @pgVirtual
                  */
                 label: string;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`label`: @pgvirtual is missing its expression"]);
+        expect(messages(findings)).toEqual(["`label`: @pgVirtual is missing its expression"]);
     });
 
-    it("rejects OLD. in a @pgrollup statement, which the generator mirrors", () => {
+    it("rejects OLD. in a @pgRollup statement, which the generator mirrors", () => {
         const findings = lintSourceText(
             `export interface Rollup {
                 /**
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgrollup update "t" set "n" = OLD."n" where "id" = NEW."id"
+                 * @pgRollup update "t" set "n" = OLD."n" where "id" = NEW."id"
                  */
                 label: string;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @pgrollup is written with NEW.; the delete variant is generated from it",
+            "`label`: @pgRollup is written with NEW.; the delete variant is generated from it",
         ]);
     });
 
@@ -225,7 +233,7 @@ describe("lintSourceText", () => {
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
+                 * @pgTrigger NEW."net" := NEW."q" * NEW."p"
                  */
                 label: number;
             }`,
@@ -266,13 +274,13 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
-    it("accepts @pgdefault with an expression", () => {
+    it("accepts @pgDefault with an expression", () => {
         const findings = lintSourceText(
             `export interface Defaulted {
                 /**
                  * @fieldName Source
                  * @widget text
-                 * @pgdefault 'manual'
+                 * @pgDefault 'manual'
                  */
                 source?: string;
             }`,
@@ -281,15 +289,15 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
-    it("accepts @pgdefault alongside @computed", () => {
+    it("accepts @pgDefault alongside @computed", () => {
         const findings = lintSourceText(
             `export interface DefaultedComputed {
                 /**
                  * @fieldName Net amount
                  * @widget number
                  * @computed
-                 * @pgtrigger NEW."net" := NEW."q" * NEW."p"
-                 * @pgdefault 0
+                 * @pgTrigger NEW."net" := NEW."q" * NEW."p"
+                 * @pgDefault 0
                  */
                 net?: Money;
             }`,
@@ -346,21 +354,21 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`updatedAt`: @updatedAt and @computed are mutually exclusive"]);
     });
 
-    it("rejects @pgdefault on a clock field", () => {
+    it("rejects @pgDefault on a clock field", () => {
         const findings = lintSourceText(
             `export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
                  * @createdAt
-                 * @pgdefault now()
+                 * @pgDefault now()
                  */
                 createdAt?: Date;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`createdAt`: @createdAt supplies its own default; drop @pgdefault",
+            "`createdAt`: @createdAt supplies its own default; drop @pgDefault",
         ]);
     });
 
@@ -379,19 +387,19 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`createdAt`: @createdAt takes no value"]);
     });
 
-    it("reports @pgdefault without an expression", () => {
+    it("reports @pgDefault without an expression", () => {
         const findings = lintSourceText(
             `export interface EmptyDefault {
                 /**
                  * @fieldName Created at
                  * @widget date
-                 * @pgdefault
+                 * @pgDefault
                  */
                 createdAt?: Date;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`createdAt`: @pgdefault is missing its expression"]);
+        expect(messages(findings)).toEqual(["`createdAt`: @pgDefault is missing its expression"]);
     });
 
     it("accepts @inlined as a bare marker", () => {
@@ -506,7 +514,7 @@ describe("lintSourceText", () => {
                  * @fieldName Version
                  * @widget number
                  * @version
-                 * @pgdefault 0
+                 * @pgDefault 0
                  */
                 version?: Version;
             }`,
@@ -553,11 +561,11 @@ describe("lintSourceText", () => {
 });
 
 describe("type-level tags", () => {
-    it("accepts a @primitive type carrying its @zod schema and @pgtype", () => {
+    it("accepts a @primitive type carrying its @zod schema and @pgType", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
-             * @pgtype uuid
+             * @pgType uuid
              * @zod z.uuid().brand<"ThingId">()
              */
             export type ThingId = string & $brand<"ThingId">;`,
@@ -570,7 +578,7 @@ describe("type-level tags", () => {
         const findings = lintSourceText(
             `/**
              * @primitive something
-             * @pgtype uuid
+             * @pgType uuid
              * @zod z.uuid()
              */
             export type Thing = string;`,
@@ -579,7 +587,7 @@ describe("type-level tags", () => {
         expect(messages(findings)).toEqual(["`Thing`: @primitive takes no value"]);
     });
 
-    it("requires @zod and @pgtype on a @primitive type", () => {
+    it("requires @zod and @pgType on a @primitive type", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
@@ -589,11 +597,11 @@ describe("type-level tags", () => {
 
         expect(messages(findings)).toEqual([
             "`Thing`: @primitive requires @zod",
-            "`Thing`: @primitive requires @pgtype",
+            "`Thing`: @primitive requires @pgType",
         ]);
     });
 
-    it("requires @pgtype on a @primitive type", () => {
+    it("requires @pgType on a @primitive type", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
@@ -602,18 +610,18 @@ describe("type-level tags", () => {
             export type Thing = string;`,
         );
 
-        expect(messages(findings)).toEqual(["`Thing`: @primitive requires @pgtype"]);
+        expect(messages(findings)).toEqual(["`Thing`: @primitive requires @pgType"]);
     });
 
-    it("reports @pgtype without a storage type", () => {
+    it("reports @pgType without a storage type", () => {
         const findings = lintSourceText(
             `/**
-             * @pgtype
+             * @pgType
              */
             export type Thing = string;`,
         );
 
-        expect(messages(findings)).toEqual(["`Thing`: @pgtype is missing its storage type"]);
+        expect(messages(findings)).toEqual(["`Thing`: @pgType is missing its storage type"]);
     });
 
     it("reports @zod without a schema expression", () => {
@@ -631,7 +639,7 @@ describe("type-level tags", () => {
         const findings = lintSourceText(
             `/**
              * @primitive
-             * @pgtype uuid
+             * @pgType uuid
              * @zod z.uuid()
              * @zod z.string()
              */
@@ -667,53 +675,53 @@ describe("type-level tags", () => {
     });
 });
 
-describe("@queryfilter", () => {
+describe("@queryFilter", () => {
     const field = (name: string, extra: string, type = "string") =>
         `export interface Thing {
             /**
              * @fieldName Label
              * @widget text
-             * @queryfilter
+             * @queryFilter
              ${extra}
              */
             ${name}: ${type};
         }`;
 
-    it("accepts @queryfilter on a scalar field", () => {
+    it("accepts @queryFilter on a scalar field", () => {
         const findings = lintSourceText(field("value", ""));
 
         expect(findings).toEqual([]);
     });
 
-    it("rejects @queryfilter with a value", () => {
+    it("rejects @queryFilter with a value", () => {
         const findings = lintSourceText(field("value", "yes"));
 
-        expect(messages(findings)).toEqual(["`value`: @queryfilter takes no value"]);
+        expect(messages(findings)).toEqual(["`value`: @queryFilter takes no value"]);
     });
 
-    it("rejects @queryfilter on a relation field", () => {
+    it("rejects @queryFilter on a relation field", () => {
         const findings = lintSourceText(
             `export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget select
                  * @relation
-                 * @queryfilter
+                 * @queryFilter
                  */
                 owner?: Owner;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`owner`: @queryfilter must be on a scalar field, not a @relation field",
+            "`owner`: @queryFilter must be on a scalar field, not a @relation field",
         ]);
     });
 
-    it("rejects @queryfilter on the primary key, which is a filter by default", () => {
+    it("rejects @queryFilter on the primary key, which is a filter by default", () => {
         const findings = lintSourceText(field("id", "@primaryKey"));
 
         expect(messages(findings)).toEqual([
-            "`id`: the primary key is a filter by default; drop @queryfilter",
+            "`id`: the primary key is a filter by default; drop @queryFilter",
         ]);
     });
 });
@@ -863,34 +871,34 @@ describe("@primaryKey and @foreignKey", () => {
     });
 });
 
-describe("@queryorderby", () => {
+describe("@queryOrderBy", () => {
     const field = (name: string, extra: string, type = "string") =>
         `export interface Thing {
             /**
              * @fieldName Label
              * @widget text
-             * @queryorderby
+             * @queryOrderBy
              ${extra}
              */
             ${name}: ${type};
         }`;
 
-    it("accepts a bare @queryorderby on a scalar field", () => {
+    it("accepts a bare @queryOrderBy on a scalar field", () => {
         const findings = lintSourceText(field("value", ""));
 
         expect(findings).toEqual([]);
     });
 
-    it("accepts @queryorderby default asc and desc", () => {
+    it("accepts @queryOrderBy default asc and desc", () => {
         expect(lintSourceText(field("value", "default asc"))).toEqual([]);
         expect(lintSourceText(field("value", "default desc"))).toEqual([]);
     });
 
-    it("rejects an unknown @queryorderby value", () => {
+    it("rejects an unknown @queryOrderBy value", () => {
         const findings = lintSourceText(field("value", "sideways"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryorderby takes no value or `default asc|desc`, found `sideways`",
+            "`value`: @queryOrderBy takes no value or `default asc|desc`, found `sideways`",
         ]);
     });
 
@@ -898,25 +906,25 @@ describe("@queryorderby", () => {
         const findings = lintSourceText(field("value", "default"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryorderby takes no value or `default asc|desc`, found `default`",
+            "`value`: @queryOrderBy takes no value or `default asc|desc`, found `default`",
         ]);
     });
 
-    it("rejects @queryorderby on a relation field", () => {
+    it("rejects @queryOrderBy on a relation field", () => {
         const findings = lintSourceText(
             `export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget select
                  * @relation
-                 * @queryorderby
+                 * @queryOrderBy
                  */
                 owner?: Owner;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`owner`: @queryorderby must be on a scalar field, not a @relation field",
+            "`owner`: @queryOrderBy must be on a scalar field, not a @relation field",
         ]);
     });
 
@@ -926,25 +934,25 @@ describe("@queryorderby", () => {
                 /**
                  * @fieldName Created
                  * @widget date
-                 * @queryorderby default asc
+                 * @queryOrderBy default asc
                  */
                 createdAt?: Date;
                 /**
                  * @fieldName Updated
                  * @widget date
-                 * @queryorderby default desc
+                 * @queryOrderBy default desc
                  */
                 updatedAt?: Date;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`Two`: @queryorderby default may appear on at most one field"]);
+        expect(messages(findings)).toEqual(["`Two`: @queryOrderBy default may appear on at most one field"]);
     });
 });
 
-describe("@where", () => {
+describe("@queryWhere", () => {
     const field = (operators: string) => {
-        const where = operators === "" ? "@where" : `@where ${operators}`;
+        const where = operators === "" ? "@queryWhere" : `@queryWhere ${operators}`;
         return `export interface Thing {
             /**
              * @fieldName Value
@@ -960,11 +968,11 @@ describe("@where", () => {
         expect(lintSourceText(field("eq ne gt gte lt lte"))).toEqual([]);
     });
 
-    it("rejects a bare @where with no operators", () => {
+    it("rejects a bare @queryWhere with no operators", () => {
         const findings = lintSourceText(field(""));
 
         expect(messages(findings)).toEqual([
-            "`value`: @where requires at least one operator, one of: eq, ne, gt, gte, lt, lte",
+            "`value`: @queryWhere requires at least one operator, one of: eq, ne, gt, gte, lt, lte",
         ]);
     });
 
@@ -972,16 +980,16 @@ describe("@where", () => {
         const findings = lintSourceText(field("between"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @where `between` is not one of: eq, ne, gt, gte, lt, lte",
+            "`value`: @queryWhere `between` is not one of: eq, ne, gt, gte, lt, lte",
         ]);
     });
 
-    it("rejects @where on a relation field", () => {
+    it("rejects @queryWhere on a relation field", () => {
         const findings = lintSourceText(
             `export interface Thing {
                 /**
                  * @fieldName Owner
-                 * @where eq
+                 * @queryWhere eq
                  * @widget select
                  * @relation
                  */
@@ -989,7 +997,7 @@ describe("@where", () => {
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`owner`: @where must be on a scalar field, not a @relation field"]);
+        expect(messages(findings)).toEqual(["`owner`: @queryWhere must be on a scalar field, not a @relation field"]);
     });
 });
 
@@ -1018,7 +1026,7 @@ describe("retired @formula", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`label`: @formula is retired; put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup",
+            "`label`: @formula is retired; put the expression on the field with @pgVirtual, @pgTrigger, or @pgRollup",
         ]);
     });
 });

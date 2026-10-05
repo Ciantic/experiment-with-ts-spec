@@ -43,7 +43,7 @@ const PRIMITIVE_TAG = "primitive";
 const ZOD_TAG = "zod";
 
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */
-const PG_TYPE_TAG = "pgtype";
+const PG_TYPE_TAG = "pgType";
 
 export interface Finding {
     filePath: string;
@@ -51,7 +51,7 @@ export interface Finding {
     message: string;
 }
 
-/** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgtype`. */
+/** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgType`. */
 function lintTypeAlias(
     declaration: TypeAliasDeclaration,
     filePath: string,
@@ -76,23 +76,23 @@ function lintTypeAlias(
         }
     }
 
-    // @primitive is a bare marker; its type must carry the matching @zod schema and @pgtype storage type.
+    // @primitive is a bare marker; its type must carry the matching @zod schema and @pgType storage type.
     const primitiveTag = (tags.get(PRIMITIVE_TAG) ?? [])[0];
     const zodTag = (tags.get(ZOD_TAG) ?? [])[0];
-    const pgtypeTag = (tags.get(PG_TYPE_TAG) ?? [])[0];
+    const pgTypeTag = (tags.get(PG_TYPE_TAG) ?? [])[0];
     if (primitiveTag && (primitiveTag.getCommentText() ?? "").trim()) {
         report(`@${PRIMITIVE_TAG} takes no value`, primitiveTag);
     }
     if (zodTag && !(zodTag.getCommentText() ?? "").trim()) {
         report(`@${ZOD_TAG} is missing its schema expression`, zodTag);
     }
-    if (pgtypeTag && !(pgtypeTag.getCommentText() ?? "").trim()) {
-        report(`@${PG_TYPE_TAG} is missing its storage type`, pgtypeTag);
+    if (pgTypeTag && !(pgTypeTag.getCommentText() ?? "").trim()) {
+        report(`@${PG_TYPE_TAG} is missing its storage type`, pgTypeTag);
     }
     if (primitiveTag && !zodTag) {
         report(`@${PRIMITIVE_TAG} requires @${ZOD_TAG}`, primitiveTag);
     }
-    if (primitiveTag && !pgtypeTag) {
+    if (primitiveTag && !pgTypeTag) {
         report(`@${PRIMITIVE_TAG} requires @${PG_TYPE_TAG}`, primitiveTag);
     }
 }
@@ -160,7 +160,7 @@ export function lintInterface(
         findings.push({
             filePath,
             line: property.getStartLineNumber(),
-            message: `\`${name}\`: @queryorderby default may appear on at most one field`,
+            message: `\`${name}\`: @queryOrderBy default may appear on at most one field`,
         });
     }
 }
@@ -186,14 +186,14 @@ interface FieldTags {
     rollup: JSDocTag | undefined;
     createdAt: JSDocTag | undefined;
     updatedAt: JSDocTag | undefined;
-    pgdefault: JSDocTag | undefined;
+    pgDefault: JSDocTag | undefined;
     branches: BranchTag[];
     primaryKey: JSDocTag | undefined;
     foreignKey: JSDocTag | undefined;
     queryFilter: JSDocTag | undefined;
     version: JSDocTag | undefined;
     queryOrderBy: JSDocTag | undefined;
-    where: JSDocTag | undefined;
+    queryWhere: JSDocTag | undefined;
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
@@ -216,17 +216,17 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         mechanism: COMPUTED_KINDS.map((name) => ({ name, tag: first(name) })).filter(
             (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
         ),
-        rollup: first("pgrollup"),
+        rollup: first("pgRollup"),
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
-        pgdefault: first("pgdefault"),
+        pgDefault: first("pgDefault"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
         primaryKey: first("primaryKey"),
         foreignKey: first("foreignKey"),
-        queryFilter: first("queryfilter"),
+        queryFilter: first("queryFilter"),
         version: first("version"),
-        queryOrderBy: first("queryorderby"),
-        where: first("where"),
+        queryOrderBy: first("queryOrderBy"),
+        queryWhere: first("queryWhere"),
         typeText: typeNode?.getText(),
         isArray: typeNode !== undefined && Node.isArrayTypeNode(typeNode),
     };
@@ -310,7 +310,7 @@ function lintComputedMechanism(tags: FieldTags, report: Report): void {
     }
     // The generator derives the delete variant by substituting OLD. for NEW., so OLD. here would be partial.
     if (tags.rollup && (tags.rollup.getCommentText() ?? "").includes("OLD.")) {
-        report("@pgrollup is written with NEW.; the delete variant is generated from it", tags.rollup);
+        report("@pgRollup is written with NEW.; the delete variant is generated from it", tags.rollup);
     }
 }
 
@@ -330,8 +330,8 @@ function lintClocks(tags: FieldTags, report: Report): void {
         if (tags.computed) {
             report(`@${name} and @computed are mutually exclusive`, tag);
         }
-        if (tags.pgdefault) {
-            report(`@${name} supplies its own default; drop @pgdefault`, tag);
+        if (tags.pgDefault) {
+            report(`@${name} supplies its own default; drop @pgDefault`, tag);
         }
         for (const { name: mechanism } of tags.mechanism) {
             report(`@${name} and @${mechanism} are mutually exclusive`, tag);
@@ -345,10 +345,10 @@ function lintClocks(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@pgdefault` carries the expression the database applies when the column is omitted. */
+/** `@pgDefault` carries the expression the database applies when the column is omitted. */
 function lintDefaultTag(tags: FieldTags, report: Report): void {
-    if (tags.pgdefault && !(tags.pgdefault.getCommentText() ?? "").trim()) {
-        report("@pgdefault is missing its expression", tags.pgdefault);
+    if (tags.pgDefault && !(tags.pgDefault.getCommentText() ?? "").trim()) {
+        report("@pgDefault is missing its expression", tags.pgDefault);
     }
 }
 
@@ -412,19 +412,19 @@ function lintKeyTags(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@queryfilter` makes a scalar column a filter of the entity's generated reads. */
+/** `@queryFilter` makes a scalar column a filter of the entity's generated reads. */
 function lintQueryFilter(tags: FieldTags, report: Report): void {
     const tag = tags.queryFilter;
     if (!tag) {
         return;
     }
     if ((tag.getCommentText() ?? "").trim()) {
-        report("@queryfilter takes no value", tag);
+        report("@queryFilter takes no value", tag);
     }
     reportIfBranch(tags, tag, report);
     // The primary key is a filter already (spec-model defaults it), so the tag is noise.
     if (tags.primaryKey) {
-        report("the primary key is a filter by default; drop @queryfilter", tag);
+        report("the primary key is a filter by default; drop @queryFilter", tag);
     }
 }
 
@@ -448,7 +448,7 @@ function lintVersion(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@queryorderby` whitelists an ordering key; `default asc|desc` also names the default. */
+/** `@queryOrderBy` whitelists an ordering key; `default asc|desc` also names the default. */
 function lintQueryOrderBy(tags: FieldTags, report: Report): void {
     const tag = tags.queryOrderBy;
     if (!tag) {
@@ -459,25 +459,25 @@ function lintQueryOrderBy(tags: FieldTags, report: Report): void {
         const tokens = text.split(/\s+/);
         const isDefault = tokens.length === 2 && tokens[0] === "default" && isOrderDirection(tokens[1]);
         if (!isDefault) {
-            report(`@queryorderby takes no value or \`default asc|desc\`, found \`${text}\``, tag);
+            report(`@queryOrderBy takes no value or \`default asc|desc\`, found \`${text}\``, tag);
         }
     }
     reportIfBranch(tags, tag, report);
 }
 
-/** `@where` whitelists the comparison operators a field may be narrowed with. See docs/queries.md. */
+/** `@queryWhere` whitelists the comparison operators a field may be narrowed with. See docs/queries.md. */
 function lintWhere(tags: FieldTags, report: Report): void {
-    const tag = tags.where;
+    const tag = tags.queryWhere;
     if (!tag) {
         return;
     }
     const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
     if (tokens.length === 0) {
-        report(`@where requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
+        report(`@queryWhere requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
     }
     for (const token of tokens) {
         if (!isCompareOperator(token)) {
-            report(`@where \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
+            report(`@queryWhere \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
         }
     }
     reportIfBranch(tags, tag, report);

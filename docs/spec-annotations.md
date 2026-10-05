@@ -3,6 +3,22 @@
 Field-level JSDoc tags in `packages/spec/` are the machine-readable contract a generator
 consumes. This note records what each tag means and how it lands in Postgres.
 
+## Naming
+
+Two rules decide every tag name, and both are checkable by eye.
+
+**A multi-word tag is camelCase.** `@fieldName`, `@createdAt`, `@updatedAt`,
+`@primaryKey`, `@foreignKey`, `@queryFilter`, `@queryOrderBy`, `@queryWhere`. A
+one-word tag is lowercase: `@widget`, `@computed`, `@unique`, `@version`,
+`@relation`, `@children`, `@inlined`, `@primitive`, `@zod`.
+
+**A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
+`@pgDefault`, `@pgVirtual`, `@pgTrigger`, `@pgRollup`. The prefix and the word
+are both visible, so `pg` marks the dialect and the capital marks the word: a
+portable SQL concept stays unprefixed (`@primaryKey`, `@foreignKey`, `@unique`),
+and a tag that only a query read consumes carries `query` instead (`@queryFilter`,
+`@queryOrderBy`, `@queryWhere`). See "Why the expressions live in the spec".
+
 ## Tags
 
 Field tags:
@@ -10,21 +26,21 @@ Field tags:
 - `@fieldName` — human-readable label. Presentation only.
 - `@widget` — suggested UI control (`text`, `number`, `date`, `select`, `table`, `textarea`). Presentation only.
 - `@computed` — derived rather than client-supplied. A bare marker: how Postgres
-  materializes it is a separate mechanism tag, exactly one of `@pgvirtual`,
-  `@pgtrigger`, or `@pgrollup`. A nullable one is omitted from
+  materializes it is a separate mechanism tag, exactly one of `@pgVirtual`,
+  `@pgTrigger`, or `@pgRollup`. A nullable one is omitted from
   `<name>InsertSchema`, since the row that fills it arrives later; a required one
   has no default and must be supplied. See `docs/validation.md` and
   "`@computed` mechanisms".
-- `@pgvirtual <expression>` — the field is a Postgres `generated always as (…)
+- `@pgVirtual <expression>` — the field is a Postgres `generated always as (…)
   virtual` column, with the expression written verbatim. It may reference only
   regular columns of its own table: not other generated columns, not other
   tables, and only immutable functions. Postgres owns the column outright, so a
   create never writes it and the generator keeps it out of the insert and patch
   paths.
-- `@pgtrigger <statement>` — the field is assigned by the table's `before insert
+- `@pgTrigger <statement>` — the field is assigned by the table's `before insert
   or update` trigger. The statement is written verbatim with `NEW.` and is emitted
   in interface field order after the table's clock assignment.
-- `@pgrollup <statement>` — the field aggregates child rows. The statement is
+- `@pgRollup <statement>` — the field aggregates child rows. The statement is
   written once with `NEW.`; the generator attaches it to `after insert or update`
   on every table whose foreign key points at this field's table, and emits the
   `after delete` variant by substituting `OLD.` for `NEW.`.
@@ -34,7 +50,7 @@ Field tags:
 - `@updatedAt` — the row's last-write moment. A bare marker on a `Date` field: the
   column becomes `not null default now()`, and every write assigns
   `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
-- `@pgdefault <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and a create may omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md`.
+- `@pgDefault <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and a create may omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md`.
 - `@primaryKey` — a column of the table's primary key. A bare marker on a scalar
   field: the column is `not null`, and the generated reads filter on it by
   default. One field is a single-column key; marking several makes a composite
@@ -48,46 +64,46 @@ Field tags:
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
 - `@unique` — the column is unique.
-- `@version` — the optimistic-lock column. Omitted on insert (the `@pgdefault`
+- `@version` — the optimistic-lock column. Omitted on insert (the `@pgDefault`
   supplies the first revision) and written on update as the caller's
   precondition; a `before update` trigger validates and increments it. At most
   one per interface, the field type must be `Version`, and it is exclusive with
   `@computed`. See `docs/versioning.md`.
-- `@queryfilter` — a bare marker that makes the field a filter of the entity's
+- `@queryFilter` — a bare marker that makes the field a filter of the entity's
   generated reads. A filter is a set matched with `in (…)`; several are combined
   with `and`. Scalar fields only; a branch field may not carry it, and it is
   redundant on the `@primaryKey` field, which is a filter by default. See `docs/queries.md`.
-- `@queryorderby` — makes the field an ordering key of the entity's generated
-  reads. A bare marker whitelists the field; `@queryorderby default asc|desc`
+- `@queryOrderBy` — makes the field an ordering key of the entity's generated
+  reads. A bare marker whitelists the field; `@queryOrderBy default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
   Scalar fields only; a branch field may not carry it. See `docs/queries.md`.
-- `@where <op>…` — whitelists the comparison operators the field may be narrowed
+- `@queryWhere <op>…` — whitelists the comparison operators the field may be narrowed
   with, space-separated, one or more of `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
-  The list is required: a bare `@where` is a lint finding. Scalar fields only; a
+  The list is required: a bare `@queryWhere` is a lint finding. Scalar fields only; a
   branch field may not carry it. See `docs/queries.md`.
 
 Interface tags:
 
-- `@pgtable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
+- `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 
 Type tags:
 
 - `@primitive` — a bare marker on a type alias that identifies it as a scalar
   value type rather than an entity. Applied to the aliases in
   `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
-  `@zod` and `@pgtype`; the marker itself takes no value. See `docs/primitives.md`.
+  `@zod` and `@pgType`; the marker itself takes no value. See `docs/primitives.md`.
 - `@zod <expression>` — the type's Zod schema, written verbatim and never
   evaluated by the spec, such as `z.uuid()` or
   `z.uuid().brand<"Something">()`. It is what gives a primitive a runtime
   counterpart to its compile-time brand. At most one per type alias.
-- `@pgtype <sql-type>` — the storage type a generator maps the alias to, such as
+- `@pgType <sql-type>` — the storage type a generator maps the alias to, such as
   `uuid` or `decimal`. The spec declares *what* the value is stored as; a
   generator reads the tag rather than knowing the domain type by name, so adding
   a primitive does not require editing the backend. `@primitive` types must
   carry it. See `docs/primitives.md`.
 
 Type tags sit on a type alias and are validated as a group: `@primitive` types
-must declare `@zod` and `@pgtype`, and any tag outside the three is reported. A
+must declare `@zod` and `@pgType`, and any tag outside the three is reported. A
 field never carries a type tag; an alias never carries a field or interface tag.
 
 `@relation`, `@children`, and `@inlined` are bare markers: they take no value.
@@ -103,7 +119,7 @@ mutually exclusive.
 `@computed` says the database derives a value, not that a client supplies one.
 How the value arrives is the mechanism tag beside it: a generated column, a
 trigger, or a rollup. Everything else is an ordinary field — a key the
-application assigns, a column with a `@pgdefault` — and no tag marks it. The clock
+application assigns, a column with a `@pgDefault` — and no tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
 ## `@primaryKey` and `@foreignKey`
@@ -187,9 +203,9 @@ an ambiguous pair of keys into the same table.
 
 Nullability lives on the `@foreignKey` field, so a required relation needs a
 required key; the relation field's own optionality does not matter to the DDL.
-The key is a normal scalar field: it is selectable, and it takes `@queryfilter`
+The key is a normal scalar field: it is selectable, and it takes `@queryFilter`
 like any other, which is how a read filters by a relation. The `@relation` field
-itself may not carry `@queryfilter`; filtering on the related record's *columns*
+itself may not carry `@queryFilter`; filtering on the related record's *columns*
 is not implemented.
 
 ## `@inlined`
@@ -234,26 +250,26 @@ how Postgres materializes it, and the expression is written on the field:
  * @fieldName Net amount
  * @widget number
  * @computed
- * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
+ * @pgTrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
  */
 ```
 
 Three mechanisms, chosen by what the expression needs:
 
-- `@pgvirtual` — a `generated always as (…) virtual` column. Cheapest to
+- `@pgVirtual` — a `generated always as (…) virtual` column. Cheapest to
   maintain and impossible to leave stale, but constrained: same-row columns
   only, immutable functions only, no referencing another generated column, and
   no index on the result.
-- `@pgtrigger` — a `before insert or update` statement. Freer than a generated
+- `@pgTrigger` — a `before insert or update` statement. Freer than a generated
   column (it may read other columns the trigger assigned earlier in the same
   pass) and indexable.
-- `@pgrollup` — a cross-table aggregate. The only mechanism that can read another
+- `@pgRollup` — a cross-table aggregate. The only mechanism that can read another
   table, and the only one written once for many child tables.
 
-`invoice.totalAmount` is the one `@pgvirtual` field: it is a same-row sum of two
-regular columns. `invoice.netAmount`/`taxAmount` are `@pgrollup` because a sum
+`invoice.totalAmount` is the one `@pgVirtual` field: it is a same-row sum of two
+regular columns. `invoice.netAmount`/`taxAmount` are `@pgRollup` because a sum
 over `invoice_row` cannot be a generated column. The `invoice_row` amounts are
-`@pgtrigger` because `taxAmount` reads `netAmount` and `totalAmount` reads both,
+`@pgTrigger` because `taxAmount` reads `netAmount` and `totalAmount` reads both,
 and a generated column cannot reference another generated column.
 
 ## Why the row amounts are trigger assignments
@@ -267,14 +283,14 @@ generated columns forbid expressing it directly:
 
 Making the row amounts virtual would mean inlining `round(NEW."quantity" *
 NEW."unitPrice", 2)` into all three expressions. The trigger keeps one
-expression per amount and preserves the order, and `@pgtrigger` makes that
+expression per amount and preserves the order, and `@pgTrigger` makes that
 choice explicit in the spec.
 
 ## Why the rollup amounts are written
 
 An invoice is a legal document, so an issued amount should not change when
 rounding or tax rules change. A trigger writes the rolled-up value once, when a
-child row changes, and the column keeps it. `@pgvirtual` is used only where the
+child row changes, and the column keeps it. `@pgVirtual` is used only where the
 value is a pure function of two columns on the same row, so a recomputation from
 those columns always reproduces the same figure.
 
@@ -301,23 +317,23 @@ Rationale is in `docs/primitives.md`.
 
 ## Gotchas
 
-- **An aggregate cannot be `@pgvirtual`.** Postgres forbids a generated column
+- **An aggregate cannot be `@pgVirtual`.** Postgres forbids a generated column
   from referencing another table, so `Invoice.netAmount` (a sum over
-  `invoice_row`) must be `@pgrollup`.
+  `invoice_row`) must be `@pgRollup`.
 - **A generated column cannot read another generated column,** and a `before`
   trigger cannot read one either — `NEW."<col>"` is null for a virtual column.
-  The `invoice_row` amounts stay `@pgtrigger` for this reason.
+  The `invoice_row` amounts stay `@pgTrigger` for this reason.
 - **Trigger order is part of the contract.** For `invoice_row`: `netAmount`,
   then `taxAmount`, then `totalAmount`. Reordering the fields produces stale
   values rather than an error.
-- **A `@pgrollup` statement is written once and mirrored.** The generator emits
+- **A `@pgRollup` statement is written once and mirrored.** The generator emits
   the `after delete` variant by substituting `OLD.` for `NEW.`, so a statement
   spelled with `OLD.` is a lint finding. The statements hardcode the foreign key
   column name `"invoiceId"`, which is why they only work for a child whose key
   column has that name.
 - **The invoice total is not set by the rollup.** The rollups write `netAmount`
   and `taxAmount` only; `totalAmount` is virtual, so it recomputes on read. No
-  ordering is load-bearing there, which is the point of choosing `@pgvirtual`.
+  ordering is load-bearing there, which is the point of choosing `@pgVirtual`.
 - **Currency is not yet modelled.** `Invoice.currency` was removed, so amounts
   currently carry no currency. The doc comments that say "in the invoice
   currency" are forward references to work not yet done.
@@ -328,18 +344,18 @@ Rationale is in `docs/primitives.md`.
   a mechanism tag. Only present tags are validated.
 - **Virtual columns are indexable only by expression.** Postgres rejects a plain
   index on a virtual column, so a query that would index one needs the
-  expression index spelled out or the `@pgtrigger` mechanism instead.
+  expression index spelled out or the `@pgTrigger` mechanism instead.
 
 ## Deliberately not implemented
 
 - **Views for a read-time projection.** A derived view would recompute on every
   read; the mechanisms above cover what the spec needs today, and nothing emits
   a view.
-- **A cross-table `@pgvirtual`.** Postgres rejects it outright, so no generator
+- **A cross-table `@pgVirtual`.** Postgres rejects it outright, so no generator
   support is planned.
 - **Multi-currency rows.** Rows may eventually be issued in currencies other
   than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. The `@pgtrigger`/`@pgrollup` expressions would gain
+  in the invoice currency. The `@pgTrigger`/`@pgRollup` expressions would gain
   rate-aware arithmetic, and the rounding/tax ordering (convert-then-tax vs
   tax-then-convert) would need to be pinned down.
 - **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
@@ -349,8 +365,8 @@ Rationale is in `docs/primitives.md`.
 
 1. A generator parses the `@` tags from `packages/spec/`.
 2. For each `@computed` field it reads the mechanism tag off the field itself:
-   `@pgvirtual` becomes a generated column, `@pgtrigger` a `before insert or
-   update` assignment, `@pgrollup` an `after insert or update` and `after
+   `@pgVirtual` becomes a generated column, `@pgTrigger` a `before insert or
+   update` assignment, `@pgRollup` an `after insert or update` and `after
    delete` pair on each child table.
 3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
    assignment.
@@ -363,29 +379,34 @@ above. See `docs/schema-generation.md`.
 The `@pg*` tags are deliberately Postgres-specific: `packages/spec/` names the
 storage the backend uses rather than describing a second, abstract vocabulary
 that only one backend consumes. The prefix marks a tag whose concept or spelling
-is Postgres-specific — `@pgtype` a storage type name, `@pgvirtual`,
-`@pgtrigger` and `@pgrollup` the expressions that materialize a derivation,
-`@pgdefault` a column default, and `@pgtable` the table name itself. A portable
+is Postgres-specific — `@pgType` a storage type name, `@pgVirtual`,
+`@pgTrigger` and `@pgRollup` the expressions that materialize a derivation,
+`@pgDefault` a column default, and `@pgTable` the table name itself. A portable
 SQL concept stays unprefixed: `@primaryKey`, `@foreignKey`, `@unique`, and the
 two clock tags.
 
-The same rule reaches the parsed model, so a consumer can tell a Postgres value
-from a neutral one by the field it reads: `SpecInterface.pgTableName` is the
-resolved table name and `Tags.pgdefault` the default expression, while
+The `query` prefix marks the other kind of consumer-only tag: `@queryFilter`,
+`@queryOrderBy`, and `@queryWhere` describe a generated read rather than a
+column. They emit no DDL, so a reader scanning for storage can skip them, and a
+tag that is neither storage nor query carries no prefix at all.
+
+The same convention reaches the parsed model, so a consumer can tell a Postgres
+value from a neutral one by the field it reads: `SpecInterface.pgTableName` is
+the resolved table name and `Tags.pgDefault` the default expression, while
 `SpecInterface.name`, `SpecProperty.typeText`, and `Tags.primaryKey` stay
 unprefixed. Only the tag keys and the model fields that hold a Postgres value
 are prefixed; a resolved value inside `postgres-model.ts`, such as
 `Column.sqlType`, is not, because that module is Postgres-only by name.
 
 That means a different backend needs its own tags, exactly as it needs its own
-`@pgtype` mapping. There is no name indirection to resolve and no registry to
+`@pgType` mapping. There is no name indirection to resolve and no registry to
 keep in step, so a field's expression sits next to the field it describes:
 
 ```
 /**
  * @fieldName Total amount
  * @computed
- * @pgvirtual "netAmount" + "taxAmount"
+ * @pgVirtual "netAmount" + "taxAmount"
  * @widget number
  */
 totalAmount?: Money;
@@ -404,13 +425,13 @@ Enforced:
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
-- A mechanism tag (`@pgvirtual`, `@pgtrigger`, `@pgrollup`) requires `@computed`,
+- A mechanism tag (`@pgVirtual`, `@pgTrigger`, `@pgRollup`) requires `@computed`,
   carries a non-empty expression, and at most one may appear on a field.
-- `@pgrollup` may not contain `OLD.`, which the generator would otherwise
+- `@pgRollup` may not contain `OLD.`, which the generator would otherwise
   substitute twice.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
   mutually exclusive with each other and with `@computed`,
-  `@pgdefault`, `@version`, and the mechanism tags, and may appear at most once per
+  `@pgDefault`, `@version`, and the mechanism tags, and may appear at most once per
   interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
@@ -418,13 +439,13 @@ Enforced:
   fields of one interface to form a composite key; `@foreignKey` requires the
   interface it references and sits on a single scalar field. The two are
   mutually exclusive. See "`@primaryKey` and `@foreignKey`".
-- `@queryfilter` is a bare marker on a scalar field; a branch field may not
+- `@queryFilter` is a bare marker on a scalar field; a branch field may not
   carry it, and it must not be written on the `@primaryKey` field, which is a
   filter already. See `docs/queries.md`.
-- `@queryorderby` is a bare marker on a scalar field, or `default asc|desc`; a
+- `@queryOrderBy` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
-- `@where` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
+- `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
 - Tags may not repeat on a field.
 
@@ -447,10 +468,10 @@ Gotchas:
   which is what catches a malformed expression.
 - **Every primary key column is a filter without a tag.** `spec-model.ts` marks
   each `@primaryKey` field as `queryfilter` when it parses an entity, so a
-  composite key contributes one filter per column. Writing `@queryfilter` on a
+  composite key contributes one filter per column. Writing `@queryFilter` on a
   key field is therefore a lint finding, not a second way to say the same thing:
   the default has one spelling.
-- **`@queryfilter` is checked structurally, not by type.** The linter rejects it
+- **`@queryFilter` is checked structurally, not by type.** The linter rejects it
   on a branch field (a `@relation`/`@children`/`@inlined` marker), on the
   primary key, and on a value, but it does not resolve the field's type: the
   generated read types the filter from the field's own type, so a non-scalar

@@ -10,7 +10,7 @@ export type CustomerId = BrandedId<"CustomerId">;
 /**
  * A customer that invoices can be issued to.
  * 
- * @pgtable customer
+ * @pgTable customer
  */
 export interface Customer {
     /**
@@ -101,7 +101,7 @@ export interface Customer {
      * 
      * @fieldName Version
      * @version
-     * @pgdefault 0
+     * @pgDefault 0
      * @widget number
      */
     version?: Version;

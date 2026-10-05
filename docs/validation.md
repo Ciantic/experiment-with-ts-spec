@@ -127,10 +127,10 @@ The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
 `<Entity>Patch` type is rendered from it into the same module, so the repository
 type taking it, the client sending it, and the wire schema accepting it all
 permit exactly the same fields. A nullable `@computed` value is on the
-list because a `before insert or update` trigger derives it, and a `@pgvirtual`
+list because a `before insert or update` trigger derives it, and a `@pgVirtual`
 value is on it whether nullable or not because Postgres refuses the write: the
 update does not name the column, so accepting one would be accepting a field that
-does nothing (`docs/repositories.md`). A `@pgdefault` column is not on the list: a
+does nothing (`docs/repositories.md`). A `@pgDefault` column is not on the list: a
 patch may override a default, exactly as a create may.
 
 ## Insert schemas
@@ -163,7 +163,7 @@ A field is omitted when the database owns it, from either annotation:
   a create cannot write it. `customer`, `seller`, and `rows` are omitted.
 - **A clock field, a virtual generated column, and a defaulted `@version`** are
   the database's own on insert: the two timestamps carry `default now()`,
-  `@pgvirtual` is generated always, and a version's default *is* its first
+  `@pgVirtual` is generated always, and a version's default *is* its first
   revision.
 - **A stored computation** is the trigger's to derive, but only while the column
   is optional. A required one has no default and no nullable column, so the
@@ -171,7 +171,7 @@ A field is omitted when the database owns it, from either annotation:
   `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
   not a default.
 
-A `@pgdefault` column is deliberately absent from the omit list. A create may
+A `@pgDefault` column is deliberately absent from the omit list. A create may
 supply it or leave it out; an omitted one sends the `default` keyword, so the
 database fills that row. A *required* defaulted field is relaxed with
 `.partial()` so the schema agrees that omitting it is allowed.
@@ -223,10 +223,10 @@ Every entity gets a generated `query` read (`docs/queries.md`), so every entity
 gets a `query` args schema. A read takes one argument — its filters, its
 ordering, its comparisons, and `select` — so the schema is that object with the
 entity's select schema added as a field. The filters come from the entity's
-`@queryfilter` fields, resolved like any other field (the same primitives,
+`@queryFilter` fields, resolved like any other field (the same primitives,
 keywords, and `Date` mapping) and always validated as a set: `z.array(…)`. The
-ordering keys come from the entity's `@queryorderby` fields, and the comparison
-fields and their operators from `@where`. The schema is named after the read:
+ordering keys come from the entity's `@queryOrderBy` fields, and the comparison
+fields and their operators from `@queryWhere`. The schema is named after the read:
 `Invoice` yields `queryInvoiceSchema` in
 `packages/validation/src/queries/queryInvoice.ts`.
 
@@ -257,10 +257,10 @@ than being stripped, and a data field named `select` cannot collide with the
 projection. Each `order` clause is a `[field, direction]` tuple whose field is
 whitelisted (`z.enum`), so an unknown sort key is a 400 rather than a `500` from
 the resolver. Each `where` field is a `z.strictObject` of **only** the operators
-`@where` declared, so a comparison the spec does not allow is a 400 too; the
+`@queryWhere` declared, so a comparison the spec does not allow is a 400 too; the
 field's own schema types each operator's value. `limit` is a positive integer
 and `offset` a non-negative integer, so a bad page is a 400. An entity with no
-`@queryorderby` field gets no `order` key and an entity with no `@where` field no
+`@queryOrderBy` field gets no `order` key and an entity with no `@queryWhere` field no
 `where` key; every entity gets `limit` and `offset`.
 
 The module is separate from the entities so a caller can validate a read without
@@ -307,7 +307,7 @@ a read validates its selection too.
 ## Annotations
 
 The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
-`@queryfilter` (which `spec-model.ts` defaults on every `@primaryKey` field). It never names a domain type. The parsing and tag
+`@queryFilter` (which `spec-model.ts` defaults on every `@primaryKey` field). It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.

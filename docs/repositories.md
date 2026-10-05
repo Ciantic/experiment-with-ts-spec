@@ -72,7 +72,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
 `InvoiceInsert` is the entity minus every field the statement does not write, so
 it mirrors the SQL exactly. A whole entity is still assignable to it, so a caller
 holding one can pass it unchanged. What the type rules out is a field that would
-be read and then dropped — a branch, a clock field, a `@pgvirtual` column, or a
+be read and then dropped — a branch, a clock field, a `@pgVirtual` column, or a
 derivable value — which is the same set `<entity>InsertSchema` accepts
 (`docs/validation.md`). An entity with nothing to omit gets
 `type <Entity>Insert = <Entity>`.
@@ -112,9 +112,9 @@ A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
 touches. That is a branch — a `@relation` or `@children` field, which has no
 column — a column the database owns outright: a clock field, a virtual generated
-column (`@pgvirtual`), or a nullable `@computed` field a trigger derives. An
+column (`@pgVirtual`), or a nullable `@computed` field a trigger derives. An
 entity that writes every column keeps the plain `Partial<Entity>` shape. A
-`@pgdefault` column is *not* on this list: a patch may override a default, the
+`@pgDefault` column is *not* on this list: a patch may override a default, the
 same way a create may.
 
 The emitted statement writes every patchable column, using `coalesce` to keep a
@@ -178,7 +178,7 @@ The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
 `packages/backend/scripts/postgres-model.ts`, which maps the parsed spec
 (`packages/spec/scripts/spec-model.ts`) to columns. One interpretation of
-`@pgtable`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
+`@pgTable`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
 key tags, and type mapping feeds both the DDL and the repositories, so a
 repository cannot name a column the schema does not have.
 
@@ -187,7 +187,7 @@ inlined optional customer is written as `row.customer?.name`, without the
 generator special-casing it. A relation contributes no column of its own: its
 `@foreignKey` field is an ordinary column, read as `row.customerId`.
 
-A column with a database default (`@pgdefault`) is written when the row supplies
+A column with a database default (`@pgDefault`) is written when the row supplies
 it, and its tuple carries the `default` keyword when the row omits it, so the
 database fills that row's value. The clock tags are the different case: they
 never appear in a generated `insert`, because the default fills `createdAt` and
@@ -198,7 +198,7 @@ A `@computed` column the database can fill later is left out too, so the
 `insert` names exactly the insertable fields and nothing else. That is the whole
 of `<entity>InsertSchema`, which is why the statement and the wire schema cannot
 disagree (`docs/validation.md`). A nullable trigger- or rollup-derived column is
-in that set; a `@pgvirtual` column always is, required or not, because Postgres
+in that set; a `@pgVirtual` column always is, required or not, because Postgres
 rejects a write to a generated column outright. A *required* trigger column
 stays: it has no default and no nullable column, so the insert has to carry it.
 

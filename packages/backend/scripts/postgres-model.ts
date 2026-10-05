@@ -69,7 +69,7 @@ export interface Column {
     queryOrder?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with. See docs/queries.md. */
     where?: CompareOperator[];
-    /** False when a create never writes the column: `@pgdefault`, or a stored computation it can derive. */
+    /** False when a create never writes the column: `@pgDefault`, or a stored computation it can derive. */
     insertable: boolean;
     /** False when a patch never writes the column: a branch, a default, or a nullable computation. */
     updatable: boolean;
@@ -336,14 +336,14 @@ function addScalarColumn(
 
     // A default makes the column not null even when the field is optional: the database fills it.
     // The clock tags supply their own default, so they make the column not null the same way.
-    const defaultValue = tags.pgdefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
+    const defaultValue = tags.pgDefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
     const column: Column = {
         name: fieldName,
         sqlType: resolved?.sqlType ?? "text",
         notNull: notNull || isPrimaryKey || defaultValue !== undefined,
         primaryKey: isPrimaryKey,
         unique: tags.unique,
-        queryFilter: tags.queryfilter,
+        queryFilter: tags.queryFilter,
         insertable: isInsertable(property),
         updatable: isUpdatable(property),
         read: fieldName,
@@ -353,7 +353,7 @@ function addScalarColumn(
     }
     // Only known operators reach the model; the linter reports an unknown one, and a
     // generator run without lint should not emit a comparison it cannot build.
-    const operators = tags.where?.filter(isCompareOperator);
+    const operators = tags.queryWhere?.filter(isCompareOperator);
     if (operators && operators.length > 0) {
         column.where = operators;
     }
@@ -363,8 +363,8 @@ function addScalarColumn(
     if (defaultValue !== undefined) {
         column.default = defaultValue;
     }
-    if (tags.pgvirtual !== undefined) {
-        column.generatedExpression = stripSemicolon(tags.pgvirtual);
+    if (tags.pgVirtual !== undefined) {
+        column.generatedExpression = stripSemicolon(tags.pgVirtual);
     }
     if (tags.version) {
         column.version = true;
@@ -395,8 +395,8 @@ function addScalarColumn(
     table.columns.push(column);
 
     // A trigger statement maintains the field on every write; the clock tag contributes its own.
-    if (tags.pgtrigger !== undefined) {
-        table.sameRowAssignments.push(stripSemicolon(tags.pgtrigger) + ";");
+    if (tags.pgTrigger !== undefined) {
+        table.sameRowAssignments.push(stripSemicolon(tags.pgTrigger) + ";");
     }
     if (tags.updatedAt) {
         table.sameRowAssignments.push(`NEW.${quote(fieldName)} := now();`);
@@ -462,7 +462,7 @@ function attachRollups(tables: Map<string, Table>, interfaces: Map<string, SpecI
             continue;
         }
         for (const property of spec.properties) {
-            const rollupStatement = property.tags.pgrollup;
+            const rollupStatement = property.tags.pgRollup;
             if (rollupStatement === undefined) {
                 continue;
             }
@@ -566,7 +566,7 @@ function createTypeResolver(
         return typeNode ? resolveTypeNode(typeNode)?.sqlType ?? "text" : "text";
     }
 
-    /** Resolve a named alias to its type, reading its `@pgtype` before its underlying type. */
+    /** Resolve a named alias to its type, reading its `@pgType` before its underlying type. */
     function resolveNamedType(name: string): TypeResolution | undefined {
         const builtin = BUILTIN_TYPES[name];
         if (builtin) {
@@ -574,8 +574,8 @@ function createTypeResolver(
         }
         const alias = aliases.get(name);
         // A primitive declares its storage type; that wins over resolving through its base type.
-        if (alias?.tags.pgtype) {
-            return { sqlType: alias.tags.pgtype };
+        if (alias?.tags.pgType) {
+            return { sqlType: alias.tags.pgType };
         }
         if (interfaces.has(name)) {
             return { entity: name };

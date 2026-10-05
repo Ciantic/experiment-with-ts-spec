@@ -13,28 +13,28 @@ interface Fixture {
 const PRIMITIVES = `
 /**
  * @primitive
- * @pgtype uuid
+ * @pgType uuid
  * @zod z.uuid()
  */
 export type GUID = string;
 
 /**
  * @primitive
- * @pgtype decimal
+ * @pgType decimal
  * @zod z.string()
  */
 export type Decimal = string;
 
 /**
  * @primitive
- * @pgtype text
+ * @pgType text
  * @zod z.email()
  */
 export type Email = string;
 
 /**
  * @primitive
- * @pgtype int8
+ * @pgType int8
  * @zod z.bigint()
  */
 export type Version = bigint;
@@ -81,7 +81,7 @@ describe("generateSchema output", () => {
         expect(sql).toContain('"big" int8 not null');
     });
 
-    it("maps named types to the Postgres type their @pgtype declares", () => {
+    it("maps named types to the Postgres type their @pgType declares", () => {
         const { sql } = generate({
             domain: {
                 Thing: `export interface Thing {
@@ -105,7 +105,7 @@ describe("generateSchema output", () => {
     it("derives a foreign key's column type from the target entity's key, not a fixed type", () => {
         const { sql } = generate({
             domain: {
-                // Version is @pgtype int8, so a key of that type proves the type is not hardcoded.
+                // Version is @pgType int8, so a key of that type proves the type is not hardcoded.
                 Owner: "export interface Owner {\n    /** @primaryKey */\n    id: Version; }",
                 Thing: `export interface Thing {
                     /** @primaryKey */
@@ -226,9 +226,9 @@ describe("generateSchema output", () => {
         expect(sql).toContain('create table "line_item"');
     });
 
-    it("lets @pgtable override the table name", () => {
+    it("lets @pgTable override the table name", () => {
         const { sql } = generate({
-            domain: { Person: "/** @pgtable people */\nexport interface Person {\n    /** @primaryKey */\n    id: GUID; }" },
+            domain: { Person: "/** @pgTable people */\nexport interface Person {\n    /** @primaryKey */\n    id: GUID; }" },
         });
 
         expect(sql).toContain('create table "people"');
@@ -618,17 +618,17 @@ describe("generateSchema triggers", () => {
                     b: Decimal;
                     /**
                      * @computed
-                     * @pgtrigger NEW."net" := round(NEW."a" * NEW."b")::bigint
+                     * @pgTrigger NEW."net" := round(NEW."a" * NEW."b")::bigint
                      */
                     net: Decimal;
                     /**
                      * @computed
-                     * @pgtrigger NEW."tax" := NEW."net" * 2
+                     * @pgTrigger NEW."tax" := NEW."net" * 2
                      */
                     tax: Decimal;
                     /**
                      * @computed
-                     * @pgtrigger NEW."total" := NEW."net" + NEW."tax"
+                     * @pgTrigger NEW."total" := NEW."net" + NEW."tax"
                      */
                     total: Decimal;
                 }`,
@@ -656,7 +656,7 @@ describe("generateSchema triggers", () => {
                     a: Decimal;
                     /**
                      * @computed
-                     * @pgtrigger NEW."net" := NEW."a" * 2;
+                     * @pgTrigger NEW."net" := NEW."a" * 2;
                      */
                     net: Decimal;
                 }`,
@@ -681,7 +681,7 @@ describe("generateSchema triggers", () => {
                     id: GUID;
                     /**
                      * @computed
-                     * @pgrollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     * @pgRollup update "parent" set "net" = 1 where "id" = NEW."parentId"
                      */
                     net: Decimal;
                 }`,
@@ -706,12 +706,12 @@ describe("generateSchema triggers", () => {
                     id: GUID;
                     /**
                      * @computed
-                     * @pgrollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     * @pgRollup update "parent" set "net" = 1 where "id" = NEW."parentId"
                      */
                     net: Decimal;
                     /**
                      * @computed
-                     * @pgrollup update "parent" set "tax" = 1 where "id" = NEW."parentId"
+                     * @pgRollup update "parent" set "tax" = 1 where "id" = NEW."parentId"
                      */
                     tax: Decimal;
                 }`,
@@ -726,7 +726,7 @@ describe("generateSchema triggers", () => {
     });
 });
 
-describe("generateSchema @pgvirtual", () => {
+describe("generateSchema @pgVirtual", () => {
     it("emits a virtual generated column with the expression verbatim", () => {
         const { sql } = generate({
             domain: {
@@ -737,7 +737,7 @@ describe("generateSchema @pgvirtual", () => {
                     tax: Decimal;
                     /**
                      * @computed
-                     * @pgvirtual "net" + "tax"
+                     * @pgVirtual "net" + "tax"
                      */
                     total: Decimal;
                 }`,
@@ -757,7 +757,7 @@ describe("generateSchema @pgvirtual", () => {
                     tax: Decimal;
                     /**
                      * @computed
-                     * @pgvirtual "net" + "tax"
+                     * @pgVirtual "net" + "tax"
                      */
                     total: Decimal;
                 }`,
@@ -776,7 +776,7 @@ describe("generateSchema @version", () => {
         /**
          * The revision.
          * @version
-         * @pgdefault 0
+         * @pgDefault 0
          */
         version?: Version;
     }`;
@@ -809,7 +809,7 @@ describe("generateSchema @version", () => {
                     key: string;
                     /**
                      * @version
-                     * @pgdefault 0
+                     * @pgDefault 0
                      */
                     version?: Version;
                 }`,
@@ -827,13 +827,13 @@ describe("generateSchema @version", () => {
 });
 
 describe("generateSchema defaults", () => {
-    it("emits a database default for @pgdefault", () => {
+    it("emits a database default for @pgDefault", () => {
         const { sql } = generate({
             domain: {
                 Thing: `export interface Thing {
                     /** @primaryKey */
                     id: GUID;
-                    /** @pgdefault now() */
+                    /** @pgDefault now() */
                     at: Date;
                 }`,
             },
@@ -848,7 +848,7 @@ describe("generateSchema defaults", () => {
                 Thing: `export interface Thing {
                     /** @primaryKey */
                     id: GUID;
-                    /** @pgdefault now() */
+                    /** @pgDefault now() */
                     at?: Date;
                 }`,
             },
@@ -858,7 +858,7 @@ describe("generateSchema defaults", () => {
         expect(sql).not.toContain('"at" timestamptz default now()');
     });
 
-    it("emits no default when @pgdefault is absent", () => {
+    it("emits no default when @pgDefault is absent", () => {
         const { sql } = generate({ domain: { Thing: "export interface Thing {\n    /** @primaryKey */\n    id: GUID; at: Date; }" } });
 
         expect(sql).not.toContain("default");

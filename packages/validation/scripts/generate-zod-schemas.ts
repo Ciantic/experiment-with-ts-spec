@@ -103,7 +103,7 @@ export function generateQueryFile(
             }
             lines.push("    }).optional(),");
         }
-        // Ordering is whitelisted by `@queryorderby`, so an unknown field fails rather than reaching SQL.
+        // Ordering is whitelisted by `@queryOrderBy`, so an unknown field fails rather than reaching SQL.
         if (query.orderFields.length > 0) {
             const names = query.orderFields.map((field) => JSON.stringify(field)).join(", ");
             // A clause is a tuple: `["createdAt", "desc"]`.
@@ -111,7 +111,7 @@ export function generateQueryFile(
             lines.push(`        z.tuple([z.enum([${names}]), z.enum(["asc", "desc"])]),`);
             lines.push("    ).optional(),");
         }
-        // Comparisons are whitelisted by `@where`: a field and an operator are both checked here.
+        // Comparisons are whitelisted by `@queryWhere`: a field and an operator are both checked here.
         if (query.whereFields.length > 0) {
             lines.push("    where: z.strictObject({");
             for (const field of query.whereFields) {

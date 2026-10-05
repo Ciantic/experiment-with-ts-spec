@@ -16,35 +16,35 @@ interface Fixture {
 const PRIMITIVES = `
 /**
  * @primitive
- * @pgtype uuid
+ * @pgType uuid
  * @zod z.uuid()
  */
 export type GUID = string;
 
 /**
  * @primitive
- * @pgtype uuid
+ * @pgType uuid
  * @zod z.uuid().brand<Name>()
  */
 export type BrandedId<Name extends string> = GUID & $brand<Name>;
 
 /**
  * @primitive
- * @pgtype decimal
+ * @pgType decimal
  * @zod z.string().regex(/^-?\\d+(\\.\\d+)?$/).brand<"Money">()
  */
 export type Money = string;
 
 /**
  * @primitive
- * @pgtype text
+ * @pgType text
  * @zod z.enum(["fi", "sv"]).or(z.string())
  */
 export type Language = "fi" | "sv" | (string & {});
 
 /**
  * @primitive
- * @pgtype int8
+ * @pgType int8
  * @zod z.bigint().brand<"Version">()
  */
 export type Version = bigint;
@@ -78,11 +78,11 @@ export type ThingFormat = "short" | "long" | (string & {});
 /**
  * A thing.
  *
- * @pgtable thing
+ * @pgTable thing
  */
 export interface Thing {
     /**
-     * The identifier: a filter by default, no @queryfilter needed.
+     * The identifier: a filter by default, no @queryFilter needed.
      *
      * @primaryKey
      */
@@ -90,14 +90,14 @@ export interface Thing {
     /**
      * An optional label.
      *
-     * @queryorderby default asc
+     * @queryOrderBy default asc
      */
     name?: string;
     /**
      * An optional amount.
      *
-     * @queryorderby
-     * @where gte lte
+     * @queryOrderBy
+     * @queryWhere gte lte
      */
     amount?: Money;
     /**
@@ -125,7 +125,7 @@ export interface Thing {
 /**
  * A child of a thing.
  *
- * @pgtable child
+ * @pgTable child
  */
 export interface Child {
     /**
@@ -143,7 +143,7 @@ export type ChildId = BrandedId<"ChildId">;
 /**
  * A parent of a thing.
  *
- * @pgtable parent
+ * @pgTable parent
  */
 export interface Parent {
     /**
@@ -392,7 +392,7 @@ describe("buildZodModel queries", () => {
         expect(queryThing?.schemaName).toBe("queryThingSchema");
     });
 
-    it("resolves @queryfilter fields as optional sets", () => {
+    it("resolves @queryFilter fields as optional sets", () => {
         const { model } = generate({ domain: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
@@ -629,7 +629,7 @@ export type MarkerId = BrandedId<"MarkerId">;
 /**
  * A marker.
  *
- * @pgtable marker
+ * @pgTable marker
  */
 export interface Marker {
     /**
@@ -643,21 +643,21 @@ export interface Marker {
     /**
      * When it was created.
      *
-     * @pgdefault now()
+     * @pgDefault now()
      */
     createdAt?: Date;
     /**
      * A total the trigger derives.
      *
      * @computed
-     * @pgtrigger NEW."total" := NEW."label"
+     * @pgTrigger NEW."total" := NEW."label"
      */
     total?: Money;
     /**
      * A stored value the insert has to carry.
      *
      * @computed
-     * @pgtrigger NEW."required" := NEW."label"
+     * @pgTrigger NEW."required" := NEW."label"
      */
     required: Money;
 }
@@ -668,7 +668,7 @@ const TRANSLATION = `
 /**
  * A translation entry.
  *
- * @pgtable translation
+ * @pgTable translation
  */
 export interface Translation {
     /**
@@ -701,7 +701,7 @@ export type ChildId = BrandedId<"ChildId">;
 /**
  * A child.
  *
- * @pgtable child
+ * @pgTable child
  */
 export interface Child {
     /**
@@ -717,7 +717,7 @@ export interface Child {
 /**
  * A thing holding a snapshot of its child.
  *
- * @pgtable thing
+ * @pgTable thing
  */
 export interface Thing {
     /**
@@ -774,7 +774,7 @@ export interface Thing {
     /**
      * Where it came from.
      *
-     * @pgdefault 'manual'
+     * @pgDefault 'manual'
      */
     source: string;
 }

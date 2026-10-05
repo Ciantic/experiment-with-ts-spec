@@ -4,7 +4,7 @@
  * See docs/invoice-sending.md.
  *
  * @primitive
- * @pgtype text
+ * @pgType text
  * @zod z.enum(["maventa", "apix", "op", "basware"]).or(z.string())
  */
 export type EInvoiceOperator =

@@ -27,7 +27,7 @@ The generated output is committed. Regenerate rather than editing it by hand.
 
 ## The surface
 
-One collection per entity, at the `@pgtable` name. A read and a delete carry
+One collection per entity, at the `@pgTable` name. A read and a delete carry
 their argument in a single `q` query parameter; a write carries it in the body.
 
 | Call | Method | Path | Argument |
@@ -245,7 +245,7 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
   not implemented".
 - **A create takes only what it writes.** `<entity>InsertSchema` carries the
   columns the database does not own, so `id` and the `@computed` fields a client
-  must not choose are absent and a stray one is a 400; a `@pgdefault` field is
+  must not choose are absent and a stray one is a 400; a `@pgDefault` field is
   present but optional, since the database fills it when the client omits it.
   The generated client types the same way, as `<Entity>Insert`.
 - **A patch takes only what an update writes.** `<entity>PatchSchema` is the
@@ -279,7 +279,7 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
   entity set, so the generator does not see it. `POST /invoice/send` is
   hand-wired when the operation exists.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
-  (default 1000), and `order` is whitelisted by `@queryorderby`
+  (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.
 - **A public protocol version.** Client and server ship from one commit, so a
   deployed client and a moved server must be updated together.

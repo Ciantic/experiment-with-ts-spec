@@ -12,7 +12,7 @@ export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 /**
  * A single line item on an invoice.
  * 
- * @pgtable invoice_row
+ * @pgTable invoice_row
  */
 export interface InvoiceRow {
     /**
@@ -78,7 +78,7 @@ export interface InvoiceRow {
      * 
      * @fieldName Net amount
      * @computed
-     * @pgtrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
+     * @pgTrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
      * @widget number
      */
     netAmount?: Money;
@@ -88,7 +88,7 @@ export interface InvoiceRow {
      * 
      * @fieldName Tax amount
      * @computed
-     * @pgtrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
+     * @pgTrigger NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2)
      * @widget number
      */
     taxAmount?: Money;
@@ -98,7 +98,7 @@ export interface InvoiceRow {
      * 
      * @fieldName Total amount
      * @computed
-     * @pgtrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
+     * @pgTrigger NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount"
      * @widget number
      */
     totalAmount?: Money;
@@ -126,7 +126,7 @@ export interface InvoiceRow {
      * 
      * @fieldName Version
      * @version
-     * @pgdefault 0
+     * @pgDefault 0
      * @widget number
      */
     version?: Version;
