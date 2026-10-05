@@ -2,7 +2,7 @@
 
 Humans, this readme is for you.
 
-- `packages/spec/src` is mostly succinct description of what the application is made of. Understanding domain models require understanding business domain, and Postgres and REST functionality. Everything is defined as TypeScript interfaces, with JSDoc annotations specifying further behavior.
+[`packages/spec/src`](./packages/spec/src/) is mostly succinct description of what the application is made of. Domain models and specified behavior require understanding business domain, and Postgres and REST functionality. Everything is defined as TypeScript interfaces, with JSDoc annotations forming a mini DSL for generating the code.
 
 If you change the TypeScript spec, there is deterministic re-generation scripts that generate:
 
