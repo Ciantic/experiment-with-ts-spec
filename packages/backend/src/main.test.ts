@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
-import { routes } from "./http/routes.ts";
+import { routes } from "./http/routes/index.ts";
 import { createDatabase, parseArgs, startServer, type StartedServer } from "./main.ts";
 
 /** A generated builder, as this test sees it: pure data, so calling one makes no request. */

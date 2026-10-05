@@ -8,8 +8,9 @@ halves that must not be generated: the router and the transport.
   filters, and the operations each entity exposes. Hand-written.
 - `packages/backend/scripts/generate-rest-api.ts` — the server generator.
 - `packages/backend/scripts/generate-rest-client.ts` — the client generator.
-- `packages/backend/src/http/routes.ts` — generated: the `Route[]` the router
-  matches on.
+- `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
+  each a `Route[]` for that collection, plus the `index.ts` barrel concatenating
+  them into the table the router matches on.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
 - `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel.
@@ -109,7 +110,7 @@ have different import rules:
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
 | May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `../client.ts` |
-| Emits | `packages/backend/src/http/routes.ts` | `packages/sdk/src/api/*.ts` |
+| Emits | `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from the backend.** It cannot reach a table

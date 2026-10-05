@@ -13,7 +13,7 @@ import { Project } from "ts-morph";
 import { SPEC_SRC_ROOT } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
-import { renderRoutesModule } from "./generate-rest-api.ts";
+import { renderRoutes } from "./generate-rest-api.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
@@ -258,8 +258,11 @@ describe("generateRestClient", () => {
     });
 
     it("exposes exactly the calls the server exposes", () => {
-        const exposed = [...renderRoutesModule(model).matchAll(/method: "(\w+)",\s*\n\s*path: "([^"]+)"/g)].map(
-            (match) => `${match[1]} ${match[2]}`,
+        // Every route module, barrel included; the barrel names no method or path, so it adds nothing.
+        const exposed = [...renderRoutes(model).values()].flatMap((content) =>
+            [...content.matchAll(/method: "(\w+)",\s*\n\s*path: "([^"]+)"/g)].map(
+                (match) => `${match[1]} ${match[2]}`,
+            ),
         );
         const called = [...generateRestClient(model).values()].flatMap((content) =>
             [...content.matchAll(/call<.*?>\("(GET|POST|PATCH|DELETE)", "([^"]+)"/g)].map(

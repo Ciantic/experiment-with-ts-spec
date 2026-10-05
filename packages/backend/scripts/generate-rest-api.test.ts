@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
 import { SPEC_SRC_ROOT } from "spec/scripts/spec-model.ts";
-import { buildRestModel, type RestModel } from "./rest-model.ts";
-import { renderRoutesModule } from "./generate-rest-api.ts";
+import { buildRestModel, type RestEntity, type RestModel } from "./rest-model.ts";
+import { renderEntityRoutes, renderRoutes, renderRoutesIndex } from "./generate-rest-api.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
@@ -43,16 +43,24 @@ function build(domain: Record<string, string>): RestModel {
     return buildRestModel(project, { specGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB });
 }
 
-function render(): string {
-    return renderRoutesModule(build({ Widget: WIDGET, Marker: MARKER }));
+function widgetEntity(): RestEntity {
+    const entity = build({ Widget: WIDGET, Marker: MARKER }).entities.find((it) => it.entity === "Widget");
+    if (!entity) {
+        throw new Error("fixture is missing the widget entity");
+    }
+    return entity;
 }
 
-describe("renderRoutesModule", () => {
-    it("emits a typed route table", () => {
+function render(): string {
+    return renderEntityRoutes(widgetEntity());
+}
+
+describe("renderEntityRoutes", () => {
+    it("emits a typed route table for one collection", () => {
         const code = render();
 
-        expect(code).toContain('import type { Route } from "./router.ts";');
-        expect(code).toContain("export const routes: Route[] = [");
+        expect(code).toContain('import type { Route } from "../router.ts";');
+        expect(code).toContain("export const widgetRoutes: Route[] = [");
     });
 
     it("names the path, the method, and the schema of each call", () => {
@@ -104,8 +112,8 @@ describe("renderRoutesModule", () => {
     it("imports every generated piece from its barrel", () => {
         const code = render();
 
-        expect(code).toContain('from "../db/queries/index.ts"');
-        expect(code).toContain('from "../db/repositories/index.ts"');
+        expect(code).toContain('from "../../db/queries/index.ts"');
+        expect(code).toContain('from "../../db/repositories/index.ts"');
         expect(code).toContain('from "validation/index.ts"');
     });
 
@@ -114,15 +122,45 @@ describe("renderRoutesModule", () => {
 
         expect(code).not.toContain("getWidgetSchema");
         expect(code).not.toContain("/widget/get");
-        expect(code).not.toContain("getMarkerSchema");
-        expect(code).not.toContain("/marker/get");
+    });
+
+    it("imports only what this collection's calls need", () => {
+        const code = render();
+
+        expect(code).toContain("import { queryWidget }");
+        expect(code).not.toContain("queryMarker");
+        expect(code).not.toContain("createMarker");
     });
 
     it("names every import once, sorted", () => {
-        const queries = render().match(/import \{ ([^}]+) \} from "\.\.\/db\/queries\/index\.ts"/)?.[1] ?? "";
+        const queries = render().match(/import \{ ([^}]+) \} from "\.\.\/\.\.\/db\/queries\/index\.ts"/)?.[1] ?? "";
         const names = queries.split(", ");
 
         expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
         expect(new Set(names).size).toBe(names.length);
+    });
+});
+
+describe("renderRoutesIndex", () => {
+    it("concatenates every entity's routes into the table the router takes", () => {
+        const code = renderRoutesIndex(build({ Widget: WIDGET, Marker: MARKER }));
+
+        expect(code).toContain("export const routes: Route[] = [");
+        expect(code).toContain("    ...markerRoutes,");
+        expect(code).toContain("    ...widgetRoutes,");
+    });
+
+    it("imports each entity's routes from its own module", () => {
+        const code = renderRoutesIndex(build({ Widget: WIDGET, Marker: MARKER }));
+
+        expect(code).toContain('import { widgetRoutes } from "./widgetRoutes.ts";');
+        expect(code).toContain('import { markerRoutes } from "./markerRoutes.ts";');
+    });
+
+    it("gives every entity and the barrel a module", () => {
+        const files = renderRoutes(build({ Widget: WIDGET, Marker: MARKER }));
+
+        expect([...files.keys()]).toEqual(["markerRoutes.ts", "widgetRoutes.ts", "index.ts"]);
+        expect(files.get("widgetRoutes.ts")).toBe(renderEntityRoutes(widgetEntity()));
     });
 });
