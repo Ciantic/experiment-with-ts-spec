@@ -4,7 +4,8 @@
 against the real spec. It is the seed a development server starts from, so the
 client has something to read without a fixture being written per test.
 
-- `packages/spec/mockdata/<Entity>.ts` — that entity's rows.
+- `packages/spec/mockdata/<name>.ts` — one entity's row array, named after the
+  array it exports (`invoices.ts` exports `invoices`).
 - `packages/spec/mockdata/index.ts` — the barrel, plus `mockTables`, the
   ordered list of `{ entity, rows }`.
 - `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.

@@ -1,19 +1,19 @@
 /** Sample domain data for a seeded development database. See docs/mockdata.md. */
-import { customers } from "./customer.ts";
-import { invoices } from "./invoice.ts";
-import { invoiceRows } from "./invoiceRow.ts";
-import { invoicesSent } from "./invoiceSent.ts";
-import { invoiceSentRows } from "./invoiceSentRow.ts";
-import { sellers } from "./seller.ts";
-import { translations } from "./translation.ts";
+import { customers } from "./customers.ts";
+import { invoices } from "./invoices.ts";
+import { invoiceRows } from "./invoiceRows.ts";
+import { invoicesSent } from "./invoicesSent.ts";
+import { invoiceSentRows } from "./invoiceSentRows.ts";
+import { sellers } from "./sellers.ts";
+import { translations } from "./translations.ts";
 
-export * from "./customer.ts";
-export * from "./seller.ts";
-export * from "./invoice.ts";
-export * from "./invoiceRow.ts";
-export * from "./invoiceSent.ts";
-export * from "./invoiceSentRow.ts";
-export * from "./translation.ts";
+export * from "./customers.ts";
+export * from "./sellers.ts";
+export * from "./invoices.ts";
+export * from "./invoiceRows.ts";
+export * from "./invoicesSent.ts";
+export * from "./invoiceSentRows.ts";
+export * from "./translations.ts";
 
 /** One table's rows, named by the spec entity so a seeder can match `create<Entity>`. */
 export interface MockTable {

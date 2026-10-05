@@ -4,7 +4,7 @@ import type { InvoiceSent, InvoiceSentId } from "../src/domain/InvoiceSent.ts";
 import type { Seller, SellerId } from "../src/domain/Seller.ts";
 import type { EInvoiceAddress } from "../src/primitives/EInvoiceAddress.ts";
 import type { Money } from "../src/primitives/Money.ts";
-import { invoiceSentRows } from "./invoiceSentRow.ts";
+import { invoiceSentRows } from "./invoiceSentRows.ts";
 
 /** The customer as frozen onto the sent invoice, not the live record. */
 const acmeSnapshot: Customer = {
