@@ -45,7 +45,7 @@ not have yet is optional.
 
 Optionality is nullability, so the optional draft columns are nullable in
 `invoice` and `invoice_row`; `id` stays `not null` as the primary key, and
-`createdAt`/`updatedAt`/`version` stay `not null` because their `@default` fills
+`createdAt`/`updatedAt`/`version` stay `not null` because their `@pgdefault` fills
 them even though the field is optional.
 
 Two consequences worth naming:

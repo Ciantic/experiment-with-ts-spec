@@ -14,7 +14,7 @@ export type InvoiceSentId = BrandedId<"InvoiceSentId">;
  *
  * See docs/invoice-snapshotting.md.
  *
- * @table invoice_sent
+ * @pgtable invoice_sent
  */
 export interface InvoiceSent {
     /**

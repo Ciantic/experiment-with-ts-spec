@@ -12,7 +12,7 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 /** A versioned entity, so the routes cover a patch as well as a plain write. */
 const WIDGET = `
 /**
- * @table widget
+ * @pgtable widget
  */
 export interface Widget {
     /** @primaryKey */
@@ -26,7 +26,7 @@ export interface Widget {
 /** A bare entity: a key and nothing else. */
 const MARKER = `
 /**
- * @table marker
+ * @pgtable marker
  */
 export interface Marker {
     /** @primaryKey */

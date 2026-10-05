@@ -114,7 +114,7 @@ touches. That is a branch — a `@relation` or `@children` field, which has no
 column — a column the database owns outright: a clock field, a virtual generated
 column (`@pgvirtual`), or a nullable `@computed` field a trigger derives. An
 entity that writes every column keeps the plain `Partial<Entity>` shape. A
-`@default` column is *not* on this list: a patch may override a default, the
+`@pgdefault` column is *not* on this list: a patch may override a default, the
 same way a create may.
 
 The emitted statement writes every patchable column, using `coalesce` to keep a
@@ -178,7 +178,7 @@ The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
 `packages/backend/scripts/postgres-model.ts`, which maps the parsed spec
 (`packages/spec/scripts/spec-model.ts`) to columns. One interpretation of
-`@table`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
+`@pgtable`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
 key tags, and type mapping feeds both the DDL and the repositories, so a
 repository cannot name a column the schema does not have.
 
@@ -187,7 +187,7 @@ inlined optional customer is written as `row.customer?.name`, without the
 generator special-casing it. A relation contributes no column of its own: its
 `@foreignKey` field is an ordinary column, read as `row.customerId`.
 
-A column with a database default (`@default`) is written when the row supplies
+A column with a database default (`@pgdefault`) is written when the row supplies
 it, and its tuple carries the `default` keyword when the row omits it, so the
 database fills that row's value. The clock tags are the different case: they
 never appear in a generated `insert`, because the default fills `createdAt` and

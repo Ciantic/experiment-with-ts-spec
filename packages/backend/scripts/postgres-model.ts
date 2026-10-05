@@ -69,7 +69,7 @@ export interface Column {
     queryOrder?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with. See docs/queries.md. */
     where?: CompareOperator[];
-    /** False when a create never writes the column: `@default`, or a stored computation it can derive. */
+    /** False when a create never writes the column: `@pgdefault`, or a stored computation it can derive. */
     insertable: boolean;
     /** False when a patch never writes the column: a branch, a default, or a nullable computation. */
     updatable: boolean;
@@ -180,7 +180,7 @@ export function buildSpecTables(
 /** Build one table: its columns, branch relations, and trigger assignments. */
 function buildTable(context: BuildContext, spec: SpecInterface): Table {
     const table: Table = {
-        name: spec.tableName,
+        name: spec.pgTableName,
         interfaceName: spec.name,
         importSpecifier: spec.importSpecifier,
         columns: [],
@@ -336,7 +336,7 @@ function addScalarColumn(
 
     // A default makes the column not null even when the field is optional: the database fills it.
     // The clock tags supply their own default, so they make the column not null the same way.
-    const defaultValue = tags.default ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
+    const defaultValue = tags.pgdefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
     const column: Column = {
         name: fieldName,
         sqlType: resolved?.sqlType ?? "text",
@@ -447,11 +447,11 @@ function inlineColumns(context: BuildContext, table: Table, property: SpecProper
         columns[innerName] = columnName;
         table.columns.push(column);
     }
-    table.relations.set(fieldName, { kind: "inlined", table: declaration.tableName, columns });
+    table.relations.set(fieldName, { kind: "inlined", table: declaration.pgTableName, columns });
 }
 
 function entityTableName(context: BuildContext, entity: string): string | undefined {
-    return context.interfaces.get(entity)?.tableName;
+    return context.interfaces.get(entity)?.pgTableName;
 }
 
 /** Attach each cross-table aggregate to the child table that changes it. */

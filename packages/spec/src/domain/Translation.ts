@@ -1,7 +1,7 @@
 /**
  * A translation entry for an invoice.
  * 
- * @table translation
+ * @pgtable translation
  */
 export interface Translation {
 

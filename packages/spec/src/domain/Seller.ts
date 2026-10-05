@@ -10,7 +10,7 @@ export type SellerId = BrandedId<"SellerId">;
 /**
  * The company that issues invoices.
  * 
- * @table seller
+ * @pgtable seller
  */
 export interface Seller {
     /**
@@ -85,7 +85,7 @@ export interface Seller {
      * 
      * @fieldName Version
      * @version
-     * @default 0
+     * @pgdefault 0
      * @widget number
      */
     version?: Version;

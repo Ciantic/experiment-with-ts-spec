@@ -11,7 +11,7 @@ export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;
 /**
  * A single line item on a sent invoice.
  * 
- * @table invoice_sent_row
+ * @pgtable invoice_sent_row
  */
 export interface InvoiceSentRow {
     /**

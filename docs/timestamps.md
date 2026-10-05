@@ -8,7 +8,7 @@ Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
 - `InvoiceRow` — `createdAt`, `updatedAt`
 
 Both are supplied by the database through a single tag each, rather than through
-`@computed` plus `@default`. The tags are self-contained because the
+`@computed` plus `@pgdefault`. The tags are self-contained because the
 pairing of default and trigger is fixed and easy to get wrong by hand.
 
 ## `createdAt` — a database default
@@ -136,17 +136,17 @@ from `@inlined`.
 
 ## Gotchas
 
-- **A clock tag is exclusive with `@default`.** `@createdAt`/`@updatedAt` supply
-  `default now()` themselves, so writing `@default` beside one is a lint finding.
-  `@default` on its own is still valid, and a `@computed` field may carry one.
-- **The default expression is written verbatim.** `@default now()` becomes
+- **A clock tag is exclusive with `@pgdefault`.** `@createdAt`/`@updatedAt` supply
+  `default now()` themselves, so writing `@pgdefault` beside one is a lint finding.
+  `@pgdefault` on its own is still valid, and a `@computed` field may carry one.
+- **The default expression is written verbatim.** `@pgdefault now()` becomes
   `default now()`. It is SQL, not a formula name, so it is not validated and a
   typo surfaces when the DDL runs, not at lint time. The clock tags are the
   exception: their `now()` comes from the generator, not from a tag value.
 - **A clock column is invisible to the repository.** Excluding it is the
   point, but it means the generated `insert` cannot set it even deliberately.
   Writing one requires raw SQL. This applies to both timestamps; a plain
-  `@default` column is written when the caller supplies it.
+  `@pgdefault` column is written when the caller supplies it.
 - **A trigger can be bypassed.** `ALTER TABLE ... DISABLE TRIGGER` during a bulk
   load leaves `updatedAt` at its default rather than the write time. That is the
   case the default is there to keep sane, but the value will not be per-write.

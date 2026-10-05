@@ -40,7 +40,7 @@ export const FIELD_TAGS = [
     "primaryKey",
     "foreignKey",
     "unique",
-    "default",
+    "pgdefault",
     "version",
     "queryfilter",
     "queryorderby",
@@ -48,7 +48,7 @@ export const FIELD_TAGS = [
 ] as const;
 
 /** Tags an interface may carry. */
-export const INTERFACE_TAGS = ["table"] as const;
+export const INTERFACE_TAGS = ["pgtable"] as const;
 
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgtype"] as const;
@@ -61,10 +61,12 @@ export type InterfaceTag = (typeof INTERFACE_TAGS)[number];
 export type TypeTag = (typeof TYPE_TAGS)[number];
 export type Tag = (typeof TAGS)[number];
 
-/** Retired tags, mapped to the advice a linter reports in their place. */
+/** Retired or renamed tags, mapped to the advice a linter reports in their place. */
 export const RETIRED_TAGS = new Map<string, string>([
     ["readonly", "use @computed for a derived field; a system-assigned column needs no tag"],
     ["generated", "no tag marks a column as system-assigned; drop it"],
+    ["default", "use @pgdefault instead"],
+    ["table", "use @pgtable instead"],
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
     ["formula", "put the expression on the field with @pgvirtual, @pgtrigger, or @pgrollup"],
@@ -135,9 +137,11 @@ export interface Tags {
     /** The interface this field references, as written in `@foreignKey Customer`. */
     foreignKey?: string;
     unique: boolean;
-    default?: string;
+    /** The database column default, written verbatim into the DDL. */
+    pgdefault?: string;
     version: boolean;
-    table?: string;
+    /** The Postgres table name for the interface. */
+    pgtable?: string;
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
@@ -163,8 +167,8 @@ export interface SpecProperty {
 /** An interface in the spec: an entity, or a reusable structure. */
 export interface SpecInterface {
     name: string;
-    /** The `@table` value, or the snake_cased interface name. */
-    tableName: string;
+    /** The Postgres table name: the `@pgtable` value, or the snake_cased interface name. */
+    pgTableName: string;
     filePath: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
@@ -203,7 +207,7 @@ export function snakeCase(name: string): string {
 export function isInsertable(property: SpecProperty): boolean {
     const tags = property.tags;
     // A defaulted version's first revision comes from its default, so a create never carries it.
-    if (tags.version && tags.default !== undefined) {
+    if (tags.version && tags.pgdefault !== undefined) {
         return false;
     }
     // The clock tags and a virtual generated column are the database's entirely.
@@ -225,12 +229,12 @@ export function omittedFromInsert(spec: SpecInterface): SpecProperty[] {
     );
 }
 
-/** The insertable scalar fields a create may omit, because the column's `@default` fills them in. */
+/** The insertable scalar fields a create may omit, because the column's `@pgdefault` fills them in. */
 export function defaultedInsertProperties(spec: SpecInterface): SpecProperty[] {
     const omitted = new Set(omittedFromInsert(spec));
     return spec.properties.filter(
         (property) =>
-            !omitted.has(property) && !property.tags.inlined && property.tags.default !== undefined,
+            !omitted.has(property) && !property.tags.inlined && property.tags.pgdefault !== undefined,
     );
 }
 
@@ -340,11 +344,11 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "foreignKey":
                     if (value !== undefined) tags.foreignKey ??= value;
                     break;
-                case "default":
-                    if (value !== undefined) tags.default ??= value;
+                case "pgdefault":
+                    if (value !== undefined) tags.pgdefault ??= value;
                     break;
-                case "table":
-                    if (value !== undefined) tags.table ??= value;
+                case "pgtable":
+                    if (value !== undefined) tags.pgtable ??= value;
                     break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
@@ -439,7 +443,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
             const name = declaration.getName();
             interfaces.set(name, {
                 name,
-                tableName: readTags(declaration).table ?? snakeCase(name),
+                pgTableName: readTags(declaration).pgtable ?? snakeCase(name),
                 filePath,
                 importSpecifier: specImportSpecifier(filePath),
                 declaration,

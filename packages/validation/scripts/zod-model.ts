@@ -55,7 +55,7 @@ export interface ZodEntity {
     fields: ZodField[];
     /** Field names a create omits, rendered as an `.omit()` of the entity schema. */
     insertOmit: string[];
-    /** Required insertable field names a create may omit, because the column's `@default` fills them. */
+    /** Required insertable field names a create may omit, because the column's `@pgdefault` fills them. */
     insertOptional: string[];
     /** Field names a patch omits: the same set, less the key and version a patch must carry. */
     patchOmit: string[];

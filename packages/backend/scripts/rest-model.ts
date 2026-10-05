@@ -44,7 +44,7 @@ export interface RestEntity {
     module: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
-    /** The collection path, e.g. `/invoice`, taken from the `@table` name. */
+    /** The collection path, e.g. `/invoice`, taken from the `@pgtable` name. */
     path: string;
     /** The primary-key fields, which name the row a write targets; one for a single key. */
     keys: string[];
@@ -97,8 +97,8 @@ function operationsFor(path: string): RestOperation[] {
 /** Map one interface to its REST surface, reading only the annotations the wire depends on. */
 function restEntityFor(spec: SpecInterface): RestEntity {
     const properties = spec.properties;
-    // The collection path is the table name, so a new entity is exposed with no generator edit.
-    const path = `/${spec.tableName}`;
+    // The collection path is the Postgres table name, so a new entity is exposed with no generator edit.
+    const path = `/${spec.pgTableName}`;
     const whereFields: { name: string; operators: string[] }[] = [];
     for (const property of properties) {
         const operators = (property.tags.where ?? []).filter(isCompareOperator);

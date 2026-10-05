@@ -130,7 +130,7 @@ permit exactly the same fields. A nullable `@computed` value is on the
 list because a `before insert or update` trigger derives it, and a `@pgvirtual`
 value is on it whether nullable or not because Postgres refuses the write: the
 update does not name the column, so accepting one would be accepting a field that
-does nothing (`docs/repositories.md`). A `@default` column is not on the list: a
+does nothing (`docs/repositories.md`). A `@pgdefault` column is not on the list: a
 patch may override a default, exactly as a create may.
 
 ## Insert schemas
@@ -171,7 +171,7 @@ A field is omitted when the database owns it, from either annotation:
   `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
   not a default.
 
-A `@default` column is deliberately absent from the omit list. A create may
+A `@pgdefault` column is deliberately absent from the omit list. A create may
 supply it or leave it out; an omitted one sends the `default` keyword, so the
 database fills that row. A *required* defaulted field is relaxed with
 `.partial()` so the schema agrees that omitting it is allowed.

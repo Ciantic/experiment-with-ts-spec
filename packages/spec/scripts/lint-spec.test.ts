@@ -59,6 +59,25 @@ describe("lintSourceText", () => {
         ]);
     });
 
+    it("reports the renamed @default and @table under their new names", () => {
+        const findings = lintSourceText(
+            `/** @table legacy */
+            export interface Legacy {
+                /**
+                 * @fieldName Source
+                 * @widget text
+                 * @default 'manual'
+                 */
+                source: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Legacy`: @table is retired; use @pgtable instead",
+            "`source`: @default is retired; use @pgdefault instead",
+        ]);
+    });
+
     it("reports an unrecognised tag", () => {
         const findings = lintSourceText(
             `export interface Unknown {
@@ -247,13 +266,13 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
-    it("accepts @default with an expression", () => {
+    it("accepts @pgdefault with an expression", () => {
         const findings = lintSourceText(
             `export interface Defaulted {
                 /**
                  * @fieldName Source
                  * @widget text
-                 * @default 'manual'
+                 * @pgdefault 'manual'
                  */
                 source?: string;
             }`,
@@ -262,7 +281,7 @@ describe("lintSourceText", () => {
         expect(findings).toEqual([]);
     });
 
-    it("accepts @default alongside @computed", () => {
+    it("accepts @pgdefault alongside @computed", () => {
         const findings = lintSourceText(
             `export interface DefaultedComputed {
                 /**
@@ -270,7 +289,7 @@ describe("lintSourceText", () => {
                  * @widget number
                  * @computed
                  * @pgtrigger NEW."net" := NEW."q" * NEW."p"
-                 * @default 0
+                 * @pgdefault 0
                  */
                 net?: Money;
             }`,
@@ -327,21 +346,21 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`updatedAt`: @updatedAt and @computed are mutually exclusive"]);
     });
 
-    it("rejects @default on a clock field", () => {
+    it("rejects @pgdefault on a clock field", () => {
         const findings = lintSourceText(
             `export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
                  * @createdAt
-                 * @default now()
+                 * @pgdefault now()
                  */
                 createdAt?: Date;
             }`,
         );
 
         expect(messages(findings)).toEqual([
-            "`createdAt`: @createdAt supplies its own default; drop @default",
+            "`createdAt`: @createdAt supplies its own default; drop @pgdefault",
         ]);
     });
 
@@ -360,19 +379,19 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual(["`createdAt`: @createdAt takes no value"]);
     });
 
-    it("reports @default without an expression", () => {
+    it("reports @pgdefault without an expression", () => {
         const findings = lintSourceText(
             `export interface EmptyDefault {
                 /**
                  * @fieldName Created at
                  * @widget date
-                 * @default
+                 * @pgdefault
                  */
                 createdAt?: Date;
             }`,
         );
 
-        expect(messages(findings)).toEqual(["`createdAt`: @default is missing its expression"]);
+        expect(messages(findings)).toEqual(["`createdAt`: @pgdefault is missing its expression"]);
     });
 
     it("accepts @inlined as a bare marker", () => {
@@ -487,7 +506,7 @@ describe("lintSourceText", () => {
                  * @fieldName Version
                  * @widget number
                  * @version
-                 * @default 0
+                 * @pgdefault 0
                  */
                 version?: Version;
             }`,

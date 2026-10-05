@@ -226,9 +226,9 @@ describe("generateSchema output", () => {
         expect(sql).toContain('create table "line_item"');
     });
 
-    it("lets @table override the table name", () => {
+    it("lets @pgtable override the table name", () => {
         const { sql } = generate({
-            domain: { Person: "/** @table people */\nexport interface Person {\n    /** @primaryKey */\n    id: GUID; }" },
+            domain: { Person: "/** @pgtable people */\nexport interface Person {\n    /** @primaryKey */\n    id: GUID; }" },
         });
 
         expect(sql).toContain('create table "people"');
@@ -776,7 +776,7 @@ describe("generateSchema @version", () => {
         /**
          * The revision.
          * @version
-         * @default 0
+         * @pgdefault 0
          */
         version?: Version;
     }`;
@@ -809,7 +809,7 @@ describe("generateSchema @version", () => {
                     key: string;
                     /**
                      * @version
-                     * @default 0
+                     * @pgdefault 0
                      */
                     version?: Version;
                 }`,
@@ -827,13 +827,13 @@ describe("generateSchema @version", () => {
 });
 
 describe("generateSchema defaults", () => {
-    it("emits a database default for @default", () => {
+    it("emits a database default for @pgdefault", () => {
         const { sql } = generate({
             domain: {
                 Thing: `export interface Thing {
                     /** @primaryKey */
                     id: GUID;
-                    /** @default now() */
+                    /** @pgdefault now() */
                     at: Date;
                 }`,
             },
@@ -848,7 +848,7 @@ describe("generateSchema defaults", () => {
                 Thing: `export interface Thing {
                     /** @primaryKey */
                     id: GUID;
-                    /** @default now() */
+                    /** @pgdefault now() */
                     at?: Date;
                 }`,
             },
@@ -858,7 +858,7 @@ describe("generateSchema defaults", () => {
         expect(sql).not.toContain('"at" timestamptz default now()');
     });
 
-    it("emits no default when @default is absent", () => {
+    it("emits no default when @pgdefault is absent", () => {
         const { sql } = generate({ domain: { Thing: "export interface Thing {\n    /** @primaryKey */\n    id: GUID; at: Date; }" } });
 
         expect(sql).not.toContain("default");

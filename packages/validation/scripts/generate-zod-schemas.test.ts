@@ -78,7 +78,7 @@ export type ThingFormat = "short" | "long" | (string & {});
 /**
  * A thing.
  *
- * @table thing
+ * @pgtable thing
  */
 export interface Thing {
     /**
@@ -125,7 +125,7 @@ export interface Thing {
 /**
  * A child of a thing.
  *
- * @table child
+ * @pgtable child
  */
 export interface Child {
     /**
@@ -143,7 +143,7 @@ export type ChildId = BrandedId<"ChildId">;
 /**
  * A parent of a thing.
  *
- * @table parent
+ * @pgtable parent
  */
 export interface Parent {
     /**
@@ -629,7 +629,7 @@ export type MarkerId = BrandedId<"MarkerId">;
 /**
  * A marker.
  *
- * @table marker
+ * @pgtable marker
  */
 export interface Marker {
     /**
@@ -643,7 +643,7 @@ export interface Marker {
     /**
      * When it was created.
      *
-     * @default now()
+     * @pgdefault now()
      */
     createdAt?: Date;
     /**
@@ -668,7 +668,7 @@ const TRANSLATION = `
 /**
  * A translation entry.
  *
- * @table translation
+ * @pgtable translation
  */
 export interface Translation {
     /**
@@ -701,7 +701,7 @@ export type ChildId = BrandedId<"ChildId">;
 /**
  * A child.
  *
- * @table child
+ * @pgtable child
  */
 export interface Child {
     /**
@@ -717,7 +717,7 @@ export interface Child {
 /**
  * A thing holding a snapshot of its child.
  *
- * @table thing
+ * @pgtable thing
  */
 export interface Thing {
     /**
@@ -774,7 +774,7 @@ export interface Thing {
     /**
      * Where it came from.
      *
-     * @default 'manual'
+     * @pgdefault 'manual'
      */
     source: string;
 }

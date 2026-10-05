@@ -117,10 +117,13 @@ export function lintInterface(
             if (ALLOWED_INTERFACE_TAGS.has(tagName)) {
                 continue;
             }
+            const retired = RETIRED_TAGS.get(tagName);
             findings.push({
                 filePath,
                 line: tag.getStartLineNumber(),
-                message: `\`${name}\`: @${tagName} is not a recognised interface tag`,
+                message: retired
+                    ? `\`${name}\`: @${tagName} is retired; ${retired}`
+                    : `\`${name}\`: @${tagName} is not a recognised interface tag`,
             });
         }
     }
@@ -183,7 +186,7 @@ interface FieldTags {
     rollup: JSDocTag | undefined;
     createdAt: JSDocTag | undefined;
     updatedAt: JSDocTag | undefined;
-    default: JSDocTag | undefined;
+    pgdefault: JSDocTag | undefined;
     branches: BranchTag[];
     primaryKey: JSDocTag | undefined;
     foreignKey: JSDocTag | undefined;
@@ -216,7 +219,7 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         rollup: first("pgrollup"),
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
-        default: first("default"),
+        pgdefault: first("pgdefault"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
         primaryKey: first("primaryKey"),
         foreignKey: first("foreignKey"),
@@ -327,8 +330,8 @@ function lintClocks(tags: FieldTags, report: Report): void {
         if (tags.computed) {
             report(`@${name} and @computed are mutually exclusive`, tag);
         }
-        if (tags.default) {
-            report(`@${name} supplies its own default; drop @default`, tag);
+        if (tags.pgdefault) {
+            report(`@${name} supplies its own default; drop @pgdefault`, tag);
         }
         for (const { name: mechanism } of tags.mechanism) {
             report(`@${name} and @${mechanism} are mutually exclusive`, tag);
@@ -342,10 +345,10 @@ function lintClocks(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@default` carries the expression the database applies when the column is omitted. */
+/** `@pgdefault` carries the expression the database applies when the column is omitted. */
 function lintDefaultTag(tags: FieldTags, report: Report): void {
-    if (tags.default && !(tags.default.getCommentText() ?? "").trim()) {
-        report("@default is missing its expression", tags.default);
+    if (tags.pgdefault && !(tags.pgdefault.getCommentText() ?? "").trim()) {
+        report("@pgdefault is missing its expression", tags.pgdefault);
     }
 }
 

@@ -12,7 +12,7 @@ export type InvoiceRowId = BrandedId<"InvoiceRowId">;
 /**
  * A single line item on an invoice.
  * 
- * @table invoice_row
+ * @pgtable invoice_row
  */
 export interface InvoiceRow {
     /**
@@ -126,7 +126,7 @@ export interface InvoiceRow {
      * 
      * @fieldName Version
      * @version
-     * @default 0
+     * @pgdefault 0
      * @widget number
      */
     version?: Version;

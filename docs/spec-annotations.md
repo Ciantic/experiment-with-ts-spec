@@ -34,7 +34,7 @@ Field tags:
 - `@updatedAt` — the row's last-write moment. A bare marker on a `Date` field: the
   column becomes `not null default now()`, and every write assigns
   `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
-- `@default <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and a create may omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md`.
+- `@pgdefault <expression>` — a database column default, written verbatim into the DDL. The field may be optional, and a create may omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md`.
 - `@primaryKey` — a column of the table's primary key. A bare marker on a scalar
   field: the column is `not null`, and the generated reads filter on it by
   default. One field is a single-column key; marking several makes a composite
@@ -48,7 +48,7 @@ Field tags:
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
 - `@unique` — the column is unique.
-- `@version` — the optimistic-lock column. Omitted on insert (the `@default`
+- `@version` — the optimistic-lock column. Omitted on insert (the `@pgdefault`
   supplies the first revision) and written on update as the caller's
   precondition; a `before update` trigger validates and increments it. At most
   one per interface, the field type must be `Version`, and it is exclusive with
@@ -68,7 +68,7 @@ Field tags:
 
 Interface tags:
 
-- `@table <name>` — the table name. Defaults to the snake_cased interface name.
+- `@pgtable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 
 Type tags:
 
@@ -103,7 +103,7 @@ mutually exclusive.
 `@computed` says the database derives a value, not that a client supplies one.
 How the value arrives is the mechanism tag beside it: a generated column, a
 trigger, or a rollup. Everything else is an ordinary field — a key the
-application assigns, a column with a `@default` — and no tag marks it. The clock
+application assigns, a column with a `@pgdefault` — and no tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
 ## `@primaryKey` and `@foreignKey`
@@ -360,16 +360,26 @@ above. See `docs/schema-generation.md`.
 
 ## Why the expressions live in the spec
 
-The mechanism tags are deliberately Postgres-specific, in the same way `@pgtype`
-is: `packages/spec/` names the storage the backend uses rather than describing a
-second, abstract vocabulary that only one backend consumes. The dialect-neutral
-part is `@computed`, which says `this is derived` and drives the insert and patch
-schemas; the `@pg*` tag beside it says how this database materializes it.
+The `@pg*` tags are deliberately Postgres-specific: `packages/spec/` names the
+storage the backend uses rather than describing a second, abstract vocabulary
+that only one backend consumes. The prefix marks a tag whose concept or spelling
+is Postgres-specific — `@pgtype` a storage type name, `@pgvirtual`,
+`@pgtrigger` and `@pgrollup` the expressions that materialize a derivation,
+`@pgdefault` a column default, and `@pgtable` the table name itself. A portable
+SQL concept stays unprefixed: `@primaryKey`, `@foreignKey`, `@unique`, and the
+two clock tags.
 
-That means a different backend needs its own mechanism tags, exactly as it needs
-its own `@pgtype` mapping. There is no name indirection to resolve and no
-registry to keep in step, so a field's expression sits next to the field it
-describes:
+The same rule reaches the parsed model, so a consumer can tell a Postgres value
+from a neutral one by the field it reads: `SpecInterface.pgTableName` is the
+resolved table name and `Tags.pgdefault` the default expression, while
+`SpecInterface.name`, `SpecProperty.typeText`, and `Tags.primaryKey` stay
+unprefixed. Only the tag keys and the model fields that hold a Postgres value
+are prefixed; a resolved value inside `postgres-model.ts`, such as
+`Column.sqlType`, is not, because that module is Postgres-only by name.
+
+That means a different backend needs its own tags, exactly as it needs its own
+`@pgtype` mapping. There is no name indirection to resolve and no registry to
+keep in step, so a field's expression sits next to the field it describes:
 
 ```
 /**
@@ -389,8 +399,8 @@ interfaces in `packages/spec/` with ts-morph. Run it whenever a tag changes.
 Enforced:
 
 - Tags are limited to the field and interface tags listed above.
-- Retired tags (`@generated`, `@readonly`, `@type`, `@values`, `@formula`)
-  report their replacement.
+- Retired tags (`@generated`, `@default`, `@table`, `@readonly`, `@type`,
+  `@values`, `@formula`) report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
@@ -400,7 +410,7 @@ Enforced:
   substitute twice.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are
   mutually exclusive with each other and with `@computed`,
-  `@default`, `@version`, and the mechanism tags, and may appear at most once per
+  `@pgdefault`, `@version`, and the mechanism tags, and may appear at most once per
   interface.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.

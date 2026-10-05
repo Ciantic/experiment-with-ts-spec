@@ -19,15 +19,15 @@ describe("parseSpec interfaces", () => {
     it("snake-cases the table name by default", () => {
         const { interfaces } = parse({ "LineItem.ts": "export interface LineItem { id: string; }" });
 
-        expect(interfaces.get("LineItem")?.tableName).toBe("line_item");
+        expect(interfaces.get("LineItem")?.pgTableName).toBe("line_item");
     });
 
-    it("lets @table override the table name", () => {
+    it("lets @pgtable override the table name", () => {
         const { interfaces } = parse({
-            "Person.ts": "/** @table people */\nexport interface Person { id: string; }",
+            "Person.ts": "/** @pgtable people */\nexport interface Person { id: string; }",
         });
 
-        expect(interfaces.get("Person")?.tableName).toBe("people");
+        expect(interfaces.get("Person")?.pgTableName).toBe("people");
     });
 
     it("maps a source file back to its package import specifier", () => {
@@ -264,11 +264,11 @@ describe("patch field rules", () => {
     });
 
     it("keeps a defaulted field patchable, so a caller may override the default", () => {
-        expect(omitted("    /**\n     * @default now()\n     */", "createdAt?: Date;")).toEqual([]);
+        expect(omitted("    /**\n     * @pgdefault now()\n     */", "createdAt?: Date;")).toEqual([]);
     });
 
     it("keeps the version patchable, because a patch carries it to lock the row", () => {
-        expect(omitted("    /**\n     * @version\n     * @default 0\n     */", "version?: number;")).toEqual([]);
+        expect(omitted("    /**\n     * @version\n     * @pgdefault 0\n     */", "version?: number;")).toEqual([]);
     });
 
     it("refuses a nullable computation the trigger derives", () => {
@@ -306,7 +306,7 @@ describe("insert field rules", () => {
         omittedFromInsert(spec(doc, declaration)).map((property) => property.name);
 
     it("writes a defaulted field, so a caller may override the default", () => {
-        const doc = "    /**\n     * @default now()\n     */";
+        const doc = "    /**\n     * @pgdefault now()\n     */";
         expect(omitted(doc, "createdAt?: Date;")).toEqual([]);
         expect(defaultedInsertProperties(spec(doc, "createdAt?: Date;")).map((property) => property.name)).toEqual([
             "createdAt",
@@ -314,7 +314,7 @@ describe("insert field rules", () => {
     });
 
     it("keeps a defaulted field out of the optional set when it is not insertable", () => {
-        const doc = "    /**\n     * @version\n     * @default 0\n     */";
+        const doc = "    /**\n     * @version\n     * @pgdefault 0\n     */";
         expect(omitted(doc, "version?: number;")).toEqual(["version"]);
         expect(defaultedInsertProperties(spec(doc, "version?: number;"))).toEqual([]);
     });
@@ -342,7 +342,7 @@ describe("insert field rules", () => {
     });
 
     it("leaves an inlined branch alone, since it has no single column to default", () => {
-        expect(defaultedInsertProperties(spec("    /**\n     * @inlined\n     * @default '{}'\n     */", "snapshot?: Snapshot;"))).toEqual(
+        expect(defaultedInsertProperties(spec("    /**\n     * @inlined\n     * @pgdefault '{}'\n     */", "snapshot?: Snapshot;"))).toEqual(
             [],
         );
     });

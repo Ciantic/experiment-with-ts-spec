@@ -21,7 +21,7 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 /** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
 /**
- * @table widget
+ * @pgtable widget
  */
 export interface Widget {
     /** @primaryKey */
@@ -44,7 +44,7 @@ export interface Widget {
 /** A bare entity: a key and nothing else. */
 const MARKER = `
 /**
- * @table marker
+ * @pgtable marker
  */
 export interface Marker {
     /** @primaryKey */
@@ -55,7 +55,7 @@ export interface Marker {
 /** An entity keyed by two fields, so a write addresses it by both. */
 const TRANSLATION = `
 /**
- * @table translation
+ * @pgtable translation
  */
 export interface Translation {
     /** @primaryKey */
@@ -71,7 +71,7 @@ export interface Translation {
 /** An entity whose module name differs from its validation file, which is lower-cased. */
 const LIMITED = `
 /**
- * @table limited
+ * @pgtable limited
  */
 export interface Limited {
     /** @primaryKey */
