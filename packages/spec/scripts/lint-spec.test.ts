@@ -215,7 +215,7 @@ describe("lintSourceText", () => {
                  * @fieldName Label
                  * @widget number
                  * @computed
-                 * @pgRollup update "t" set "n" = OLD."n" where "id" = NEW."id"
+                 * @pgRollup Child: update "t" set "n" = OLD."n" where "id" = NEW."id"
                  */
                 label: string;
             }`,
@@ -224,6 +224,40 @@ describe("lintSourceText", () => {
         expect(messages(findings)).toEqual([
             "`label`: @pgRollup is written with NEW.; the delete variant is generated from it",
         ]);
+    });
+
+    it("requires a @pgRollup child table before the statement", () => {
+        const findings = lintSourceText(
+            `export interface Rollup {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgRollup
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`label`: @pgRollup is missing its child table, such as `InvoiceRow`",
+        ]);
+    });
+
+    it("requires a @pgRollup statement after the child", () => {
+        const findings = lintSourceText(
+            `export interface Rollup {
+                /**
+                 * @fieldName Label
+                 * @widget number
+                 * @computed
+                 * @pgRollup Child:
+                 */
+                label: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`label`: @pgRollup is missing its statement"]);
     });
 
     it("accepts a complete @computed field", () => {

@@ -112,17 +112,16 @@ child rows do not exist yet at insert. They are therefore `after insert or
 update` and `after delete` triggers on the child table, which `update` the
 parent with a fresh `sum`. An `@pgRollup` statement is written once with `NEW.`;
 the generator emits the `after delete` variant by substituting `OLD.`, and
-attaches it to every child table whose foreign key points at the parent.
+attaches it to the one child the tag names.
 
 The invoice total is not part of that update. It is a virtual generated column
 over `"netAmount" + "taxAmount"`, so it recomputes on read. The rollup's `update`
 does fire the invoice's before-update trigger, which refreshes `updatedAt`; the
 two mechanisms chain, and the chain is load-bearing for the clock.
 
-Known constraint: the aggregate statements hardcode the foreign key column
-`"invoiceId"`. A second child table with a different key column would need its
-own statement, which is why `@pgRollup` is written per parent field rather than
-shared by name.
+A child whose foreign key points at the parent but which no `@pgRollup` names
+gets no trigger. A statement that reads such a child's table is a generation
+error, because that child's writes would leave the aggregate stale.
 
 ## Validation
 
@@ -132,6 +131,9 @@ Two test files:
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. `generateSchema` takes
   `{ specGlob, aliasGlob }` so a fixture can be generated from its own files.
+  Its rollup group also executes the generated triggers in PGlite, which is the
+  one place the attachment is observable: a trigger on the wrong child is valid
+  SQL, so no text assertion can see it.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the committed file
   executes in Postgres.
 
@@ -145,12 +147,10 @@ identifiers, foreign keys pointing at real tables, functions existing before the
 are used), because Postgres rejects all of those at parse or create time. Text
 assertions on the same properties can only fail where execution already would.
 
-None of these assert what the schema *means*. A trigger that computes the wrong
-column, or an aggregate that sums the wrong thing, passes both — the SQL is
-valid and the text is as generated. Behavioural tests are deliberately absent:
-they would be tightly coupled to the domain and would have to be rewritten with
-every model change. When the model settles, a suite that exercises triggers and
-constraints against PGlite is the missing layer.
+Beyond the rollup wiring, none of these assert what the schema *means*. A trigger
+that computes the wrong column, or an aggregate that sums the wrong thing, passes
+the text assertions — the SQL is valid and the text is as generated. A field's
+expression is only checked by reading it.
 
 ## Type resolution
 

@@ -20,6 +20,7 @@ import {
     isCompareOperator,
     isOrderDirection,
     parseParameters,
+    parseRollup,
     readTags,
     type ComputedKind,
 } from "./spec-model.ts";
@@ -295,7 +296,8 @@ function lintOwnership(tags: FieldTags, report: Report): void {
 /** A `@computed` field names one mechanism, with an expression. See docs/spec-annotations.md. */
 function lintComputedMechanism(tags: FieldTags, report: Report): void {
     for (const { name, tag } of tags.mechanism) {
-        if (!(tag.getCommentText() ?? "").trim()) {
+        // A rollup's value is a child entity plus a statement, which lintRollup checks.
+        if (name !== "pgRollup" && !(tag.getCommentText() ?? "").trim()) {
             report(`@${name} is missing its expression`, tag);
         }
         if (!tags.computed) {
@@ -311,6 +313,21 @@ function lintComputedMechanism(tags: FieldTags, report: Report): void {
     // The generator derives the delete variant by substituting OLD. for NEW., so OLD. here would be partial.
     if (tags.rollup && (tags.rollup.getCommentText() ?? "").includes("OLD.")) {
         report("@pgRollup is written with NEW.; the delete variant is generated from it", tags.rollup);
+    }
+}
+
+/** A `@pgRollup` names one child table, then the statement attached to it. */
+function lintRollup(tags: FieldTags, report: Report): void {
+    const tag = tags.rollup;
+    if (!tag) {
+        return;
+    }
+    // Whether the child exists is answered against the spec's interfaces, which the schema generator has.
+    const { child, statement } = parseRollup(tag.getCommentText() ?? "");
+    if (!child) {
+        report("@pgRollup is missing its child table, such as `InvoiceRow`", tag);
+    } else if (!statement) {
+        report("@pgRollup is missing its statement", tag);
     }
 }
 
@@ -504,6 +521,7 @@ function lintProperty(
     lintWidget(tags, report);
     lintOwnership(tags, report);
     lintComputedMechanism(tags, report);
+    lintRollup(tags, report);
     lintClocks(tags, report);
     lintDefaultTag(tags, report);
     lintBranches(tags, report);

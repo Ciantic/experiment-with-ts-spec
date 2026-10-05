@@ -251,25 +251,3 @@ $$ language plpgsql;
 
 create trigger "invoice_row_rollup_invoice_unset" after delete on "invoice_row"
     for each row execute function "invoice_row_rollup_invoice_unset"();
-
-create function "invoice_sent_rollup_invoice_set"() returns trigger as $$
-begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId";
-    return null;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_sent_rollup_invoice_set" after insert or update on "invoice_sent"
-    for each row execute function "invoice_sent_rollup_invoice_set"();
-
-create function "invoice_sent_rollup_invoice_unset"() returns trigger as $$
-begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = OLD."invoiceId") where "id" = OLD."invoiceId";
-    return null;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_sent_rollup_invoice_unset" after delete on "invoice_sent"
-    for each row execute function "invoice_sent_rollup_invoice_unset"();

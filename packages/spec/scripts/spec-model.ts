@@ -89,6 +89,9 @@ export type Widget = (typeof WIDGETS)[number];
 export const COMPUTED_KINDS = ["pgVirtual", "pgTrigger", "pgRollup"] as const;
 export type ComputedKind = (typeof COMPUTED_KINDS)[number];
 
+/** The `@pgRollup` separator: the child entity name ends at its first colon. */
+export const ROLLUP_SEPARATOR = ":";
+
 /** The sort directions an `@queryOrderBy default …` may name. */
 export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
 export type OrderDirection = (typeof ORDER_DIRECTIONS)[number];
@@ -133,8 +136,8 @@ export interface Tags {
     pgVirtual?: string;
     /** The before insert/update statement that maintains a `@computed` field, using `NEW.`. */
     pgTrigger?: string;
-    /** The child-change statement that maintains an aggregated `@computed` field, using `NEW.`. */
-    pgRollup?: string;
+    /** The child-change statement that maintains an aggregated `@computed` field, and the child that drives it. */
+    pgRollup?: PgRollup;
     /** The field holds a single related entity, stored as a foreign key. */
     relation: boolean;
     /** The field holds a child collection; the child table carries the foreign key. */
@@ -303,6 +306,21 @@ export function parseParameters(tag: JSDocTag): TagParameters {
     return parameters;
 }
 
+/** A `@pgRollup`: the child table that drives the aggregate, and the statement attached to it. */
+export interface PgRollup {
+    /** The child entity whose writes maintain the aggregate. */
+    child: string;
+    statement: string;
+}
+
+/** Split a `@pgRollup` value into its child entity and statement; the entity ends at the first colon. */
+export function parseRollup(value: string): PgRollup {
+    const separator = value.indexOf(ROLLUP_SEPARATOR);
+    const child = (separator === -1 ? "" : value.slice(0, separator)).trim();
+    const statement = separator === -1 ? "" : value.slice(separator + 1).trim();
+    return { child, statement };
+}
+
 /** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
@@ -412,7 +430,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (value !== undefined) tags.pgTrigger ??= value;
                     break;
                 case "pgRollup":
-                    if (value !== undefined) tags.pgRollup ??= value;
+                    if (value !== undefined) {
+                        tags.pgRollup ??= parseRollup(value);
+                    }
                     break;
                 default:
                     break;

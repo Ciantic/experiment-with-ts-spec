@@ -15,6 +15,7 @@ import {
     type CompareOperator,
     type Diagnostic,
     type OrderDirection,
+    type PgRollup,
     type SpecInterface,
     type SpecProperty,
     type SpecTypeAlias,
@@ -171,7 +172,7 @@ export function buildSpecTables(
         tables.set(spec.name, buildTable(context, spec));
     }
 
-    attachRollups(tables, interfaces);
+    attachRollups(tables, interfaces, context);
     resolveBranchColumns(tables, context);
 
     return { tables, diagnostics };
@@ -454,38 +455,81 @@ function entityTableName(context: BuildContext, entity: string): string | undefi
     return context.interfaces.get(entity)?.pgTableName;
 }
 
-/** Attach each cross-table aggregate to the child table that changes it. */
-function attachRollups(tables: Map<string, Table>, interfaces: Map<string, SpecInterface>): void {
+/** Attach each cross-table aggregate to the child table its `@pgRollup` names. */
+function attachRollups(
+    tables: Map<string, Table>,
+    interfaces: Map<string, SpecInterface>,
+    context: BuildContext,
+): void {
     for (const spec of interfaces.values()) {
         const parentTable = tables.get(spec.name);
         if (!parentTable) {
             continue;
         }
         for (const property of spec.properties) {
-            const rollupStatement = property.tags.pgRollup;
-            if (rollupStatement === undefined) {
+            const rollup = property.tags.pgRollup;
+            if (rollup === undefined) {
+                continue;
+            }
+            const child = resolveRollupChild(rollup, parentTable, property, tables, context);
+            if (!child) {
                 continue;
             }
             // One statement is written for the child change and mirrored for the child removal.
-            const newStatement = stripSemicolon(rollupStatement) + ";";
+            const newStatement = stripSemicolon(rollup.statement) + ";";
             const oldStatement = newStatement.replaceAll("NEW.", "OLD.");
-            for (const child of tables.values()) {
-                const hasForeignKey = child.columns.some(
-                    (column) => column.references?.table === parentTable.name,
-                );
-                if (!hasForeignKey) {
-                    continue;
-                }
-                const rollup = parentTable.rollups.get(child.name) ?? {
-                    newStatements: [],
-                    oldStatements: [],
-                };
-                rollup.newStatements.push(newStatement);
-                rollup.oldStatements.push(oldStatement);
-                parentTable.rollups.set(child.name, rollup);
-            }
+            const entry = parentTable.rollups.get(child.name) ?? {
+                newStatements: [],
+                oldStatements: [],
+            };
+            entry.newStatements.push(newStatement);
+            entry.oldStatements.push(oldStatement);
+            parentTable.rollups.set(child.name, entry);
         }
     }
+}
+
+/** Resolve the child a `@pgRollup` names, reporting one whose writes the statement reads but the tag leaves out. */
+function resolveRollupChild(
+    rollup: PgRollup,
+    parentTable: Table,
+    property: SpecProperty,
+    tables: Map<string, Table>,
+    context: BuildContext,
+): Table | undefined {
+    const child = tables.get(rollup.child);
+    if (!child) {
+        context.reportField(parentTable, property.name, `@pgRollup child \`${rollup.child}\` is not an entity`);
+        return undefined;
+    }
+    const referencing = [...tables.values()].filter((candidate) =>
+        candidate.columns.some((column) => column.references?.table === parentTable.name),
+    );
+    if (!referencing.includes(child)) {
+        context.reportField(
+            parentTable,
+            property.name,
+            `@pgRollup child \`${child.interfaceName}\` has no @foreignKey referencing \`${parentTable.interfaceName}\``,
+        );
+        return undefined;
+    }
+    // A statement reading a child with no trigger would leave the parent's value stale.
+    for (const other of referencing) {
+        if (other === child || !statementReadsChild(rollup.statement, other)) {
+            continue;
+        }
+        context.reportField(
+            parentTable,
+            property.name,
+            `@pgRollup reads \`${other.interfaceName}\` but attaches to \`${child.interfaceName}\`; write a second @pgRollup`,
+        );
+    }
+    return child;
+}
+
+/** True when the statement names the child's table outright. */
+function statementReadsChild(statement: string, child: Table): boolean {
+    return statement.includes(quote(child.name));
 }
 
 /** Point each branch at the column it navigates through, once every table's columns exist. */

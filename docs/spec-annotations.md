@@ -40,10 +40,9 @@ Field tags:
 - `@pgTrigger <statement>` — the field is assigned by the table's `before insert
   or update` trigger. The statement is written verbatim with `NEW.` and is emitted
   in interface field order after the table's clock assignment.
-- `@pgRollup <statement>` — the field aggregates child rows. The statement is
-  written once with `NEW.`; the generator attaches it to `after insert or update`
-  on every table whose foreign key points at this field's table, and emits the
-  `after delete` variant by substituting `OLD.` for `NEW.`.
+- `@pgRollup <Child>: <statement>` — the field aggregates the rows of the named
+  child entity, so the trigger lives on that child's table. The statement is
+  written verbatim with `NEW.`. See "`@pgRollup`" below.
 - `@createdAt` — the row's creation moment. A bare marker on a `Date` field: the
   column becomes `not null default now()`, and no create or patch writes it. See
   `docs/timestamps.md`.
@@ -264,7 +263,8 @@ Three mechanisms, chosen by what the expression needs:
   column (it may read other columns the trigger assigned earlier in the same
   pass) and indexable.
 - `@pgRollup` — a cross-table aggregate. The only mechanism that can read another
-  table, and the only one written once for many child tables.
+  table, and the only one whose trigger is placed on the child rather than the
+  field's own table.
 
 `invoice.totalAmount` is the one `@pgVirtual` field: it is a same-row sum of two
 regular columns. `invoice.netAmount`/`taxAmount` are `@pgRollup` because a sum
@@ -293,6 +293,32 @@ rounding or tax rules change. A trigger writes the rolled-up value once, when a
 child row changes, and the column keeps it. `@pgVirtual` is used only where the
 value is a pure function of two columns on the same row, so a recomputation from
 those columns always reproduces the same figure.
+
+## `@pgRollup`
+
+A `@pgRollup` value is the child entity, a colon, then the statement:
+
+```
+@pgRollup InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = NEW."invoiceId") where "id" = NEW."invoiceId"
+```
+
+- The child names the one table whose writes maintain the field. The generator
+  emits an `after insert or update` trigger there, and an `after delete` variant
+  built by substituting `OLD.` for `NEW.`.
+- The statement is written verbatim, as a `@pgTrigger` or `@pgVirtual`
+  expression is. It names its own tables and columns, so it can be read,
+  corrected, and run without substituting anything, and `grep "invoice_row"`
+  finds it.
+- The child is named even though the statement names it too, because the
+  attachment is a decision rather than a deduction: only a child the tag names
+  gets a trigger. Generation fails when the name is not an entity, when the child
+  has no `@foreignKey` into the parent's table, or when the statement reads the
+  table of a second referencing child — that child's writes would leave the
+  aggregate stale.
+- One tag covers one child: the child is a single entity name, and a second
+  child means a second `@pgRollup` field. A tag naming several could not work,
+  since each child's trigger would set the parent's column from that child alone
+  and the last writer would win.
 
 ## Column naming
 
@@ -328,9 +354,10 @@ Rationale is in `docs/primitives.md`.
   values rather than an error.
 - **A `@pgRollup` statement is written once and mirrored.** The generator emits
   the `after delete` variant by substituting `OLD.` for `NEW.`, so a statement
-  spelled with `OLD.` is a lint finding. The statements hardcode the foreign key
-  column name `"invoiceId"`, which is why they only work for a child whose key
-  column has that name.
+  spelled with `OLD.` is a lint finding. The tag names one child table, and the
+  statement names its tables and columns verbatim, so a rename of the child's
+  foreign key field breaks the statement — as it breaks a `@pgTrigger`
+  expression, and for the same reason: column names are field names.
 - **The invoice total is not set by the rollup.** The rollups write `netAmount`
   and `taxAmount` only; `totalAmount` is virtual, so it recomputes on read. No
   ordering is load-bearing there, which is the point of choosing `@pgVirtual`.
@@ -367,7 +394,7 @@ Rationale is in `docs/primitives.md`.
 2. For each `@computed` field it reads the mechanism tag off the field itself:
    `@pgVirtual` becomes a generated column, `@pgTrigger` a `before insert or
    update` assignment, `@pgRollup` an `after insert or update` and `after
-   delete` pair on each child table.
+   delete` pair on the child table named beside it.
 3. `@createdAt` becomes a `default now()`, and `@updatedAt` that plus a trigger
    assignment.
 
@@ -426,7 +453,10 @@ Enforced:
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
 - A mechanism tag (`@pgVirtual`, `@pgTrigger`, `@pgRollup`) requires `@computed`,
-  carries a non-empty expression, and at most one may appear on a field.
+  and at most one may appear on a field. `@pgVirtual` and `@pgTrigger` carry a
+  non-empty expression; `@pgRollup` carries one entity name and a statement. The
+  linter does not resolve the name — that is the generator's, which reads the
+  whole spec.
 - `@pgRollup` may not contain `OLD.`, which the generator would otherwise
   substitute twice.
 - `@createdAt` and `@updatedAt` take no value, sit on a `Date` field, are

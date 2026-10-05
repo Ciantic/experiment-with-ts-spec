@@ -64,11 +64,10 @@ consequences:
 - `invoice_sent_row` repeats the row amounts' `@pgTrigger` statements, so they
   are still rounded by SQL. The inputs are copied too, so recomputing reproduces
   the sent values.
-- `invoice_sent`'s totals are plain columns, copied from the draft. Its own
-  `@pgRollup` statements would have to hardcode the child key `"invoiceSentId"`
-  and `update "invoice_sent"`, so the invoice's statements cannot be reused; the
-  totals are copied instead, and a rollup is the fix when they need to be
-  maintained in SQL.
+- `invoice_sent`'s totals are plain columns, copied from the draft. A `@pgRollup`
+  could maintain them instead, with a statement written for `InvoiceSentRow`, but
+  the totals are copied, and a rollup is the fix when they need to be maintained
+  in SQL.
 
 ## Gotchas
 

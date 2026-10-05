@@ -93,6 +93,20 @@ describe("parseSpec tags", () => {
         expect(tags?.pgRollup).toBeUndefined();
     });
 
+    it("decodes a @pgRollup child and statement", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @computed\n     * @pgRollup Child: update \"parent\" set \"n\" = 1 where \"id\" = NEW.\"parentId\"\n     */",
+                "net: Decimal;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.pgRollup).toEqual({
+            child: "Child",
+            statement: 'update "parent" set "n" = 1 where "id" = NEW."parentId"',
+        });
+    });
+
     it("decodes the clock tags and the virtual expression", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @computed\n     * @pgVirtual \"net\" + \"tax\"\n     */", "total?: Decimal;"),

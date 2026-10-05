@@ -1,9 +1,15 @@
 /** Unit tests for generateSchema, driven by self-contained fixtures. */
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
+import { PGlite } from "@electric-sql/pglite";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
+
+/** Ids the rollup check inserts, so a foreign key is satisfied without a uuid generator. */
+const PARENT = "00000000-0000-0000-0000-000000000001";
+const CHILD_A = "00000000-0000-0000-0000-000000000002";
+const CHILD_B = "00000000-0000-0000-0000-000000000003";
 
 interface Fixture {
     domain: Record<string, string>;
@@ -681,7 +687,7 @@ describe("generateSchema triggers", () => {
                     id: GUID;
                     /**
                      * @computed
-                     * @pgRollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     * @pgRollup Child: update "parent" set "net" = 1 where "id" = NEW."parentId"
                      */
                     net: Decimal;
                 }`,
@@ -706,12 +712,12 @@ describe("generateSchema triggers", () => {
                     id: GUID;
                     /**
                      * @computed
-                     * @pgRollup update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     * @pgRollup Child: update "parent" set "net" = 1 where "id" = NEW."parentId"
                      */
                     net: Decimal;
                     /**
                      * @computed
-                     * @pgRollup update "parent" set "tax" = 1 where "id" = NEW."parentId"
+                     * @pgRollup Child: update "parent" set "tax" = 1 where "id" = NEW."parentId"
                      */
                     tax: Decimal;
                 }`,
@@ -723,6 +729,173 @@ describe("generateSchema triggers", () => {
         expect(declarations).toBe(1);
         expect(sql).toContain('set "net" =');
         expect(sql).toContain('set "tax" =');
+    });
+
+    it("attaches a rollup to the child its tag names, and to no other", () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup Child: update "parent" set "net" = (select coalesce(sum("amount"), 0) from "child" where "parentId" = NEW."parentId") where "id" = NEW."parentId"
+                     */
+                    net?: Decimal;
+                }`,
+                Child: "export interface Child {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    parentId: ParentId; \n    amount: Decimal; }",
+                Bystander: "export interface Bystander {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    parentId: ParentId; \n    amount: Decimal; }",
+            },
+        });
+
+        // The statement is emitted verbatim, so it stays copy-pasteable and greppable.
+        expect(sql).toContain(
+            'from "child" where "parentId" = NEW."parentId") where "id" = NEW."parentId";',
+        );
+        expect(sql).toContain('create trigger "child_rollup_parent_set"');
+        expect(sql).not.toContain("bystander_rollup_parent");
+        expect(messages(diagnostics)).toEqual([]);
+    });
+
+    it("keeps two children on two separately written statements", () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup ChildA: update "parent" set "net" = (select coalesce(sum("amount"), 0) from "child_a" where "parentId" = NEW."parentId") where "id" = NEW."parentId"
+                     */
+                    net?: Decimal;
+                    /**
+                     * @computed
+                     * @pgRollup ChildB: update "parent" set "fees" = (select coalesce(sum("amount"), 0) from "child_b" where "ownerId" = NEW."ownerId") where "id" = NEW."ownerId"
+                     */
+                    fees?: Decimal;
+                }`,
+                ChildA: "export interface ChildA {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    parentId: ParentId; \n    amount: Decimal; }",
+                ChildB: "export interface ChildB {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    ownerId: ParentId; \n    amount: Decimal; }",
+            },
+        });
+
+        expect(sql).toContain(
+            'from "child_a" where "parentId" = NEW."parentId") where "id" = NEW."parentId";',
+        );
+        expect(sql).toContain('from "child_b" where "ownerId" = NEW."ownerId") where "id" = NEW."ownerId";');
+        // Each child carries only the statement written for it.
+        const childATrigger = sql.slice(
+            sql.indexOf('create function "child_a_rollup_parent_set"'),
+            sql.indexOf('create function "child_a_rollup_parent_unset"'),
+        );
+        expect(childATrigger).not.toContain('"fees"');
+        expect(messages(diagnostics)).toEqual([]);
+    });
+
+    it("reports a rollup whose child is not an entity", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup gibberish: update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     */
+                    net?: Decimal;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual(["`net`: @pgRollup child `gibberish` is not an entity"]);
+    });
+
+    it("reports a rollup whose child does not reference the parent", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup Other: update "parent" set "net" = 1 where "id" = NEW."parentId"
+                     */
+                    net?: Decimal;
+                }`,
+                Other: "export interface Other {\n    /** @primaryKey */\n    id: GUID; }",
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`net`: @pgRollup child `Other` has no @foreignKey referencing `Parent`",
+        ]);
+    });
+
+    it("reports a statement that reads a child the tag does not attach to", () => {
+        const { diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup Child: update "parent" set "net" = (select coalesce(sum("amount"), 0) from "other" where "ownerId" = NEW."ownerId") where "id" = NEW."ownerId"
+                     */
+                    net?: Decimal;
+                }`,
+                Child: "export interface Child {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    parentId: ParentId; }",
+                Other: "export interface Other {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    ownerId: ParentId; \n    amount: Decimal; }",
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([
+            "`net`: @pgRollup reads `Other` but attaches to `Child`; write a second @pgRollup",
+        ]);
+    });
+
+    it("drives each parent column from the child its @pgRollup names", async () => {
+        const { sql, diagnostics } = generate({
+            domain: {
+                Parent: `export interface Parent {
+                    /** @primaryKey */
+                    id: GUID;
+                    /**
+                     * @computed
+                     * @pgRollup ChildA: update "parent" set "net" = (select coalesce(sum("amount"), 0) from "child_a" where "parentId" = NEW."parentId") where "id" = NEW."parentId"
+                     */
+                    net?: Decimal;
+                    /**
+                     * @computed
+                     * @pgRollup ChildB: update "parent" set "fees" = (select coalesce(sum("amount"), 0) from "child_b" where "ownerId" = NEW."ownerId") where "id" = NEW."ownerId"
+                     */
+                    fees?: Decimal;
+                }`,
+                ChildA: "export interface ChildA {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    parentId: GUID; \n    amount?: Decimal; }",
+                ChildB: "export interface ChildB {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent */\n    ownerId: GUID; \n    amount?: Decimal; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
+
+        // Text assertions cannot see a trigger attached to the wrong child: that SQL still executes.
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "parent" ("id") values ('${PARENT}');`);
+        await db.exec(`insert into "child_a" ("id", "parentId", "amount") values ('${CHILD_A}', '${PARENT}', 10);`);
+        await db.exec(`insert into "child_b" ("id", "ownerId", "amount") values ('${CHILD_B}', '${PARENT}', 5);`);
+
+        const rows = await db.query<{ net: string; fees: string }>(
+            `select "net", "fees" from "parent" where "id" = '${PARENT}';`,
+        );
+        // Each child drives its own column only, so child_b's write leaves net alone.
+        expect(Number(rows.rows[0]?.net)).toBe(10);
+        expect(Number(rows.rows[0]?.fees)).toBe(5);
+
+        await db.exec(`delete from "child_a" where "id" = '${CHILD_A}';`);
+        const after = await db.query<{ net: string; fees: string }>(
+            `select "net", "fees" from "parent" where "id" = '${PARENT}';`,
+        );
+        expect(Number(after.rows[0]?.net)).toBe(0);
+        expect(Number(after.rows[0]?.fees)).toBe(5);
     });
 });
 

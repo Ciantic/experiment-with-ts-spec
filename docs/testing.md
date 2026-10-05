@@ -30,6 +30,10 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
   `generateSchema` with self-contained fixtures. `generateSchema` takes
   `{ specGlob, aliasGlob }` precisely so a test never has to touch the real spec.
+  Its rollup group also executes the generated triggers in PGlite over
+  `Parent`/`ChildA`/`ChildB` fixtures, asserting which child drives which parent
+  column: the SQL text cannot show a trigger attached to the wrong child, because
+  that trigger is still valid and still runs.
 - `packages/validation/scripts/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
@@ -88,10 +92,13 @@ values, all of which are domain decisions rather than code behaviour.
 
 ## Deliberately not implemented
 
-- **Behavioural tests.** Nothing asserts that a trigger computes the right value,
-  that rollups fire on delete, or that a constraint rejects a bad status. Those
-  are domain assertions and would be rewritten with the model. The consequence is
-  real and accepted: a semantically wrong but valid trigger passes every test.
+- **Behavioural tests beyond the rollup wiring.** Nothing asserts that a trigger
+  computes the right value, that a constraint rejects a bad status, or that a
+  field's expression means what its name says. Those are domain assertions and
+  would be rewritten with the model. The rollup check above is the exception
+  because it pins the child-to-column mapping, which is code behaviour. The
+  consequence is real and accepted: a semantically wrong but valid trigger passes
+  every test.
 - **A drift test for `packages/backend/src/postgres/schema.sql`.** Staleness is caught by running
   `pnpm generate:schema`, not by a test.
 
