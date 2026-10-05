@@ -7,31 +7,45 @@ artifact, so `pnpm --filter validation run generate:validation` regenerates the
 schemas without the backend. A schema is what validates a value at the boundary
 — an HTTP body, a job payload — against the same annotations the database schema
 and the repositories are generated from; the write types are what a caller passes
-in process. Because both live in one module, the backend repositories, the REST
-API, the generated client, and (eventually) the frontend share one definition of
-"the fields a create writes" and "the fields a patch writes".
+in process. A write type is the spec's own type narrowed by the same omit list its
+schema uses, so the backend repositories, the REST API, the generated client, and
+(eventually) the frontend share one definition of "the fields a create writes" and
+"the fields a patch writes".
 
 ## Output
 
 - `packages/validation/src/primitives.ts` — one schema per `@primitive` alias,
   from its `@zod` tag.
-- `packages/validation/src/<entity>.ts` — one module per domain interface,
-  exporting `<name>Schema`, `<name>PatchSchema`, `<name>InsertSchema`,
-  `<name>PrimaryKeySchema`, and the matching `<Entity>Patch`, `<Entity>Insert`,
-  and `<Entity>PrimaryKey` types.
+- `packages/validation/src/domain/<entity>Schema.ts` — one module per domain
+  interface, exporting the entity's 1:1 schema alone (`<name>Schema`). It is the
+  whole entity, with every field the spec declares.
+- `packages/validation/src/repositories/<entity>InsertSchema.ts` — the create
+  schema and its type (`<name>InsertSchema`, `<Entity>Insert`).
+- `packages/validation/src/repositories/<entity>PatchSchema.ts` — the update
+  schema and its type (`<name>PatchSchema`, `<Entity>Patch`).
+- `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
+  schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
+  only when the entity declares a `@primaryKey`.
+- `packages/validation/src/domain/index.ts`,
+  `packages/validation/src/repositories/index.ts` — the barrels re-exporting their
+  own directory.
 - `packages/validation/src/queries/query<Entity>.ts` — one module per entity,
   exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for its `query`
   read.
 - `packages/validation/src/queries/index.ts` — the barrel re-exporting every
   query module.
-- `packages/validation/src/index.ts` — the barrel re-exporting the primitives,
-  every entity, and the queries barrel.
+- `packages/validation/src/index.ts` — the barrel re-exporting the primitives and
+  the three directories.
+
+A write module derives from the domain module rather than restating the entity:
+each one imports `<name>Schema` from `../domain/<entity>Schema.ts` and projects it.
+The directory is what says "write"; a `domain/` module is never a write.
 
 The package is consumed as TypeScript through its `exports` map, like every other
-package here. `packages/backend` and `packages/sdk` depend on it: the repositories
-take `<Entity>Patch` / `<Entity>Insert` from it, the route table validates with
-its schemas, and the client imports its write types type-only, so `zod` never
-enters the client runtime.
+package here. `packages/backend` and `packages/sdk` depend on it: a repository
+imports one write type from its `repositories/<entity><Kind>Schema.ts` module,
+the route table validates with the schemas through the barrel, and the client
+imports its write types type-only, so `zod` never enters the client runtime.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -124,9 +138,9 @@ rejects the same branches, clock fields, and derivable values a create does, and
 `.strict()` turns a key the update would silently ignore into a 400.
 
 The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
-`<Entity>Patch` type is rendered from it into the same module, so the repository
-type taking it, the client sending it, and the wire schema accepting it all
-permit exactly the same fields. A nullable `@computed` value is on the
+`<Entity>Patch` type is rendered from it into the same module as the patch schema,
+so the repository type taking it, the client sending it, and the wire schema
+accepting it all permit exactly the same fields. A nullable `@computed` value is on the
 list because its mechanism fills it in later, and a `@pgVirtual`
 value is on it whether nullable or not because Postgres refuses the write: the
 update does not name the column, so accepting one would be accepting a field that

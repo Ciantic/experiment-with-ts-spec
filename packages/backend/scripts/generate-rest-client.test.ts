@@ -145,7 +145,9 @@ describe("renderClientModule", () => {
     it("imports and re-exports the patch type from the validation package", () => {
         const code = widgetModule();
 
-        expect(code).toContain('import type { WidgetInsert, WidgetPatch } from "validation/widget.ts";');
+        expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
+            '\n' +
+            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
         expect(code).toContain("export type { WidgetInsert, WidgetPatch };");
         expect(code).toContain("rows: WidgetPatch[]");
         expect(code).not.toContain("export type WidgetPatch =");
@@ -155,7 +157,9 @@ describe("renderClientModule", () => {
         const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
         const code = renderClientModule(markerEntity!);
 
-        expect(code).toContain('import type { MarkerInsert, MarkerPatch } from "validation/marker.ts";');
+        expect(code).toContain('import type { MarkerInsert } from "validation/repositories/markerInsertSchema.ts";' +
+            '\n' +
+            'import type { MarkerPatch } from "validation/repositories/markerPatchSchema.ts";');
         expect(code).not.toContain("and the version");
     });
 
@@ -181,7 +185,9 @@ describe("renderClientModule", () => {
     it("types a create with the validation insert type, not the whole entity", () => {
         const code = widgetModule();
 
-        expect(code).toContain('import type { WidgetInsert, WidgetPatch } from "validation/widget.ts";');
+        expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
+            '\n' +
+            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
         expect(code).toContain(
             "export function createWidget(rows: WidgetInsert[]): Call<void> {",
         );
@@ -191,7 +197,9 @@ describe("renderClientModule", () => {
     it("names the validation module after the entity", () => {
         const code = renderClientModule(build({ Limited: LIMITED }).entities[0]!);
 
-        expect(code).toContain('import type { LimitedInsert, LimitedPatch } from "validation/limited.ts";');
+        expect(code).toContain('import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";' +
+            '\n' +
+            'import type { LimitedPatch } from "validation/repositories/limitedPatchSchema.ts";');
     });
 
     it("emits no getter", () => {

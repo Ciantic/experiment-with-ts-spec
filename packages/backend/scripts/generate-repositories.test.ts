@@ -105,10 +105,14 @@ describe("generateCreate", () => {
     });
 
     it("imports the write type for its operation and the executor interface", () => {
-        expect(generateCreate(customer)).toContain('import type { CustomerInsert } from "validation/customer.ts";');
-        expect(generateUpdate(customer)).toContain('import type { CustomerPatch } from "validation/customer.ts";');
+        expect(generateCreate(customer)).toContain(
+            'import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";',
+        );
+        expect(generateUpdate(customer)).toContain(
+            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
+        );
         expect(generateDelete(customer)).toContain(
-            'import type { CustomerPrimaryKey } from "validation/customer.ts";',
+            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
         );
         for (const code of moduleCodes(customer)) {
             expect(code).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
@@ -135,7 +139,9 @@ describe("generateCreate", () => {
         ]);
         const code = generateCreate(limited);
 
-        expect(code).toContain('import type { LimitedInsert } from "validation/limited.ts";');
+        expect(code).toContain(
+            'import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";',
+        );
         expect(code).toContain("export async function createLimited(db: SqlExecutor, rows: LimitedInsert[])");
         expect(code).not.toContain("export type LimitedInsert");
     });
@@ -276,8 +282,12 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        expect(versioned).toContain('import type { CustomerPatch } from "validation/customer.ts";');
-        expect(generateUpdate(customer)).toContain('import type { CustomerPatch } from "validation/customer.ts";');
+        expect(versioned).toContain(
+            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
+        );
+        expect(generateUpdate(customer)).toContain(
+            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
+        );
     });
 
     it("assigns the version directly rather than coalescing it", () => {

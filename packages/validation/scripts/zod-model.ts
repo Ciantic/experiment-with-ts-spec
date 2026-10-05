@@ -49,7 +49,6 @@ export interface ZodEntity {
     insertName: string;
     /** The schema validating a by-key write: the entity projected to its `@primaryKey`. */
     primaryKeyName: string;
-    fileName: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
     fields: ZodField[];
@@ -161,11 +160,6 @@ export function insertSchemaName(name: string): string {
 /** Invoice -> invoicePrimaryKeySchema. */
 export function primaryKeySchemaName(name: string): string {
     return `${lowerFirst(name)}PrimaryKeySchema`;
-}
-
-/** Invoice -> invoice.ts. */
-function fileName(name: string): string {
-    return `${lowerFirst(name)}.ts`;
 }
 
 /** Unwrap `(T)` to `T`, so a parenthesized union member is inspected as itself. */
@@ -462,7 +456,6 @@ function buildEntities(
             querySelectName: querySelectSchemaName(spec.name),
             insertName: insertSchemaName(spec.name),
             primaryKeyName: primaryKeySchemaName(spec.name),
-            fileName: fileName(spec.name),
             importSpecifier: spec.importSpecifier,
             fields,
             insertOmit,

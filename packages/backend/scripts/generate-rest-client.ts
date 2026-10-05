@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Project } from "ts-morph";
 import { DEFAULT_SPEC_GLOB, SPEC_GLOB } from "spec/scripts/spec-model.ts";
+import { validationFileName } from "./generate-repositories.ts";
 import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
 
 export type { Diagnostic } from "./rest-model.ts";
@@ -133,7 +134,15 @@ export function renderClientModule(entity: RestEntity): string {
     }
     writeTypes.sort((a, b) => a.localeCompare(b));
     if (writeTypes.length > 0) {
-        lines.push(`import type { ${writeTypes.join(", ")} } from "${VALIDATION_PACKAGE}/${entity.module}.ts";`);
+        // Each write type lives in its own module, so the imports group by module rather than by entity.
+        const byModule = new Map<string, string[]>();
+        for (const writeType of writeTypes) {
+            const module = validationFileName(writeType);
+            byModule.set(module, [...(byModule.get(module) ?? []), writeType]);
+        }
+        for (const [module, names] of [...byModule].sort(([a], [b]) => a.localeCompare(b))) {
+            lines.push(`import type { ${names.join(", ")} } from "${VALIDATION_PACKAGE}/${module}";`);
+        }
     }
     lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
     if (writeTypes.length > 0) {

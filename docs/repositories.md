@@ -60,11 +60,11 @@ guard.
 ## Inserting
 
 `create` takes an insert rather than the whole entity. The type lives in
-`packages/validation`, next to the schema that accepts the same fields, and the
-repository imports it:
+`packages/validation`, in the module that also exports the schema accepting the
+same fields, and the repository imports it:
 
 ```ts
-import type { InvoiceInsert } from "validation/invoice.ts";
+import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 
 export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void>
 ```
@@ -92,7 +92,7 @@ default *is* the first revision (`docs/versioning.md`).
 repository imports it:
 
 ```ts
-import type { CustomerPatch } from "validation/customer.ts";
+import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";
 
 export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
 ```
@@ -152,11 +152,10 @@ nothing (`docs/validation.md`).
 `delete` takes an entity's **primary key**, `<Entity>PrimaryKey`, the key alone
 rather than the whole entity, because the key is the only thing its statement
 reads. The type and its matching `<name>PrimaryKeySchema` are generated from the
-`@primaryKey` fields in `packages/validation`, next to the patch and insert
-types:
+`@primaryKey` fields in `packages/validation`, in the by-key module:
 
 ```ts
-import type { CustomerPrimaryKey } from "validation/customer.ts";
+import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";
 
 export type CustomerPrimaryKey = Pick<Customer, "id">;
 ```

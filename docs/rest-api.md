@@ -166,7 +166,8 @@ definition the repository takes and the route table validates with — so the
 client cannot drift from the server:
 
 ```typescript
-import type { InvoiceInsert, InvoicePatch } from "validation/invoice.ts";
+import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
+import type { InvoicePatch } from "validation/repositories/invoicePatchSchema.ts";
 
 export function updateInvoice(rows: InvoicePatch[]): Call<void>
 ```

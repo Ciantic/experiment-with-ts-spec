@@ -7,6 +7,8 @@
   "type": "module",
   "exports": {
     "./*.ts": "./src/*.ts",
+    "./domain/*.ts": "./src/domain/*.ts",
+    "./repositories/*.ts": "./src/repositories/*.ts",
     "./queries/*.ts": "./src/queries/*.ts",
     "./package.json": "./package.json"
   },
