@@ -50,7 +50,7 @@ A repository that takes one row per call forces one round trip per row. Taking
 an array lets one call carry many rows, which is the whole reason the functions
 exist in this shape:
 
-- **create** — one `insert into "t" (...) values ($1, ...), ($n, ...)`.
+- **create** — one `insert into "t" (...) values ($1, ...), ($n, ...)` per chunk of rows, in one boundary when a call spans several chunks.
 - **update** — one statement per row, `update "t" set ... from (values (...)) as data(...) where "t"."id" = data."id"`, all in one boundary.
 - **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
 
@@ -84,6 +84,24 @@ is relaxed to optional in `<Entity>Insert`, and its schema is `.partial()`, so
 the type and the wire agree that omitting it is allowed. A `@version` field is
 the exception: a defaulted version is left out of a create entirely, because its
 default *is* the first revision (`docs/versioning.md`).
+
+One statement binds at most `MAX_STATEMENT_PARAMETERS` values
+(`src/db/sql-executor.ts`), so a create whose rows would bind more than that
+splits into chunks of `floor(MAX_STATEMENT_PARAMETERS / <insertable columns>)`
+rows. A call that fits in one chunk is one statement and runs on the handle it
+was given; a call that spans several chunks opens a boundary and runs them all
+in it, nested as a savepoint when the caller already holds one, so the rows
+still commit together. The bound is the driver's rather than the protocol's:
+PostgreSQL accepts 65535 parameters, while PGlite past 32767 drops the
+statement without an error and answers nothing afterwards, so the generated
+code stays inside the smaller number.
+
+An insert writes every row it carries, so each statement's affected-row count is
+compared with the chunk it was given, and a short count is a rejected call. That
+is what makes a silent loss loud: a `before insert` trigger returning `null`
+skips its row without raising, and a driver that quietly declines a statement
+answers nothing at all. Neither is a caller's mistake, so the thrown error
+carries no SQLSTATE and the router serves it as a server fault.
 
 ## Patching
 

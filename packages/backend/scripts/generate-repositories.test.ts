@@ -146,9 +146,13 @@ describe("generateCreate", () => {
             'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
         );
         for (const code of [generateCreate(customer), generateDelete(customer)]) {
-            expect(code).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
             expect(code).not.toContain("spec/domain");
         }
+        // A delete is one statement, so it takes the executor type alone; a create chunks and counts, so it takes both helpers.
+        expect(generateDelete(customer)).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
+        expect(generateCreate(customer)).toContain(
+            'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
+        );
         // An update reads the affected-row count, so it takes the port's runtime helper with it.
         expect(generateUpdate(customer)).toContain(
             'import { affectedRows, type SqlExecutor } from "../sql-executor.ts";',
@@ -203,7 +207,7 @@ describe("generateCreate", () => {
         const code = generateCreate(customer);
 
         expect(code).toContain(
-            '        tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");',
+            '                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");',
         );
     });
 
@@ -268,6 +272,54 @@ describe("generateCreate", () => {
 
         expect(code).toContain("const values = [row.id, row.name];");
         expect(code).toContain('insert into "customer" ("id", "name") values ');
+    });
+
+    it("splits a create into chunks that each stay inside the parameter limit", () => {
+        const code = generateCreate(customer);
+
+        expect(code).toContain(
+            "/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */",
+        );
+        expect(code).toContain("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 3);");
+        expect(code).toContain("const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
+        expect(code).toContain("for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
+        expect(code).toContain("for (const row of chunk) {");
+    });
+
+    it("rejects a create whose statement wrote fewer rows than it carried", () => {
+        const code = generateCreate(customer);
+
+        expect(code).toContain("const result = await tx.query(");
+        expect(code).toContain("const written = affectedRows(result);");
+        expect(code).toContain("if (written !== chunk.length) {");
+        expect(code).toContain(
+            "throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' customer rows this create supplied');",
+        );
+    });
+
+    it("takes the shape of a patch runner: one write closure, and a boundary only past a single statement", () => {
+        const code = generateCreate(customer);
+
+        expect(code).toContain("    const write = async (tx: SqlExecutor): Promise<void> => {");
+        expect(code).toContain("    if (rows.length <= ROWS_PER_STATEMENT) {");
+        expect(code).toContain("        await write(db);");
+        expect(code).toContain("    await db.transaction(write);");
+        // Nothing but the exported function and its constant is declared at module scope.
+        expect(code.match(/^const |^async function |^function /gm)).toEqual(["const "]);
+    });
+
+    it("sizes a chunk by the columns a row costs, so a wider entity carries fewer rows", () => {
+        const wide = table("wide", "Wide", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("a"),
+            column("b"),
+            column("c"),
+            column("d"),
+        ]);
+
+        expect(generateCreate(wide)).toContain(
+            "const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 5);",
+        );
     });
 });
 
@@ -469,6 +521,47 @@ const marker = table("marker", "Marker", [
     column("source", { default: "'manual'" }),
 ]);
 
+/** Enough columns that one statement carries only a few rows, so the chunk boundary is reachable here. */
+const WIDE_COLUMNS = 200;
+
+const wide = table("wide", "Wide", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    ...Array.from({ length: WIDE_COLUMNS - 1 }, (_, index) => column(`c${index}`)),
+]);
+
+const gate = table("gate", "Gate", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("label"),
+]);
+
+/** A `before insert` trigger that drops the rows it names: Postgres skips such a row without raising. */
+function skipTriggerSql(table: Table): string {
+    const name = `${table.name}_skip`;
+    return [
+        `create function "${name}"() returns trigger as $$ begin`,
+        `    if new."label" = 'skip' then`,
+        "        return null;",
+        "    end if;",
+        "    return new;",
+        "end; $$ language plpgsql;",
+        `create trigger "${name}" before insert on "${table.name}" for each row execute function "${name}"();`,
+    ].join("\n");
+}
+
+/** A row of the wide fixture, with every non-key column holding the given value. */
+function wideRow(id: string, value: string): Record<string, string> {
+    const row: Record<string, string> = { id };
+    for (let index = 0; index < WIDE_COLUMNS - 1; index += 1) {
+        row[`c${index}`] = value;
+    }
+    return row;
+}
+
+/** The id of wide row `index`: the last uuid group is twelve hex digits. */
+function wideId(index: number): string {
+    return `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`;
+}
+
 const OWNER_ID = "00000000-0000-0000-0000-0000000000aa";
 const WIDGET_ID = "00000000-0000-0000-0000-0000000000bb";
 const MARKER_ID = "00000000-0000-0000-0000-0000000000cc";
@@ -482,6 +575,8 @@ describe("generated repositories against PGlite", () => {
     let widgets: GeneratedRepository;
     let translations: GeneratedRepository;
     let markers: GeneratedRepository;
+    let wides: GeneratedRepository;
+    let gates: GeneratedRepository;
 
     beforeAll(async () => {
         driver = createPglite();
@@ -491,10 +586,15 @@ describe("generated repositories against PGlite", () => {
         await driver.exec(versionTriggerSql(widget));
         await driver.exec(createTableSql(translation));
         await driver.exec(createTableSql(marker));
+        await driver.exec(createTableSql(wide));
+        await driver.exec(createTableSql(gate));
+        await driver.exec(skipTriggerSql(gate));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);
         translations = loadRepository(translation);
         markers = loadRepository(marker);
+        wides = loadRepository(wide);
+        gates = loadRepository(gate);
     });
 
     afterAll(async () => {
@@ -506,6 +606,8 @@ describe("generated repositories against PGlite", () => {
         await db.query('delete from "owner"');
         await db.query('delete from "translation"');
         await db.query('delete from "marker"');
+        await db.query('delete from "wide"');
+        await db.query('delete from "gate"');
     });
 
     it("inserts rows through the generated create function", async () => {
@@ -693,5 +795,41 @@ describe("generated repositories against PGlite", () => {
         const { rows } = await driver.query<{ key: string }>('select "key" from "translation"');
 
         expect(rows).toEqual([{ key: "greeting" }]);
+    });
+
+    it("inserts a call too large for one statement, carrying the rest in a further statement", async () => {
+        const rows = Array.from({ length: 400 }, (_, index) => wideRow(wideId(index), `v${index}`));
+        // The premise: this many rows of this many columns cannot travel in a single statement.
+        expect(rows.length).toBeGreaterThan(Math.floor(sqlExecutor.MAX_STATEMENT_PARAMETERS / WIDE_COLUMNS));
+
+        await wides.create(db, rows);
+
+        const { rows: stored } = await driver.query<{ count: number }>('select count(*)::int as count from "wide"');
+        expect(stored).toEqual([{ count: 400 }]);
+    });
+
+    it("rolls a chunked create back when a later statement fails, leaving no row behind", async () => {
+        const rows = [
+            ...Array.from({ length: 399 }, (_, index) => wideRow(wideId(index), `v${index}`)),
+            // The last row repeats an id the first statement already wrote.
+            wideRow(wideId(0), "duplicate"),
+        ];
+
+        await expect(wides.create(db, rows)).rejects.toThrow();
+
+        const { rows: stored } = await driver.query<{ count: number }>('select count(*)::int as count from "wide"');
+        expect(stored).toEqual([{ count: 0 }]);
+    });
+
+    it("rejects a create whose statement wrote fewer rows than it carried", async () => {
+        const rows = [
+            { id: "00000000-0000-0000-0000-0000000000f1", label: "keep" },
+            { id: "00000000-0000-0000-0000-0000000000f2", label: "skip" },
+        ];
+
+        // The database drops the second row without raising, so only the count gives the loss away.
+        await expect(gates.create(db, rows)).rejects.toThrow(
+            "the insert wrote 1 of the 2 gate rows this create supplied",
+        );
     });
 });

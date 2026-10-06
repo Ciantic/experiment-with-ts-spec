@@ -9,6 +9,9 @@ export interface SqlExecutor {
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
+/** The parameters one statement may carry: a statement past this is dropped by PGlite. See docs/repositories.md. */
+export const MAX_STATEMENT_PARAMETERS = 32767;
+
 /** Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`). */
 export function affectedRows(result: unknown): number {
     // `rowCount` is `number | null` in `pg`, so it is accepted only when it is a number.

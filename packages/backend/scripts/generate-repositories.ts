@@ -70,11 +70,20 @@ function assignment(column: Column): string {
     return JSON.stringify(`${quote(column.name)} = data.${quote(column.name)}`);
 }
 
+/** The indentation and row source of the loop that gathers values, so create and delete share one builder. */
+interface ValueLoop {
+    /** The indentation every emitted line carries. */
+    indent: string;
+    /** The rows the loop walks: the whole array, or one chunk of it. */
+    source: string;
+}
+
 /** The lines that gather the given values into `parameters` and `tuples`, one tuple per row. */
-function collectValues(entries: ValueEntry[]): string[] {
+function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
     if (entries.some((entry) => entry.optional)) {
-        return collectValuesWithDefaults(entries);
+        return collectValuesWithDefaults(entries, loop);
     }
+    const { indent, source } = loop;
     const values = entries.map((entry) => entry.expression).join(", ");
     // The `values` alias is otherwise untyped text; casting each placeholder keeps keys and
     // assignments matching the column type (a bare text value would not compare to a uuid key).
@@ -82,46 +91,41 @@ function collectValues(entries: ValueEntry[]): string[] {
         .map((entry, index) => `"$" + (offset + ${index + 1}) + "::${entry.sqlType}"`)
         .join(' + ", " + ');
     return [
-        "    if (rows.length === 0) {",
-        "        return;",
-        "    }",
-        "    const parameters: unknown[] = [];",
-        "    const tuples: string[] = [];",
-        "    for (const row of rows) {",
-        `        const values = [${values}];`,
-        "        parameters.push(...values);",
-        "        const offset = parameters.length - values.length;",
-        `        tuples.push("(" + ${tuple} + ")");`,
-        "    }",
+        `${indent}const parameters: unknown[] = [];`,
+        `${indent}const tuples: string[] = [];`,
+        `${indent}for (const row of ${source}) {`,
+        `${indent}    const values = [${values}];`,
+        `${indent}    parameters.push(...values);`,
+        `${indent}    const offset = parameters.length - values.length;`,
+        `${indent}    tuples.push("(" + ${tuple} + ")");`,
+        `${indent}}`,
     ];
 }
 
 /** The tuple builder for a create that falls back to the `default` keyword for an absent defaulted column. */
-function collectValuesWithDefaults(entries: ValueEntry[]): string[] {
+function collectValuesWithDefaults(entries: ValueEntry[], loop: ValueLoop): string[] {
+    const { indent, source } = loop;
     const lines = [
-        "    if (rows.length === 0) {",
-        "        return;",
-        "    }",
-        "    const parameters: unknown[] = [];",
-        "    const tuples: string[] = [];",
-        "    for (const row of rows) {",
-        "        const values: string[] = [];",
+        `${indent}const parameters: unknown[] = [];`,
+        `${indent}const tuples: string[] = [];`,
+        `${indent}for (const row of ${source}) {`,
+        `${indent}    const values: string[] = [];`,
     ];
     for (const entry of entries) {
         if (!entry.optional) {
-            lines.push(`        parameters.push(${entry.expression});`);
-            lines.push(`        values.push("$" + parameters.length + "::${entry.sqlType}");`);
+            lines.push(`${indent}    parameters.push(${entry.expression});`);
+            lines.push(`${indent}    values.push("$" + parameters.length + "::${entry.sqlType}");`);
             continue;
         }
-        lines.push(`        if (${entry.expression} === undefined) {`);
-        lines.push('            values.push("default");');
-        lines.push("        } else {");
-        lines.push(`            parameters.push(${entry.expression});`);
-        lines.push(`            values.push("$" + parameters.length + "::${entry.sqlType}");`);
-        lines.push("        }");
+        lines.push(`${indent}    if (${entry.expression} === undefined) {`);
+        lines.push(`${indent}        values.push("default");`);
+        lines.push(`${indent}    } else {`);
+        lines.push(`${indent}        parameters.push(${entry.expression});`);
+        lines.push(`${indent}        values.push("$" + parameters.length + "::${entry.sqlType}");`);
+        lines.push(`${indent}    }`);
     }
-    lines.push('        tuples.push("(" + values.join(", ") + ")");');
-    lines.push("    }");
+    lines.push(`${indent}    tuples.push("(" + values.join(", ") + ")");`);
+    lines.push(`${indent}}`);
     return lines;
 }
 
@@ -148,19 +152,47 @@ function keyExpression(primaryKeys: Column[]): string {
     return primaryKeys.map((column) => readExpression(column)).join(' + "/" + ');
 }
 
-/** Render `create<Entity>`: one multi-row insert over the insertable columns. */
+/** Render `create<Entity>`: a chunk of rows per insert, in the shape a patch runner takes. */
 export function generateCreate(table: Table): string {
     const entity = table.interfaceName;
     // A create writes the insertable fields, the same set `<entity>InsertSchema` accepts.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
     const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
-    const lines = modulePrologue(`${entity}Insert`);
-
-    lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<void> {`);
-    lines.push(...collectValues(insertColumns.map(insertEntry)));
-    lines.push(
-        `    await db.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
+    const lines = modulePrologue(
+        `${entity}Insert`,
+        'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
     );
+
+    // A statement binds at most MAX_STATEMENT_PARAMETERS parameters, so a chunk holds this many rows at most.
+    lines.push("/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
+    lines.push(`const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / ${insertColumns.length});`);
+    lines.push("");
+    lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<void> {`);
+    lines.push("    if (rows.length === 0) {");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
+    lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
+    lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
+    lines.push(...collectValues(insertColumns.map(insertEntry), { indent: "            ", source: "chunk" }));
+    lines.push(
+        `            const result = await tx.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
+    );
+    // An insert writes every row it carries, so a short count is lost data rather than a caller's mistake. See docs/repositories.md.
+    lines.push("            const written = affectedRows(result);");
+    lines.push("            if (written !== chunk.length) {");
+    lines.push(
+        `                throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
+    );
+    lines.push("            }");
+    lines.push("        }");
+    lines.push("    };");
+    // One statement is atomic on its own; only a call that spills past the limit opens a boundary.
+    lines.push("    if (rows.length <= ROWS_PER_STATEMENT) {");
+    lines.push("        await write(db);");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    await db.transaction(write);");
     lines.push("}");
 
     return lines.join("\n") + "\n";
@@ -256,7 +288,10 @@ export function generateDelete(table: Table): string {
     const lines = modulePrologue(`${entity}PrimaryKey`);
 
     lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
-    lines.push(...collectValues(primaryKeys.map(readEntry)));
+    lines.push("    if (rows.length === 0) {");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push(...collectValues(primaryKeys.map(readEntry), { indent: "    ", source: "rows" }));
     lines.push(
         `    await db.query('delete from ${quote(table.name)} using (values ' + tuples.join(", ") + ') as data(${primaryKeyColumns}) where ${keyMatch(table, primaryKeys)}', parameters);`,
     );

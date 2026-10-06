@@ -219,12 +219,12 @@ So the same handler behaves correctly wherever it is called:
 | inside a `batch` group | opens one, because a batch has none |
 
 A handler never needs to know whether its caller already asked for a unit of
-work. A per-entity CRUD route asks for nothing: `create` and `delete` are one
-multi-row statement, and a patch of one row is one statement, so each is already
-atomic, and a boundary around it would add a round trip and a held connection
-without changing what a concurrent writer can observe. A patch of several rows
-opens its own boundary, which nests as a savepoint inside one the caller already
-holds.
+work. A per-entity CRUD route asks for nothing: `delete` is one multi-row
+statement, and a patch of one row is one statement, so each is already atomic,
+and a boundary around it would add a round trip and a held connection without
+changing what a concurrent writer can observe. A patch of several rows, and a
+create whose rows spill past the statement's parameter limit, open their own
+boundary, which nests as a savepoint inside one the caller already holds.
 
 The root boundary is the port's own `begin`/`commit`, issued on the session the
 pool checked out. What makes that safe is the checkout, not the statement: a `pg`
