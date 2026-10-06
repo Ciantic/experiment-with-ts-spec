@@ -211,6 +211,8 @@ interface FieldTags {
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
+    /** True when the field is written `?`. See docs/optionality.md. */
+    optional: boolean;
 }
 
 /** Resolve the tags a field's rules share: the first occurrence of each, plus the type shape. */
@@ -243,6 +245,7 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         queryWhere: first("queryWhere"),
         typeText: typeNode?.getText(),
         isArray: typeNode !== undefined && Node.isArrayTypeNode(typeNode),
+        optional: property.hasQuestionToken(),
     };
 }
 
@@ -533,6 +536,27 @@ function lintVersion(tags: FieldTags, report: Report): void {
     }
 }
 
+/** A tag that makes its column `not null` may not sit on an optional field, or the field lies about the read. See docs/optionality.md. */
+function lintForcedNotNull(tags: FieldTags, report: Report): void {
+    if (!tags.optional) {
+        return;
+    }
+    // One finding per field, in this order: a `@version` field carries its own `@pgDefault`, and the fix is the same for both.
+    const forced: [string, JSDocTag | undefined][] = [
+        ["primaryKey", tags.primaryKey],
+        ["createdAt", tags.createdAt],
+        ["updatedAt", tags.updatedAt],
+        ["version", tags.version],
+        ["pgDefault", tags.pgDefault],
+    ];
+    for (const [name, tag] of forced) {
+        if (tag) {
+            report(`@${name} makes its column \`not null\`, so the field is required; drop the \`?\``, tag);
+            return;
+        }
+    }
+}
+
 /** `@queryOrderBy` whitelists an ordering key; `default asc|desc` also names the default. */
 function lintQueryOrderBy(tags: FieldTags, report: Report): void {
     const tag = tags.queryOrderBy;
@@ -596,6 +620,7 @@ function lintProperty(
     lintKeyTags(tags, report);
     lintQueryFilter(tags, report);
     lintVersion(tags, report);
+    lintForcedNotNull(tags, report);
     lintQueryOrderBy(tags, report);
     lintWhere(tags, report);
 }

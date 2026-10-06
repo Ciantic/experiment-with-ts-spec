@@ -48,11 +48,12 @@ Field tags:
   correct for every event the header names: `NEW.` on insert and update, `OLD.`
   on delete. See "`@pgTrigger` headers" below.
 - `@createdAt` — the row's creation moment. A bare marker on a `Date` field: the
-  column becomes `not null default now()`, and no create or patch writes it. See
-  `docs/timestamps.md`.
+  column becomes `not null default now()`, no create or patch writes it, and the
+  field is required. See `docs/timestamps.md`.
 - `@updatedAt` — the row's last-write moment. A bare marker on a `Date` field: the
-  column becomes `not null default now()`, and every write assigns
-  `NEW."<field>" := now()` in the table's trigger. See `docs/timestamps.md`.
+  column becomes `not null default now()`, every write assigns
+  `NEW."<field>" := now()` in the table's trigger, and the field is required. See
+  `docs/timestamps.md`.
 - `@pgDefault <expression>` — a database column default, written verbatim into the DDL. The column is `not null`, so the field is required, and a create may still omit it; the SQL then writes `default` in place of the value, so the database fills it. `<name>InsertSchema` accepts the field whether or not it is supplied, and a patch may set it like any other column. May accompany `@computed`: the default covers the insert path, the trigger every write, and the two agree on insert. A `@version` field is the exception: a defaulted version stays out of a create, since its default is the first revision. See `docs/repositories.md` and `docs/optionality.md`.
 - `@primaryKey` — a column of the table's primary key. A bare marker on a scalar
   field: the column is `not null`, and the generated reads filter on it by
@@ -69,9 +70,9 @@ Field tags:
 - `@unique` — the column is unique.
 - `@version` — the optimistic-lock column. Omitted on insert (the `@pgDefault`
   supplies the first revision) and written on update as the caller's
-  precondition; a `before update` trigger validates and increments it. At most
-  one per interface, the field type must be `Version`, and it is exclusive with
-  `@computed`. See `docs/versioning.md`.
+  precondition; a `before update` trigger validates and increments it. The field
+  is required, at most one per interface, the field type must be `Version`, and
+  it is exclusive with `@computed`. See `docs/versioning.md`.
 - `@queryFilter` — a bare marker that makes the field a filter of the entity's
   generated reads. A filter is a set matched with `in (…)`; several are combined
   with `and`. Scalar fields only; a branch field may not carry it, and it is
@@ -522,6 +523,11 @@ Enforced:
   mutually exclusive with each other and with `@computed`,
   `@pgDefault`, `@version`, and the mechanism tags, and may appear at most once per
   interface.
+- A tag whose column is `not null` — `@primaryKey`, `@pgDefault`, `@createdAt`,
+  `@updatedAt`, `@version` — may not sit on an optional field. The field says what
+  a read has, and the column always has a value. One finding per field, so a
+  `@version` field carrying its own `@pgDefault` reports once. See
+  `docs/optionality.md`.
 - `@inlined` requires an entity name and is mutually exclusive with `@relation`
   and `@children`.
 - `@primaryKey` is a bare marker on a scalar field, and may appear on several

@@ -538,7 +538,7 @@ describe("lintSourceText", () => {
                  * @widget text
                  * @pgDefault 'manual'
                  */
-                source?: string;
+                source: string;
             }`,
         );
 
@@ -555,7 +555,7 @@ describe("lintSourceText", () => {
                  * @pgTrigger NEW."net" := NEW."q" * NEW."p"
                  * @pgDefault 0
                  */
-                net?: Money;
+                net: Money;
             }`,
         );
 
@@ -570,7 +570,7 @@ describe("lintSourceText", () => {
                  * @widget date
                  * @createdAt
                  */
-                createdAt?: Date;
+                createdAt: Date;
             }`,
         );
 
@@ -585,7 +585,7 @@ describe("lintSourceText", () => {
                  * @widget number
                  * @createdAt
                  */
-                createdAt?: number;
+                createdAt: number;
             }`,
         );
 
@@ -603,7 +603,7 @@ describe("lintSourceText", () => {
                  * @updatedAt
                  * @computed
                  */
-                updatedAt?: Date;
+                updatedAt: Date;
             }`,
         );
 
@@ -619,7 +619,7 @@ describe("lintSourceText", () => {
                  * @createdAt
                  * @pgDefault now()
                  */
-                createdAt?: Date;
+                createdAt: Date;
             }`,
         );
 
@@ -636,7 +636,7 @@ describe("lintSourceText", () => {
                  * @widget date
                  * @createdAt now()
                  */
-                createdAt?: Date;
+                createdAt: Date;
             }`,
         );
 
@@ -651,7 +651,7 @@ describe("lintSourceText", () => {
                  * @widget date
                  * @pgDefault
                  */
-                createdAt?: Date;
+                createdAt: Date;
             }`,
         );
 
@@ -772,7 +772,7 @@ describe("lintSourceText", () => {
                  * @version
                  * @pgDefault 0
                  */
-                version?: Version;
+                version: Version;
             }`,
         );
 
@@ -802,17 +802,141 @@ describe("lintSourceText", () => {
                  * @widget number
                  * @version
                  */
-                version?: Version;
+                version: Version;
                 /**
                  * @fieldName Other
                  * @widget number
                  * @version
                  */
-                other?: Version;
+                other: Version;
             }`,
         );
 
         expect(messages(findings)).toEqual(["`Two`: @version may appear on at most one field"]);
+    });
+});
+
+describe("not-null fields", () => {
+    it("rejects @createdAt on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @createdAt
+                 */
+                createdAt?: Date;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`createdAt`: @createdAt makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
+    it("rejects @updatedAt on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Stamped {
+                /**
+                 * @fieldName Updated at
+                 * @widget date
+                 * @updatedAt
+                 */
+                updatedAt?: Date;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`updatedAt`: @updatedAt makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
+    it("rejects @version on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Versioned {
+                /**
+                 * @fieldName Version
+                 * @widget number
+                 * @version
+                 * @pgDefault 0
+                 */
+                version?: Version;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`version`: @version makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
+    it("rejects @pgDefault on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Defaulted {
+                /**
+                 * @fieldName Source
+                 * @widget text
+                 * @pgDefault 'manual'
+                 */
+                source?: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`source`: @pgDefault makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
+    it("rejects @primaryKey on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Keyed {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 */
+                id?: string;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`id`: @primaryKey makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
+    it("accepts the same tags on a required field", () => {
+        const findings = lintSourceText(
+            `export interface Keyed {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 */
+                id: string;
+                /**
+                 * @fieldName Created at
+                 * @widget date
+                 * @createdAt
+                 */
+                createdAt: Date;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts @foreignKey on an optional field, since it adds no not-null column", () => {
+        const findings = lintSourceText(
+            `export interface Relating {
+                /**
+                 * @fieldName Owner ID
+                 * @widget text
+                 * @foreignKey Owner
+                 */
+                ownerId?: string;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
     });
 });
 
@@ -1067,7 +1191,7 @@ describe("@primaryKey and @foreignKey", () => {
                  * @relation
                  * @primaryKey
                  */
-                owner?: Owner;
+                owner: Owner;
             }`,
         );
 
@@ -1117,7 +1241,7 @@ describe("@primaryKey and @foreignKey", () => {
                  * @primaryKey
                  * @foreignKey Owner
                  */
-                ownerId?: OwnerId;
+                ownerId: OwnerId;
             }`,
         );
 

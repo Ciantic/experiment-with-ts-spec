@@ -55,11 +55,11 @@ whatever the field says, and a generator reads the tag, never the field name —
 so adding an entity never edits a generator. A field is therefore optional
 exactly when its column is nullable.
 
-Nothing compares the two mechanically: no lint rule reads the DDL and the
-interface together, so the pairing is a convention the spec's author keeps. The
-lint rules that touch it are the ones on the tags that create the `not null`
-column — `@createdAt`/`@updatedAt` supply `default now()` themselves, and a
-`@pgDefault` expression must be written out.
+`lint:spec` checks the direction a tag can force: a tag whose column is
+`not null` — `@primaryKey`, `@pgDefault`, `@createdAt`, `@updatedAt`, `@version`
+— may not sit on an optional field. The other direction is not reported, since no
+lint rule reads the DDL and the interface together: a required field on a
+nullable column passes.
 
 ## Gotchas
 
