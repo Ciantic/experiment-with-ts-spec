@@ -6,10 +6,11 @@ first result. A generator emits the typed functions and the physical model; one
 hand-written resolver turns a selection into SQL. See "Why the resolver is
 hand-written".
 
-- `packages/spec/src/selection.ts` — `Selection`/`Selected` (the
-  column-limiting types) and `Filters` (the filter arguments). Hand-written. It
-  sits in the spec because the generated REST client shares it;
-  `packages/backend/src/db/selection.ts` re-exports it. See `docs/rest-api.md`.
+- `packages/validation/src/selection.ts` — `Selection`/`Selected` (the
+  column-limiting types), `Filters` (the filter arguments), and the `Order` and
+  `Where` clauses. Hand-written; the resolver and the generated REST client
+  import their types from it, so the read contract has one definition. See
+  `docs/rest-api.md`.
 - `packages/backend/scripts/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per entity), `index.ts` (barrel).
@@ -453,10 +454,9 @@ stays stable and is never truncated or filtered.
 - **`offset` is not a cursor.** A concurrent insert or delete can shift a row
   across pages between calls. Stable paging over a mutable table needs a keyset
   cursor, which is not implemented.
-- **The read types are in the spec, the reader is not.** `Selection`,
-  `Selected`, `Filters`, `Order`, and `Where` are pure types with no query in
-  them, so
-  they live in `packages/spec/src/selection.ts` and both the backend and the
+- **The read types are shared, the reader is not.** `Selection`, `Selected`,
+  `Filters`, `Order`, and `Where` are pure types with no query in them, so they
+  live in `packages/validation/src/selection.ts` and both the backend and the
   generated REST client import them from there. The SQL, the resolver, and the
   metadata stay in the backend.
 

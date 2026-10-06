@@ -159,7 +159,7 @@ export function renderQueryModule(entity: string, table: Table): string {
         selectionTypes.push("Where");
     }
     selectionTypes.sort((a, b) => a.localeCompare(b));
-    lines.push(`import type { ${selectionTypes.join(", ")} } from "../selection.ts";`);
+    lines.push(`import type { ${selectionTypes.join(", ")} } from "validation/selection.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push('import { createResolver } from "../resolvers.ts";');
     lines.push('import { queryModel } from "./model.ts";');

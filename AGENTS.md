@@ -2,9 +2,9 @@
 
 - `packages/spec/` — TypeScript interfaces that form the definition of the
   application.
-- `packages/validation/` — generated Zod schemas and the shared Patch/Insert
-  types, consumed by the backend, the SDK, and eventually the frontend. Owns the
-  generator that writes them.
+- `packages/validation/` — generated Zod schemas, the shared Patch/Insert types,
+  and the shared read types, consumed by the backend, the SDK, and eventually the
+  frontend. Owns the generator that writes the schemas.
 - `packages/backend/` — Postgres schema, generated repositories, and result
   mapping for the spec.
 - `packages/sdk/` — generated type-safe REST client, plus the hand-written

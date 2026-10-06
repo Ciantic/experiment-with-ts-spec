@@ -72,7 +72,7 @@ export interface ZodEntity {
     selectFields: ZodSelectField[];
 }
 
-/** One field of a `select`, mirroring `Selection` in `../src/db/selection.ts`. */
+/** One field of a `select`, mirroring `Selection` in `../src/selection.ts`. */
 export interface ZodSelectField {
     name: string;
     /** The entity a branch selects into; undefined for a scalar field. */

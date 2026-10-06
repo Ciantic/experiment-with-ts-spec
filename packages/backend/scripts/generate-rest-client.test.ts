@@ -139,7 +139,7 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain('where?: Where<Widget, { amount: "gte" | "lte" }>');
-        expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "spec/selection.ts";');
+        expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "validation/selection.ts";');
     });
 
     it("imports and re-exports the patch type from the validation package", () => {

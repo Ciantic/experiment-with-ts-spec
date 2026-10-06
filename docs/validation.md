@@ -45,7 +45,10 @@ The package is consumed as TypeScript through its `exports` map, like every othe
 package here. `packages/backend` and `packages/sdk` depend on it: a repository
 imports one write type from its `repositories/<entity><Kind>Schema.ts` module,
 the route table validates with the schemas through the barrel, and the client
-imports its write types type-only, so `zod` never enters the client runtime.
+imports its write types type-only, so `zod` never enters the client runtime. Not
+everything here is generated: the read types (`Selection`, `Selected`, `Filters`,
+`Order`, `Where`) are hand-written in `packages/validation/src/selection.ts`,
+outside the barrels, and imported by path. See `docs/queries.md`.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -285,7 +288,7 @@ pulling in a write schema, and `--out` still writes below the given directory.
 `select` is not a fixed shape: a caller picks any subset of fields and nests
 into branches. So it is validated against a generated per-query schema,
 `query<name>SelectSchema`, that mirrors `Selection<E>` in
-`packages/spec/src/selection.ts`:
+`packages/validation/src/selection.ts`:
 
 ```typescript
 export const queryInvoiceSelectSchema = z.lazy(() =>

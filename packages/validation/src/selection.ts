@@ -1,12 +1,5 @@
-/**
- * Read types: the column-limiting selection and the filter arguments.
- * Hand-written, not generated. See docs/queries.md.
- *
- * These live in the spec because the generated REST client must agree with the
- * server on the shape of a read, and the client may import nothing from the
- * backend. See docs/rest-api.md.
- */
-import type { Brand } from "./primitives/Brand.ts";
+/** Read types: the column-limiting selection, the filter arguments, and the ordering clauses. See docs/queries.md. */
+import type { Brand } from "spec/primitives/Brand.ts";
 
 /** A leaf column: a keyword, a branded primitive, a `Date`, or a union of those. */
 type Scalar<T> = NonNullable<T> extends string | number | boolean | bigint | Date | Brand<any>
@@ -45,10 +38,7 @@ export type Order<K extends PropertyKey> = [field: K, direction: Direction];
 /** The comparison operators a `@queryWhere` field may name. See docs/queries.md. */
 export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
 
-/**
- * Comparison arguments of a read: `{ issueDate: { gte: …, lte: … } }`. Each field is whitelisted
- * to the operators `@queryWhere` declared for it, and each operator takes one value. See docs/queries.md.
- */
+/** Comparison arguments of a read: each field whitelisted to the operators `@queryWhere` declared, one value each. See docs/queries.md. */
 export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
     [K in keyof O & keyof E]?: { [P in Extract<NonNullable<O[K]>, PropertyKey>]?: NonNullable<E[K]> };
 };

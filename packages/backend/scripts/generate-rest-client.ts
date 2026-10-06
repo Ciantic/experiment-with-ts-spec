@@ -38,7 +38,7 @@ const CLIENT_MODULE = "client.ts";
 const INDEX_FILE = "index.ts";
 
 /** The package specifier the read types are imported from. */
-const SELECTION_IMPORT = "spec/selection.ts";
+const SELECTION_IMPORT = "validation/selection.ts";
 
 /** The package the shared write types (`<Entity>Patch`, `<Entity>Insert`) are imported from. */
 const VALIDATION_PACKAGE = "validation";

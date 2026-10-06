@@ -114,12 +114,12 @@ have different import rules:
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from the backend.** It cannot reach a table
-name, a column, a driver, or `zod`. The one cross-package import it does have is
-type-only: its `<Entity>Patch` and `<Entity>Insert` come from
-`packages/validation`, the same definitions the repositories take and the route
-table validates with, and a type-only import keeps `zod` (and every schema) out
-of the client's runtime. Everything else it agrees with the server on is what
-`packages/spec` declares.
+name, a column, a driver, or `zod`. Its cross-package imports are type-only: the
+read types (`Selection`, `Selected`, `Filters`, `Order`, `Where`) and the write
+types (`<Entity>Patch`, `<Entity>Insert`) come from `packages/validation`, the
+same definitions the resolver and the route table use, and a type-only import
+keeps `zod` (and every schema) out of the client's runtime. Everything else it
+agrees with the server on is what `packages/spec` declares.
 
 A drift check is the second assertion: both generators are driven from one model
 and the `(method, path)` sets they render are compared, so a route added on the
@@ -127,8 +127,8 @@ server and forgotten in the client fails a test rather than a request.
 
 ## The client builds calls; `exec` sends them
 
-Because the read types live in the spec, the generated client keeps the server's
-narrowing. A generated function takes the argument and returns a call, and `exec`
+Because the read types are shared with the server, the generated client keeps the
+server's narrowing. A generated function takes the argument and returns a call, and `exec`
 is the one function that talks to the network:
 
 ```typescript
