@@ -869,6 +869,16 @@ describe("generated repositories against PGlite", () => {
         expect(rows).toEqual([{ name: "after", note: null, ownerId: null, version: 1n }]);
     });
 
+    it("writes a null through the generated upsert, clearing a nullable column", async () => {
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "run", note: "keep", owner: null, version: 0n }]);
+        // An upsert writes the whole row, so `null` reaches the statement as a value like any other.
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "run", note: null, owner: null, version: 0n }]);
+
+        const { rows } = await driver.query<{ note: string | null }>('select "note" from "widget"');
+
+        expect(rows).toEqual([{ note: null }]);
+    });
+
     it("rejects an upsert whose claim the stored row has moved past, leaving the row as it was", async () => {
         await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: null }]);
         await widgets.upsert(db, [{ id: WIDGET_ID, name: "first", note: null, owner: null, version: 0n }]);

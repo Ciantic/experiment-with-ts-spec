@@ -76,6 +76,10 @@ values, all of which are domain decisions rather than code behaviour.
   which is why the assertions read it rather than the rows.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
+- `packages/backend/src/main.test.ts` — the end-to-end smoke test: the generated
+  client, the generated route table, and a live server. It takes the rows a seeded
+  server answers with from `spec/mockdata`, and names no domain type, so a change
+  to the model does not touch it.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.
@@ -83,7 +87,9 @@ values, all of which are domain decisions rather than code behaviour.
 ## Gotchas
 
 - **Do not import the real spec into a unit test.** Use an in-memory project with
-  a fixture glob, or the test becomes a domain test by accident.
+  a fixture glob, or the test becomes a domain test by accident. The end-to-end
+  smoke test in `src/main.test.ts` is no exception: it draws its rows from
+  `spec/mockdata` and names no domain type.
 - **Name the real file extension in imports.** `node` runs the TypeScript
   directly and resolves only `.ts` specifiers; `allowImportingTsExtensions` lets
   TypeScript accept them, and Vitest resolves them too.

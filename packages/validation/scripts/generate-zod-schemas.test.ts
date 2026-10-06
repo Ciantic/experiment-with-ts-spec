@@ -198,7 +198,7 @@ export type ParentId = BrandedId<"ParentId">;
 
 /** The Zod surface the stub needs, so the functional tests stay typed. */
 interface ZodStub {
-    string: () => unknown;
+    string: () => { optional: () => unknown };
     bigint: () => unknown;
     object: (shape: unknown) => unknown;
     strictObject: (shape: unknown) => unknown;
