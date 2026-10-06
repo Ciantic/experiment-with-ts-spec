@@ -9,12 +9,7 @@ export interface SqlExecutor {
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
-/**
- * The rows a write statement affected, read from whatever the driver returned. The drivers name it
- * differently — PGlite `affectedRows`, `pg` `rowCount` — so a generated patch that has to notice an
- * unmatched row reads it through here. A result that carries neither name is a driver this does not
- * know, and answering `0` would read as a conflict, so it throws instead. See docs/versioning.md.
- */
+/** Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`). */
 export function affectedRows(result: unknown): number {
     // `rowCount` is `number | null` in `pg`, so it is accepted only when it is a number.
     const counts = (result ?? {}) as { affectedRows?: unknown; rowCount?: unknown };
