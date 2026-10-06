@@ -9,7 +9,7 @@ export interface SqlExecutor {
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
-/** The parameters one statement may carry: a statement past this is dropped by PGlite. See docs/repositories.md. */
+/** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */
 export const MAX_STATEMENT_PARAMETERS = 32767;
 
 /** Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`). */

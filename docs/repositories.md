@@ -94,7 +94,11 @@ in it, nested as a savepoint when the caller already holds one, so the rows
 still commit together. The bound is the driver's rather than the protocol's:
 PostgreSQL accepts 65535 parameters, while PGlite past 32767 drops the
 statement without an error and answers nothing afterwards, so the generated
-code stays inside the smaller number.
+code stays inside the smaller number. The shortfall is PGlite's own: it reads
+and writes the protocol's 16-bit counts with the signed `getInt16`/`setInt16`,
+where the wire format is unsigned. Filed upstream as
+[electric-sql/pglite#1118](https://github.com/electric-sql/pglite/issues/1118);
+the constant can move to the protocol's 65535 once that is fixed.
 
 An insert writes every row it carries, so each statement's affected-row count is
 compared with the chunk it was given, and a short count is a rejected call. That
