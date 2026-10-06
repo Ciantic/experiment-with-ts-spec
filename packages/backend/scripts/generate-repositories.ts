@@ -89,7 +89,7 @@ function suppliedValue(column: Column, fallback: string): string {
 }
 
 /** One array a chunked statement binds: what a row contributes to it, and the cast it carries. */
-interface BoundArray {
+export interface BoundArray {
     /** The JS variable the array is built in. */
     variable: string;
     /** The alias column `unnest` exposes the array as. */
@@ -151,9 +151,14 @@ function bindArrays(arrays: BoundArray[]): string[] {
 }
 
 /** The fragments that build one statement, and the arrays it binds. */
-interface ChunkStatement {
+export interface ChunkStatement {
     fragments: string[];
     arrays: BoundArray[];
+}
+
+/** The SQL a statement runs: its fragments with nothing between them, the way the module concatenates them. */
+export function statementSql(statement: ChunkStatement): string {
+    return statement.fragments.join("");
 }
 
 /** The `await tx.query(…)` lines: the SQL built from its fragments, then the arrays it binds. */
@@ -234,9 +239,22 @@ function keyExpression(primaryKeys: Column[]): string {
     return primaryKeys.map((column) => readExpression(column)).join(' + "/" + ');
 }
 
-/** Render `create<Entity>`: a chunk of rows per insert, in the shape a patch runner takes. */
-export function generateCreate(table: Table): string {
-    const entity = table.interfaceName;
+/** The columns a patch writes: every column but the key, which addresses a row, and the database-owned ones. */
+function patchColumns(table: Table): Column[] {
+    return table.columns.filter((column) => !column.primaryKey && column.updatable !== false);
+}
+
+/**
+ * The optimistic-lock column, which a write claims instead of assigning. It is always patchable, since
+ * `isUpdatable` accepts a `@version` field whatever else it carries, so a patch finds it here too.
+ * See docs/versioning.md.
+ */
+function versionColumn(table: Table): Column | undefined {
+    return table.columns.find((column) => column.version);
+}
+
+/** The insert a create runs, planned from the table alone: the statement's fragments and the arrays it binds. */
+export function createStatement(table: Table): ChunkStatement {
     // A create writes the insertable fields, the same set `<entity>InsertSchema` accepts.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
     // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
@@ -246,7 +264,7 @@ export function generateCreate(table: Table): string {
         return column.default === undefined ? value : suppliedValue(column, column.default);
     });
     const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
-    const statement: ChunkStatement = {
+    return {
         fragments: [
             `insert into ${quote(table.name)} (${insertColumnNames}) select `,
             ...selectItems.map((item, index) => `${item}${index === selectItems.length - 1 ? " " : ", "}`),
@@ -254,6 +272,13 @@ export function generateCreate(table: Table): string {
         ],
         arrays,
     };
+}
+
+/** Render `create<Entity>`: a chunk of rows per insert, in the shape a patch runner takes. */
+export function generateCreate(table: Table): string {
+    const entity = table.interfaceName;
+    const statement = createStatement(table);
+    const { arrays } = statement;
     const lines = modulePrologue(
         `${entity}Insert`,
         'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
@@ -294,15 +319,13 @@ export function generateCreate(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render `update<Entity>`: a chunk of rows per statement, writing the columns a patch may supply. See docs/repositories.md. */
-export function generateUpdate(table: Table): string {
-    const entity = table.interfaceName;
+/** The patch an update runs, planned from the table alone: the statement's fragments and the arrays it binds. */
+export function updateStatement(table: Table): ChunkStatement {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    // A patch writes the patchable fields; a database-owned column keeps its stored value. See docs/repositories.md.
-    const patchColumns = table.columns.filter((column) => !column.primaryKey && column.updatable !== false);
+    const patchable = patchColumns(table);
     // The version is the optimistic-lock precondition, not an assignment; the trigger increments it.
-    const version = patchColumns.find((column) => column.version);
-    const setColumns = patchColumns.filter((column): column is SuppliedColumn => column.supplied !== undefined);
+    const version = versionColumn(table);
+    const setColumns = patchable.filter((column): column is SuppliedColumn => column.supplied !== undefined);
     const arrays = [
         ...primaryKeys.flatMap((column) => columnArrays(column, false)),
         ...(version === undefined ? [] : columnArrays(version, false)),
@@ -317,7 +340,7 @@ export function generateUpdate(table: Table): string {
         ...primaryKeys.map((column) => aliasMatch(column, TARGET_ALIAS, VALUES_ALIAS)),
         ...(version === undefined ? [] : [aliasMatch(version, TARGET_ALIAS, VALUES_ALIAS)]),
     ].join(" and ");
-    const statement: ChunkStatement = {
+    return {
         fragments: [
             `update ${quote(table.name)} as ${TARGET_ALIAS} set `,
             ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
@@ -328,6 +351,15 @@ export function generateUpdate(table: Table): string {
         ],
         arrays,
     };
+}
+
+/** Render `update<Entity>`: a chunk of rows per statement, writing the columns a patch may supply. See docs/repositories.md. */
+export function generateUpdate(table: Table): string {
+    const entity = table.interfaceName;
+    const statement = updateStatement(table);
+    const { arrays } = statement;
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    const version = versionColumn(table);
     const rejection =
         version === undefined
             ? `'no row of ${table.name} matches this patch: '`
@@ -378,17 +410,13 @@ export function generateUpdate(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/**
- * Render `upsert<Entity>`: a chunk of rows per statement, each inserted, or replacing the row at the
- * version it claims. See docs/repositories.md and docs/versioning.md.
- */
-export function generateUpsert(table: Table): string {
-    const entity = table.interfaceName;
+/** The insert and replacement an upsert runs, planned from the table alone: the fragments and the arrays it binds. */
+export function upsertStatement(table: Table): ChunkStatement {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     // An upsert writes the fields a create writes, plus the version an existing row is claimed at.
     // The conflict path cannot see the values alias, so `excluded` carries every column it stores.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
-    const version = table.columns.find((column) => column.version);
+    const version = versionColumn(table);
     const writeColumns = version === undefined ? insertColumns : [...insertColumns, version];
     // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
     // The version is always claimed, so it carries no flag.
@@ -412,9 +440,8 @@ export function generateUpsert(table: Table): string {
     const assigned = writeColumns
         .filter((column) => !column.primaryKey && !column.version)
         .map((column) => `${quote(column.name)} = excluded.${quote(column.name)}`);
-    const assignments =
-        assigned.length === 0 ? [identityAssignment(primaryKeys[0] as Column, stored)] : assigned;
-    const statement: ChunkStatement = {
+    const assignments = assigned.length === 0 ? [identityAssignment(primaryKeys[0] as Column, stored)] : assigned;
+    return {
         fragments: [
             `insert into ${target} (${writeColumns.map((column) => quote(column.name)).join(", ")}) select `,
             ...selectItems.map((item, index) => `${item}${index === selectItems.length - 1 ? " " : ", "}`),
@@ -430,6 +457,18 @@ export function generateUpsert(table: Table): string {
         ],
         arrays,
     };
+}
+
+/**
+ * Render `upsert<Entity>`: a chunk of rows per statement, each inserted, or replacing the row at the
+ * version it claims. See docs/repositories.md and docs/versioning.md.
+ */
+export function generateUpsert(table: Table): string {
+    const entity = table.interfaceName;
+    const statement = upsertStatement(table);
+    const { arrays } = statement;
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    const version = versionColumn(table);
     const lines = modulePrologue(
         `${entity}Upsert`,
         version === undefined
@@ -496,11 +535,29 @@ export function generateUpsert(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
+/** The delete's SQL around the `(values …)` tuple list, which the runtime builds one tuple per row. */
+export interface DeleteStatement {
+    /** The SQL before the tuple list. */
+    before: string;
+    /** The SQL after it, naming the key columns the tuples are read as and matching each to its row. */
+    after: string;
+}
+
+/** The delete an entity runs, planned from the table alone: its SQL around the tuple list. */
+export function deleteStatement(table: Table): DeleteStatement {
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    const primaryKeyColumns = primaryKeys.map((column) => quote(column.name)).join(", ");
+    return {
+        before: `delete from ${quote(table.name)} using (values `,
+        after: `) as data(${primaryKeyColumns}) where ${keyMatch(table, primaryKeys)}`,
+    };
+}
+
 /** Render `delete<Entity>`: one multi-row delete matching on the primary key alone. */
 export function generateDelete(table: Table): string {
     const entity = table.interfaceName;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    const primaryKeyColumns = primaryKeys.map((column) => quote(column.name)).join(", ");
+    const { before, after } = deleteStatement(table);
     const lines = modulePrologue(`${entity}PrimaryKey`);
 
     lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
@@ -508,9 +565,7 @@ export function generateDelete(table: Table): string {
     lines.push("        return;");
     lines.push("    }");
     lines.push(...collectValues(primaryKeys.map(readEntry), { indent: "    ", source: "rows" }));
-    lines.push(
-        `    await db.query('delete from ${quote(table.name)} using (values ' + tuples.join(", ") + ') as data(${primaryKeyColumns}) where ${keyMatch(table, primaryKeys)}', parameters);`,
-    );
+    lines.push(`    await db.query('${before}' + tuples.join(", ") + '${after}', parameters);`);
     lines.push("}");
 
     return lines.join("\n") + "\n";

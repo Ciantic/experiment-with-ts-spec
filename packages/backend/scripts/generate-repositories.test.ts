@@ -5,7 +5,19 @@ import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts"
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
-import { generateCreate, generateDelete, generateIndex, generateRepositories, generateUpdate, generateUpsert } from "./generate-repositories.ts";
+import {
+    createStatement,
+    deleteStatement,
+    generateCreate,
+    generateDelete,
+    generateIndex,
+    generateRepositories,
+    generateUpdate,
+    generateUpsert,
+    statementSql,
+    updateStatement,
+    upsertStatement,
+} from "./generate-repositories.ts";
 import type { Column, Table } from "./postgres-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
@@ -41,6 +53,26 @@ const translation = table("translation", "Translation", [
     column("languageCode", { primaryKey: true }),
     column("key", { primaryKey: true }),
     column("value", { notNull: false }),
+]);
+
+/** A key, a plain column, and the optimistic-lock claim a versioned entity carries. */
+const versioned = table("customer", "Customer", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("name"),
+    column("version", { sqlType: "int8", default: "0", version: true }),
+]);
+
+/** An entity with nothing to write but its key, so a statement still has to name a `set`. */
+const keyOnly = table("key_only", "KeyOnly", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("derived", { notNull: false, insertable: false }),
+]);
+
+/** A defaulted column a row may omit, so a write binds a flag beside its values. */
+const defaulted = table("email", "Email", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("subject"),
+    column("status", { default: "'pending'" }),
 ]);
 
 /** A `create table` for a fixture, derived from its column metadata so this stays domain-free. */
@@ -130,6 +162,251 @@ function moduleCodes(table: Table): string[] {
     return [generateCreate(table), generateUpsert(table), generateUpdate(table), generateDelete(table)];
 }
 
+/**
+ * A db that records the SQL it is handed, and answers as a one-row write would: a statement that reads
+ * its rows back matches them on the keys it was handed, so the answer echoes those keys. A delete binds
+ * a flat parameter list and reads nothing back, so it has no rows to echo.
+ */
+function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlExecutor {
+    const handle: SqlExecutor = {
+        query: async (sql, parameters) => {
+            statements.push(sql);
+            const arrays = Array.isArray(parameters?.[0]) ? (parameters as unknown[][]) : [];
+            const rows = (arrays[0] ?? []).map((_, index) =>
+                Object.fromEntries(keyColumns.map((name, position) => [name, arrays[position]?.[index]])),
+            );
+            return { affectedRows: rows.length, rows };
+        },
+        transaction: (run) => run(handle),
+    };
+    return handle;
+}
+
+/** A row for a fixture: every column carries its own name, so a key read and the value bound for it agree. */
+function rowFor(table: Table): Record<string, string> {
+    return Object.fromEntries(table.columns.map((column) => [column.name, column.name]));
+}
+
+/** The fixtures the tie-back walks, with the key columns their statements bind first. */
+const tiedBack: Array<[string, Table, string[]]> = [
+    ["customer", customer, ["id"]],
+    ["translation", translation, ["languageCode", "key"]],
+    ["versioned", versioned, ["id"]],
+    ["defaulted", defaulted, ["id"]],
+    ["keyOnly", keyOnly, ["id"]],
+];
+
+/** The one-row tuple list a delete builds, which is the part of its SQL the runtime finishes. */
+function deleteTuples(table: Table, keyColumns: string[]): string {
+    const cast = (name: string) => table.columns.find((column) => column.name === name)?.sqlType ?? "text";
+    const placeholders = keyColumns.map((name, index) => `$${index + 1}::${cast(name)}`).join(", ");
+    return `(${placeholders})`;
+}
+
+describe("createStatement", () => {
+    it("builds the insert from the table alone, with no database and no rows", () => {
+        expect(statementSql(createStatement(customer))).toBe(
+            'insert into "customer" ("id", "name", "email") select v."id", v."name", v."email" ' +
+                'from unnest($1::uuid[], $2::text[], $3::text[]) as v("id", "name", "email") ',
+        );
+    });
+
+    it("binds one array per written column, in the order the placeholders number them", () => {
+        expect(createStatement(customer).arrays.map((array) => [array.alias, array.cast, array.element])).toEqual([
+            ["id", "uuid[]", "row.id ?? null"],
+            ["name", "text[]", "row.name ?? null"],
+            ["email", "text[]", "row.email ?? null"],
+        ]);
+    });
+
+    it("falls back to the column default for a row that omits it, binding a flag beside the values", () => {
+        expect(statementSql(createStatement(defaulted))).toBe(
+            'insert into "email" ("id", "subject", "status") select v."id", v."subject", ' +
+                "case when v.\"status#present\" then v.\"status\" else 'pending' end " +
+                'from unnest($1::uuid[], $2::text[], $3::text[], $4::bool[]) ' +
+                'as v("id", "subject", "status", "status#present") ',
+        );
+        expect(createStatement(defaulted).arrays.map((array) => array.alias)).toEqual([
+            "id",
+            "subject",
+            "status",
+            "status#present",
+        ]);
+    });
+
+    it("leaves the version out of the insert, since a create takes it from its default", () => {
+        expect(statementSql(createStatement(versioned))).toBe(
+            'insert into "customer" ("id", "name") select v."id", v."name" ' +
+                'from unnest($1::uuid[], $2::text[]) as v("id", "name") ',
+        );
+    });
+
+    it("leaves a column a create never writes out of the statement and out of the arrays", () => {
+        const limited = createStatement(
+            table("limited", "Limited", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("label"),
+                column("derived", { insertable: false }),
+            ]),
+        );
+
+        expect(statementSql(limited)).toContain('("id", "label") select');
+        expect(statementSql(limited)).not.toContain("derived");
+        expect(limited.arrays.map((array) => array.alias)).toEqual(["id", "label"]);
+    });
+});
+
+describe("updateStatement", () => {
+    it("builds the patch from the table alone, keeping a stored value where a row omits a column", () => {
+        expect(statementSql(updateStatement(customer))).toBe(
+            'update "customer" as u set "name" = case when v."name#present" then v."name" else u."name" end, ' +
+                '"email" = case when v."email#present" then v."email" else u."email" end ' +
+                'from unnest($1::uuid[], $2::text[], $3::bool[], $4::text[], $5::bool[]) ' +
+                'as v("id", "name", "name#present", "email", "email#present") ' +
+                'where u."id" = v."id" returning u."id"',
+        );
+    });
+
+    it("binds the key, then a value and a flag for every column a patch may supply", () => {
+        expect(updateStatement(customer).arrays.map((array) => [array.alias, array.cast])).toEqual([
+            ["id", "uuid[]"],
+            ["name", "text[]"],
+            ["name#present", "bool[]"],
+            ["email", "text[]"],
+            ["email#present", "bool[]"],
+        ]);
+    });
+
+    it("matches every column of a composite key, and returns all of them", () => {
+        expect(statementSql(updateStatement(translation))).toBe(
+            'update "translation" as u set "value" = case when v."value#present" then v."value" else u."value" end ' +
+                'from unnest($1::text[], $2::text[], $3::text[], $4::bool[]) ' +
+                'as v("languageCode", "key", "value", "value#present") ' +
+                'where u."languageCode" = v."languageCode" and u."key" = v."key" ' +
+                'returning u."languageCode", u."key"',
+        );
+    });
+
+    it("claims the version in the where instead of assigning it, leaving the counter to the trigger", () => {
+        const sql = statementSql(updateStatement(versioned));
+
+        expect(sql).toBe(
+            'update "customer" as u set "name" = case when v."name#present" then v."name" else u."name" end ' +
+                'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[]) ' +
+                'as v("id", "version", "name", "name#present") ' +
+                'where u."id" = v."id" and u."version" = v."version" returning u."id"',
+        );
+        // The version rides along in the key arrays, and the `set` list never names it.
+        expect(updateStatement(versioned).arrays.map((array) => array.alias)).toEqual([
+            "id",
+            "version",
+            "name",
+            "name#present",
+        ]);
+        expect(/set (.*?) from unnest/.exec(sql)?.[1]).not.toContain("version");
+    });
+
+    it("sets the key to itself for an entity with no writable column, so the statement still writes a row", () => {
+        expect(statementSql(updateStatement(keyOnly))).toBe(
+            'update "key_only" as u set "id" = u."id" from unnest($1::uuid[]) as v("id") ' +
+                'where u."id" = v."id" returning u."id"',
+        );
+    });
+});
+
+describe("upsertStatement", () => {
+    it("builds the insert and the replacement from the table alone", () => {
+        expect(statementSql(upsertStatement(customer))).toBe(
+            'insert into "customer" ("id", "name", "email") select v."id", v."name", v."email" ' +
+                'from unnest($1::uuid[], $2::text[], $3::text[]) as v("id", "name", "email") ' +
+                'on conflict ("id") do update set "name" = excluded."name", "email" = excluded."email" ',
+        );
+    });
+
+    it("conflicts on every column of a composite key, and replaces the rest", () => {
+        expect(statementSql(upsertStatement(translation))).toBe(
+            'insert into "translation" ("languageCode", "key", "value") ' +
+                'select v."languageCode", v."key", v."value" ' +
+                'from unnest($1::text[], $2::text[], $3::text[]) as v("languageCode", "key", "value") ' +
+                'on conflict ("languageCode", "key") do update set "value" = excluded."value" ',
+        );
+    });
+
+    it("claims the version, writing it and comparing it instead of assigning it", () => {
+        expect(statementSql(upsertStatement(versioned))).toBe(
+            'insert into "customer" as u ("id", "name", "version") select v."id", v."name", v."version" ' +
+                'from unnest($1::uuid[], $2::text[], $3::int8[]) as v("id", "name", "version") ' +
+                'on conflict ("id") do update set "name" = excluded."name" ' +
+                'where u."version" = excluded."version" returning u."id"',
+        );
+        // The claim is always written, so it binds no flag.
+        expect(upsertStatement(versioned).arrays.map((array) => array.alias)).toEqual(["id", "name", "version"]);
+    });
+
+    it("carries no alias, version predicate, or returning for an entity with no version", () => {
+        const sql = statementSql(upsertStatement(customer));
+
+        expect(sql).not.toContain(" as u ");
+        expect(sql).not.toContain("where");
+        expect(sql).not.toContain("returning");
+    });
+
+    it("falls back to the column default on the conflict path, which can only read `excluded`", () => {
+        expect(statementSql(upsertStatement(defaulted))).toContain(
+            "case when v.\"status#present\" then v.\"status\" else 'pending' end ",
+        );
+        expect(statementSql(upsertStatement(defaulted))).toContain('"status" = excluded."status"');
+    });
+
+    it("sets the key to the stored one when the entity has no column to replace", () => {
+        expect(statementSql(upsertStatement(keyOnly))).toBe(
+            'insert into "key_only" ("id") select v."id" from unnest($1::uuid[]) as v("id") ' +
+                'on conflict ("id") do update set "id" = "key_only"."id" ',
+        );
+    });
+});
+
+describe("deleteStatement", () => {
+    it("deletes by the primary key columns only, around the tuple list the runtime builds", () => {
+        expect(deleteStatement(customer)).toEqual({
+            before: 'delete from "customer" using (values ',
+            after: ') as data("id") where "customer"."id" = data."id"',
+        });
+    });
+
+    it("matches every column of a composite key on delete", () => {
+        expect(deleteStatement(translation)).toEqual({
+            before: 'delete from "translation" using (values ',
+            after:
+                ') as data("languageCode", "key") where "translation"."languageCode" = data."languageCode" and "translation"."key" = data."key"',
+        });
+    });
+});
+
+describe("statementSql", () => {
+    it("is the SQL a generated module runs, so the planner and the emitted module cannot disagree", async () => {
+        for (const [name, fixture, keyColumns] of tiedBack) {
+            const statements: string[] = [];
+            const repository = loadRepository(fixture);
+            const rows = [rowFor(fixture)];
+
+            await repository.create(recordingDb(statements, keyColumns), rows);
+            await repository.update(recordingDb(statements, keyColumns), rows);
+            await repository.upsert(recordingDb(statements, keyColumns), rows);
+            await repository.delete(recordingDb(statements, keyColumns), rows);
+
+            const deletion = deleteStatement(fixture);
+            expect(statements, name).toEqual([
+                statementSql(createStatement(fixture)),
+                statementSql(updateStatement(fixture)),
+                statementSql(upsertStatement(fixture)),
+                // A delete is the one statement the runtime finishes, one tuple per row.
+                `${deletion.before}${deleteTuples(fixture, keyColumns)}${deletion.after}`,
+            ]);
+        }
+    });
+});
+
 describe("generateCreate", () => {
     it("starts each operation module with the do-not-edit header", () => {
         for (const code of moduleCodes(customer)) {
@@ -198,34 +475,12 @@ describe("generateCreate", () => {
         }
     });
 
-    it("inserts a chunk of rows, binding one array per column", () => {
+    it("inserts a chunk of rows, filling one array per column and handing them to the statement", () => {
         const code = generateCreate(customer);
 
-        expect(code).toContain('\'insert into "customer" ("id", "name", "email") select \' +');
         expect(code).toContain("                idValues.push(row.id ?? null);");
         expect(code).toContain("                nameValues.push(row.name ?? null);");
-        expect(code).toContain('\'v."id", \' +');
-        expect(code).toContain('\'v."email" \' +');
         expect(code).toContain("                [idValues, nameValues, emailValues],");
-    });
-
-    it("casts each placeholder to its column type, so keys compare against the right type", () => {
-        const code = generateCreate(customer);
-
-        expect(code).toContain('\'from unnest($1::uuid[], $2::text[], $3::text[]) as v(\' +');
-        expect(code).toContain('\'"id", "name", "email") \',');
-    });
-
-    it("leaves a non-insertable column out of the insert statement", () => {
-        const limited = table("limited", "Limited", [
-            column("id", { sqlType: "uuid", primaryKey: true }),
-            column("label"),
-            column("derived", { insertable: false }),
-        ]);
-        const insert = generateCreate(limited).match(/insert into "limited" \(([^)]*)\)/)?.[1] ?? "";
-
-        expect(insert).toContain('"label"');
-        expect(insert).not.toContain('"derived"');
     });
 
     it("reads an inlined optional field through optional chaining", () => {
@@ -259,8 +514,6 @@ describe("generateCreate", () => {
             ]),
         );
 
-        // The default is written into the statement, since `default` is not allowed outside an `insert … values` list.
-        expect(code).toContain("'case when v.\"source#present\" then v.\"source\" else \\'manual\\' end ' +");
         expect(code).toContain("                sourceValues.push(row.source ?? null);");
         expect(code).toContain("                sourcePresent.push(row.source !== undefined);");
         // Only a defaulted column carries the flag, since every other column is always written.
@@ -277,7 +530,6 @@ describe("generateCreate", () => {
             ]),
         );
 
-        expect(code).toContain('\'insert into "customer" ("id", "name") select \' +');
         expect(code).toContain("                idValues.push(row.id ?? null);");
         expect(code).toContain("                nameValues.push(row.name ?? null);");
         expect(code).not.toContain("versionValues");
@@ -376,8 +628,9 @@ describe("generateUpdate", () => {
             column("derived", { notNull: false, updatable: false }),
         ]);
 
-        expect(generateUpdate(limited)).toContain('"label" = case when v."label#present" then v."label" else u."label" end ');
         expect(generateUpdate(limited)).not.toContain('"derived"');
+        // The column is left out of the statement and out of the arrays it binds: the key, and one value and flag.
+        expect(generateUpdate(limited)).toContain("const PARAMETERS_PER_ROW = 3;");
     });
 
     it("patches a defaulted column, since a caller may override the default", () => {
@@ -404,7 +657,6 @@ describe("generateUpdate", () => {
 
         // The version travels among the values the `where` compares, so it is read unconditionally …
         expect(code).toContain("                versionValues.push(row.version ?? null);");
-        expect(code).toContain('\'where u."id" = v."id" and u."version" = v."version" \'');
         // … but it is the trigger that increments it, never the `set` clause, and a patch cannot omit it.
         expect(code).not.toContain('"version" = case when');
         expect(code).not.toContain("versionPresent");
@@ -486,19 +738,12 @@ describe("generateUpdate", () => {
     it("names every key column of a composite key, so a row is matched on all of them", () => {
         const code = generateUpdate(translation);
 
-        expect(code).toContain('u."languageCode" = v."languageCode" and u."key" = v."key"');
         expect(code).toContain("                languageCodeValues.push(row.languageCode ?? null);");
         expect(code).toContain("                keyValues.push(row.key ?? null);");
     });
 });
 
 describe("generateUpsert", () => {
-    const versioned = table("customer", "Customer", [
-        column("id", { sqlType: "uuid", primaryKey: true }),
-        column("name"),
-        column("version", { sqlType: "int8", default: "0", version: true }),
-    ]);
-
     it("inserts a chunk of rows, replacing the row each key already holds", () => {
         const code = generateUpsert(customer);
 
@@ -506,10 +751,6 @@ describe("generateUpsert", () => {
             'import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";',
         );
         expect(code).toContain("export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<void> {");
-        expect(code).toContain('\'insert into "customer" ("id", "name", "email") select \' +');
-        expect(code).toContain('\'on conflict ("id") do update set \' +');
-        expect(code).toContain('\'"name" = excluded."name", \' +');
-        expect(code).toContain('"email" = excluded."email"');
         expect(code).toContain("                nameValues.push(row.name ?? null);");
         // The key is what the conflict matched, so the `set` list leaves it alone.
         expect(code).not.toContain("excluded.\"id\"");
@@ -519,13 +760,9 @@ describe("generateUpsert", () => {
         const code = generateUpsert(versioned);
 
         // The version is the one column a create omits and an upsert always writes.
-        expect(code).toContain('\'insert into "customer" as u ("id", "name", "version") select \' +');
-        expect(code).toContain('\'v."version" \' +');
         expect(code).toContain("                versionValues.push(row.version ?? null);");
         expect(code).toContain("const PARAMETERS_PER_ROW = 3;");
         // The assignments end where the predicate begins, so the version is never one of them.
-        expect(code).toContain('\'"name" = excluded."name" \' +');
-        expect(code).toContain('\'where u."version" = excluded."version" \' +');
         expect(code).not.toContain('\'"version" = excluded."version"');
         // The claim is always present, so it carries no flag.
         expect(code).not.toContain("versionPresent");
@@ -534,7 +771,6 @@ describe("generateUpsert", () => {
     it("returns the keys it wrote, so a chunk that skipped a row names it as a stale claim", () => {
         const code = generateUpsert(versioned);
 
-        expect(code).toContain('\'returning u."id"\'');
         expect(code).toContain("const keyOf = (row: CustomerUpsert): string => String(row.id);");
         expect(code).toContain('            const written = new Set(resultRows(result).map((row) => String(row["id"])));');
         expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
@@ -551,7 +787,6 @@ describe("generateUpsert", () => {
             ]),
         );
 
-        expect(snapshot).toContain('\'on conflict ("id") do update set \' +');
         expect(snapshot).not.toContain("versionValues");
         // Nothing to compare, so the target needs no alias, no predicate, and no returning.
         expect(snapshot).not.toContain("as u");
@@ -571,17 +806,12 @@ describe("generateUpsert", () => {
             ]),
         );
 
-        expect(code).toContain("'case when v.\"status#present\" then v.\"status\" else \\'pending\\' end ' +");
         expect(code).toContain("                statusPresent.push(row.status !== undefined);");
-        // The conflict path can only read `excluded`, so the default is what an omitted field replaces with.
-        expect(code).toContain('\'"status" = excluded."status" \'');
     });
 
     it("matches every column of a composite key, and conflicts on all of them", () => {
         const code = generateUpsert(translation);
 
-        expect(code).toContain('\'on conflict ("languageCode", "key") do update set \' +');
-        expect(code).toContain('"value" = excluded."value"');
         expect(code).toContain("                languageCodeValues.push(row.languageCode ?? null);");
     });
 
@@ -593,8 +823,6 @@ describe("generateUpsert", () => {
             ]),
         );
 
-        // The target is unaliased here, so the `set` names the table the row is already in.
-        expect(code).toContain('\'"id" = "gate"."id" \'');
         expect(code).toContain("const PARAMETERS_PER_ROW = 1;");
     });
 
@@ -653,16 +881,12 @@ describe("generateDelete", () => {
     it("deletes by the primary key columns only", () => {
         const code = generateDelete(customer);
 
-        expect(code).toContain('delete from "customer" using (values ');
-        expect(code).toContain(') as data("id") where "customer"."id" = data."id"');
         expect(code).toContain("const values = [row.id];");
     });
 
     it("matches every column of a composite key on delete", () => {
         const code = generateDelete(translation);
 
-        expect(code).toContain(') as data("languageCode", "key")');
-        expect(code).toContain('where "translation"."languageCode" = data."languageCode" and "translation"."key" = data."key"');
         expect(code).toContain("const values = [row.languageCode, row.key];");
     });
 });

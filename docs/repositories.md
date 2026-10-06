@@ -363,6 +363,19 @@ precondition the trigger checks, and an upsert writes the revision it claims. Th
 generator therefore builds the insert, upsert, and patch column sets separately;
 see `docs/versioning.md`.
 
+## Where the SQL comes from
+
+Each operation has a pure planner beside its generator: `createStatement`,
+`upsertStatement`, `updateStatement`, and `deleteStatement` return the
+statement's SQL fragments and the arrays it binds, planned from the table model
+alone — no database, no rows. `statementSql` reads the fragments back as the one
+string the module concatenates them into.
+
+The generator emits those same fragments as literals, so the SQL a repository
+runs is a value its tests assert on directly, without a database. A tie-back
+test runs a generated module against a recording executor and compares the SQL
+it was handed with the planner's, so the two cannot drift.
+
 ## Gotchas
 
 - **Foreign keys have no `ON DELETE` clause**, so `deleteInvoice` fails while
