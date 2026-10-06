@@ -15,6 +15,24 @@ create table "customer" (
     constraint "customer_pkey" primary key ("id")
 );
 
+create table "email" (
+    "id" uuid not null,
+    "from" text not null,
+    "to" text not null,
+    "subject" text not null,
+    "body" text not null,
+    "status" text not null default 'pending',
+    "attempts" int8 not null default 0,
+    "maxAttempts" int8 not null default 5,
+    "lastError" text,
+    "sentAt" timestamptz,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "email_pkey" primary key ("id"),
+    constraint "email_status_check" check ("status" in ('pending', 'sending', 'sent', 'failed'))
+);
+
 create table "seller" (
     "id" uuid not null,
     "name" text not null,
@@ -129,6 +147,17 @@ $$ language plpgsql;
 create trigger "customer_compute" before insert or update on "customer"
     for each row execute function "customer_compute"();
 
+create function "email_compute"() returns trigger as $$
+begin
+    NEW."updatedAt" := now();
+    if NEW."status" = 'pending' and NEW."attempts" >= NEW."maxAttempts" then raise exception 'email attempt limit reached on %', NEW."id" using errcode = '23514'; end if;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "email_compute" before insert or update on "email"
+    for each row execute function "email_compute"();
+
 create function "seller_compute"() returns trigger as $$
 begin
     NEW."updatedAt" := now();
@@ -198,6 +227,20 @@ $$ language plpgsql;
 
 create trigger "customer_version" before update on "customer"
     for each row execute function "customer_version"();
+
+create function "email_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on email %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "email_version" before update on "email"
+    for each row execute function "email_version"();
 
 create function "seller_version"() returns trigger as $$
 begin

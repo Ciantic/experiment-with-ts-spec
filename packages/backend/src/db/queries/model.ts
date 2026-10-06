@@ -21,6 +21,34 @@ export const queryModel: QueryModel = {
             },
             "relations": {}
         },
+        "email": {
+            "name": "email",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "from": "from",
+                "to": "to",
+                "subject": "subject",
+                "body": "body",
+                "status": "status",
+                "attempts": "attempts",
+                "maxAttempts": "maxAttempts",
+                "lastError": "lastError",
+                "sentAt": "sentAt",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "version": "version"
+            },
+            "relations": {},
+            "order": [
+                "createdAt",
+                "updatedAt"
+            ],
+            "defaultOrder": {
+                "field": "createdAt",
+                "direction": "asc"
+            }
+        },
         "invoice": {
             "name": "invoice",
             "key": "id",

@@ -228,6 +228,20 @@ describe("createRouter", () => {
         expect((await violating.handle({ method: "POST", url: "/echo", body: "" })).status).toBe(409);
         expect((await broken.handle({ method: "POST", url: "/echo", body: "" })).status).toBe(500);
     });
+
+    it("maps a check violation to 400", async () => {
+        const route = echoRoute({
+            handler: async () => {
+                throw Object.assign(new Error("value rejected by a row constraint"), { code: "23514" });
+            },
+        });
+        const router = createRouter(db, [route]);
+
+        const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(response.body)).toEqual({ error: "value rejected by a row constraint" });
+    });
 });
 
 /** One call entry of a group body, as the client encodes it. */

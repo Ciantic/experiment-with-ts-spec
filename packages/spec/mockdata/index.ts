@@ -1,5 +1,6 @@
 /** Sample domain data for a seeded development database. See docs/mockdata.md. */
 import { customers } from "./customers.ts";
+import { emails } from "./emails.ts";
 import { invoices } from "./invoices.ts";
 import { invoiceRows } from "./invoiceRows.ts";
 import { invoicesSent } from "./invoicesSent.ts";
@@ -13,6 +14,7 @@ export * from "./invoices.ts";
 export * from "./invoiceRows.ts";
 export * from "./invoicesSent.ts";
 export * from "./invoiceSentRows.ts";
+export * from "./emails.ts";
 export * from "./translations.ts";
 
 /** One table's rows, named by the spec entity so a seeder can match `create<Entity>`. */
@@ -29,5 +31,6 @@ export const mockTables: MockTable[] = [
     { entity: "InvoiceRow", rows: invoiceRows },
     { entity: "InvoiceSent", rows: invoicesSent },
     { entity: "InvoiceSentRow", rows: invoiceSentRows },
+    { entity: "Email", rows: emails },
     { entity: "Translation", rows: translations },
 ];

@@ -2,6 +2,7 @@
 export * from "../client.ts";
 export * from "../http.ts";
 export * from "./customer.ts";
+export * from "./email.ts";
 export * from "./invoice.ts";
 export * from "./invoiceRow.ts";
 export * from "./invoiceSent.ts";

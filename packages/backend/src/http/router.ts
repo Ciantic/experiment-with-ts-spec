@@ -90,6 +90,7 @@ const ERROR_STATUSES: Record<string, number> = {
     "23502": 400, // not_null_violation
     "23503": 409, // foreign_key_violation
     "23505": 409, // unique_violation
+    "23514": 400, // check_violation: a value the row's constraints reject
     "40001": 409, // serialization_failure: the version-conflict raise. See docs/versioning.md
 };
 
