@@ -2,8 +2,11 @@
 import type { TranslationInsert } from "validation/repositories/translationInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 3;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 3);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createTranslation(db: SqlExecutor, rows: TranslationInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,15 +15,23 @@ export async function createTranslation(db: SqlExecutor, rows: TranslationInsert
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const langValues: Array<unknown> = [];
+            const keyValues: Array<unknown> = [];
+            const valueValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values = [row.lang, row.key, row.value];
-                parameters.push(...values);
-                const offset = parameters.length - values.length;
-                tuples.push("(" + "$" + (offset + 1) + "::text" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");
+                langValues.push(row.lang ?? null);
+                keyValues.push(row.key ?? null);
+                valueValues.push(row.value ?? null);
             }
-            const result = await tx.query('insert into "translation" ("lang", "key", "value") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "translation" ("lang", "key", "value") select ' +
+                    'v."lang", ' +
+                    'v."key", ' +
+                    'v."value" ' +
+                    'from unnest($1::text[], $2::text[], $3::text[]) as v(' +
+                    '"lang", "key", "value") ',
+                [langValues, keyValues, valueValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' translation rows this create supplied');

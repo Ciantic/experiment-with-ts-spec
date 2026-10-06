@@ -45,8 +45,6 @@ type Operation = (typeof OPERATIONS)[number];
 interface ValueEntry {
     expression: string;
     sqlType: string;
-    /** True for a defaulted column: an absent value emits the `default` keyword. */
-    optional?: boolean;
 }
 
 /** The accessor that reads a column from a row, e.g. `customer?.id` for an inlined optional field. */
@@ -57,12 +55,6 @@ function readExpression(column: Column): string {
 /** The value entry for a plain write, where every column of the row is present. */
 function readEntry(column: Column): ValueEntry {
     return { expression: readExpression(column), sqlType: column.sqlType };
-}
-
-/** The value entry for a create: a defaulted column may be absent, so the database fills it. */
-function insertEntry(column: Column): ValueEntry {
-    const entry = readEntry(column);
-    return column.default === undefined ? entry : { ...entry, optional: true };
 }
 
 /** The aliases an update carries: the row it writes, and the supplied values it reads. */
@@ -80,9 +72,7 @@ function aliasMatch(column: Column, target: string, values: string): string {
 
 /** The `set` entry that takes a supplied column from the values row and keeps the stored one otherwise. */
 function keptAssignment(column: Column): string {
-    const name = quote(column.name);
-    const presence = `${VALUES_ALIAS}.${quote(column.name + PRESENCE_SUFFIX)}`;
-    return `${name} = case when ${presence} then ${VALUES_ALIAS}.${name} else ${TARGET_ALIAS}.${name} end`;
+    return `${quote(column.name)} = ${suppliedValue(column, `${TARGET_ALIAS}.${quote(column.name)}`)}`;
 }
 
 /** The `set` entry of an entity with no writable column: its key to the key it already holds. */
@@ -90,7 +80,13 @@ function identityAssignment(column: Column): string {
     return `${quote(column.name)} = ${TARGET_ALIAS}.${quote(column.name)}`;
 }
 
-/** One array a chunked update binds: the values of a column, or whether each row supplied it. */
+/** The value a bound column takes when a row supplies it, and the given one otherwise. */
+function suppliedValue(column: Column, fallback: string): string {
+    const name = quote(column.name);
+    return `case when ${VALUES_ALIAS}.${quote(column.name + PRESENCE_SUFFIX)} then ${VALUES_ALIAS}.${name} else ${fallback} end`;
+}
+
+/** One array a chunked statement binds: what a row contributes to it, and the cast it carries. */
 interface BoundArray {
     /** The JS variable the array is built in. */
     variable: string;
@@ -115,10 +111,15 @@ function valueArray(column: Column): BoundArray {
     };
 }
 
-/** A patchable column with the model's test for whether a row supplied it. */
+/** A column with the test for whether a row supplied it, which a create derives and a patch records. */
 type SuppliedColumn = Column & { supplied: string };
 
-/** The array carrying whether each row supplied a column, so an omitted field keeps its stored value. */
+/** The column with a test for whether a row supplied it, falling back to the field the value is read from. */
+function suppliedColumn(column: Column): SuppliedColumn {
+    return { ...column, supplied: column.supplied ?? `${readExpression(column)} !== undefined` };
+}
+
+/** The array carrying whether each row supplied a column, so an omitted field takes its fallback. */
 function presenceArray(column: SuppliedColumn): BoundArray {
     return {
         variable: `${column.name}Present`,
@@ -129,12 +130,59 @@ function presenceArray(column: SuppliedColumn): BoundArray {
     };
 }
 
+/** The arrays a statement binds for one column: its values, and whether each row supplied them. */
+function columnArrays(column: Column, mayBeAbsent: boolean): BoundArray[] {
+    const arrays = [valueArray(column)];
+    return mayBeAbsent ? [...arrays, presenceArray(suppliedColumn(column))] : arrays;
+}
+
+/** The lines declaring every bound array and filling it from the chunk, one row at a time. */
+function bindArrays(arrays: BoundArray[]): string[] {
+    const indent = "            ";
+    const lines = arrays.map((bound) => `${indent}const ${bound.variable}: ${bound.type} = [];`);
+    lines.push(`${indent}for (const row of chunk) {`);
+    for (const bound of arrays) {
+        lines.push(`${indent}    ${bound.variable}.push(${bound.element});`);
+    }
+    lines.push(`${indent}}`);
+    return lines;
+}
+
+/** The fragments that build one statement, and the arrays it binds. */
+interface ChunkStatement {
+    fragments: string[];
+    arrays: BoundArray[];
+}
+
+/** The `await tx.query(…)` lines: the SQL built from its fragments, then the arrays it binds. */
+function chunkQuery(statement: ChunkStatement): string[] {
+    const lines = ["            const result = await tx.query("];
+    for (const [index, fragment] of statement.fragments.entries()) {
+        const indent = index === 0 ? "                " : "                    ";
+        lines.push(`${indent}'${sqlLiteral(fragment)}${index === statement.fragments.length - 1 ? "'," : "' +"}`);
+    }
+    lines.push(`                [${statement.arrays.map((bound) => bound.variable).join(", ")}],`);
+    lines.push("            );");
+    return lines;
+}
+
+/** The text as the body of a single-quoted JS literal, since a column default holds quotes of its own. */
+function sqlLiteral(fragment: string): string {
+    return fragment.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+/** The `from unnest(…) as v(…)` fragments: the placeholder casts, then the alias columns they expose. */
+function unnestFragments(arrays: BoundArray[]): string[] {
+    const casts = arrays.map((bound, index) => `$${index + 1}::${bound.cast}`).join(", ");
+    return [`from unnest(${casts}) as ${VALUES_ALIAS}(`, `${arrays.map((bound) => quote(bound.alias)).join(", ")}) `];
+}
+
 /** The expression reading a written row's key, matching the way `keyOf` builds one from a patch. */
 function returnedKeyExpression(primaryKeys: Column[]): string {
     return primaryKeys.map((column) => `String(row[${JSON.stringify(column.name)}])`).join(' + "/" + ');
 }
 
-/** The indentation and row source of the loop that gathers values, so create and delete share one builder. */
+/** The indentation and row source of the loop that gathers values for the delete's `using (values …)` list. */
 interface ValueLoop {
     /** The indentation every emitted line carries. */
     indent: string;
@@ -144,9 +192,6 @@ interface ValueLoop {
 
 /** The lines that gather the given values into `parameters` and `tuples`, one tuple per row. */
 function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
-    if (entries.some((entry) => entry.optional)) {
-        return collectValuesWithDefaults(entries, loop);
-    }
     const { indent, source } = loop;
     const values = entries.map((entry) => entry.expression).join(", ");
     // The `values` alias is otherwise untyped text; casting each placeholder keeps keys and
@@ -164,33 +209,6 @@ function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
         `${indent}    tuples.push("(" + ${tuple} + ")");`,
         `${indent}}`,
     ];
-}
-
-/** The tuple builder for a create that falls back to the `default` keyword for an absent defaulted column. */
-function collectValuesWithDefaults(entries: ValueEntry[], loop: ValueLoop): string[] {
-    const { indent, source } = loop;
-    const lines = [
-        `${indent}const parameters: unknown[] = [];`,
-        `${indent}const tuples: string[] = [];`,
-        `${indent}for (const row of ${source}) {`,
-        `${indent}    const values: string[] = [];`,
-    ];
-    for (const entry of entries) {
-        if (!entry.optional) {
-            lines.push(`${indent}    parameters.push(${entry.expression});`);
-            lines.push(`${indent}    values.push("$" + parameters.length + "::${entry.sqlType}");`);
-            continue;
-        }
-        lines.push(`${indent}    if (${entry.expression} === undefined) {`);
-        lines.push(`${indent}        values.push("default");`);
-        lines.push(`${indent}    } else {`);
-        lines.push(`${indent}        parameters.push(${entry.expression});`);
-        lines.push(`${indent}        values.push("$" + parameters.length + "::${entry.sqlType}");`);
-        lines.push(`${indent}    }`);
-    }
-    lines.push(`${indent}    tuples.push("(" + values.join(", ") + ")");`);
-    lines.push(`${indent}}`);
-    return lines;
 }
 
 /** The header and type imports every operation module carries, naming the one write type it uses. */
@@ -219,15 +237,31 @@ export function generateCreate(table: Table): string {
     const entity = table.interfaceName;
     // A create writes the insertable fields, the same set `<entity>InsertSchema` accepts.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
+    // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
+    const arrays = insertColumns.flatMap((column) => columnArrays(column, column.default !== undefined));
+    const selectItems = insertColumns.map((column) => {
+        const value = `${VALUES_ALIAS}.${quote(column.name)}`;
+        return column.default === undefined ? value : suppliedValue(column, column.default);
+    });
     const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
+    const statement: ChunkStatement = {
+        fragments: [
+            `insert into ${quote(table.name)} (${insertColumnNames}) select `,
+            ...selectItems.map((item, index) => `${item}${index === selectItems.length - 1 ? " " : ", "}`),
+            ...unnestFragments(arrays),
+        ],
+        arrays,
+    };
     const lines = modulePrologue(
         `${entity}Insert`,
         'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
     );
 
-    // A statement binds at most MAX_STATEMENT_PARAMETERS parameters, so a chunk holds this many rows at most.
+    lines.push("/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */");
+    lines.push(`const PARAMETERS_PER_ROW = ${arrays.length};`);
+    lines.push("");
     lines.push("/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
-    lines.push(`const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / ${insertColumns.length});`);
+    lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
     lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
@@ -236,10 +270,8 @@ export function generateCreate(table: Table): string {
     lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
     lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
-    lines.push(...collectValues(insertColumns.map(insertEntry), { indent: "            ", source: "chunk" }));
-    lines.push(
-        `            const result = await tx.query('insert into ${quote(table.name)} (${insertColumnNames}) values ' + tuples.join(", "), parameters);`,
-    );
+    lines.push(...bindArrays(arrays));
+    lines.push(...chunkQuery(statement));
     // An insert writes every row it carries, so a short count is lost data rather than a caller's mistake. See docs/repositories.md.
     lines.push("            const written = affectedRows(result);");
     lines.push("            if (written !== chunk.length) {");
@@ -269,12 +301,10 @@ export function generateUpdate(table: Table): string {
     // The version is the optimistic-lock precondition, not an assignment; the trigger increments it.
     const version = patchColumns.find((column) => column.version);
     const setColumns = patchColumns.filter((column): column is SuppliedColumn => column.supplied !== undefined);
-    // A row costs its keys, its version, and a value and a presence flag for every column it may write.
-    const costs = [`${primaryKeys.length}`, ...(version === undefined ? [] : ["1"]), `2 * ${setColumns.length}`];
     const arrays = [
-        ...primaryKeys.map(valueArray),
-        ...(version === undefined ? [] : [valueArray(version)]),
-        ...setColumns.flatMap((column) => [valueArray(column), presenceArray(column)]),
+        ...primaryKeys.flatMap((column) => columnArrays(column, false)),
+        ...(version === undefined ? [] : columnArrays(version, false)),
+        ...setColumns.flatMap((column) => columnArrays(column, true)),
     ];
     const assignments =
         setColumns.length === 0
@@ -285,15 +315,17 @@ export function generateUpdate(table: Table): string {
         ...primaryKeys.map((column) => aliasMatch(column, TARGET_ALIAS, VALUES_ALIAS)),
         ...(version === undefined ? [] : [aliasMatch(version, TARGET_ALIAS, VALUES_ALIAS)]),
     ].join(" and ");
-    const sqlFragments = [
-        `update ${quote(table.name)} as ${TARGET_ALIAS} set `,
-        ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
-        `from unnest(${arrays.map((bound, index) => `$${index + 1}::${bound.cast}`).join(", ")}) as ${VALUES_ALIAS}(`,
-        `${arrays.map((bound) => quote(bound.alias)).join(", ")}) `,
-        `where ${match} `,
-        // The statement returns the rows it wrote, so a chunk that wrote fewer names the rows it left out.
-        `returning ${primaryKeys.map((column) => `${TARGET_ALIAS}.${quote(column.name)}`).join(", ")}`,
-    ];
+    const statement: ChunkStatement = {
+        fragments: [
+            `update ${quote(table.name)} as ${TARGET_ALIAS} set `,
+            ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
+            ...unnestFragments(arrays),
+            `where ${match} `,
+            // The statement returns the rows it wrote, so a chunk that wrote fewer names the rows it left out.
+            `returning ${primaryKeys.map((column) => `${TARGET_ALIAS}.${quote(column.name)}`).join(", ")}`,
+        ],
+        arrays,
+    };
     const rejection =
         version === undefined
             ? `'no row of ${table.name} matches this patch: '`
@@ -306,8 +338,8 @@ export function generateUpdate(table: Table): string {
     lines.push("/** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */");
     lines.push(`const keyOf = (row: ${entity}Patch): string => String(${keyExpression(primaryKeys)});`);
     lines.push("");
-    lines.push("/** The parameters one row costs: one per key column, one per version, and two per written column. */");
-    lines.push(`const PARAMETERS_PER_ROW = ${costs.join(" + ")};`);
+    lines.push("/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */");
+    lines.push(`const PARAMETERS_PER_ROW = ${arrays.length};`);
     lines.push("");
     lines.push("/** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
@@ -319,21 +351,8 @@ export function generateUpdate(table: Table): string {
     lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
     lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
-    for (const bound of arrays) {
-        lines.push(`            const ${bound.variable}: ${bound.type} = [];`);
-    }
-    lines.push("            for (const row of chunk) {");
-    for (const bound of arrays) {
-        lines.push(`                ${bound.variable}.push(${bound.element});`);
-    }
-    lines.push("            }");
-    lines.push("            const result = await tx.query(");
-    for (const [index, fragment] of sqlFragments.entries()) {
-        const indent = index === 0 ? "                " : "                    ";
-        lines.push(`${indent}'${fragment}${index === sqlFragments.length - 1 ? "'," : "' +"}`);
-    }
-    lines.push(`                [${arrays.map((bound) => bound.variable).join(", ")}],`);
-    lines.push("            );");
+    lines.push(...bindArrays(arrays));
+    lines.push(...chunkQuery(statement));
     lines.push(`            const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`);
     // A patch that wrote fewer rows than the chunk carried is a rejected call. See docs/versioning.md.
     lines.push("            if (written.size !== chunk.length) {");

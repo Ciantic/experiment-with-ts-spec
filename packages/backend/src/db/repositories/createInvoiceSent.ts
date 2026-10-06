@@ -2,8 +2,11 @@
 import type { InvoiceSentInsert } from "validation/repositories/invoiceSentInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 31;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 31);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSentInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,15 +15,107 @@ export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSentInsert
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const idValues: Array<unknown> = [];
+            const invoiceIdValues: Array<unknown> = [];
+            const sentAtValues: Array<unknown> = [];
+            const numberValues: Array<unknown> = [];
+            const customerIdValues: Array<unknown> = [];
+            const customerNameValues: Array<unknown> = [];
+            const customerEmailValues: Array<unknown> = [];
+            const customerAddressValues: Array<unknown> = [];
+            const customerBusinessIdValues: Array<unknown> = [];
+            const customerEInvoiceAddressValues: Array<unknown> = [];
+            const customerEInvoiceOperatorValues: Array<unknown> = [];
+            const customerLanguageValues: Array<unknown> = [];
+            const customerCreatedAtValues: Array<unknown> = [];
+            const customerUpdatedAtValues: Array<unknown> = [];
+            const customerVersionValues: Array<unknown> = [];
+            const sellerIdValues: Array<unknown> = [];
+            const sellerNameValues: Array<unknown> = [];
+            const sellerBusinessIdValues: Array<unknown> = [];
+            const sellerEInvoiceAddressValues: Array<unknown> = [];
+            const sellerEInvoiceOperatorValues: Array<unknown> = [];
+            const sellerLanguageValues: Array<unknown> = [];
+            const sellerCreatedAtValues: Array<unknown> = [];
+            const sellerUpdatedAtValues: Array<unknown> = [];
+            const sellerVersionValues: Array<unknown> = [];
+            const languageValues: Array<unknown> = [];
+            const issueDateValues: Array<unknown> = [];
+            const dueDateValues: Array<unknown> = [];
+            const notesValues: Array<unknown> = [];
+            const netAmountValues: Array<unknown> = [];
+            const taxAmountValues: Array<unknown> = [];
+            const totalAmountValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values = [row.id, row.invoiceId, row.sentAt, row.number, row.customer?.id, row.customer?.name, row.customer?.email, row.customer?.address, row.customer?.businessId, row.customer?.eInvoiceAddress, row.customer?.eInvoiceOperator, row.customer?.language, row.customer?.createdAt, row.customer?.updatedAt, row.customer?.version, row.seller?.id, row.seller?.name, row.seller?.businessId, row.seller?.eInvoiceAddress, row.seller?.eInvoiceOperator, row.seller?.language, row.seller?.createdAt, row.seller?.updatedAt, row.seller?.version, row.language, row.issueDate, row.dueDate, row.notes, row.netAmount, row.taxAmount, row.totalAmount];
-                parameters.push(...values);
-                const offset = parameters.length - values.length;
-                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::timestamptz" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::uuid" + ", " + "$" + (offset + 6) + "::text" + ", " + "$" + (offset + 7) + "::text" + ", " + "$" + (offset + 8) + "::text" + ", " + "$" + (offset + 9) + "::text" + ", " + "$" + (offset + 10) + "::text" + ", " + "$" + (offset + 11) + "::text" + ", " + "$" + (offset + 12) + "::text" + ", " + "$" + (offset + 13) + "::timestamptz" + ", " + "$" + (offset + 14) + "::timestamptz" + ", " + "$" + (offset + 15) + "::int8" + ", " + "$" + (offset + 16) + "::uuid" + ", " + "$" + (offset + 17) + "::text" + ", " + "$" + (offset + 18) + "::text" + ", " + "$" + (offset + 19) + "::text" + ", " + "$" + (offset + 20) + "::text" + ", " + "$" + (offset + 21) + "::text" + ", " + "$" + (offset + 22) + "::timestamptz" + ", " + "$" + (offset + 23) + "::timestamptz" + ", " + "$" + (offset + 24) + "::int8" + ", " + "$" + (offset + 25) + "::text" + ", " + "$" + (offset + 26) + "::timestamptz" + ", " + "$" + (offset + 27) + "::timestamptz" + ", " + "$" + (offset + 28) + "::text" + ", " + "$" + (offset + 29) + "::decimal" + ", " + "$" + (offset + 30) + "::decimal" + ", " + "$" + (offset + 31) + "::decimal" + ")");
+                idValues.push(row.id ?? null);
+                invoiceIdValues.push(row.invoiceId ?? null);
+                sentAtValues.push(row.sentAt ?? null);
+                numberValues.push(row.number ?? null);
+                customerIdValues.push(row.customer?.id ?? null);
+                customerNameValues.push(row.customer?.name ?? null);
+                customerEmailValues.push(row.customer?.email ?? null);
+                customerAddressValues.push(row.customer?.address ?? null);
+                customerBusinessIdValues.push(row.customer?.businessId ?? null);
+                customerEInvoiceAddressValues.push(row.customer?.eInvoiceAddress ?? null);
+                customerEInvoiceOperatorValues.push(row.customer?.eInvoiceOperator ?? null);
+                customerLanguageValues.push(row.customer?.language ?? null);
+                customerCreatedAtValues.push(row.customer?.createdAt ?? null);
+                customerUpdatedAtValues.push(row.customer?.updatedAt ?? null);
+                customerVersionValues.push(row.customer?.version ?? null);
+                sellerIdValues.push(row.seller?.id ?? null);
+                sellerNameValues.push(row.seller?.name ?? null);
+                sellerBusinessIdValues.push(row.seller?.businessId ?? null);
+                sellerEInvoiceAddressValues.push(row.seller?.eInvoiceAddress ?? null);
+                sellerEInvoiceOperatorValues.push(row.seller?.eInvoiceOperator ?? null);
+                sellerLanguageValues.push(row.seller?.language ?? null);
+                sellerCreatedAtValues.push(row.seller?.createdAt ?? null);
+                sellerUpdatedAtValues.push(row.seller?.updatedAt ?? null);
+                sellerVersionValues.push(row.seller?.version ?? null);
+                languageValues.push(row.language ?? null);
+                issueDateValues.push(row.issueDate ?? null);
+                dueDateValues.push(row.dueDate ?? null);
+                notesValues.push(row.notes ?? null);
+                netAmountValues.push(row.netAmount ?? null);
+                taxAmountValues.push(row.taxAmount ?? null);
+                totalAmountValues.push(row.totalAmount ?? null);
             }
-            const result = await tx.query('insert into "invoice_sent" ("id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "invoice_sent" ("id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") select ' +
+                    'v."id", ' +
+                    'v."invoiceId", ' +
+                    'v."sentAt", ' +
+                    'v."number", ' +
+                    'v."customerId", ' +
+                    'v."customerName", ' +
+                    'v."customerEmail", ' +
+                    'v."customerAddress", ' +
+                    'v."customerBusinessId", ' +
+                    'v."customerEInvoiceAddress", ' +
+                    'v."customerEInvoiceOperator", ' +
+                    'v."customerLanguage", ' +
+                    'v."customerCreatedAt", ' +
+                    'v."customerUpdatedAt", ' +
+                    'v."customerVersion", ' +
+                    'v."sellerId", ' +
+                    'v."sellerName", ' +
+                    'v."sellerBusinessId", ' +
+                    'v."sellerEInvoiceAddress", ' +
+                    'v."sellerEInvoiceOperator", ' +
+                    'v."sellerLanguage", ' +
+                    'v."sellerCreatedAt", ' +
+                    'v."sellerUpdatedAt", ' +
+                    'v."sellerVersion", ' +
+                    'v."language", ' +
+                    'v."issueDate", ' +
+                    'v."dueDate", ' +
+                    'v."notes", ' +
+                    'v."netAmount", ' +
+                    'v."taxAmount", ' +
+                    'v."totalAmount" ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::timestamptz[], $4::text[], $5::uuid[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[], $13::timestamptz[], $14::timestamptz[], $15::int8[], $16::uuid[], $17::text[], $18::text[], $19::text[], $20::text[], $21::text[], $22::timestamptz[], $23::timestamptz[], $24::int8[], $25::text[], $26::timestamptz[], $27::timestamptz[], $28::text[], $29::decimal[], $30::decimal[], $31::decimal[]) as v(' +
+                    '"id", "invoiceId", "sentAt", "number", "customerId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") ',
+                [idValues, invoiceIdValues, sentAtValues, numberValues, customerIdValues, customerNameValues, customerEmailValues, customerAddressValues, customerBusinessIdValues, customerEInvoiceAddressValues, customerEInvoiceOperatorValues, customerLanguageValues, customerCreatedAtValues, customerUpdatedAtValues, customerVersionValues, sellerIdValues, sellerNameValues, sellerBusinessIdValues, sellerEInvoiceAddressValues, sellerEInvoiceOperatorValues, sellerLanguageValues, sellerCreatedAtValues, sellerUpdatedAtValues, sellerVersionValues, languageValues, issueDateValues, dueDateValues, notesValues, netAmountValues, taxAmountValues, totalAmountValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' invoice_sent rows this create supplied');

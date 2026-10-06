@@ -196,19 +196,22 @@ describe("generateCreate", () => {
         }
     });
 
-    it("inserts every column with one placeholder per value", () => {
+    it("inserts a chunk of rows, binding one array per column", () => {
         const code = generateCreate(customer);
 
-        expect(code).toContain('insert into "customer" ("id", "name", "email") values ');
-        expect(code).toContain("const values = [row.id, row.name, row.email];");
+        expect(code).toContain('\'insert into "customer" ("id", "name", "email") select \' +');
+        expect(code).toContain("                idValues.push(row.id ?? null);");
+        expect(code).toContain("                nameValues.push(row.name ?? null);");
+        expect(code).toContain('\'v."id", \' +');
+        expect(code).toContain('\'v."email" \' +');
+        expect(code).toContain("                [idValues, nameValues, emailValues],");
     });
 
     it("casts each placeholder to its column type, so keys compare against the right type", () => {
         const code = generateCreate(customer);
 
-        expect(code).toContain(
-            '                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ")");',
-        );
+        expect(code).toContain('\'from unnest($1::uuid[], $2::text[], $3::text[]) as v(\' +');
+        expect(code).toContain('\'"id", "name", "email") \',');
     });
 
     it("leaves a non-insertable column out of the insert statement", () => {
@@ -231,7 +234,7 @@ describe("generateCreate", () => {
             ]),
         );
 
-        expect(code).toContain("const values = [row.id, row.customer?.name];");
+        expect(code).toContain("                customerNameValues.push(row.customer?.name ?? null);");
     });
 
     it("reads each column through its recorded accessor", () => {
@@ -242,10 +245,10 @@ describe("generateCreate", () => {
             ]),
         );
 
-        expect(code).toContain("const values = [row.id, row.customer?.id];");
+        expect(code).toContain("                customerIdValues.push(row.customer?.id ?? null);");
     });
 
-    it("falls back to the default keyword when a create omits a defaulted column", () => {
+    it("falls back to the column default when a create omits it, and writes a null the caller sends", () => {
         const code = generateCreate(
             table("customer", "Customer", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
@@ -254,11 +257,13 @@ describe("generateCreate", () => {
             ]),
         );
 
-        expect(code).toContain('insert into "customer" ("id", "name", "source") values ');
-        expect(code).toContain("if (row.source === undefined) {");
-        expect(code).toContain('values.push("default");');
-        expect(code).toContain("parameters.push(row.source);");
-        expect(code).toContain("parameters.push(row.id);");
+        // The default is written into the statement, since `default` is not allowed outside an `insert … values` list.
+        expect(code).toContain("'case when v.\"source#present\" then v.\"source\" else \\'manual\\' end ' +");
+        expect(code).toContain("                sourceValues.push(row.source ?? null);");
+        expect(code).toContain("                sourcePresent.push(row.source !== undefined);");
+        // Only a defaulted column carries the flag, since every other column is always written.
+        expect(code).not.toContain("namePresent");
+        expect(code).not.toContain("idPresent");
     });
 
     it("omits a @version column from insert", () => {
@@ -270,8 +275,10 @@ describe("generateCreate", () => {
             ]),
         );
 
-        expect(code).toContain("const values = [row.id, row.name];");
-        expect(code).toContain('insert into "customer" ("id", "name") values ');
+        expect(code).toContain('\'insert into "customer" ("id", "name") select \' +');
+        expect(code).toContain("                idValues.push(row.id ?? null);");
+        expect(code).toContain("                nameValues.push(row.name ?? null);");
+        expect(code).not.toContain("versionValues");
     });
 
     it("splits a create into chunks that each stay inside the parameter limit", () => {
@@ -280,7 +287,8 @@ describe("generateCreate", () => {
         expect(code).toContain(
             "/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */",
         );
-        expect(code).toContain("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 3);");
+        expect(code).toContain("const PARAMETERS_PER_ROW = 3;");
+        expect(code).toContain("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
         expect(code).toContain("const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
         expect(code).toContain("for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
         expect(code).toContain("for (const row of chunk) {");
@@ -304,11 +312,11 @@ describe("generateCreate", () => {
         expect(code).toContain("    if (rows.length <= ROWS_PER_STATEMENT) {");
         expect(code).toContain("        await write(db);");
         expect(code).toContain("    await db.transaction(write);");
-        // Nothing but the exported function and its constant is declared at module scope.
-        expect(code.match(/^const |^async function |^function /gm)).toEqual(["const "]);
+        // Nothing but the exported function and its two constants is declared at module scope.
+        expect(code.match(/^const |^async function |^function /gm)).toEqual(["const ", "const "]);
     });
 
-    it("sizes a chunk by the columns a row costs, so a wider entity carries fewer rows", () => {
+    it("sizes a chunk by the arrays a row binds, so a wider entity carries fewer rows", () => {
         const wide = table("wide", "Wide", [
             column("id", { sqlType: "uuid", primaryKey: true }),
             column("a"),
@@ -316,10 +324,16 @@ describe("generateCreate", () => {
             column("c"),
             column("d"),
         ]);
+        const defaulted = table("defaulted", "Defaulted", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("a"),
+            column("b"),
+            column("c", { default: "'x'" }),
+        ]);
 
-        expect(generateCreate(wide)).toContain(
-            "const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 5);",
-        );
+        expect(generateCreate(wide)).toContain("const PARAMETERS_PER_ROW = 5;");
+        // A defaulted column binds a further array for the flag, so it costs a row like any other.
+        expect(generateCreate(defaulted)).toContain("const PARAMETERS_PER_ROW = 5;");
     });
 });
 
@@ -440,7 +454,8 @@ describe("generateUpdate", () => {
         );
 
         expect(code).toContain('\'"id" = u."id" \'');
-        expect(code).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 0;");
+        // The key alone, since the entity has no writable column to bind.
+        expect(code).toContain("const PARAMETERS_PER_ROW = 1;");
     });
 
     it("takes one statement without a boundary for a single row, and opens one for several", () => {
@@ -451,7 +466,7 @@ describe("generateUpdate", () => {
         expect(code).toContain("    await db.transaction(write);");
     });
 
-    it("sizes a chunk by the cells a row carries, so a wider entity carries fewer rows", () => {
+    it("sizes a chunk by the arrays a row binds, a value and a flag per writable column", () => {
         const narrow = generateUpdate(
             table("narrow", "Narrow", [column("id", { sqlType: "uuid", primaryKey: true }), column("label")]),
         );
@@ -462,8 +477,8 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        expect(narrow).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 1;");
-        expect(wide).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 4;");
+        expect(narrow).toContain("const PARAMETERS_PER_ROW = 3;");
+        expect(wide).toContain("const PARAMETERS_PER_ROW = 9;");
     });
 
     it("names every key column of a composite key, so a row is matched on all of them", () => {

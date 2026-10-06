@@ -2,8 +2,11 @@
 import type { SellerInsert } from "validation/repositories/sellerInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 6;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 6);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,15 +15,32 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const idValues: Array<unknown> = [];
+            const nameValues: Array<unknown> = [];
+            const businessIdValues: Array<unknown> = [];
+            const eInvoiceAddressValues: Array<unknown> = [];
+            const eInvoiceOperatorValues: Array<unknown> = [];
+            const languageValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values = [row.id, row.name, row.businessId, row.eInvoiceAddress, row.eInvoiceOperator, row.language];
-                parameters.push(...values);
-                const offset = parameters.length - values.length;
-                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::text" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::text" + ")");
+                idValues.push(row.id ?? null);
+                nameValues.push(row.name ?? null);
+                businessIdValues.push(row.businessId ?? null);
+                eInvoiceAddressValues.push(row.eInvoiceAddress ?? null);
+                eInvoiceOperatorValues.push(row.eInvoiceOperator ?? null);
+                languageValues.push(row.language ?? null);
             }
-            const result = await tx.query('insert into "seller" ("id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "seller" ("id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
+                    'v."id", ' +
+                    'v."name", ' +
+                    'v."businessId", ' +
+                    'v."eInvoiceAddress", ' +
+                    'v."eInvoiceOperator", ' +
+                    'v."language" ' +
+                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) as v(' +
+                    '"id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ',
+                [idValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' seller rows this create supplied');

@@ -69,11 +69,11 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - `@unique` adds a `unique` constraint.
 - `@pgDefault <expression>` appends `default <expression>`. The column is `not null`,
   so the field is required. The repository generators name the column in
-  their statements, and a row that omits it sends the `default` keyword, so the
-  database fills that row. It may accompany `@computed`, where the default
-  applies to the insert path and the trigger to every write. A defaulted
-  `@version` field is the one exception: it is left out of the insert. See
-  `docs/optionality.md`.
+  their statements, and a row that omits it writes the declared default, so that
+  row gets the value the database would have filled. It may accompany `@computed`,
+  where the default applies to the insert path and the trigger to every write. A
+  defaulted `@version` field is the one exception: it is left out of the insert.
+  See `docs/optionality.md`.
 - `@createdAt`/`@updatedAt` append `default now()`; see `docs/timestamps.md`.
 - `@computed @pgVirtual <expression>` appends
   `generated always as (<expression>) virtual`. The column is never written by

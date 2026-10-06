@@ -5,8 +5,8 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 /** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */
 const keyOf = (row: InvoiceSentPatch): string => String(row.id);
 
-/** The parameters one row costs: one per key column, one per version, and two per written column. */
-const PARAMETERS_PER_ROW = 1 + 2 * 30;
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 61;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);

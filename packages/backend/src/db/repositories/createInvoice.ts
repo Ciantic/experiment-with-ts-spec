@@ -2,8 +2,11 @@
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 8;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 8);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,15 +15,38 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const idValues: Array<unknown> = [];
+            const numberValues: Array<unknown> = [];
+            const customerIdValues: Array<unknown> = [];
+            const sellerIdValues: Array<unknown> = [];
+            const languageValues: Array<unknown> = [];
+            const issueDateValues: Array<unknown> = [];
+            const dueDateValues: Array<unknown> = [];
+            const notesValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values = [row.id, row.number, row.customerId, row.sellerId, row.language, row.issueDate, row.dueDate, row.notes];
-                parameters.push(...values);
-                const offset = parameters.length - values.length;
-                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::text" + ", " + "$" + (offset + 3) + "::uuid" + ", " + "$" + (offset + 4) + "::uuid" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::timestamptz" + ", " + "$" + (offset + 7) + "::timestamptz" + ", " + "$" + (offset + 8) + "::text" + ")");
+                idValues.push(row.id ?? null);
+                numberValues.push(row.number ?? null);
+                customerIdValues.push(row.customerId ?? null);
+                sellerIdValues.push(row.sellerId ?? null);
+                languageValues.push(row.language ?? null);
+                issueDateValues.push(row.issueDate ?? null);
+                dueDateValues.push(row.dueDate ?? null);
+                notesValues.push(row.notes ?? null);
             }
-            const result = await tx.query('insert into "invoice" ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "invoice" ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") select ' +
+                    'v."id", ' +
+                    'v."number", ' +
+                    'v."customerId", ' +
+                    'v."sellerId", ' +
+                    'v."language", ' +
+                    'v."issueDate", ' +
+                    'v."dueDate", ' +
+                    'v."notes" ' +
+                    'from unnest($1::uuid[], $2::text[], $3::uuid[], $4::uuid[], $5::text[], $6::timestamptz[], $7::timestamptz[], $8::text[]) as v(' +
+                    '"id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") ',
+                [idValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' invoice rows this create supplied');

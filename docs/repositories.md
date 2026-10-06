@@ -50,7 +50,7 @@ A repository that takes one row per call forces one round trip per row. Taking
 an array lets one call carry many rows, which is the whole reason the functions
 exist in this shape:
 
-- **create** — one `insert into "t" (...) values ($1, ...), ($n, ...)` per chunk of rows, in one boundary when a call spans several chunks.
+- **create** — one `insert into "t" (...) select … from unnest(...)` per chunk of rows, in one boundary when a call spans several chunks.
 - **update** — one statement per chunk of rows, `update "t" as u set ... from unnest(...) as v(...) where u."id" = v."id"`, in one boundary whenever the call carries more than one row.
 - **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
 
@@ -77,19 +77,34 @@ derivable value — which is the same set `<entity>InsertSchema` accepts
 (`docs/validation.md`). An entity with nothing to omit gets
 `type <Entity>Insert = <Entity>`.
 
-A column with a database default is written like any other, and a create may
-omit it: the statement then carries the `default` keyword for that value, so the
-database applies its default for that row alone. A required field with a default
-is relaxed to optional in `<Entity>Insert`, and its schema is `.partial()`, so
-the type and the wire agree that omitting it is allowed. A `@version` field is
-the exception: a defaulted version is left out of a create entirely, because its
-default *is* the first revision (`docs/versioning.md`).
+The statement binds one array per column and reads them as rows with `unnest`,
+the shape `Patching` describes in full: a column a row may leave out binds a
+second array of flags saying whether that row supplied it.
+
+```sql
+insert into "customer" ("id", "name", "source") select
+    v."id",
+    v."name",
+    case when v."source#present" then v."source" else 'manual' end
+from unnest($1::uuid[], $2::text[], $3::text[], $4::bool[])
+    as v("id", "name", "source", "source#present")
+```
+
+The fallback for an omitted column is the column default, where a patch falls
+back to the value the row already holds. A create may therefore omit a column
+with a database default, and the statement writes the default the spec declares,
+since the `default` keyword is not allowed outside an `insert … values` list. A
+required field with a default is relaxed to optional in `<Entity>Insert`, and its
+schema is `.partial()`, so the type and the wire agree that omitting it is
+allowed. A `@version` field is the exception: a defaulted version is left out of
+a create entirely, because its default *is* the first revision
+(`docs/versioning.md`).
 
 One statement binds at most `MAX_STATEMENT_PARAMETERS` values
 (`src/db/sql-executor.ts`), so a create whose rows would bind more than that
-splits into chunks of `floor(MAX_STATEMENT_PARAMETERS / <insertable columns>)`
-rows. A call that fits in one chunk is one statement and runs on the handle it
-was given; a call that spans several chunks opens a boundary and runs them all
+splits into chunks of `floor(MAX_STATEMENT_PARAMETERS / <bound arrays>)` rows. A
+call that fits in one chunk is one statement and runs on the handle it was
+given; a call that spans several chunks opens a boundary and runs them all
 in it, nested as a savepoint when the caller already holds one, so the rows
 still commit together. The bound is the driver's rather than the protocol's:
 PostgreSQL accepts 65535 parameters, while PGlite past 32767 drops the
@@ -268,8 +283,9 @@ patch column sets separately; see `docs/versioning.md`.
   so its value is left to the trigger that fills it
   (`docs/validation.md`).
 - **A defaulted column is written only when the caller supplies it.** A create
-  that omits one sends the `default` keyword, so the database fills that row; a
-  patch that omits one keeps the stored value. The clock fields are the different
+  that omits one writes the default the spec declares, so that row gets the same
+  value the database would have; a patch that omits one keeps the stored value.
+  The clock fields are the different
   case: `createdAt` and `updatedAt` are excluded from `insert` and `update`
   outright, so writing one takes raw SQL. A `@version` column is excluded from
   `insert` too, and on update it goes into the `where` rather than the `set`.

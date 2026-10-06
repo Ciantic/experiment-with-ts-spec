@@ -2,8 +2,11 @@
 import type { EmailInsert } from "validation/repositories/emailInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 13;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 10);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,45 +15,50 @@ export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const idValues: Array<unknown> = [];
+            const fromValues: Array<unknown> = [];
+            const toValues: Array<unknown> = [];
+            const subjectValues: Array<unknown> = [];
+            const bodyValues: Array<unknown> = [];
+            const statusValues: Array<unknown> = [];
+            const statusPresent: boolean[] = [];
+            const attemptsValues: Array<unknown> = [];
+            const attemptsPresent: boolean[] = [];
+            const maxAttemptsValues: Array<unknown> = [];
+            const maxAttemptsPresent: boolean[] = [];
+            const lastErrorValues: Array<unknown> = [];
+            const sentAtValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values: string[] = [];
-                parameters.push(row.id);
-                values.push("$" + parameters.length + "::uuid");
-                parameters.push(row.from);
-                values.push("$" + parameters.length + "::text");
-                parameters.push(row.to);
-                values.push("$" + parameters.length + "::text");
-                parameters.push(row.subject);
-                values.push("$" + parameters.length + "::text");
-                parameters.push(row.body);
-                values.push("$" + parameters.length + "::text");
-                if (row.status === undefined) {
-                    values.push("default");
-                } else {
-                    parameters.push(row.status);
-                    values.push("$" + parameters.length + "::text");
-                }
-                if (row.attempts === undefined) {
-                    values.push("default");
-                } else {
-                    parameters.push(row.attempts);
-                    values.push("$" + parameters.length + "::int8");
-                }
-                if (row.maxAttempts === undefined) {
-                    values.push("default");
-                } else {
-                    parameters.push(row.maxAttempts);
-                    values.push("$" + parameters.length + "::int8");
-                }
-                parameters.push(row.lastError);
-                values.push("$" + parameters.length + "::text");
-                parameters.push(row.sentAt);
-                values.push("$" + parameters.length + "::timestamptz");
-                tuples.push("(" + values.join(", ") + ")");
+                idValues.push(row.id ?? null);
+                fromValues.push(row.from ?? null);
+                toValues.push(row.to ?? null);
+                subjectValues.push(row.subject ?? null);
+                bodyValues.push(row.body ?? null);
+                statusValues.push(row.status ?? null);
+                statusPresent.push(row.status !== undefined);
+                attemptsValues.push(row.attempts ?? null);
+                attemptsPresent.push(row.attempts !== undefined);
+                maxAttemptsValues.push(row.maxAttempts ?? null);
+                maxAttemptsPresent.push(row.maxAttempts !== undefined);
+                lastErrorValues.push(row.lastError ?? null);
+                sentAtValues.push(row.sentAt ?? null);
             }
-            const result = await tx.query('insert into "email" ("id", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "email" ("id", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt") select ' +
+                    'v."id", ' +
+                    'v."from", ' +
+                    'v."to", ' +
+                    'v."subject", ' +
+                    'v."body", ' +
+                    'case when v."status#present" then v."status" else \'pending\' end, ' +
+                    'case when v."attempts#present" then v."attempts" else 0 end, ' +
+                    'case when v."maxAttempts#present" then v."maxAttempts" else 5 end, ' +
+                    'v."lastError", ' +
+                    'v."sentAt" ' +
+                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bool[], $8::int8[], $9::bool[], $10::int8[], $11::bool[], $12::text[], $13::timestamptz[]) as v(' +
+                    '"id", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt") ',
+                [idValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' email rows this create supplied');

@@ -2,8 +2,11 @@
 import type { InvoiceSentRowInsert } from "validation/repositories/invoiceSentRowInsertSchema.ts";
 import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";
 
+/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
+const PARAMETERS_PER_ROW = 10;
+
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
-const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / 10);
+const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
 export async function createInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRowInsert[]): Promise<void> {
     if (rows.length === 0) {
@@ -12,15 +15,44 @@ export async function createInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
     const write = async (tx: SqlExecutor): Promise<void> => {
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
-            const parameters: unknown[] = [];
-            const tuples: string[] = [];
+            const idValues: Array<unknown> = [];
+            const invoiceSentIdValues: Array<unknown> = [];
+            const descriptionValues: Array<unknown> = [];
+            const quantityValues: Array<unknown> = [];
+            const unitValues: Array<unknown> = [];
+            const unitPriceValues: Array<unknown> = [];
+            const taxRateValues: Array<unknown> = [];
+            const netAmountValues: Array<unknown> = [];
+            const taxAmountValues: Array<unknown> = [];
+            const totalAmountValues: Array<unknown> = [];
             for (const row of chunk) {
-                const values = [row.id, row.invoiceSentId, row.description, row.quantity, row.unit, row.unitPrice, row.taxRate, row.netAmount, row.taxAmount, row.totalAmount];
-                parameters.push(...values);
-                const offset = parameters.length - values.length;
-                tuples.push("(" + "$" + (offset + 1) + "::uuid" + ", " + "$" + (offset + 2) + "::uuid" + ", " + "$" + (offset + 3) + "::text" + ", " + "$" + (offset + 4) + "::decimal" + ", " + "$" + (offset + 5) + "::text" + ", " + "$" + (offset + 6) + "::decimal" + ", " + "$" + (offset + 7) + "::decimal" + ", " + "$" + (offset + 8) + "::decimal" + ", " + "$" + (offset + 9) + "::decimal" + ", " + "$" + (offset + 10) + "::decimal" + ")");
+                idValues.push(row.id ?? null);
+                invoiceSentIdValues.push(row.invoiceSentId ?? null);
+                descriptionValues.push(row.description ?? null);
+                quantityValues.push(row.quantity ?? null);
+                unitValues.push(row.unit ?? null);
+                unitPriceValues.push(row.unitPrice ?? null);
+                taxRateValues.push(row.taxRate ?? null);
+                netAmountValues.push(row.netAmount ?? null);
+                taxAmountValues.push(row.taxAmount ?? null);
+                totalAmountValues.push(row.totalAmount ?? null);
             }
-            const result = await tx.query('insert into "invoice_sent_row" ("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") values ' + tuples.join(", "), parameters);
+            const result = await tx.query(
+                'insert into "invoice_sent_row" ("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") select ' +
+                    'v."id", ' +
+                    'v."invoiceSentId", ' +
+                    'v."description", ' +
+                    'v."quantity", ' +
+                    'v."unit", ' +
+                    'v."unitPrice", ' +
+                    'v."taxRate", ' +
+                    'v."netAmount", ' +
+                    'v."taxAmount", ' +
+                    'v."totalAmount" ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::decimal[], $5::text[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[], $10::decimal[]) as v(' +
+                    '"id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") ',
+                [idValues, invoiceSentIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues, netAmountValues, taxAmountValues, totalAmountValues],
+            );
             const written = affectedRows(result);
             if (written !== chunk.length) {
                 throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' invoice_sent_row rows this create supplied');

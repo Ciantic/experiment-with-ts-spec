@@ -198,9 +198,9 @@ A field is omitted when the database owns it, from either annotation:
   not a default.
 
 A `@pgDefault` column is deliberately absent from the omit list. A create may
-supply it or leave it out; an omitted one sends the `default` keyword, so the
-database fills that row. A *required* defaulted field is relaxed with
-`.partial()` so the schema agrees that omitting it is allowed.
+supply it or leave it out; an omitted one writes the declared default, so the row
+gets the value the database would have filled. A *required* defaulted field is
+relaxed with `.partial()` so the schema agrees that omitting it is allowed.
 
 An `@inlined` field is the exception: it is a snapshot of another entity, so a
 create still writes it, nested as that entity's own insert schema. `InvoiceSent`
