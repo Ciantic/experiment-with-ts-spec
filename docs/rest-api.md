@@ -252,8 +252,10 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
 - **A create takes only what it writes.** `<entity>InsertSchema` carries the
   columns the database does not own, so `id` and the `@computed` fields a client
   must not choose are absent and a stray one is a 400; a `@pgDefault` field is
-  present but optional, since the database fills it when the client omits it.
-  The generated client types the same way, as `<Entity>Insert`.
+  present but optional, since the database fills it when the client omits it, and
+  a field with a nullable column also takes `null`, which means the same as
+  omitting it (`docs/repositories.md`). The generated client types the same way,
+  as `<Entity>Insert`.
 - **A patch takes only what an update writes.** `<entity>PatchSchema` is the
   create's field set plus the version, so the same branches and derivable values
   are absent and a stray one is a 400 rather than a no-op; a defaulted column may

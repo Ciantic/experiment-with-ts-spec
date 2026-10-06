@@ -50,10 +50,10 @@ imports its write types type-only, so `zod` never enters the client runtime. Not
 everything here is generated: the read types (`Selection`, `Selected`, `Filters`,
 `Order`, `Where`) are hand-written in `packages/validation/src/selection.ts`,
 outside the barrels, and imported by path. See `docs/queries.md`. The write types
-are hand-written too, in `packages/validation/src/patch.ts` and
-`packages/validation/src/upsert.ts`, and the generated modules import them the
-same way: they express a shape a mapped type cannot, and they are what keeps the
-type and the schema on one field set.
+are hand-written too, in `packages/validation/src/insert.ts`,
+`packages/validation/src/patch.ts`, and `packages/validation/src/upsert.ts`, and
+the generated modules import them the same way: they express a shape a mapped type
+cannot, and they are what keeps the type and the schema on one field set.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -167,10 +167,11 @@ the list: a patch may override a default, exactly as a create may.
 ## Insert schemas
 
 `<name>InsertSchema` is the schema's `.omit()` of everything a create does not
-write, made `.strict()`. It mirrors the repository's insert contract
-(`docs/repositories.md`): a `create` writes the columns the database does not
-own, and a key the schema rejects is a 400 rather than a field that is silently
-dropped on the way to the SQL.
+write, `.partial()` for the defaulted fields it may leave out, and `.extend()` for
+the nullable columns it may send as `null`, made `.strict()`. It mirrors the
+repository's insert contract (`docs/repositories.md`): a `create` writes the
+columns the database does not own, and a key the schema rejects is a 400 rather
+than a field that is silently dropped on the way to the SQL.
 
 ```typescript
 export const invoiceInsertSchema = invoiceSchema
@@ -184,6 +185,10 @@ export const invoiceInsertSchema = invoiceSchema
         createdAt: true,
         updatedAt: true,
         version: true,
+    })
+    .extend({
+        number: invoiceSchema.shape.number.nullable(),
+        notes: invoiceSchema.shape.notes.nullable(),
     })
     .strict();
 ```
@@ -213,11 +218,20 @@ therefore keeps `customer` and `seller`, each validated as `customerInsertSchema
 — `docs/timestamps.md` explains why the snapshot carries the target's own audit
 columns.
 
+A nullable column also accepts `null`, from `nullablePatchProperties`, so the
+schema widens exactly where a patch and an upsert do. The key is not a nullable
+field, and a version is left out of a create entirely, so neither is widened; nor
+is a column that cannot hold a null. Omitting the field and sending `null` are one
+request for a create, since a nullable column has no default to fall back on and
+either writes a null.
+
 The repository's `create` takes the same field set, as the `<Entity>Insert` type
 imported from this package, and its `insert` names exactly those columns
-(`docs/repositories.md`). So the type a caller passes, the schema that validates
-it, and the statement that runs all carry one set of fields, and a field added to
-the spec narrows all three at once.
+(`docs/repositories.md`). The type is built by `Insert`
+(`packages/validation/src/insert.ts`), which relaxes the create's `@pgDefault`
+fields and widens its nullable ones, so the type a caller passes, the schema that
+validates it, and the statement that runs all carry one set of fields, and a field
+added to the spec narrows all three at once.
 
 ## Upsert schemas
 
@@ -254,9 +268,10 @@ same `@inlined` branches nest as the target's own insert schema, and a required
 An entity with no version therefore has two identical field sets, and the modules
 differ only in the doc their schema and type carry.
 
-The one addition is the nullable set: `nullablePatchProperties` again, so a
-nullable column accepts `null` exactly where a patch accepts it — the key and the
-version stay locked, and a column that cannot hold a null is not widened. The
+The one thing the upsert adds is the version: every other field set is the
+create's, including the nullable set `nullablePatchProperties` widens. A nullable
+column therefore accepts `null` exactly where a patch and a create do — the key and
+the version stay locked, and a column that cannot hold a null is not widened. The
 type is built by `Upsert` (`packages/validation/src/upsert.ts`), which is `Patch`'s
 sibling and not `Patch` itself: a patch makes every field optional, while an
 upsert must still require the fields a create requires, so the helper relaxes

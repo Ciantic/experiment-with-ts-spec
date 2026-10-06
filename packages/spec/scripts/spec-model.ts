@@ -280,11 +280,12 @@ export function omittedFromPatch(spec: SpecInterface): SpecProperty[] {
 }
 
 /**
- * The patchable fields whose column is nullable, so a patch may set one back to `null`.
- * `?` mirrors the column's nullability, so the field's own optionality is the test. A create does
- * not need the set: it writes a nullable column as `null` whether the caller omits it or sends
- * `null`. The key and the version stay out — a patch cannot clear the row it addresses, nor the
- * precondition it carries. See `docs/optionality.md` and `docs/repositories.md`.
+ * The updatable fields whose column is nullable, so a write may set one back to `null`.
+ * `?` mirrors the column's nullability, so the field's own optionality is the test. A create, an
+ * upsert, and a patch all widen with the set: omitting the field and sending `null` are one request
+ * for a create and an upsert, and a patch reads `null` as clearing the column. The key and the
+ * version stay out — a patch cannot clear the row it addresses, nor the precondition it carries.
+ * See `docs/optionality.md` and `docs/repositories.md`.
  */
 export function nullablePatchProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter(

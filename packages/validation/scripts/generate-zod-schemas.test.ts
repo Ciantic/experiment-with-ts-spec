@@ -337,11 +337,12 @@ describe("generateRepositoryEntity", () => {
         );
     });
 
-    it("mirrors the insert schema's omit list in the insert type", () => {
+    it("mirrors the insert schema's omit, nullable, and relaxed sets in the insert type", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = insertFile(files, "Thing");
 
-        expect(code).toContain('export type ThingInsert = Omit<Thing, "children" | "parent">;');
+        expect(code).toContain('export type ThingInsert = Insert<Thing, "children" | "parent", "name" | "amount" | "format", never>;');
+        expect(code).toContain('import type { Insert } from "../insert.ts";');
     });
 
     it("renders the primary key as a schema and a type over the entity, so a by-key write names only the key", () => {
@@ -374,11 +375,11 @@ describe("generateRepositoryEntity", () => {
         );
     });
 
-    it("keeps the entity type when the insert schema omits nothing", () => {
+    it("renders the insert over the entity when the schema omits, widens, and relaxes nothing", () => {
         const bare = "export interface Bare {\n    /** @primaryKey */\n    id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
         const { files } = generate({ domain: { Bare: bare } });
 
-        expect(insertFile(files, "Bare")).toContain("export type BareInsert = Bare;");
+        expect(insertFile(files, "Bare")).toContain("export type BareInsert = Insert<Bare, never, never, never>;");
     });
 
     it("renders no primary key module when the entity declares no key", () => {
@@ -396,7 +397,7 @@ describe("generateRepositoryEntity", () => {
 
         // A create leaves the version and the status to their defaults.
         expect(insert).toContain("    .omit({\n        version: true,\n    })");
-        expect(insert).toContain('export type RevisionInsert = Omit<Revision, "version" | "status"> & Partial<Pick<Revision, "status">>;');
+        expect(insert).toContain('export type RevisionInsert = Insert<Revision, "version", never, "status">;');
         // An upsert claims the version, and still lets a caller omit the field the database defaults.
         expect(upsert).not.toContain("        version: true,");
         expect(upsert).toContain("    .partial({\n        status: true,\n    })");
@@ -907,7 +908,7 @@ describe("insert schemas", () => {
         const code = insertFile(files, "Marker");
 
         expect(code).toContain("        total: true,");
-        expect(code).toContain('export type MarkerInsert = Omit<Marker, "total">;');
+        expect(code).toContain('export type MarkerInsert = Insert<Marker, "total", "label" | "createdAt", never>;');
         expect(code).not.toContain("        required: true,");
         expect(code).not.toContain("        label: true,");
     });
@@ -939,7 +940,7 @@ export interface Thing {
         const code = insertFile(files, "Thing");
 
         expect(code).toContain("    .partial({\n        source: true,\n    })");
-        expect(code).toContain('export type ThingInsert = Omit<Thing, "source"> & Partial<Pick<Thing, "source">>;');
+        expect(code).toContain('export type ThingInsert = Insert<Thing, never, never, "source">;');
     });
 
     it("nests an `@inlined` branch as the target's insert schema", () => {
@@ -947,8 +948,27 @@ export interface Thing {
         const code = insertFile(files, "Thing");
 
         expect(code).toContain('import { childInsertSchema } from "./childInsertSchema.ts";');
-        expect(code).toContain("        snapshot: childInsertSchema.optional(),");
+        expect(code).toContain("        snapshot: childInsertSchema.nullable().optional(),");
         expect(code).not.toContain("        snapshot: true,");
+    });
+
+    it("accepts null for a nullable column, as a patch and an upsert do, and for nothing else", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = insertFile(files, "Thing");
+
+        // The same nullable set a patch and an upsert widen, from the same helper.
+        expect(code).toContain(
+            [
+                "    .extend({",
+                "        name: thingSchema.shape.name.nullable(),",
+                "        amount: thingSchema.shape.amount.nullable(),",
+                "        format: thingSchema.shape.format.nullable(),",
+                "    })",
+            ].join("\n"),
+        );
+        // The key is a create's, and the version is the create's precondition, so neither is widened.
+        expect(code).not.toContain("id: thingSchema.shape.id.nullable()");
+        expect(code).not.toContain("version: thingSchema.shape.version.nullable()");
     });
 });
 
@@ -1050,35 +1070,40 @@ export interface Note {
 }
 `.trim();
 
+/** The evaluated schema from the Note fixture, built over a stub domain module the generated code would import. */
+function loadNoteSchema(moduleName: string, schemaName: string) {
+    const { files } = generate({ domain: { Note: NOTE } });
+    const code = files.get(join("repositories", moduleName)) ?? "";
+    const require = createRequire(import.meta.url);
+    const z = zodStub();
+    const exportedCode = ts.transpileModule(code, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
+    const stubRequire = (id: string) => {
+        if (id === "zod") {
+            return { z };
+        }
+        if (id === "../domain/noteSchema.ts") {
+            return {
+                noteSchema: z.strictObject({
+                    id: z.string(),
+                    text: z.string().optional(),
+                    status: z.string(),
+                    version: z.bigint(),
+                }),
+            };
+        }
+        return require(id);
+    };
+    new Function("exports", "require", exportedCode)(exports, stubRequire);
+    return exports[schemaName];
+}
+
 describe("upsert schemas", () => {
-    /** The evaluated `noteUpsertSchema`, built over a stub domain module the fixture would import. */
+    /** The evaluated `noteUpsertSchema`. */
     function noteUpsert() {
-        const { files } = generate({ domain: { Note: NOTE } });
-        const code = upsertFile(files, "Note");
-        const require = createRequire(import.meta.url);
-        const z = zodStub();
-        const exportedCode = ts.transpileModule(code, {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText;
-        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
-        const stubRequire = (id: string) => {
-            if (id === "zod") {
-                return { z };
-            }
-            if (id === "../domain/noteSchema.ts") {
-                return {
-                    noteSchema: z.strictObject({
-                        id: z.string(),
-                        text: z.string().optional(),
-                        status: z.string(),
-                        version: z.bigint(),
-                    }),
-                };
-            }
-            return require(id);
-        };
-        new Function("exports", "require", exportedCode)(exports, stubRequire);
-        return exports.noteUpsertSchema;
+        return loadNoteSchema(upsertModuleName("Note"), "noteUpsertSchema");
     }
 
     it("clears a nullable column with null, exactly as a patch does", () => {
@@ -1104,5 +1129,28 @@ describe("upsert schemas", () => {
 
     it("rejects a field the statement would never write", () => {
         expect(noteUpsert()?.safeParse({ id: "n1", version: 0n, extra: 1 }).success).toBe(false);
+    });
+});
+
+describe("insert schemas over a nullable column", () => {
+    /** The evaluated `noteInsertSchema`. */
+    function noteInsert() {
+        return loadNoteSchema(insertModuleName("Note"), "noteInsertSchema");
+    }
+
+    it("clears a nullable column with null, as a patch and an upsert do", () => {
+        expect(noteInsert()?.safeParse({ id: "n1", text: null }).success).toBe(true);
+    });
+
+    it("accepts the column omitted or supplied, since omitting it and sending null are one request", () => {
+        expect(noteInsert()?.safeParse({ id: "n1" }).success).toBe(true);
+        expect(noteInsert()?.safeParse({ id: "n1", text: "kept" }).success).toBe(true);
+    });
+
+    it("refuses null for a column that cannot hold one, and a field a create does not write", () => {
+        // `status` is required with a default, so it is relaxed but not nullable.
+        expect(noteInsert()?.safeParse({ id: "n1", status: null }).success).toBe(false);
+        // The version is the create's to leave out, so the schema never accepts it.
+        expect(noteInsert()?.safeParse({ id: "n1", version: 0n }).success).toBe(false);
     });
 });

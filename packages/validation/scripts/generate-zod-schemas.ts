@@ -286,21 +286,15 @@ interface WriteShape {
 
 /** The shape a create writes. */
 function insertShape(entity: ZodEntity): WriteShape {
-    const omitted = [...entity.insertOmit, ...entity.insertOptional];
-    const base =
-        omitted.length === 0 ? entity.name : `Omit<${entity.name}, ${unionType(omitted)}>`;
-    const relaxed =
-        entity.insertOptional.length === 0
-            ? ""
-            : ` & Partial<Pick<${entity.name}, ${unionType(entity.insertOptional)}>>`;
     return {
         schemaName: entity.insertName,
         typeName: `${entity.name}Insert`,
         comment: "/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */",
         omit: entity.insertOmit,
-        // A create writes a nullable column as `null` whether the caller omits it or sends `null`.
-        nullable: [],
-        typeExpression: `${base}${relaxed}`,
+        // A create writes a nullable column as `null` whether the caller omits it or sends it, so the schema takes both.
+        nullable: entity.patchNullable,
+        typeExpression: `Insert<${entity.name}, ${unionType(entity.insertOmit)}, ${unionType(entity.patchNullable)}, ${unionType(entity.insertOptional)}>`,
+        helperImport: 'import type { Insert } from "../insert.ts";',
     };
 }
 

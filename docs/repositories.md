@@ -80,8 +80,10 @@ it mirrors the SQL exactly. A whole entity is still assignable to it, so a calle
 holding one can pass it unchanged. What the type rules out is a field that would
 be read and then dropped — a branch, a clock field, a `@pgVirtual` column, or a
 derivable value — which is the same set `<entity>InsertSchema` accepts
-(`docs/validation.md`). An entity with nothing to omit gets
-`type <Entity>Insert = <Entity>`.
+(`docs/validation.md`). The type is built by `Insert`
+(`packages/validation/src/insert.ts`), so an entity with no field to omit, relax,
+or widen still gets an `Insert<…, never, never, never>`, which resolves to the
+entity type itself.
 
 The statement binds one array per column and reads them as rows with `unnest`,
 the shape `Patching` describes in full: a column a row may leave out binds a
@@ -105,6 +107,11 @@ schema is `.partial()`, so the type and the wire agree that omitting it is
 allowed. A `@version` field is the exception: a defaulted version is left out of
 a create entirely, because its default *is* the first revision
 (`docs/versioning.md`).
+
+A nullable column accepts `null` as well as omission, since the two are one
+request for a create: the column has no default to fall back on, so either writes
+a null. `<Entity>Insert` and `<entity>InsertSchema` widen the same set a patch and
+an upsert do, from `nullablePatchProperties` (`docs/validation.md`).
 
 One statement binds at most `MAX_STATEMENT_PARAMETERS` values
 (`src/db/sql-executor.ts`), so a create whose rows would bind more than that
@@ -386,6 +393,9 @@ see `docs/versioning.md`.
 - **A patch cannot set a non-nullable column to null.** Nullable columns are the
   exception: a patch sets one to `null` to clear it. `Invoice.notes`,
   `Invoice.number`, and the optional foreign keys are the ones in this model.
+- **A create takes `null` for the same nullable columns.** It means the same as
+  omitting the field, since the column has no default to fall back on; both write
+  a null. The insert schema and `<Entity>Insert` widen the patch's nullable set.
 - **A patch or an upsert of several rows is one statement per chunk of rows.**
   The chunks commit together in one boundary, so the call is atomic, but it is
   not the single statement a create or a delete is. Passing one row avoids the

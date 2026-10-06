@@ -69,7 +69,7 @@ export interface ZodEntity {
     usesPrimitives: boolean;
     /** Fields the patch schema requires: the key, and every `@version` field. */
     required: string[];
-    /** Patchable field names whose column is nullable, so a patch may set one to `null`. */
+    /** Writable field names whose column is nullable, so a write may widen one to accept `null`. */
     patchNullable: string[];
     /** The `@primaryKey` field names, in declaration order, so a patch's mandatory fields can name them. */
     keys: string[];
