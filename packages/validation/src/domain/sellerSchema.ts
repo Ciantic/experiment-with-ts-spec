@@ -9,7 +9,7 @@ export const sellerSchema = z.object({
     eInvoiceAddress: primitives.eInvoiceAddressSchema.optional(),
     eInvoiceOperator: primitives.eInvoiceOperatorSchema.optional(),
     language: primitives.languageSchema.optional(),
-    createdAt: z.date().optional(),
-    updatedAt: z.date().optional(),
-    version: primitives.versionSchema.optional(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    version: primitives.versionSchema,
 });

@@ -1,5 +1,6 @@
 import type { Email, EmailId } from "../src/domain/Email.ts";
 import type { EmailAddress } from "../src/primitives/EmailAddress.ts";
+import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample queued emails for a seeded development database. See docs/mockdata.md. */
 export const emails: Email[] = [
@@ -9,6 +10,12 @@ export const emails: Email[] = [
         to: "invoices@acme.example" as EmailAddress,
         subject: "Invoice 2026-0001",
         body: "Hello, invoice 2026-0001 is attached.",
+        status: "pending",
+        attempts: 0n,
+        maxAttempts: 5n,
+        createdAt: new Date("2026-01-05T08:00:00.000Z"),
+        updatedAt: new Date("2026-01-05T08:00:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000202" as EmailId,
@@ -17,7 +24,12 @@ export const emails: Email[] = [
         subject: "Invoice 2026-0002",
         body: "Hello, invoice 2026-0002 is attached.",
         status: "sent",
+        attempts: 1n,
+        maxAttempts: 5n,
         sentAt: new Date("2026-01-12T09:30:00.000Z"),
+        createdAt: new Date("2026-01-12T09:00:00.000Z"),
+        updatedAt: new Date("2026-01-12T09:30:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000203" as EmailId,
@@ -27,6 +39,10 @@ export const emails: Email[] = [
         body: "Hello, invoice 2026-0003 is attached.",
         status: "failed",
         attempts: 5n,
+        maxAttempts: 5n,
         lastError: "SMTP timeout",
+        createdAt: new Date("2026-01-15T10:00:00.000Z"),
+        updatedAt: new Date("2026-01-15T10:00:00.000Z"),
+        version: 0n as Version,
     },
 ];

@@ -6,4 +6,5 @@ export * from "./invoiceRowSchema.ts";
 export * from "./invoiceSentSchema.ts";
 export * from "./invoiceSentRowSchema.ts";
 export * from "./sellerSchema.ts";
+export * from "./tenantSchema.ts";
 export * from "./translationSchema.ts";

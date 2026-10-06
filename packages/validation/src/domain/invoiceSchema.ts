@@ -20,7 +20,7 @@ export const invoiceSchema = z.object({
     totalAmount: primitives.moneySchema.optional(),
     rows: z.array(z.lazy(() => invoiceRowSchema)).optional(),
     notes: z.string().optional(),
-    createdAt: z.date().optional(),
-    updatedAt: z.date().optional(),
-    version: primitives.versionSchema.optional(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    version: primitives.versionSchema,
 });

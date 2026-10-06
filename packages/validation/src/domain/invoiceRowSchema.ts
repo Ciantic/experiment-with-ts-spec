@@ -13,7 +13,7 @@ export const invoiceRowSchema = z.object({
     netAmount: primitives.moneySchema.optional(),
     taxAmount: primitives.moneySchema.optional(),
     totalAmount: primitives.moneySchema.optional(),
-    createdAt: z.date().optional(),
-    updatedAt: z.date().optional(),
-    version: primitives.versionSchema.optional(),
+    createdAt: z.date(),
+    updatedAt: z.date(),
+    version: primitives.versionSchema,
 });

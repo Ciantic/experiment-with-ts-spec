@@ -376,7 +376,9 @@ time from `queryModel` plus the selection:
 
 A projected scalar is copied only when its column is not `null`, and a to-one
 branch whose foreign key is `null` is left out. A `null` column and an absent
-key therefore look the same on the wire, matching the optional spec fields.
+key therefore look the same on the wire: a value is present exactly when the
+column has one, so an optional field may be absent and a required one never is.
+See `docs/optionality.md`.
 
 There is **no JSON aggregation**. A branch costs one extra query, batched over
 all parents at that level; nested branches recurse the same way, one query per
@@ -404,7 +406,7 @@ stays stable and is never truncated or filtered.
 
 ## Gotchas
 
-- **Every selected key is optional.** All spec fields are optional, so
+- **Every selected key is optional.** `Selected` marks each selected key `?`, so
   `Selected<Invoice, { number: true }>` is `{ number?: string }`. A `null` column
   is omitted rather than carried as `null`, so a value is present only when the
   column has one: selection narrows the type, and the runtime object lacks a key

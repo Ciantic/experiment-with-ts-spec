@@ -151,7 +151,7 @@ export interface Invoice {
      * @queryOrderBy default asc
      * @widget date
      */
-    createdAt?: Date;
+    createdAt: Date;
 
     /**
      * The moment the invoice draft was last updated.
@@ -161,7 +161,7 @@ export interface Invoice {
      * @queryOrderBy
      * @widget date
      */
-    updatedAt?: Date;
+    updatedAt: Date;
 
     /**
      * The revision of the invoice, incremented on every write.
@@ -171,5 +171,5 @@ export interface Invoice {
      * @pgDefault 0
      * @widget number
      */
-    version?: Version;
+    version: Version;
 }

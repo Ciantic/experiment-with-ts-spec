@@ -67,7 +67,7 @@ export interface Email {
      * @pgDefault 'pending'
      * @widget select
      */
-    status?: EmailStatus;
+    status: EmailStatus;
 
     /**
      * How many times delivery has been attempted.
@@ -76,7 +76,7 @@ export interface Email {
      * @pgDefault 0
      * @widget number
      */
-    attempts?: bigint;
+    attempts: bigint;
 
     /**
      * How many attempts delivery is given before the email is failed.
@@ -85,7 +85,7 @@ export interface Email {
      * @pgDefault 5
      * @widget number
      */
-    maxAttempts?: bigint;
+    maxAttempts: bigint;
 
     /**
      * The error from the most recent failed attempt.
@@ -111,7 +111,7 @@ export interface Email {
      * @queryOrderBy default asc
      * @widget date
      */
-    createdAt?: Date;
+    createdAt: Date;
 
     /**
      * The moment the email was last updated.
@@ -121,7 +121,7 @@ export interface Email {
      * @queryOrderBy
      * @widget date
      */
-    updatedAt?: Date;
+    updatedAt: Date;
 
     /**
      * The revision of the queued email, incremented on every write.
@@ -131,5 +131,5 @@ export interface Email {
      * @pgDefault 0
      * @widget number
      */
-    version?: Version;
+    version: Version;
 }

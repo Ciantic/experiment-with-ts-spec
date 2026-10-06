@@ -9,7 +9,12 @@ export const emailInsertSchema = emailSchema
         updatedAt: true,
         version: true,
     })
+    .partial({
+        status: true,
+        attempts: true,
+        maxAttempts: true,
+    })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type EmailInsert = Omit<Email, "createdAt" | "updatedAt" | "version">;
+export type EmailInsert = Omit<Email, "createdAt" | "updatedAt" | "version" | "status" | "attempts" | "maxAttempts"> & Partial<Pick<Email, "status" | "attempts" | "maxAttempts">>;

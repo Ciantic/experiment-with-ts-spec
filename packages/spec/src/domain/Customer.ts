@@ -85,7 +85,7 @@ export interface Customer {
      * @createdAt
      * @widget date
      */
-    createdAt?: Date;
+    createdAt: Date;
 
     /**
      * The moment the customer record was last updated.
@@ -94,7 +94,7 @@ export interface Customer {
      * @updatedAt
      * @widget date
      */
-    updatedAt?: Date;
+    updatedAt: Date;
 
     /**
      * The revision of the customer record, incremented on every write.
@@ -104,5 +104,5 @@ export interface Customer {
      * @pgDefault 0
      * @widget number
      */
-    version?: Version;
+    version: Version;
 }

@@ -6,6 +6,7 @@ import { invoiceRows } from "./invoiceRows.ts";
 import { invoicesSent } from "./invoicesSent.ts";
 import { invoiceSentRows } from "./invoiceSentRows.ts";
 import { sellers } from "./sellers.ts";
+import { tenants } from "./tenants.ts";
 import { translations } from "./translations.ts";
 
 export * from "./customers.ts";
@@ -15,6 +16,7 @@ export * from "./invoiceRows.ts";
 export * from "./invoicesSent.ts";
 export * from "./invoiceSentRows.ts";
 export * from "./emails.ts";
+export * from "./tenants.ts";
 export * from "./translations.ts";
 
 /** One table's rows, named by the spec entity so a seeder can match `create<Entity>`. */
@@ -32,5 +34,6 @@ export const mockTables: MockTable[] = [
     { entity: "InvoiceSent", rows: invoicesSent },
     { entity: "InvoiceSentRow", rows: invoiceSentRows },
     { entity: "Email", rows: emails },
+    { entity: "Tenant", rows: tenants },
     { entity: "Translation", rows: translations },
 ];

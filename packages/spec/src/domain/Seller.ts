@@ -69,7 +69,7 @@ export interface Seller {
      * @createdAt
      * @widget date
      */
-    createdAt?: Date;
+    createdAt: Date;
 
     /**
      * The moment the seller record was last updated.
@@ -78,7 +78,7 @@ export interface Seller {
      * @updatedAt
      * @widget date
      */
-    updatedAt?: Date;
+    updatedAt: Date;
 
     /**
      * The revision of the seller record, incremented on every write.
@@ -88,5 +88,5 @@ export interface Seller {
      * @pgDefault 0
      * @widget number
      */
-    version?: Version;
+    version: Version;
 }

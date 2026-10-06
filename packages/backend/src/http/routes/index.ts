@@ -7,6 +7,7 @@ import { invoiceRowRoutes } from "./invoiceRowRoutes.ts";
 import { invoiceSentRoutes } from "./invoiceSentRoutes.ts";
 import { invoiceSentRowRoutes } from "./invoiceSentRowRoutes.ts";
 import { sellerRoutes } from "./sellerRoutes.ts";
+import { tenantRoutes } from "./tenantRoutes.ts";
 import { translationRoutes } from "./translationRoutes.ts";
 
 /** Every exposed call, matched by method and path. */
@@ -18,5 +19,6 @@ export const routes: Route[] = [
     ...invoiceSentRoutes,
     ...invoiceSentRowRoutes,
     ...sellerRoutes,
+    ...tenantRoutes,
     ...translationRoutes,
 ];

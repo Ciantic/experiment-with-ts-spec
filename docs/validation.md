@@ -53,7 +53,7 @@ export const invoiceSchema = z.object({
     number: z.string().optional(),
     customer: z.lazy(() => customerSchema).optional(),
     rows: z.array(z.lazy(() => invoiceRowSchema)).optional(),
-    version: primitives.versionSchema.optional(),
+    version: primitives.versionSchema,
 });
 
 /** A partial update: every field is optional except the key and the version. */

@@ -4,8 +4,11 @@ Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
 (`timestamptz`):
 
 - `Customer` — `createdAt`, `updatedAt`
+- `Seller` — `createdAt`, `updatedAt`
 - `Invoice` — `createdAt`, `updatedAt`
 - `InvoiceRow` — `createdAt`, `updatedAt`
+- `Email` — `createdAt`, `updatedAt`
+- `Tenant` — `createdAt`, `updatedAt`
 
 Both are supplied by the database through a single tag each, rather than through
 `@computed` plus `@pgDefault`. The tags are self-contained because the
@@ -21,7 +24,7 @@ pairing of default and trigger is fixed and easy to get wrong by hand.
  * @createdAt
  * @widget date
  */
-createdAt?: Date;
+createdAt: Date;
 ```
 
 `@createdAt` writes a column default:
@@ -32,11 +35,11 @@ createdAt?: Date;
 
 Three things follow:
 
-- **The field is optional.** The database fills it, so a caller need not supply
-  one. The tag also forces the column `not null` even when the field is optional
-  — the default guarantees a value, so a nullable column would be a lie.
+- **The field is required.** A row always has the column, since the default
+  guarantees a value, so the field is required and the column `not null`. A
+  nullable column would be a lie. See `docs/optionality.md`.
 - **The repository does not write it.** The tag excludes the column from the
-  generated `insert` and `update`.
+  generated `insert` and `update`, so no write carries it.
 - **It is set once.** A default only applies when a column is omitted, and the
   repository always omits it, so `createdAt` is never rewritten by an update.
 
@@ -50,7 +53,7 @@ Three things follow:
  * @updatedAt
  * @widget date
  */
-updatedAt?: Date;
+updatedAt: Date;
 ```
 
 `@updatedAt` emits both halves, because the two answer different questions:
@@ -104,10 +107,10 @@ maintains it.
 declares a timestamp, so there is no expression to name and no registry to
 consult. See `docs/spec-annotations.md`.
 
-`updatedAt` is optional for the same reason `createdAt` is: the column has a
-default, so the repository never writes it and the caller never supplies it.
-Because the trigger fires on every write, it overwrites whatever a hand-written
-statement sent.
+`updatedAt` is required for the same reason `createdAt` is: the column has a
+default and the trigger fills every write, so neither a caller nor the
+repository supplies it. Because the trigger fires on every write, it overwrites
+whatever a hand-written statement sent.
 
 ## Why the trigger, and not the application
 

@@ -12,9 +12,9 @@ client has something to read without a fixture being written per test.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
 `mockTables` is ordered so foreign keys resolve: customers and sellers, then
-invoices and their rows, then sent invoices and their rows. A table with no
-foreign key of its own — `Translation` — sits at the end, where its position
-cannot matter. `seedMockData` walks the list in that order.
+invoices and their rows, then sent invoices and their rows. Tables with no
+foreign key of their own — `Tenant` and `Translation` — sit at the end, where
+their position cannot matter. `seedMockData` walks the list in that order.
 
 ## Seeding is generic
 
@@ -25,8 +25,11 @@ generated repository whose name is `create<Entity>`, looked up on the
 
 Because the rows are typed as the spec's own interfaces, a domain change breaks
 the mock data at compile time instead of seeding a database the server disagrees
-with. Values the database computes (row amounts, invoice aggregates, timestamps,
-versions) are left out; the triggers and defaults fill them.
+with. Computed values — the invoice aggregates and the row amounts — are left
+out, because their fields are optional and the triggers fill them. The
+database-managed `createdAt`, `updatedAt`, and `version` are declared, since the
+entity requires them, but the repository omits those columns on insert and the
+defaults fill them. See `docs/optionality.md`.
 
 ## Running the server
 

@@ -8,4 +8,5 @@ export * from "./invoiceRow.ts";
 export * from "./invoiceSent.ts";
 export * from "./invoiceSentRow.ts";
 export * from "./seller.ts";
+export * from "./tenant.ts";
 export * from "./translation.ts";

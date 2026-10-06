@@ -110,7 +110,7 @@ export interface InvoiceRow {
      * @createdAt
      * @widget date
      */
-    createdAt?: Date;
+    createdAt: Date;
 
     /**
      * The moment the row was last updated.
@@ -119,7 +119,7 @@ export interface InvoiceRow {
      * @updatedAt
      * @widget date
      */
-    updatedAt?: Date;
+    updatedAt: Date;
 
     /**
      * The revision of the row, incremented on every write.
@@ -129,5 +129,5 @@ export interface InvoiceRow {
      * @pgDefault 0
      * @widget number
      */
-    version?: Version;
+    version: Version;
 }

@@ -46,6 +46,15 @@ create table "seller" (
     constraint "seller_pkey" primary key ("id")
 );
 
+create table "tenant" (
+    "id" uuid not null,
+    "name" text not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "tenant_pkey" primary key ("id")
+);
+
 create table "translation" (
     "lang" text not null,
     "key" text not null,
@@ -168,6 +177,16 @@ $$ language plpgsql;
 create trigger "seller_compute" before insert or update on "seller"
     for each row execute function "seller_compute"();
 
+create function "tenant_compute"() returns trigger as $$
+begin
+    NEW."updatedAt" := now();
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "tenant_compute" before insert or update on "tenant"
+    for each row execute function "tenant_compute"();
+
 create function "invoice_compute"() returns trigger as $$
 begin
     NEW."updatedAt" := now();
@@ -255,6 +274,20 @@ $$ language plpgsql;
 
 create trigger "seller_version" before update on "seller"
     for each row execute function "seller_version"();
+
+create function "tenant_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on tenant %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "tenant_version" before update on "tenant"
+    for each row execute function "tenant_version"();
 
 create function "invoice_version"() returns trigger as $$
 begin

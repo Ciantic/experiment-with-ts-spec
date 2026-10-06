@@ -2,6 +2,7 @@ import type { CustomerId } from "../src/domain/Customer.ts";
 import type { Invoice, InvoiceId } from "../src/domain/Invoice.ts";
 import type { SellerId } from "../src/domain/Seller.ts";
 import type { Money } from "../src/primitives/Money.ts";
+import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample invoices for a seeded development database. See docs/mockdata.md. */
 export const invoices: Invoice[] = [
@@ -16,6 +17,9 @@ export const invoices: Invoice[] = [
         netAmount: "100.00" as Money,
         taxAmount: "25.50" as Money,
         notes: "First invoice of the year.",
+        createdAt: new Date("2026-01-05T08:00:00.000Z"),
+        updatedAt: new Date("2026-01-05T08:00:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000102" as InvoiceId,
@@ -28,6 +32,9 @@ export const invoices: Invoice[] = [
         netAmount: "200.00" as Money,
         taxAmount: "50.00" as Money,
         notes: "",
+        createdAt: new Date("2026-01-12T08:00:00.000Z"),
+        updatedAt: new Date("2026-01-12T08:00:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000103" as InvoiceId,
@@ -38,5 +45,8 @@ export const invoices: Invoice[] = [
         issueDate: new Date("2026-02-01T00:00:00.000Z"),
         dueDate: new Date("2026-02-15T00:00:00.000Z"),
         notes: "Draft with no rows yet.",
+        createdAt: new Date("2026-02-01T08:00:00.000Z"),
+        updatedAt: new Date("2026-02-01T08:00:00.000Z"),
+        version: 0n as Version,
     },
 ];

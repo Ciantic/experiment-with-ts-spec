@@ -209,6 +209,18 @@ export const queryModel: QueryModel = {
             },
             "relations": {}
         },
+        "tenant": {
+            "name": "tenant",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "name": "name",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "version": "version"
+            },
+            "relations": {}
+        },
         "translation": {
             "name": "translation",
             "key": "lang",

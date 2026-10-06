@@ -3,6 +3,7 @@ import type { InvoiceRow, InvoiceRowId } from "../src/domain/InvoiceRow.ts";
 import type { Money } from "../src/primitives/Money.ts";
 import type { Quantity } from "../src/primitives/Quantity.ts";
 import type { TaxRate } from "../src/primitives/TaxRate.ts";
+import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample invoice rows for a seeded development database. See docs/mockdata.md. */
 export const invoiceRows: InvoiceRow[] = [
@@ -14,6 +15,9 @@ export const invoiceRows: InvoiceRow[] = [
         unit: "hours",
         unitPrice: "10.00" as Money,
         taxRate: "0.255" as TaxRate,
+        createdAt: new Date("2026-01-05T08:05:00.000Z"),
+        updatedAt: new Date("2026-01-05T08:05:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000202" as InvoiceRowId,
@@ -23,6 +27,9 @@ export const invoiceRows: InvoiceRow[] = [
         unit: "hours",
         unitPrice: "10.00" as Money,
         taxRate: "0.25" as TaxRate,
+        createdAt: new Date("2026-01-12T08:05:00.000Z"),
+        updatedAt: new Date("2026-01-12T08:05:00.000Z"),
+        version: 0n as Version,
     },
     {
         id: "00000000-0000-4000-8000-000000000203" as InvoiceRowId,
@@ -32,5 +39,8 @@ export const invoiceRows: InvoiceRow[] = [
         unit: "hours",
         unitPrice: "10.00" as Money,
         taxRate: "0.25" as TaxRate,
+        createdAt: new Date("2026-01-12T08:10:00.000Z"),
+        updatedAt: new Date("2026-01-12T08:10:00.000Z"),
+        version: 0n as Version,
     },
 ];

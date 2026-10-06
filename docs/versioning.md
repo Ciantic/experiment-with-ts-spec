@@ -3,8 +3,11 @@
 Every mutable domain model carries a `version`, an optimistic-lock counter:
 
 - `Customer` — `version`
+- `Seller` — `version`
 - `Invoice` — `version`
 - `InvoiceRow` — `version`
+- `Email` — `version`
+- `Tenant` — `version`
 
 `InvoiceSent` and `InvoiceSentRow` do not. They are frozen copies
 (`docs/invoice-snapshotting.md`); a revision of a document that is not supposed
@@ -47,11 +50,11 @@ intent and survives a change to the alias.
 "version" int8 not null default 0
 ```
 
-`@pgDefault 0` gives a new row its first revision for free, and forces the column
-`not null` even though the field is optional — the same shape as `createdAt`
-(`docs/timestamps.md`). A defaulted version is the one default a create never
-overrides: the repository leaves it out on insert, because its default *is* the
-first revision.
+`@pgDefault 0` gives a new row its first revision for free, and makes the
+required field's column `not null` — the same shape as `createdAt`
+(`docs/timestamps.md`, `docs/optionality.md`). A defaulted version is the one
+default a create never overrides: the repository leaves it out on insert,
+because its default *is* the first revision.
 
 ## The trigger
 
@@ -73,11 +76,10 @@ create trigger "customer_version" before update on "customer"
     for each row execute function "customer_version"();
 ```
 
-- **`is distinct from`, not `<>`.** The field is optional, so a caller can send
-  `undefined`, which arrives as `null`. `null <> 0` is `NULL`, the `if` is not
-  taken, and the trigger would silently accept the write. `is distinct from` is
-  null-safe, so an omitted version conflicts rather than passing. The guard
-  fails closed.
+- **`is distinct from`, not `<>`.** A raw statement can still send a null
+  version, and `null <> 0` is `NULL`, the `if` is not taken, and the trigger
+  would silently accept the write. `is distinct from` is null-safe, so a null
+  version conflicts rather than passing. The guard fails closed.
 - **`errcode = '40001'`.** `serialization_failure` is the closest standard code
   for "retry the transaction", so a client can recognise a conflict without
   parsing the message.
