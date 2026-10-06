@@ -11,6 +11,7 @@ import {
     inlinedFromInsert,
     isCompareOperator,
     lowerFirst,
+    nullablePatchProperties,
     omittedFromInsert,
     omittedFromPatch,
     parseSpec,
@@ -66,6 +67,8 @@ export interface ZodEntity {
     usesPrimitives: boolean;
     /** Fields the patch schema requires: the key, and every `@version` field. */
     required: string[];
+    /** Patchable field names whose column is nullable, so a patch may set one to `null`. */
+    patchNullable: string[];
     /** The `@primaryKey` field names, in declaration order, so a patch's mandatory fields can name them. */
     keys: string[];
     /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
@@ -449,6 +452,7 @@ function buildEntities(
             .filter((property) => !property.optional)
             .map((property) => property.name);
         const patchOmit = omittedFromPatch(spec).map((property) => property.name);
+        const patchNullable = nullablePatchProperties(spec).map((property) => property.name);
         entities.push({
             name: spec.name,
             schemaName: schemaName(spec.name),
@@ -461,6 +465,7 @@ function buildEntities(
             insertOmit,
             insertOptional,
             patchOmit,
+            patchNullable,
             insertInlined: inlinedFromInsert(spec).flatMap((property) => {
                 const typeNode = property.declaration.getTypeNode();
                 const target = typeNode && entityNameOf(typeNode, interfaces);

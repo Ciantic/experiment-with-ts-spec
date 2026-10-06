@@ -115,6 +115,9 @@ and version required again. A patch writes the same columns a create does, plus
 the version that carries the optimistic-lock precondition, and nothing else —
 which is what the repository's patch contract says (`docs/repositories.md`).
 
+A field whose column is nullable also accepts `null`, which clears it, so the
+schema is widened with `.extend()`:
+
 ```typescript
 export const invoicePatchSchema = invoiceSchema
     .omit({
@@ -128,6 +131,10 @@ export const invoicePatchSchema = invoiceSchema
         updatedAt: true,
     })
     .partial()
+    .extend({
+        number: invoiceSchema.shape.number.nullable(),
+        notes: invoiceSchema.shape.notes.nullable(),
+    })
     .required({
         id: true,
         version: true,
@@ -140,15 +147,17 @@ difference: a create must not carry the precondition, a patch must. So a patch
 rejects the same branches, clock fields, and derivable values a create does, and
 `.strict()` turns a key the update would silently ignore into a 400.
 
-The list is `omittedFromPatch` (`packages/spec/scripts/spec-model.ts`), and the
-`<Entity>Patch` type is rendered from it into the same module as the patch schema,
-so the repository type taking it, the client sending it, and the wire schema
-accepting it all permit exactly the same fields. A nullable `@computed` value is on the
-list because its mechanism fills it in later, and a `@pgVirtual`
-value is on it whether nullable or not because Postgres refuses the write: the
-update does not name the column, so accepting one would be accepting a field that
-does nothing (`docs/repositories.md`). A `@pgDefault` column is not on the list: a
-patch may override a default, exactly as a create may.
+The lists are `omittedFromPatch` and `nullablePatchProperties`
+(`packages/spec/scripts/spec-model.ts`), and the `<Entity>Patch` type is rendered
+from them into the same module as the patch schema, so the repository type taking
+it, the client sending it, and the wire schema accepting it all permit exactly
+the same fields. The type is built by `Patch` (`packages/validation/src/patch.ts`),
+which makes `null` legal for the nullable fields alone. A nullable `@computed`
+value is on the omit list because its mechanism fills it in later, and a
+`@pgVirtual` value is on it whether nullable or not because Postgres refuses the
+write: the update does not name the column, so accepting one would be accepting a
+field that does nothing (`docs/repositories.md`). A `@pgDefault` column is not on
+the list: a patch may override a default, exactly as a create may.
 
 ## Insert schemas
 

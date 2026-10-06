@@ -19,7 +19,7 @@ export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<void> {
     return call<void>("POST", "/invoice_sent", rows);
 }
 
-/** Patch `InvoiceSent` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `InvoiceSent` rows; a row that is not there rejects the call. See docs/versioning.md. */
 export function updateInvoiceSent(rows: InvoiceSentPatch[]): Call<void> {
     return call<void>("PATCH", "/invoice_sent", rows);
 }

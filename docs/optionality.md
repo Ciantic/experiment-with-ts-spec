@@ -48,6 +48,15 @@ A field whose column is nullable, which is how `@computed` values start life:
 - Plain optional data: `Customer.eInvoiceAddress`, `Invoice.notes`. Nullable,
   because a customer may have no e-invoice address.
 
+## Writing one back
+
+The read type is `T | undefined`, and a write takes the same two states meaning
+different things. A create writes a nullable column whether the caller omits the
+field or sends it, so `undefined` and `null` are one request there. A patch tells
+them apart: omitting the field leaves the stored value alone, and `null` clears
+the column, which is the only way to write a null
+(`docs/repositories.md`).
+
 ## Generation
 
 `packages/backend/scripts/postgres-model.ts` makes a defaulted column `not null`

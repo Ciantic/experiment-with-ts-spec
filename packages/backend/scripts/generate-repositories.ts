@@ -65,10 +65,9 @@ function insertEntry(column: Column): ValueEntry {
     return column.default === undefined ? entry : { ...entry, optional: true };
 }
 
-/** The value entry for a patch: a version is required, every other column is null when the caller omits it. */
-function patchEntry(column: Column): ValueEntry {
-    const read = readExpression(column);
-    return { expression: column.version ? read : `${read} ?? null`, sqlType: column.sqlType };
+/** The `set` entry that assigns a column from the row's own tuple, e.g. `"name" = data."name"`. */
+function assignment(column: Column): string {
+    return JSON.stringify(`${quote(column.name)} = data.${quote(column.name)}`);
 }
 
 /** The lines that gather the given values into `parameters` and `tuples`, one tuple per row. */
@@ -127,12 +126,12 @@ function collectValuesWithDefaults(entries: ValueEntry[]): string[] {
 }
 
 /** The header and type imports every operation module carries, naming the one write type it uses. */
-function modulePrologue(writeType: string): string[] {
+function modulePrologue(writeType: string, executorImport?: string): string[] {
     return [
         HEADER,
         // The repository, the wire schema, and the client all name the one type validation declares.
         `import type { ${writeType} } from "validation/${validationFileName(writeType)}";`,
-        'import type { SqlExecutor } from "../sql-executor.ts";',
+        executorImport ?? 'import type { SqlExecutor } from "../sql-executor.ts";',
         "",
     ];
 }
@@ -142,6 +141,11 @@ function keyMatch(table: Table, primaryKeys: Column[]): string {
     return primaryKeys
         .map((column) => `${quote(table.name)}.${quote(column.name)} = data.${quote(column.name)}`)
         .join(" and ");
+}
+
+/** The JS expression naming the row a patch addresses, for the message of a rejected patch. */
+function keyExpression(primaryKeys: Column[]): string {
+    return primaryKeys.map((column) => readExpression(column)).join(' + "/" + ');
 }
 
 /** Render `create<Entity>`: one multi-row insert over the insertable columns. */
@@ -162,33 +166,83 @@ export function generateCreate(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render `update<Entity>`: one multi-row patch over the patchable columns, keeping omitted values. */
+/** Render `update<Entity>`: a patch runner call over the columns a row may supply. See docs/repositories.md. */
 export function generateUpdate(table: Table): string {
     const entity = table.interfaceName;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     // A patch writes the patchable fields; a database-owned column keeps its stored value. See docs/repositories.md.
     const patchColumns = table.columns.filter((column) => !column.primaryKey && column.updatable !== false);
-    // The tuple carries the keys first, then the patchable columns.
-    const dataEntries = [...primaryKeys.map(readEntry), ...patchColumns.map(patchEntry)];
-    const dataColumnNames = [...primaryKeys, ...patchColumns].map((column) => quote(column.name)).join(", ");
-    const keyAssignment = (column: Column) => `${quote(column.name)} = data.${quote(column.name)}`;
-    // An omitted column keeps its stored value, so a patch cannot set one to null; the version is required.
-    const patchAssignment = (column: Column) =>
-        column.version
-            ? keyAssignment(column)
-            : `${quote(column.name)} = coalesce(data.${quote(column.name)}, ${quote(table.name)}.${quote(column.name)})`;
-    // An update must set something; a table with nothing to patch sets its key to the key it already holds.
-    const setClause =
-        patchColumns.length > 0
-            ? patchColumns.map(patchAssignment).join(", ")
-            : primaryKeys.map(keyAssignment).join(", ");
-    const lines = modulePrologue(`${entity}Patch`);
-
-    lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}Patch[]): Promise<void> {`);
-    lines.push(...collectValues(dataEntries));
-    lines.push(
-        `    await db.query('update ${quote(table.name)} set ${setClause} from (values ' + tuples.join(", ") + ') as data(${dataColumnNames}) where ${keyMatch(table, primaryKeys)}', parameters);`,
+    // The version is the optimistic-lock precondition, not an assignment; the trigger increments it.
+    const version = patchColumns.find((column) => column.version);
+    const supplied = patchColumns.filter((column) => column.supplied !== undefined);
+    const lines = modulePrologue(
+        `${entity}Patch`,
+        'import { affectedRows, type SqlExecutor } from "../sql-executor.ts";',
     );
+    // A patch addresses the row at the version the caller holds, so a stale one matches no row. See docs/versioning.md.
+    const match = version
+        ? `${keyMatch(table, primaryKeys)} and ${quote(table.name)}.${quote(version.name)} = data.${quote(version.name)}`
+        : keyMatch(table, primaryKeys);
+    const rejection = version
+        ? `'no row of ${table.name} is at the version this patch supplied for ' + ${keyExpression(primaryKeys)}`
+        : `'no row of ${table.name} matches this patch: ' + ${keyExpression(primaryKeys)}`;
+
+    // One statement per row: an omitted field is left out of the `set` clause, so it keeps its stored
+    // value while a field the caller sets to `null` writes a null. More than one row is more than one
+    // statement, so the call opens a boundary to stay all-or-nothing. See docs/repositories.md.
+    lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}Patch[]): Promise<void> {`);
+    lines.push("    if (rows.length === 0) {");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
+    lines.push("        for (const row of rows) {");
+    lines.push("            const assignments: string[] = [];");
+    lines.push("            const names: string[] = [];");
+    lines.push("            const values: string[] = [];");
+    lines.push("            const parameters: unknown[] = [];");
+    lines.push("            const add = (column: string, cast: string, value: unknown): void => {");
+    lines.push('                names.push("\\"" + column + "\\"");');
+    lines.push('                values.push("$" + (parameters.length + 1) + "::" + cast);');
+    lines.push("                parameters.push(value ?? null);");
+    lines.push("            };");
+    for (const column of primaryKeys) {
+        lines.push(
+            `            add(${JSON.stringify(column.name)}, ${JSON.stringify(column.sqlType)}, ${readExpression(column)});`,
+        );
+    }
+    for (const column of supplied) {
+        lines.push(`            if (${column.supplied}) {`);
+        lines.push(
+            `                add(${JSON.stringify(column.name)}, ${JSON.stringify(column.sqlType)}, ${readExpression(column)});`,
+        );
+        lines.push(`                assignments.push(${assignment(column)});`);
+        lines.push("            }");
+    }
+    if (version) {
+        // The version travels as a parameter for the `where`, never as an assignment. See docs/versioning.md.
+        lines.push(
+            `            add(${JSON.stringify(version.name)}, ${JSON.stringify(version.sqlType)}, ${readExpression(version)});`,
+        );
+    }
+    // An update must set something; a row that supplies no field sets its key to the key it already holds.
+    lines.push("            if (assignments.length === 0) {");
+    lines.push(`                assignments.push(${assignment(primaryKeys[0] as Column)});`);
+    lines.push("            }");
+    lines.push(
+        `            const result = await tx.query('update ${quote(table.name)} set ' + assignments.join(", ") + ' from (values (' + values.join(", ") + ')) as data(' + names.join(", ") + ') where ${match}', parameters);`,
+    );
+    // A patch that matched no row changed nothing, so the whole call is rejected. See docs/versioning.md.
+    lines.push("            if (affectedRows(result) === 0) {");
+    lines.push(`                throw Object.assign(new Error(${rejection}), { code: "40001" });`);
+    lines.push("            }");
+    lines.push("        }");
+    lines.push("    };");
+    // One row is one statement, so it needs no boundary; more than one would otherwise apply one row at a time.
+    lines.push("    if (rows.length === 1) {");
+    lines.push("        await write(db);");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    await db.transaction(write);");
     lines.push("}");
 
     return lines.join("\n") + "\n";

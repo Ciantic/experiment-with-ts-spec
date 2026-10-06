@@ -19,7 +19,7 @@ export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<void> {
     return call<void>("POST", "/invoice_sent_row", rows);
 }
 
-/** Patch `InvoiceSentRow` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `InvoiceSentRow` rows; a row that is not there rejects the call. See docs/versioning.md. */
 export function updateInvoiceSentRow(rows: InvoiceSentRowPatch[]): Call<void> {
     return call<void>("PATCH", "/invoice_sent_row", rows);
 }

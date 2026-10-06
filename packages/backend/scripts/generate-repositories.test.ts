@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ts } from "ts-morph";
 import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
+import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
 import { generateCreate, generateDelete, generateIndex, generateRepositories, generateUpdate } from "./generate-repositories.ts";
@@ -10,7 +11,12 @@ import type { Column, Table } from "./postgres-model.ts";
 function column(name: string, extras: Partial<Column> = {}): Column {
     // A defaulted column is written when the row supplies it; the version is the database's on create.
     const insertable = extras.insertable ?? extras.version !== true;
-    return { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
+    const column: Column = { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
+    // The model records how a patch tells whether a row supplied a column; the fixture does the same.
+    if (column.updatable && !column.primaryKey && !column.version && extras.supplied === undefined) {
+        column.supplied = `row.${name} !== undefined`;
+    }
+    return column;
 }
 
 /** A table fixture; defaults keep each test focused on the part it exercises. */
@@ -56,6 +62,28 @@ function createTableSql(table: Table): string {
     return `create table "${table.name}" (\n${definitions.join(",\n")}\n);`;
 }
 
+/**
+ * A `before update` trigger that owns the version counter, for a fixture with a version column: a
+ * statement that sets the version itself is rejected, and every other update bumps it once.
+ */
+function versionTriggerSql(table: Table): string {
+    const version = table.columns.find((column) => column.version);
+    if (version === undefined) {
+        return "";
+    }
+    const name = `${table.name}_version`;
+    return [
+        `create function "${name}"() returns trigger as $$ begin`,
+        `    if new."${version.name}" is distinct from old."${version.name}" then`,
+        "        raise exception 'the version column is not assignable' using errcode = '40001';",
+        "    end if;",
+        `    new."${version.name}" := old."${version.name}" + 1;`,
+        "    return new;",
+        "end; $$ language plpgsql;",
+        `create trigger "${name}" before update on "${table.name}" for each row execute function "${name}"();`,
+    ].join("\n");
+}
+
 /** The three generated CRUD functions, resolved from the three operation modules. */
 interface GeneratedRepository {
     create: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
@@ -69,9 +97,12 @@ function loadModule(code: string): Record<string, unknown> {
         compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
     }).outputText;
     const exports: Record<string, unknown> = {};
-    // The module imports only types, so this require is never reached at runtime.
-    new Function("exports", "require", transpiled)(exports, () => {
-        throw new Error("the generated repository must not import a runtime dependency");
+    // A generated module imports the port's runtime helpers from here and nothing else at runtime.
+    new Function("exports", "require", transpiled)(exports, (specifier: string) => {
+        if (specifier === "../sql-executor.ts") {
+            return sqlExecutor;
+        }
+        throw new Error(`the generated repository imported \`${specifier}\` at runtime`);
     });
     return exports;
 }
@@ -114,10 +145,15 @@ describe("generateCreate", () => {
         expect(generateDelete(customer)).toContain(
             'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
         );
-        for (const code of moduleCodes(customer)) {
+        for (const code of [generateCreate(customer), generateDelete(customer)]) {
             expect(code).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
             expect(code).not.toContain("spec/domain");
         }
+        // An update reads the affected-row count, so it takes the port's runtime helper with it.
+        expect(generateUpdate(customer)).toContain(
+            'import { affectedRows, type SqlExecutor } from "../sql-executor.ts";',
+        );
+        expect(generateUpdate(customer)).not.toContain('import type { SqlExecutor } from "../sql-executor.ts";');
     });
 
     it("exports the operation taking rows and returning nothing", () => {
@@ -236,29 +272,17 @@ describe("generateCreate", () => {
 });
 
 describe("generateUpdate", () => {
-    it("updates only the columns a patch supplies, keeping the stored value for the rest", () => {
+    it("builds one statement per row, naming the columns the row supplies", () => {
         const code = generateUpdate(customer);
 
-        expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[])");
-        expect(code).toContain("const values = [row.id, row.name ?? null, row.email ?? null];");
+        expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {");
+        expect(code).toContain("        for (const row of rows) {");
+        expect(code).toContain('            if (row.name !== undefined) {');
+        expect(code).toContain('                add("name", "text", row.name);');
+        expect(code).toContain('                assignments.push("\\"name\\" = data.\\"name\\"");');
         expect(code).toContain(
-            'update "customer" set "name" = coalesce(data."name", "customer"."name"), "email" = coalesce(data."email", "customer"."email") from (values ',
+            "await tx.query('update \"customer\" set ' + assignments.join(\", \") + ' from (values (' + values.join(\", \") + ')) as data(' + names.join(\", \") + ') where \"customer\".\"id\" = data.\"id\"', parameters);",
         );
-        expect(code).toContain(') as data("id", "name", "email") where "customer"."id" = data."id"');
-    });
-
-    it("patches a defaulted column, since a caller may override the default", () => {
-        const limited = table("limited", "Limited", [
-            column("id", { sqlType: "uuid", primaryKey: true }),
-            column("label"),
-            column("createdAt", { sqlType: "timestamptz", default: "now()" }),
-            column("derived", { notNull: false, updatable: false }),
-            column("version", { sqlType: "int8", default: "0", version: true }),
-        ]);
-        const code = generateUpdate(limited);
-
-        expect(code).toContain('"createdAt" = coalesce(data."createdAt", "limited"."createdAt")');
-        expect(code).toContain('as data("id", "label", "createdAt", "version")');
     });
 
     it("leaves a non-updatable column out of the patch statement", () => {
@@ -267,30 +291,23 @@ describe("generateUpdate", () => {
             column("label"),
             column("derived", { notNull: false, updatable: false }),
         ]);
-        const setClause = generateUpdate(limited).match(/set (.*?) from \(values /)?.[1] ?? "";
 
-        expect(setClause).toContain('"label" = ');
-        expect(setClause).not.toContain('"derived"');
+        expect(generateUpdate(limited)).toContain('add("label", "text", row.label);');
+        expect(generateUpdate(limited)).not.toContain('"derived"');
     });
 
-    it("uses the validation patch type whether or not the table has a version", () => {
-        const versioned = generateUpdate(
-            table("customer", "Customer", [
-                column("id", { sqlType: "uuid", primaryKey: true }),
-                column("name"),
-                column("version", { sqlType: "int8", default: "0", version: true }),
-            ]),
-        );
+    it("patches a defaulted column, since a caller may override the default", () => {
+        const limited = table("limited", "Limited", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("label"),
+            column("createdAt", { sqlType: "timestamptz", default: "now()" }),
+            column("version", { sqlType: "int8", default: "0", version: true }),
+        ]);
 
-        expect(versioned).toContain(
-            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
-        );
-        expect(generateUpdate(customer)).toContain(
-            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
-        );
+        expect(generateUpdate(limited)).toContain('add("createdAt", "timestamptz", row.createdAt);');
     });
 
-    it("assigns the version directly rather than coalescing it", () => {
+    it("predicates on the version instead of assigning it, and rejects a row it did not match", () => {
         const code = generateUpdate(
             table("customer", "Customer", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
@@ -299,46 +316,76 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        expect(code).toContain('"name" = coalesce(data."name", "customer"."name")');
-        expect(code).toContain('"version" = data."version"');
-        expect(code).not.toContain('coalesce(data."version"');
+        // The version travels as a parameter for the `where`, so it is read unconditionally …
+        expect(code).toContain('            add("version", "int8", row.version);');
+        expect(code).toContain('and "customer"."version" = data."version"', );
+        // … but it is the trigger that increments it, never the `set` clause. See docs/versioning.md.
+        expect(code).not.toContain('assignments.push("\\"version\\" = data.\\"version\\"");');
+        expect(code).not.toContain("if (row.version !== undefined)");
+        expect(code).toContain("            if (affectedRows(result) === 0) {");
+        expect(code).toContain("code: \"40001\"");
+        expect(code).toContain("no row of customer is at the version this patch supplied for ' + row.id");
     });
 
-    it("writes the version on update", () => {
+    it("carries no version for an entity that has none, and still rejects an unmatched row", () => {
+        const snapshot = generateUpdate(
+            table("invoice_sent", "InvoiceSent", [column("id", { sqlType: "uuid", primaryKey: true }), column("number")]),
+        );
+
+        expect(snapshot).not.toContain('add("version"');
+        expect(snapshot).not.toContain('"invoice_sent"."version"');
+        expect(snapshot).toContain("no row of invoice_sent matches this patch: ' + row.id");
+        expect(snapshot).toContain("code: \"40001\"");
+    });
+
+    it("names every key column of a composite key in the rejection message", () => {
         const code = generateUpdate(
-            table("customer", "Customer", [
-                column("id", { sqlType: "uuid", primaryKey: true }),
-                column("name"),
-                column("version", { sqlType: "int8", default: "0", version: true }),
+            table("translation", "Translation", [
+                column("lang", { sqlType: "text", primaryKey: true }),
+                column("key", { sqlType: "text", primaryKey: true }),
             ]),
         );
 
-        expect(code).toContain("const values = [row.id, row.name ?? null, row.version];");
-        expect(code).toContain('as data("id", "name", "version") where "customer"."id" = data."id"');
+        expect(code).toContain("no row of translation matches this patch: ' + row.lang + \"/\" + row.key");
     });
 
-    it("reads each column through its recorded accessor, and coalesces it for a patch", () => {
+    it("reads each column through its recorded accessor, and tests the outer field for an inlined one", () => {
         const code = generateUpdate(
-            table("invoice", "Invoice", [
+            table("invoice_sent", "InvoiceSent", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
-                column("customerId", { sqlType: "uuid", read: "customer?.id", notNull: false }),
+                column("customerName", { read: "customer?.name", notNull: false, supplied: "row.customer !== undefined" }),
             ]),
         );
 
-        expect(code).toContain("const values = [row.id, row.customer?.id ?? null];");
+        expect(code).toContain("            if (row.customer !== undefined) {");
+        expect(code).toContain('                add("customerName", "text", row.customer?.name);');
     });
 
-    it("patches a composite-key row by every key column", () => {
+    it("sets the key to itself when an entity with no version is patched with no fields", () => {
+        const code = generateUpdate(
+            table("invoice_sent", "InvoiceSent", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("note", { notNull: false }),
+            ]),
+        );
+
+        expect(code).toContain("            if (assignments.length === 0) {");
+        expect(code).toContain('                assignments.push("\\"id\\" = data.\\"id\\"");');
+    });
+
+    it("takes one statement without a boundary for a single row, and opens one for several", () => {
+        const code = generateUpdate(customer);
+
+        expect(code).toContain("    if (rows.length === 1) {");
+        expect(code).toContain("        await write(db);");
+        expect(code).toContain("    await db.transaction(write);");
+    });
+
+    it("names every key column of a composite key, so a row is matched on all of them", () => {
         const code = generateUpdate(translation);
 
-        expect(code).toContain(') as data("languageCode", "key", "value")');
-        expect(code).toContain('set "value" = coalesce(data."value", "translation"."value")');
-    });
-
-    it("sets the key to itself when a table has nothing to patch", () => {
-        const code = generateUpdate(table("tag", "Tag", [column("id", { sqlType: "uuid", primaryKey: true })]));
-
-        expect(code).toContain('update "tag" set "id" = data."id" from (values ');
+        expect(code).toContain('            add("languageCode", "text", row.languageCode);');
+        expect(code).toContain('            add("key", "text", row.key);');
     });
 });
 
@@ -426,6 +473,7 @@ const OWNER_ID = "00000000-0000-0000-0000-0000000000aa";
 const WIDGET_ID = "00000000-0000-0000-0000-0000000000bb";
 const MARKER_ID = "00000000-0000-0000-0000-0000000000cc";
 const MARKER_ID_OVERRIDDEN = "00000000-0000-0000-0000-0000000000dd";
+const WIDGET_ID_OTHER = "00000000-0000-0000-0000-0000000000ee";
 
 describe("generated repositories against PGlite", () => {
     let driver: ReturnType<typeof createPglite>;
@@ -440,6 +488,7 @@ describe("generated repositories against PGlite", () => {
         db = createTransactionalDb(createPglitePool(driver));
         await driver.exec(createTableSql(owner));
         await driver.exec(createTableSql(widget));
+        await driver.exec(versionTriggerSql(widget));
         await driver.exec(createTableSql(translation));
         await driver.exec(createTableSql(marker));
         owners = loadRepository(owner);
@@ -501,7 +550,106 @@ describe("generated repositories against PGlite", () => {
             'select "name", "note", "version" from "widget"',
         );
 
-        expect(rows).toEqual([{ name: "after", note: "keep", version: 0n }]);
+        // The patch carries the version as a precondition, so the trigger still owns the counter.
+        expect(rows).toEqual([{ name: "after", note: "keep", version: 1n }]);
+    });
+
+    it("increments the version once per matching patch", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: { id: OWNER_ID } }]);
+
+        await widgets.update(db, [{ id: WIDGET_ID, name: "one", version: 0n }]);
+        await widgets.update(db, [{ id: WIDGET_ID, name: "two", version: 1n }]);
+
+        const { rows } = await driver.query<{ name: string; version: bigint }>(
+            'select "name", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "two", version: 2n }]);
+    });
+
+    it("rejects a patch whose version is stale, leaving the row as it was", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: { id: OWNER_ID } }]);
+        await widgets.update(db, [{ id: WIDGET_ID, name: "first", version: 0n }]);
+
+        // The caller still holds version 0, which the row has moved past.
+        await expect(widgets.update(db, [{ id: WIDGET_ID, name: "second", version: 0n }])).rejects.toThrow(
+            `no row of widget is at the version this patch supplied for ${WIDGET_ID}`,
+        );
+
+        const { rows } = await driver.query<{ name: string; version: bigint }>(
+            'select "name", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "first", version: 1n }]);
+    });
+
+    it("rejects a patch with the code the router maps to a conflict", async () => {
+        await expect(widgets.update(db, [{ id: WIDGET_ID, name: "run", version: 0n }])).rejects.toMatchObject({
+            code: "40001",
+        });
+    });
+
+    it("rejects the whole call when one row of several is stale", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+        await widgets.create(db, [{ id: WIDGET_ID_OTHER, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+        await widgets.update(db, [{ id: WIDGET_ID, note: "changed", version: 0n }]);
+
+        await expect(
+            widgets.update(db, [
+                { id: WIDGET_ID_OTHER, name: "renamed", version: 0n },
+                { id: WIDGET_ID, name: "renamed", version: 0n },
+            ]),
+        ).rejects.toThrow(`no row of widget is at the version this patch supplied for ${WIDGET_ID}`);
+
+        const { rows } = await driver.query<{ id: string; name: string; note: string | null }>(
+            'select "id", "name", "note" from "widget" order by "id"',
+        );
+
+        // The row the first statement did match is rolled back with the rest of the call.
+        expect(rows).toEqual([
+            { id: WIDGET_ID, name: "run", note: "changed" },
+            { id: WIDGET_ID_OTHER, name: "run", note: "keep" },
+        ]);
+    });
+
+    it("clears a nullable column when the patch sets it to null", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+
+        await widgets.update(db, [{ id: WIDGET_ID, note: null, version: 0n }]);
+
+        const { rows } = await driver.query<{ name: string; note: string | null }>(
+            'select "name", "note" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "run", note: null }]);
+    });
+
+    it("lets the database reject a null for a column that cannot hold one", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+
+        await expect(widgets.update(db, [{ id: WIDGET_ID, name: null, version: 0n }])).rejects.toThrow();
+
+        const { rows } = await driver.query<{ name: string }>('select "name" from "widget"');
+        expect(rows).toEqual([{ name: "run" }]);
+    });
+
+    it("patches rows that supply different fields in one call", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+        await widgets.create(db, [{ id: WIDGET_ID_OTHER, name: "run", note: "keep", owner: { id: OWNER_ID } }]);
+
+        await widgets.update(db, [
+            { id: WIDGET_ID, note: "changed", version: 0n },
+            { id: WIDGET_ID_OTHER, name: "renamed", version: 0n },
+        ]);
+
+        const { rows } = await driver.query<{ id: string; name: string; note: string | null }>(
+            'select "id", "name", "note" from "widget" order by "id"',
+        );
+
+        expect(rows).toEqual([
+            { id: WIDGET_ID, name: "run", note: "changed" },
+            { id: WIDGET_ID_OTHER, name: "renamed", note: "keep" },
+        ]);
     });
 
     it("deletes rows through the generated delete function", async () => {

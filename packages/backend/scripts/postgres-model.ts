@@ -80,6 +80,14 @@ export interface Column {
     /** False when a patch never writes the column: a branch, a default, or a nullable computation. */
     updatable: boolean;
     read?: string;
+    /**
+     * The JS test for whether a patch supplied this column, e.g. `row.notes !== undefined`. A patch
+     * writes only the columns its row supplies, so an omitted field is not named in the statement at
+     * all; the columns an `@inlined` field expands share the outer field's test, since supplying the
+     * object replaces the whole snapshot. `null` is a supplied value, and writes a null.
+     * See `docs/repositories.md`.
+     */
+    supplied?: string;
 }
 
 /** A branch field: a `@relation`, a `@children`, or an `@inlined` entity. See docs/queries.md. */
@@ -352,17 +360,23 @@ function addScalarColumn(
     // A default makes the column not null even when the field is optional: the database fills it.
     // The clock tags supply their own default, so they make the column not null the same way.
     const defaultValue = tags.pgDefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
+    const nullable = !(notNull || isPrimaryKey || defaultValue !== undefined);
+    const updatable = isUpdatable(property);
     const column: Column = {
         name: fieldName,
         sqlType: resolved?.sqlType ?? "text",
-        notNull: notNull || isPrimaryKey || defaultValue !== undefined,
+        notNull: !nullable,
         primaryKey: isPrimaryKey,
         unique: tags.unique,
         queryFilter: tags.queryFilter,
         insertable: isInsertable(property),
-        updatable: isUpdatable(property),
+        updatable,
         read: fieldName,
     };
+    // A patch writes a column only when its row supplies it; the key selects the row and the version is always written.
+    if (updatable && !isPrimaryKey && !tags.version) {
+        column.supplied = `row.${fieldName} !== undefined`;
+    }
     if (tags.queryOrderBy !== undefined) {
         column.queryOrder = tags.queryOrderBy;
     }
@@ -481,6 +495,7 @@ function attachEntityTrigger(context: BuildContext, table: Table, spec: SpecInte
 function inlineColumns(context: BuildContext, table: Table, property: SpecProperty, entity: string): void {
     const fieldName = property.name;
     const notNull = !property.optional;
+    const updatable = isUpdatable(property);
 
     const declaration = context.interfaces.get(entity);
     if (!declaration) {
@@ -512,9 +527,13 @@ function inlineColumns(context: BuildContext, table: Table, property: SpecProper
             primaryKey: false,
             unique: false,
             insertable: isInsertable(property),
-            updatable: isUpdatable(property),
+            updatable,
             read: notNull ? `${fieldName}.${innerName}` : `${fieldName}?.${innerName}`,
         };
+        // Supplying the object replaces every column it inlines, so the group shares the outer field's test.
+        if (updatable) {
+            column.supplied = `row.${fieldName} !== undefined`;
+        }
         if (resolved.checkValues) {
             column.checkValues = resolved.checkValues;
         }

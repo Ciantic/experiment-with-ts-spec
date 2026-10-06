@@ -89,7 +89,9 @@ function comment(entity: RestEntity, kind: RestKind): string {
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "update":
-            return `/** Patch \`${name}\` rows; a stale version raises. See docs/versioning.md. */`;
+            return entity.versionFields.length > 0
+                ? `/** Patch \`${name}\` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */`
+                : `/** Patch \`${name}\` rows; a row that is not there rejects the call. See docs/versioning.md. */`;
         case "delete":
             return `/** Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. */`;
     }

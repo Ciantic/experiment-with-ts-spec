@@ -9,6 +9,22 @@ export interface SqlExecutor {
     transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
 }
 
+/**
+ * The rows a write statement affected, read from whatever the driver returned. The drivers name it
+ * differently — PGlite `affectedRows`, `pg` `rowCount` — so a generated patch that has to notice an
+ * unmatched row reads it through here. A result that carries neither name is a driver this does not
+ * know, and answering `0` would read as a conflict, so it throws instead. See docs/versioning.md.
+ */
+export function affectedRows(result: unknown): number {
+    // `rowCount` is `number | null` in `pg`, so it is accepted only when it is a number.
+    const counts = (result ?? {}) as { affectedRows?: unknown; rowCount?: unknown };
+    const count = counts.affectedRows ?? counts.rowCount;
+    if (typeof count !== "number") {
+        throw new Error("the executor did not return an affected-row count");
+    }
+    return count;
+}
+
 /** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;

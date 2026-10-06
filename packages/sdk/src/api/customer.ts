@@ -19,7 +19,7 @@ export function createCustomer(rows: CustomerInsert[]): Call<void> {
     return call<void>("POST", "/customer", rows);
 }
 
-/** Patch `Customer` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateCustomer(rows: CustomerPatch[]): Call<void> {
     return call<void>("PATCH", "/customer", rows);
 }

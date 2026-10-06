@@ -19,7 +19,7 @@ export function createSeller(rows: SellerInsert[]): Call<void> {
     return call<void>("POST", "/seller", rows);
 }
 
-/** Patch `Seller` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateSeller(rows: SellerPatch[]): Call<void> {
     return call<void>("PATCH", "/seller", rows);
 }

@@ -47,12 +47,12 @@ types cannot drift away from the drivers.
 ## Why arrays
 
 A repository that takes one row per call forces one round trip per row. Taking
-an array lets the generator emit a single multi-row statement, which is the
-whole reason the functions exist in this shape:
+an array lets one call carry many rows, which is the whole reason the functions
+exist in this shape:
 
-- **create** — `insert into "t" (...) values ($1, ...), ($n, ...)`.
-- **update** — `update "t" set ... from (values (...), (...)) as data(...) where "t"."id" = data."id"`.
-- **delete** — `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
+- **create** — one `insert into "t" (...) values ($1, ...), ($n, ...)`.
+- **update** — one statement per row, `update "t" set ... from (values (...)) as data(...) where "t"."id" = data."id"`, all in one boundary.
+- **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
 
 Each function returns early on an empty array, so the caller does not have to
 guard.
@@ -112,40 +112,49 @@ A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
 touches. That is a branch — a `@relation` or `@children` field, which has no
 column — a column the database owns outright: a clock field, a virtual generated
-column (`@pgVirtual`), or a nullable `@computed` field its mechanism fills in. An
-entity that writes every column keeps the plain `Partial<Entity>` shape. A
-`@pgDefault` column is *not* on this list: a patch may override a default, the
+column (`@pgVirtual`), or a nullable `@computed` field its mechanism fills in.
+A `@pgDefault` column is *not* on this list: a patch may override a default, the
 same way a create may.
 
-The emitted statement writes every patchable column, using `coalesce` to keep a
-stored value when the patch omits one:
+`update` writes one statement per row, naming only the columns that row
+supplies. An omitted field is not in the `set` clause at all, so it keeps its
+stored value, while a field the caller sets to `null` writes a null:
 
 ```sql
 update "customer"
-    set "name" = coalesce(data."name", "customer"."name"),
-        "version" = data."version"
-from (values (…)) as data("id", "name", "version")
-where "customer"."id" = data."id"
+    set "name" = data."name"
+from (values (…) ) as data("id", "name", "version")
+where "customer"."id" = data."id" and "customer"."version" = data."version"
 ```
 
-The alternative — emitting only the columns a caller actually supplied — is not
-possible for a generated statement, because the generator does not know at
-build time which keys a patch will carry at run time. A static column list with
-`coalesce` is what makes one statement work for any subset of fields.
+Nothing is derived from a `null`: the two requests are told apart before the SQL
+is built, by the emitted `if (row.name !== undefined)`, rather than folded into
+one `coalesce`. `coalesce` could not do it — it cannot distinguish a field the
+caller omitted from one set to `null`, so a null read as "not supplied" and the
+stored value was kept.
 
-The version is assigned directly rather than coalesced: it is required, so there
-is nothing to fall back to, and the trigger must see the caller's value to
-compare it against the stored one.
+The key columns travel in the tuple so the statement is matched to a row on all
+of them, and the version travels in it so the `where` can compare it. The version
+is never in the `set` clause: the trigger increments the column, and a statement
+that assigned it would make the trigger's own guard fire. See `docs/versioning.md`.
 
-A table with nothing to patch sets its key to the key it already holds, so the
-statement stays valid.
+A statement that matches no row is a rejected call rather than a no-op: the
+generated code reads the affected-row count and throws `code: "40001"`, which is
+the `409` the router already serves for a version conflict. That covers both a
+stale version and an id that is not there, and it aborts the surrounding
+transaction, so a multi-row patch whose second row is stale writes nothing.
+
+More than one row is more than one statement, so the call opens a boundary and
+the rows commit together; a single row is a single statement and runs on the
+handle it was given. A row that supplies no field at all sets its key to the key
+it already holds, so the statement stays valid — and still puts the version
+predicate in front of it.
 
 `<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
-`omittedFromPatch` (`packages/spec/scripts/spec-model.ts`) into one
-`packages/validation` module, so the repository type and the wire schema cannot
-drift apart. A field neither writes is a 400 on
-the wire and a type error in process, rather than a field that quietly does
-nothing (`docs/validation.md`).
+`omittedFromPatch` and `nullablePatchProperties` (`packages/spec/scripts/spec-model.ts`)
+into one `packages/validation` module, so the repository type and the wire schema
+cannot drift apart. A field neither writes is a 400 on the wire and a type error
+in process, rather than a field that quietly does nothing (`docs/validation.md`).
 
 ## Deleting
 
@@ -209,7 +218,7 @@ trigger then overwrites. A *required* computed column stays in the patch, since
 it has no stored value to fall back on.
 
 The one exception is a `@version` column. It is defaulted, so it is omitted on
-insert, but it is written on update because it carries the optimistic-lock
+insert, but a patch sends it into the `where` as the optimistic-lock
 precondition the trigger checks. The generator therefore builds the insert and
 patch column sets separately; see `docs/versioning.md`.
 
@@ -231,24 +240,32 @@ patch column sets separately; see `docs/versioning.md`.
   patch that omits one keeps the stored value. The clock fields are the different
   case: `createdAt` and `updatedAt` are excluded from `insert` and `update`
   outright, so writing one takes raw SQL. A `@version` column is excluded from
-  `insert` too, though it *is* written on update.
-- **`update` does not check the version itself.** The `@version` column is sent
-  as an ordinary value; the conflict check and the increment are in a database
-  trigger. A stale row makes the update raise rather than silently skip. See
-  `docs/versioning.md`.
-- **A patch cannot set a column to null.** `coalesce` cannot tell an omitted
-  field from one set to `null`, so a null value reads as "not supplied" and the
-  stored value is kept. Clearing a nullable column — `Invoice.customerId` is the
-  one in this model — takes raw SQL or a sentinel value.
-- **A patch is all-or-nothing per column, not per field-set.** Every patchable
-  column appears in the statement, so a patch that supplies one field still
-  writes the others back to their stored value. That is a no-op per column, but
-  it means the written columns are not a signal of what the caller intended.
+  `insert` too, and on update it goes into the `where` rather than the `set`.
+- **`update` enforces the version with a predicate, and the database raises it.**
+  The `@version` column is matched in the `where`, so a stale one matches no row
+  and the generated code rejects the call with the `40001` that maps to a `409`.
+  The increment stays in a database trigger. A rejection does not say whether the
+  version was stale or the row was missing. See `docs/versioning.md`.
+- **A patch cannot set a non-nullable column to null.** Nullable columns are the
+  exception: a patch sets one to `null` to clear it. `Invoice.notes`,
+  `Invoice.number`, and the optional foreign keys are the ones in this model.
+- **A patch of several rows is several statements.** They commit together in one
+  boundary, so the call is atomic, but it is not the single statement a create
+  or a delete is. Passing one row avoids the boundary entirely. See
+  `docs/transactions.md`.
+- **A patch whose rows disagree about who won rejects all of them.** One stale
+  row aborts the boundary, so rows the earlier statements already matched are
+  rolled back too. Retrying is the caller's job. See `docs/versioning.md`.
+- **A patch is all-or-nothing per row, not per field-set.** Each statement names
+  the columns its row supplies, so a row that omits a field leaves that column
+  alone rather than writing the stored value back. That is a no-op either way,
+  but it means the written columns are a signal of what the caller sent.
 - **`delete` keys on the primary key only.** `deleteCustomer` takes
   `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
-- **No transaction wrapping.** A multi-row statement is atomic on its own, but
-  anything spanning more than one call needs a boundary the caller opens:
-  `SqlExecutor` carries `transaction`, and a repository still does not call it
+- **No transaction wrapping by the caller.** A create or a delete is atomic on
+  its own, and a patch of several rows opens its own boundary; anything spanning
+  more than one *call* needs a boundary the caller opens: `SqlExecutor` carries
+  `transaction`, and a repository does not call it for that
   (`docs/transactions.md`).
 
 ## Deliberately not implemented

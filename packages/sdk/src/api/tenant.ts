@@ -19,7 +19,7 @@ export function createTenant(rows: TenantInsert[]): Call<void> {
     return call<void>("POST", "/tenant", rows);
 }
 
-/** Patch `Tenant` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateTenant(rows: TenantPatch[]): Call<void> {
     return call<void>("PATCH", "/tenant", rows);
 }

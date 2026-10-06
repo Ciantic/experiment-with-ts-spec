@@ -320,12 +320,12 @@ describe("generateRepositoryEntity", () => {
         expect(code).toContain("    .strict();");
     });
 
-    it("narrows the patch type by the same omit list as the patch schema", () => {
+    it("names the omitted fields, the locked ones, and the nullable ones a patch may clear", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = patchFile(files, "Thing");
 
         expect(code).toContain(
-            'export type ThingPatch = Omit<Partial<Thing>, "children" | "parent"> & Required<Pick<Thing, "id" | "version">>;',
+            'export type ThingPatch = Patch<Thing, "children" | "parent", "id" | "version", "name" | "amount" | "format">;',
         );
     });
 
@@ -348,10 +348,8 @@ describe("generateRepositoryEntity", () => {
         const { files } = generate({ domain: { Marker: MARKER } });
         const code = patchFile(files, "Marker");
 
-        expect(code).toContain(
-            'export type MarkerPatch = Omit<Partial<Marker>, "total"> & Required<Pick<Marker, "id">>;',
-        );
-        expect(code).not.toContain('Required<Pick<Marker, "id" | "version">>');
+        expect(code).toContain('export type MarkerPatch = Patch<Marker, "total", "id", "label" | "createdAt">;');
+        expect(code).not.toContain('"id" | "version"');
     });
 
     it("projects a composite key to all of its fields, and requires them all in a patch", () => {
@@ -876,6 +874,11 @@ describe("patch schemas", () => {
                 "        parent: true,",
                 "    })",
                 "    .partial()",
+                "    .extend({",
+                "        name: thingSchema.shape.name.nullable(),",
+                "        amount: thingSchema.shape.amount.nullable(),",
+                "        format: thingSchema.shape.format.nullable(),",
+                "    })",
                 "    .required({",
                 "        id: true,",
                 "        version: true,",
@@ -883,6 +886,13 @@ describe("patch schemas", () => {
                 "    .strict();",
             ].join("\n"),
         );
+    });
+
+    it("leaves a required field with no nullable shape to extend", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = patchFile(files, "Child");
+
+        expect(code).not.toContain(".extend({");
     });
 
     it("requires only the key when the entity has no version", () => {

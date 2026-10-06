@@ -221,7 +221,7 @@ The router turns a thrown database error into a status from its `code`:
 | `23502` | 400 | not-null violation |
 | `23503` | 409 | foreign-key violation |
 | `23505` | 409 | unique violation |
-| `40001` | 409 | serialization failure — the version conflict (`docs/versioning.md`) |
+| `40001` | 409 | a version conflict, or a patch that matched no row (`docs/versioning.md`) |
 | anything else | 500 | a server fault |
 
 A `q` parameter or a body that does not decode is 400, an argument the schema
@@ -254,15 +254,14 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
   create's field set plus the version, so the same branches and derivable values
   are absent and a stray one is a 400 rather than a no-op; a defaulted column may
   be sent to override the default. The generated `<Entity>Patch` type narrows
-  with it. What the patch still cannot do is clear a
-  column: `coalesce` cannot tell an omitted field from a `null` one, so the patch
-  contract carries that limitation over HTTP unchanged (`docs/repositories.md`).
+  with it. A field with a nullable column also takes `null`, which clears it,
+  where omitting the field keeps the stored value (`docs/repositories.md`).
 - **A `query` with no filters scans the table, up to `limit`.**
   `queryInvoice(http, { select })` is legal by design and returns the first 1000
   rows. There is no authorization.
 - **The version precondition is the client's to send.** `update` requires the
-  version the client read; a stale one is a 409 from the trigger, not a silent
-  skip.
+  version the client read; the statement matches on it, so a stale one is a 409
+  rather than a silent skip. An id that is not there answers the same way.
 - **The server reads no configuration.** `createApiServer(db)` takes the
   executor; the caller owns the port, TLS, and the driver.
 

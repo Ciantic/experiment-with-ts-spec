@@ -218,6 +218,7 @@ export function generateDomainEntity(entity: ZodEntity, byName: Map<string, ZodE
 export function generatePatchSchema(entity: ZodEntity): string {
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity.name} } from "${entity.importSpecifier}";`);
+    lines.push(`import type { Patch } from "../patch.ts";`);
     lines.push(
         `import { ${entity.schemaName} } from "../${join(DOMAIN_DIR, domainModuleName(entity.name))}";`,
     );
@@ -234,6 +235,14 @@ export function generatePatchSchema(entity: ZodEntity): string {
         lines.push("    })");
     }
     lines.push("    .partial()");
+    // A nullable column's field also accepts `null`, which clears it; omitting the field keeps the stored value.
+    if (entity.patchNullable.length > 0) {
+        lines.push("    .extend({");
+        for (const name of entity.patchNullable) {
+            lines.push(`        ${name}: ${entity.schemaName}.shape.${name}.nullable(),`);
+        }
+        lines.push("    })");
+    }
     lines.push("    .required({");
     for (const name of entity.required) {
         lines.push(`        ${name}: true,`);
@@ -245,15 +254,10 @@ export function generatePatchSchema(entity: ZodEntity): string {
     // a caller passes and the value the schema accepts name one field set. See docs/validation.md.
     lines.push("");
     lines.push(patchComment(versioned));
-    const patchBase =
-        entity.patchOmit.length === 0
-            ? `Partial<${entity.name}>`
-            : `Omit<Partial<${entity.name}>, ${entity.patchOmit.map(quote).join(" | ")}>`;
-    const required =
-        entity.required.length === 0
-            ? ""
-            : ` & Required<Pick<${entity.name}, ${entity.required.map(quote).join(" | ")}>>`;
-    lines.push(`export type ${entity.name}Patch = ${patchBase}${required};`);
+    const union = (names: string[]) => (names.length === 0 ? "never" : names.map(quote).join(" | "));
+    lines.push(
+        `export type ${entity.name}Patch = Patch<${entity.name}, ${union(entity.patchOmit)}, ${union(entity.required)}, ${union(entity.patchNullable)}>;`,
+    );
 
     return lines.join("\n") + "\n";
 }

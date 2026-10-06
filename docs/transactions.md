@@ -1,11 +1,13 @@
 # Transactions
 
-A repository function takes `db: SqlExecutor` and returns after one statement, so
-the atomic unit is the statement and anything spanning two calls belongs to the
-caller (`docs/repositories.md`, "No transaction wrapping"). This note records the
-port that lets a caller own that unit, and the two places a boundary is opened
-over REST: inside a handler that owns its own sequence, and around a group of
-calls a client composes into one request.
+A repository function takes `db: SqlExecutor`, and a create or a delete returns
+after one statement. A patch of several rows is one statement per row, so the
+repository opens a boundary itself and the rows commit together; a single row is
+a single statement and runs on the handle it was given. Anything spanning two
+*calls* still belongs to the caller (`docs/repositories.md`, "No transaction
+wrapping"). This note records the port that lets a caller own that unit, and the
+two places a boundary is opened over REST: inside a handler that owns its own
+sequence, and around a group of calls a client composes into one request.
 
 Two places exist because a boundary is asked for by two different parties. A
 handler asks for one when the server authored the sequence, such as issuing and
@@ -49,6 +51,15 @@ applied. A one-connection driver reaches it through
 `createSingleConnectionPool` (`src/db/sql-pool.ts`), which serialises its one
 session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
 
+`query` returns `unknown` because the result is the driver's: the rows are
+mapped by the result mapping and read through `rowsOf` (`src/db/resolvers.ts`),
+and a write is read through `affectedRows` (`src/db/sql-executor.ts`), which
+answers the count from whichever name the driver used — `affectedRows` on PGlite,
+`rowCount` on `pg`. A result that carries neither name is a driver the port does
+not know, so it throws rather than answering `0`, which would read as a conflict.
+A generated patch uses it to reject a statement that matched no row
+(`docs/versioning.md`).
+
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
 over a pool:
 
@@ -62,9 +73,10 @@ over a pool:
   boundary statements is what both drivers run.
 
 The generated repositories and queries take `SqlExecutor`, so a caller passes the
-handle it already has. A repository does not open a boundary of its own: the unit
-of work belongs to the caller, which is what keeps a request's atomicity in one
-place (`docs/repositories.md`).
+handle it already has. A repository opens a boundary only where its own call is
+more than one statement — a patch of several rows — and otherwise leaves the unit
+of work to the caller, which is what keeps a request's atomicity in one place
+(`docs/repositories.md`).
 
 Affinity is scoped to the boundary, not to the handle. `SqlExecutor` is a pool
 handle, not a session handle: a `query` on the root handle borrows a session for
@@ -207,9 +219,12 @@ So the same handler behaves correctly wherever it is called:
 | inside a `batch` group | opens one, because a batch has none |
 
 A handler never needs to know whether its caller already asked for a unit of
-work. A per-entity CRUD route asks for nothing: each is one multi-row statement,
-so it is already atomic, and a boundary around it would add a round trip and a
-held connection without changing what a concurrent writer can observe.
+work. A per-entity CRUD route asks for nothing: `create` and `delete` are one
+multi-row statement, and a patch of one row is one statement, so each is already
+atomic, and a boundary around it would add a round trip and a held connection
+without changing what a concurrent writer can observe. A patch of several rows
+opens its own boundary, which nests as a savepoint inside one the caller already
+holds.
 
 The root boundary is the port's own `begin`/`commit`, issued on the session the
 pool checked out. What makes that safe is the checkout, not the statement: a `pg`
@@ -432,7 +447,8 @@ client imports nothing from the backend.
   request therefore produce identical timestamps, and a nested boundary does not
   get a clock of its own.
 - **A version conflict aborts its transaction.** One stale version rolls back
-  every entry of the group it is in, up to the nearest enclosing boundary. The
+  every entry of the group it is in, up to the nearest enclosing boundary. A patch
+  that matched no row counts the same way, since it is the same `40001`. The
   caller resends after re-reading, or wraps the entry in an `attempt` to keep the
   rest of the group.
 - **A transaction holds one connection and its locks.** A long group reduces the
@@ -456,9 +472,10 @@ client imports nothing from the backend.
 - **A tolerated failure is a result, not an error.** An `attempt` answers 200
   with `ok: false`, so a caller that ignores the marker has silently lost the
   write it asked for.
-- **A patch still cannot clear a column.** `coalesce` cannot tell an omitted
-  field from a `null` one (`docs/repositories.md`), and grouping does not change
-  the statement the patch emits.
+- **A patch clears a nullable column with `null`.** Omitting the field keeps the
+  stored value and `null` writes a null, so a group entry can clear one like any
+  other write. A non-nullable column rejects the null at the database
+  (`docs/repositories.md`).
 - **A group reaches the whole surface in one request.** An entry may be any
   route, so whatever a single unauthenticated request can do, a group can do in
   one call. Serial execution bounds it; it does not scope it.

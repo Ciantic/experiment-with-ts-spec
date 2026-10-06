@@ -19,7 +19,7 @@ export function createInvoice(rows: InvoiceInsert[]): Call<void> {
     return call<void>("POST", "/invoice", rows);
 }
 
-/** Patch `Invoice` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Invoice` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateInvoice(rows: InvoicePatch[]): Call<void> {
     return call<void>("PATCH", "/invoice", rows);
 }

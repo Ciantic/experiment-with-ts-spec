@@ -91,52 +91,78 @@ create trigger "customer_version" before update on "customer"
   triggers by name, and `customer_compute` sorts before `customer_version`).
   The two touch disjoint columns, so the order does not matter here.
 
-## Why a trigger, not a predicate in the repository
+## Why the increment stays in the trigger
 
-The obvious alternative is to put the guard in the generated `update`:
+The repository predicates on the version, and the trigger owns the increment.
+Splitting the two that way is what the writers that never pass through the
+repository require:
 
 ```sql
-set …, "version" = "t"."version" + 1
-where "t"."id" = data."id" and "t"."version" = data."version"
+update "invoice" set "netAmount" = (select coalesce(sum(…))) where …
 ```
 
-That is atomic — predicate and increment share one statement under a row lock —
-so it is not a race. It is still the wrong shape here, for two reasons.
-
-**It misses the writers that matter.** The invoice's cross-table triggers run
-`update "invoice" set "netAmount" = …` in raw SQL when a child row changes. Those
-statements never pass through `updateInvoice`, so a predicate there does not see
-them, and a child-row edit would change the aggregate without moving the version.
-That is the exact hole `docs/timestamps.md` cites for making `updatedAt` a
-trigger rather than an application assignment, and the version has it too.
-
-Under the trigger, an aggregate update simply omits `version`, so `NEW."version"`
-equals `OLD."version"`, the check passes, and the trigger increments anyway. The
+The invoice's cross-table triggers write the parent row in raw SQL when a child
+row changes. That statement has no caller version to predicate on, so an
+increment owned by the repository would either not run there or have to invent a
+value. Under the trigger, an aggregate update omits `version`, so `NEW."version"`
+equals `OLD."version"`, the check passes, and the trigger still increments: the
 counter tracks every write to the row, whatever path wrote it.
 
-**A predicate fails silently.** `update … from (values …)` reports only a total
-affected count, so a losing row is a no-op indistinguishable from "no changes",
-with no way to tell which row conflicted. A precondition is worth having only if
-its violation is visible. `raise` names the row and aborts.
+The same split is what lets a generated patch work. A patch that supplied
+`"version" = data."version"` in its `set` list would make `NEW` differ from
+`OLD` on every write, so the guard in `## The trigger` would fire on a *correct*
+patch. The repository therefore sends the version as a `where` predicate only:
+
+```sql
+update "invoice" set "notes" = data."notes"
+from (values (…)) as data("id", "notes", "version")
+where "invoice"."id" = data."id" and "invoice"."version" = data."version"
+```
+
+The trigger's guard now only ever fires for a writer that sets the column
+itself, which means raw SQL. It is kept because such a writer would otherwise
+overwrite the counter with no complaint, and because the guard is per table
+while the predicate is per statement.
+
+## A predicate that matches nothing rejects the call
+
+`update … from (values …)` reports an affected-row count, so the generated patch
+reads it — `affectedRows` in `docs/transactions.md`, since PGlite calls it
+`affectedRows` and `pg` calls it `rowCount` — and throws when it is `0`:
+
+```ts
+const result = await tx.query(sql, parameters);
+if (affectedRows(result) === 0) {
+    throw Object.assign(new Error(…), { code: "40001" });
+}
+```
+
+The reader throws too, rather than answering `0`, when a result carries neither
+name: a driver the port does not know must not report every patch as a conflict.
+
+One statement writes one row, so the count is `0` or `1` and there is nothing to
+disambiguate. `code: "40001"` is the same SQLSTATE the trigger raises, so the
+router maps both to a `409` (`docs/rest-api.md`) and a client keeps one
+conflict path. The thrown error aborts the surrounding transaction, so a
+multi-row call whose second row is stale writes nothing at all.
+
+Both ways of matching no row — a version the row has moved past, and an id that
+does not exist — arrive as that one rejection. Telling them apart would take a
+second read, and the caller's move is the same either way: re-read, then retry.
 
 ## What the check means
 
-The rule is "the version you send must equal the version currently stored":
+| Path | Sends | Stored | Result |
+| --- | --- | --- | --- |
+| repository patch | `3` | `3` | Matches. The trigger stores `4`. |
+| repository patch | `3` | `4` | No row matches. The call is rejected, nothing written. |
+| repository patch | an id that is not there | — | No row matches. Rejected the same way. |
+| raw SQL, version omitted | — | `4` | Passes, stored becomes `5`. |
+| raw SQL that sets `version` | `3` | `4` | `raise`, nothing written. |
 
-| Sends | Stored | Result |
-| --- | --- | --- |
-| `3` | `3` | Passes, stored becomes `4`. |
-| `3` | `4` | `raise`, nothing written. |
-| omitted | `4` | `raise` (null is distinct from `4`). |
-| omitted | `4`, via an aggregate | Passes, stored becomes `5`. |
-
-The last row is the aggregate: it does not claim a version, so it never
-conflicts, but it still advances the counter. Any write moves the version, so a
-client holding a pre-aggregate version is told its view is stale.
-
-A raw SQL update that deliberately sets `version` to the stored value would also
-pass — the guard protects callers that opt in, which in practice means the
-generated repositories.
+The `version` omitted row is the aggregate: a writer that does not claim a
+version never conflicts, but it still advances the counter. Any write moves the
+version, so a client holding a pre-aggregate version is told its view is stale.
 
 ## Insert vs update
 
@@ -146,18 +172,19 @@ defaulted column a create never carries:
 | Path | `version` | Why |
 | --- | --- | --- |
 | insert | omitted | `default 0` supplies the first revision. |
-| update | written as `data."version"` | It carries the caller's precondition into the trigger. |
+| repository patch | in the `where`, as `data."version"` | It carries the caller's precondition. |
 | aggregate update | omitted | Raw SQL; the trigger advances it without a claim. |
 
 This is the one defaulted column a create never carries
 (`docs/repositories.md`), so `packages/backend/scripts/generate-repositories.ts`
 builds a different column set per statement: the insert leaves out a defaulted
-column flagged `version`, while the patch includes it.
+column flagged `version`, while the patch sends it to the predicate and never
+assigns it.
 
-The repository sends the caller's version in the `set` list rather than leaving
-it to the trigger, because the trigger's check is against `NEW`. If the update
-did not set the column, `NEW."version"` would always equal `OLD."version"` and
-the precondition would never fire.
+Because the repository does not assign the column, `NEW."version"` always equals
+`OLD."version"` on a generated write, and the trigger's guard passes while the
+increment still runs. A `set` that named the version would make the guard fire
+on every correct patch.
 
 Because an update is a patch (`docs/repositories.md`), the version is one of the
 two columns the patch type makes mandatory — the other is the primary key. A
@@ -166,9 +193,13 @@ caller cannot build a patch that omits the precondition.
 ## Gotchas
 
 - **A conflict aborts the statement and the transaction.** For a multi-row
-  `update…`, one stale row rolls back all of them. This is intended — a batch is
-  one logical write and retrying it is the caller's job — but it is a change from
-  "skip the losing row".
+  `update…`, one stale row rolls back all of them, including rows the earlier
+  statements already matched. This is intended — a batch is one logical write
+  and retrying it is the caller's job — but it is a change from "skip the losing
+  row".
+- **A rejection does not say why the row did not match.** A stale version and a
+  missing id are both `40001` → `409`. A caller that needs to tell them apart
+  reads first.
 - **The aggregate update bumps the version.** Editing an `invoice_row` reassigns
   `invoice.netAmount`, which fires the invoice's version trigger. A user editing
   the invoice in that window gets a conflict. Correct, since their `totalAmount`
@@ -189,10 +220,13 @@ caller cannot build a patch that omits the precondition.
 - **The guard is SQL, so it is not type-checked.** A wrong comparison or a
   mistyped column surfaces when the DDL runs, not at lint time — the same class
   of risk as a `@pgDefault` expression.
-- **Nothing behavioural tests the trigger.** Per `docs/testing.md`, trigger
-  semantics are deliberately out of scope, so the generator tests assert the
-  emitted text and `schema.test.ts` asserts only that the file executes. A
-  subtly wrong trigger would pass every test.
+- **Nothing behavioural tests the generated trigger.** Per `docs/testing.md`,
+  trigger semantics are deliberately out of scope, so the generator tests assert
+  the emitted text and `schema.test.ts` asserts only that the file executes. A
+  subtly wrong trigger would pass every test. The repository's own side — the
+  predicate, the rejection, the rollback, and the increment — is exercised
+  against PGlite in `packages/backend/scripts/generate-repositories.test.ts`,
+  over a fixture trigger of its own.
 
 ## Deliberately not implemented
 

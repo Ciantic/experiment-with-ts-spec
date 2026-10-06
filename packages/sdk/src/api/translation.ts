@@ -19,7 +19,7 @@ export function createTranslation(rows: TranslationInsert[]): Call<void> {
     return call<void>("POST", "/translation", rows);
 }
 
-/** Patch `Translation` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */
 export function updateTranslation(rows: TranslationPatch[]): Call<void> {
     return call<void>("PATCH", "/translation", rows);
 }

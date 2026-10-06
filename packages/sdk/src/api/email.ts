@@ -19,7 +19,7 @@ export function createEmail(rows: EmailInsert[]): Call<void> {
     return call<void>("POST", "/email", rows);
 }
 
-/** Patch `Email` rows; a stale version raises. See docs/versioning.md. */
+/** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateEmail(rows: EmailPatch[]): Call<void> {
     return call<void>("PATCH", "/email", rows);
 }

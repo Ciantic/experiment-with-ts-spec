@@ -279,6 +279,19 @@ export function omittedFromPatch(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => !isUpdatable(property));
 }
 
+/**
+ * The patchable fields whose column is nullable, so a patch may set one back to `null`.
+ * `?` mirrors the column's nullability, so the field's own optionality is the test. A create does
+ * not need the set: it writes a nullable column as `null` whether the caller omits it or sends
+ * `null`. The key and the version stay out — a patch cannot clear the row it addresses, nor the
+ * precondition it carries. See `docs/optionality.md` and `docs/repositories.md`.
+ */
+export function nullablePatchProperties(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter(
+        (property) => isUpdatable(property) && property.optional && !property.tags.version && !property.tags.primaryKey,
+    );
+}
+
 /** An interface's primary key fields, in declaration order, which is the key's column order. */
 export function primaryKeyProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.primaryKey);

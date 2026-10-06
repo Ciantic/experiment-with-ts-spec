@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb } from "./sql-executor.ts";
+import { affectedRows, createTransactionalDb } from "./sql-executor.ts";
 import type { SqlPool } from "./sql-pool.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
@@ -17,6 +17,35 @@ async function ids(db: SqlExecutor): Promise<unknown[]> {
     const result = (await db.query("select id from widget order by id")) as { rows: { id: string }[] };
     return result.rows.map((row) => row.id);
 }
+
+describe("affectedRows", () => {
+    it("reads the count each driver names", () => {
+        expect(affectedRows({ affectedRows: 1 })).toBe(1);
+        expect(affectedRows({ rowCount: 0 })).toBe(0);
+        // A zero count is a real answer, so it must not fall through to the other name.
+        expect(affectedRows({ affectedRows: 0, rowCount: 7 })).toBe(0);
+    });
+
+    it("throws on a result that carries neither count, rather than reading as a conflict", () => {
+        expect(() => affectedRows({ rows: [] })).toThrow("the executor did not return an affected-row count");
+        expect(() => affectedRows({ rowCount: null })).toThrow();
+        expect(() => affectedRows(undefined)).toThrow();
+        expect(() => affectedRows(null)).toThrow();
+    });
+
+    it("counts the rows of a statement over a real driver", async () => {
+        const driver = createPglite();
+        await driver.query("create table widget (id text primary key)");
+        await driver.query("insert into widget (id) values ('a'), ('b')");
+
+        const updated = await driver.query("update widget set id = 'a' where id = 'a'");
+        const matchedNothing = await driver.query("update widget set id = 'x' where id = 'gone'");
+
+        expect(affectedRows(updated)).toBe(1);
+        expect(affectedRows(matchedNothing)).toBe(0);
+        await driver.close();
+    });
+});
 
 describe("createTransactionalDb", () => {
     it("commits a transaction", async () => {
