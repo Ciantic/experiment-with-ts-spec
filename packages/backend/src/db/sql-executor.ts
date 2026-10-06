@@ -23,6 +23,15 @@ export function affectedRows(result: unknown): number {
     return count;
 }
 
+/** Get the rows a statement returned, which both PGlite and `pg` answer under `rows`. */
+export function resultRows(result: unknown): Array<Record<string, unknown>> {
+    const returned = (result ?? {}) as { rows?: unknown };
+    if (!Array.isArray(returned.rows)) {
+        throw new Error("the executor did not return rows");
+    }
+    return returned.rows as Array<Record<string, unknown>>;
+}
+
 /** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;

@@ -109,14 +109,14 @@ equals `OLD."version"`, the check passes, and the trigger still increments: the
 counter tracks every write to the row, whatever path wrote it.
 
 The same split is what lets a generated patch work. A patch that supplied
-`"version" = data."version"` in its `set` list would make `NEW` differ from
+`"version" = v."version"` in its `set` list would make `NEW` differ from
 `OLD` on every write, so the guard in `## The trigger` would fire on a *correct*
 patch. The repository therefore sends the version as a `where` predicate only:
 
 ```sql
-update "invoice" set "notes" = data."notes"
-from (values (…)) as data("id", "notes", "version")
-where "invoice"."id" = data."id" and "invoice"."version" = data."version"
+update "invoice" as u set "notes" = case when v."notes#present" then v."notes" else u."notes" end
+from unnest($1::uuid[], $2::text[], $3::bool[]) as v("id", "notes", "notes#present")
+where u."id" = v."id" and u."version" = v."version"
 ```
 
 The trigger's guard now only ever fires for a writer that sets the column
@@ -126,22 +126,24 @@ while the predicate is per statement.
 
 ## A predicate that matches nothing rejects the call
 
-`update … from (values …)` reports an affected-row count, so the generated patch
-reads it — `affectedRows` in `docs/transactions.md`, since PGlite calls it
-`affectedRows` and `pg` calls it `rowCount` — and throws when it is `0`:
+`update … from unnest(…) … returning …` reports the rows it wrote, so the
+generated patch reads them back — `resultRows` in `docs/transactions.md`, since
+both drivers answer a result with a `rows` array — and throws when it wrote fewer
+rows than the statement's chunk carried:
 
 ```ts
-const result = await tx.query(sql, parameters);
-if (affectedRows(result) === 0) {
+const written = new Set(resultRows(result).map((row) => String(row["id"])));
+if (written.size !== chunk.length) {
     throw Object.assign(new Error(…), { code: "40001" });
 }
 ```
 
-The reader throws too, rather than answering `0`, when a result carries neither
-name: a driver the port does not know must not report every patch as a conflict.
+The reader throws too, rather than answering no rows, when a result carries no
+`rows` array: a driver the port does not know must not report every patch as a
+conflict.
 
-One statement writes one row, so the count is `0` or `1` and there is nothing to
-disambiguate. `code: "40001"` is the same SQLSTATE the trigger raises, so the
+A statement carries a chunk of rows, so a short write names the rows it left out
+by their keys. `code: "40001"` is the same SQLSTATE the trigger raises, so the
 router maps both to a `409` (`docs/rest-api.md`) and a client keeps one
 conflict path. The thrown error aborts the surrounding transaction, so a
 multi-row call whose second row is stale writes nothing at all.
@@ -172,7 +174,7 @@ defaulted column a create never carries:
 | Path | `version` | Why |
 | --- | --- | --- |
 | insert | omitted | `default 0` supplies the first revision. |
-| repository patch | in the `where`, as `data."version"` | It carries the caller's precondition. |
+| repository patch | in the `where`, as `v."version"` | It carries the caller's precondition. |
 | aggregate update | omitted | Raw SQL; the trigger advances it without a claim. |
 
 This is the one defaulted column a create never carries
@@ -193,13 +195,13 @@ caller cannot build a patch that omits the precondition.
 ## Gotchas
 
 - **A conflict aborts the statement and the transaction.** For a multi-row
-  `update…`, one stale row rolls back all of them, including rows the earlier
-  statements already matched. This is intended — a batch is one logical write
-  and retrying it is the caller's job — but it is a change from "skip the losing
-  row".
-- **A rejection does not say why the row did not match.** A stale version and a
-  missing id are both `40001` → `409`. A caller that needs to tell them apart
-  reads first.
+  `update…`, one stale row rolls back all of them, including the rest of its own
+  chunk and the rows the earlier chunks already wrote. This is intended — a batch
+  is one logical write and retrying it is the caller's job — but it is a change
+  from "skip the losing row".
+- **A rejection names the rows it did not write, but not why.** A stale version
+  and a missing id are both `40001` → `409`. A caller that needs to tell them
+  apart reads first.
 - **The aggregate update bumps the version.** Editing an `invoice_row` reassigns
   `invoice.netAmount`, which fires the invoice's version trigger. A user editing
   the invoice in that window gets a conflict. Correct, since their `totalAmount`

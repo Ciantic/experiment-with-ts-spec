@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { affectedRows, createTransactionalDb } from "./sql-executor.ts";
+import { affectedRows, createTransactionalDb, resultRows } from "./sql-executor.ts";
 import type { SqlPool } from "./sql-pool.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
@@ -43,6 +43,32 @@ describe("affectedRows", () => {
 
         expect(affectedRows(updated)).toBe(1);
         expect(affectedRows(matchedNothing)).toBe(0);
+        await driver.close();
+    });
+});
+
+describe("resultRows", () => {
+    it("reads the rows a result carries, empty ones included", () => {
+        expect(resultRows({ rows: [{ id: "a" }] })).toEqual([{ id: "a" }]);
+        expect(resultRows({ rows: [] })).toEqual([]);
+    });
+
+    it("throws on a result that carries no rows, rather than reading as a statement that wrote none", () => {
+        expect(() => resultRows({ affectedRows: 1 })).toThrow("the executor did not return rows");
+        expect(() => resultRows(undefined)).toThrow();
+        expect(() => resultRows(null)).toThrow();
+    });
+
+    it("reads the rows a statement returned over a real driver", async () => {
+        const driver = createPglite();
+        await driver.query("create table widget (id text primary key)");
+        await driver.query("insert into widget (id) values ('a'), ('b')");
+
+        const updated = await driver.query("update widget set id = id where id = 'a' returning id");
+        const matchedNothing = await driver.query("update widget set id = id where id = 'gone' returning id");
+
+        expect(resultRows(updated)).toEqual([{ id: "a" }]);
+        expect(resultRows(matchedNothing)).toEqual([]);
         await driver.close();
     });
 });

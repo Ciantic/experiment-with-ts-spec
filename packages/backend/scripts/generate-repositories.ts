@@ -65,9 +65,73 @@ function insertEntry(column: Column): ValueEntry {
     return column.default === undefined ? entry : { ...entry, optional: true };
 }
 
-/** The `set` entry that assigns a column from the row's own tuple, e.g. `"name" = data."name"`. */
-function assignment(column: Column): string {
-    return JSON.stringify(`${quote(column.name)} = data.${quote(column.name)}`);
+/** The aliases an update carries: the row it writes, and the supplied values it reads. */
+const TARGET_ALIAS = "u";
+
+const VALUES_ALIAS = "v";
+
+/** The suffix a presence column carries; a spec field name cannot hold `#`, so it cannot collide. */
+const PRESENCE_SUFFIX = "#present";
+
+/** One equality between the row an alias addresses and the values a patch supplies. */
+function aliasMatch(column: Column, target: string, values: string): string {
+    return `${target}.${quote(column.name)} = ${values}.${quote(column.name)}`;
+}
+
+/** The `set` entry that takes a supplied column from the values row and keeps the stored one otherwise. */
+function keptAssignment(column: Column): string {
+    const name = quote(column.name);
+    const presence = `${VALUES_ALIAS}.${quote(column.name + PRESENCE_SUFFIX)}`;
+    return `${name} = case when ${presence} then ${VALUES_ALIAS}.${name} else ${TARGET_ALIAS}.${name} end`;
+}
+
+/** The `set` entry of an entity with no writable column: its key to the key it already holds. */
+function identityAssignment(column: Column): string {
+    return `${quote(column.name)} = ${TARGET_ALIAS}.${quote(column.name)}`;
+}
+
+/** One array a chunked update binds: the values of a column, or whether each row supplied it. */
+interface BoundArray {
+    /** The JS variable the array is built in. */
+    variable: string;
+    /** The alias column `unnest` exposes the array as. */
+    alias: string;
+    /** The cast the placeholder carries. */
+    cast: string;
+    /** The TS type the array is declared with. */
+    type: string;
+    /** What one row pushes into the array. */
+    element: string;
+}
+
+/** The array carrying a column's values, with a null where the row has none to give. */
+function valueArray(column: Column): BoundArray {
+    return {
+        variable: `${column.name}Values`,
+        alias: column.name,
+        cast: `${column.sqlType}[]`,
+        type: "Array<unknown>",
+        element: `${readExpression(column)} ?? null`,
+    };
+}
+
+/** A patchable column with the model's test for whether a row supplied it. */
+type SuppliedColumn = Column & { supplied: string };
+
+/** The array carrying whether each row supplied a column, so an omitted field keeps its stored value. */
+function presenceArray(column: SuppliedColumn): BoundArray {
+    return {
+        variable: `${column.name}Present`,
+        alias: `${column.name}${PRESENCE_SUFFIX}`,
+        cast: "bool[]",
+        type: "boolean[]",
+        element: column.supplied,
+    };
+}
+
+/** The expression reading a written row's key, matching the way `keyOf` builds one from a patch. */
+function returnedKeyExpression(primaryKeys: Column[]): string {
+    return primaryKeys.map((column) => `String(row[${JSON.stringify(column.name)}])`).join(' + "/" + ');
 }
 
 /** The indentation and row source of the loop that gathers values, so create and delete share one builder. */
@@ -142,9 +206,7 @@ function modulePrologue(writeType: string, executorImport?: string): string[] {
 
 /** The `where` that matches each row of the `data` alias to the row it addresses. */
 function keyMatch(table: Table, primaryKeys: Column[]): string {
-    return primaryKeys
-        .map((column) => `${quote(table.name)}.${quote(column.name)} = data.${quote(column.name)}`)
-        .join(" and ");
+    return primaryKeys.map((column) => aliasMatch(column, quote(table.name), "data")).join(" and ");
 }
 
 /** The JS expression naming the row a patch addresses, for the message of a rejected patch. */
@@ -198,7 +260,7 @@ export function generateCreate(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render `update<Entity>`: a patch runner call over the columns a row may supply. See docs/repositories.md. */
+/** Render `update<Entity>`: a chunk of rows per statement, writing the columns a patch may supply. See docs/repositories.md. */
 export function generateUpdate(table: Table): string {
     const entity = table.interfaceName;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
@@ -206,70 +268,85 @@ export function generateUpdate(table: Table): string {
     const patchColumns = table.columns.filter((column) => !column.primaryKey && column.updatable !== false);
     // The version is the optimistic-lock precondition, not an assignment; the trigger increments it.
     const version = patchColumns.find((column) => column.version);
-    const supplied = patchColumns.filter((column) => column.supplied !== undefined);
+    const setColumns = patchColumns.filter((column): column is SuppliedColumn => column.supplied !== undefined);
+    // A row costs its keys, its version, and a value and a presence flag for every column it may write.
+    const costs = [`${primaryKeys.length}`, ...(version === undefined ? [] : ["1"]), `2 * ${setColumns.length}`];
+    const arrays = [
+        ...primaryKeys.map(valueArray),
+        ...(version === undefined ? [] : [valueArray(version)]),
+        ...setColumns.flatMap((column) => [valueArray(column), presenceArray(column)]),
+    ];
+    const assignments =
+        setColumns.length === 0
+            ? [identityAssignment(primaryKeys[0] as Column)]
+            : setColumns.map(keptAssignment);
+    // A patch addresses the row at the version the caller holds, so a stale one matches no row. See docs/versioning.md.
+    const match = [
+        ...primaryKeys.map((column) => aliasMatch(column, TARGET_ALIAS, VALUES_ALIAS)),
+        ...(version === undefined ? [] : [aliasMatch(version, TARGET_ALIAS, VALUES_ALIAS)]),
+    ].join(" and ");
+    const sqlFragments = [
+        `update ${quote(table.name)} as ${TARGET_ALIAS} set `,
+        ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
+        `from unnest(${arrays.map((bound, index) => `$${index + 1}::${bound.cast}`).join(", ")}) as ${VALUES_ALIAS}(`,
+        `${arrays.map((bound) => quote(bound.alias)).join(", ")}) `,
+        `where ${match} `,
+        // The statement returns the rows it wrote, so a chunk that wrote fewer names the rows it left out.
+        `returning ${primaryKeys.map((column) => `${TARGET_ALIAS}.${quote(column.name)}`).join(", ")}`,
+    ];
+    const rejection =
+        version === undefined
+            ? `'no row of ${table.name} matches this patch: '`
+            : `'no row of ${table.name} is at the version this patch supplied for '`;
     const lines = modulePrologue(
         `${entity}Patch`,
-        'import { affectedRows, type SqlExecutor } from "../sql-executor.ts";',
+        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
     );
-    // A patch addresses the row at the version the caller holds, so a stale one matches no row. See docs/versioning.md.
-    const match = version
-        ? `${keyMatch(table, primaryKeys)} and ${quote(table.name)}.${quote(version.name)} = data.${quote(version.name)}`
-        : keyMatch(table, primaryKeys);
-    const rejection = version
-        ? `'no row of ${table.name} is at the version this patch supplied for ' + ${keyExpression(primaryKeys)}`
-        : `'no row of ${table.name} matches this patch: ' + ${keyExpression(primaryKeys)}`;
 
-    // One statement per row: an omitted field is left out of the `set` clause, so it keeps its stored
-    // value while a field the caller sets to `null` writes a null. More than one row is more than one
-    // statement, so the call opens a boundary to stay all-or-nothing. See docs/repositories.md.
+    lines.push("/** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */");
+    lines.push(`const keyOf = (row: ${entity}Patch): string => String(${keyExpression(primaryKeys)});`);
+    lines.push("");
+    lines.push("/** The parameters one row costs: one per key column, one per version, and two per written column. */");
+    lines.push(`const PARAMETERS_PER_ROW = ${costs.join(" + ")};`);
+    lines.push("");
+    lines.push("/** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
+    lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
+    lines.push("");
     lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}Patch[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
     lines.push("        return;");
     lines.push("    }");
     lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
-    lines.push("        for (const row of rows) {");
-    lines.push("            const assignments: string[] = [];");
-    lines.push("            const names: string[] = [];");
-    lines.push("            const values: string[] = [];");
-    lines.push("            const parameters: unknown[] = [];");
-    lines.push("            const add = (column: string, cast: string, value: unknown): void => {");
-    lines.push('                names.push("\\"" + column + "\\"");');
-    lines.push('                values.push("$" + (parameters.length + 1) + "::" + cast);');
-    lines.push("                parameters.push(value ?? null);");
-    lines.push("            };");
-    for (const column of primaryKeys) {
-        lines.push(
-            `            add(${JSON.stringify(column.name)}, ${JSON.stringify(column.sqlType)}, ${readExpression(column)});`,
-        );
+    lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
+    lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
+    for (const bound of arrays) {
+        lines.push(`            const ${bound.variable}: ${bound.type} = [];`);
     }
-    for (const column of supplied) {
-        lines.push(`            if (${column.supplied}) {`);
-        lines.push(
-            `                add(${JSON.stringify(column.name)}, ${JSON.stringify(column.sqlType)}, ${readExpression(column)});`,
-        );
-        lines.push(`                assignments.push(${assignment(column)});`);
-        lines.push("            }");
+    lines.push("            for (const row of chunk) {");
+    for (const bound of arrays) {
+        lines.push(`                ${bound.variable}.push(${bound.element});`);
     }
-    if (version) {
-        // The version travels as a parameter for the `where`, never as an assignment. See docs/versioning.md.
-        lines.push(
-            `            add(${JSON.stringify(version.name)}, ${JSON.stringify(version.sqlType)}, ${readExpression(version)});`,
-        );
-    }
-    // An update must set something; a row that supplies no field sets its key to the key it already holds.
-    lines.push("            if (assignments.length === 0) {");
-    lines.push(`                assignments.push(${assignment(primaryKeys[0] as Column)});`);
     lines.push("            }");
+    lines.push("            const result = await tx.query(");
+    for (const [index, fragment] of sqlFragments.entries()) {
+        const indent = index === 0 ? "                " : "                    ";
+        lines.push(`${indent}'${fragment}${index === sqlFragments.length - 1 ? "'," : "' +"}`);
+    }
+    lines.push(`                [${arrays.map((bound) => bound.variable).join(", ")}],`);
+    lines.push("            );");
+    lines.push(`            const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`);
+    // A patch that wrote fewer rows than the chunk carried is a rejected call. See docs/versioning.md.
+    lines.push("            if (written.size !== chunk.length) {");
+    lines.push("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+    // A chunk naming one key twice writes fewer rows than it carries, and has no single row to blame.
+    lines.push("                const named = missed.length > 0 ? missed : chunk;");
     lines.push(
-        `            const result = await tx.query('update ${quote(table.name)} set ' + assignments.join(", ") + ' from (values (' + values.join(", ") + ')) as data(' + names.join(", ") + ') where ${match}', parameters);`,
+        `                throw Object.assign(new Error(${rejection} + named.map(keyOf).join(", ")), { code: "40001" });`,
     );
-    // A patch that matched no row changed nothing, so the whole call is rejected. See docs/versioning.md.
-    lines.push("            if (affectedRows(result) === 0) {");
-    lines.push(`                throw Object.assign(new Error(${rejection}), { code: "40001" });`);
     lines.push("            }");
     lines.push("        }");
     lines.push("    };");
-    // One row is one statement, so it needs no boundary; more than one would otherwise apply one row at a time.
+    // One row is one atomic statement; a longer call rejects after its chunk has written, so it opens a boundary.
     lines.push("    if (rows.length === 1) {");
     lines.push("        await write(db);");
     lines.push("        return;");

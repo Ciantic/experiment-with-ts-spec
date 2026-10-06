@@ -153,9 +153,9 @@ describe("generateCreate", () => {
         expect(generateCreate(customer)).toContain(
             'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         );
-        // An update reads the affected-row count, so it takes the port's runtime helper with it.
+        // A patch reads the rows a statement wrote back, so it takes the port's runtime helpers with it.
         expect(generateUpdate(customer)).toContain(
-            'import { affectedRows, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
         );
         expect(generateUpdate(customer)).not.toContain('import type { SqlExecutor } from "../sql-executor.ts";');
     });
@@ -324,16 +324,32 @@ describe("generateCreate", () => {
 });
 
 describe("generateUpdate", () => {
-    it("builds one statement per row, naming the columns the row supplies", () => {
+    it("carries a chunk of rows in one statement, marking whether each row supplied a column", () => {
         const code = generateUpdate(customer);
 
         expect(code).toContain("export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {");
-        expect(code).toContain("        for (const row of rows) {");
-        expect(code).toContain('            if (row.name !== undefined) {');
-        expect(code).toContain('                add("name", "text", row.name);');
-        expect(code).toContain('                assignments.push("\\"name\\" = data.\\"name\\"");');
+        expect(code).toContain("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
+        expect(code).toContain("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
+        expect(code).toContain("                nameValues.push(row.name ?? null);");
+        expect(code).toContain("                namePresent.push(row.name !== undefined);");
+        expect(code).toContain('\'"name" = case when v."name#present" then v."name" else u."name" end, \'');
         expect(code).toContain(
-            "await tx.query('update \"customer\" set ' + assignments.join(\", \") + ' from (values (' + values.join(\", \") + ')) as data(' + names.join(\", \") + ') where \"customer\".\"id\" = data.\"id\"', parameters);",
+            '\'from unnest($1::uuid[], $2::text[], $3::bool[], $4::text[], $5::bool[]) as v(\' +',
+        );
+        expect(code).toContain('\'"id", "name", "name#present", "email", "email#present") \' +');
+        expect(code).toContain('\'where u."id" = v."id" \'');
+        expect(code).toContain("                [idValues, nameValues, namePresent, emailValues, emailPresent],");
+    });
+
+    it("reads the rows the statement wrote back, so a chunk that wrote fewer names the rows it left out", () => {
+        const code = generateUpdate(customer);
+
+        expect(code).toContain('\'returning u."id"\',');
+        expect(code).toContain('            const written = new Set(resultRows(result).map((row) => String(row["id"])));');
+        expect(code).toContain("            if (written.size !== chunk.length) {");
+        expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+        expect(code).toContain(
+            "                throw Object.assign(new Error('no row of customer matches this patch: ' + named.map(keyOf).join(\", \")), { code: \"40001\" });",
         );
     });
 
@@ -344,7 +360,7 @@ describe("generateUpdate", () => {
             column("derived", { notNull: false, updatable: false }),
         ]);
 
-        expect(generateUpdate(limited)).toContain('add("label", "text", row.label);');
+        expect(generateUpdate(limited)).toContain('"label" = case when v."label#present" then v."label" else u."label" end ');
         expect(generateUpdate(limited)).not.toContain('"derived"');
     });
 
@@ -356,7 +372,9 @@ describe("generateUpdate", () => {
             column("version", { sqlType: "int8", default: "0", version: true }),
         ]);
 
-        expect(generateUpdate(limited)).toContain('add("createdAt", "timestamptz", row.createdAt);');
+        expect(generateUpdate(limited)).toContain('"createdAt" = case when v."createdAt#present"');
+        expect(generateUpdate(limited)).toContain("                createdAtValues.push(row.createdAt ?? null);");
+        expect(generateUpdate(limited)).toContain("                createdAtPresent.push(row.createdAt !== undefined);");
     });
 
     it("predicates on the version instead of assigning it, and rejects a row it did not match", () => {
@@ -368,15 +386,14 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        // The version travels as a parameter for the `where`, so it is read unconditionally …
-        expect(code).toContain('            add("version", "int8", row.version);');
-        expect(code).toContain('and "customer"."version" = data."version"', );
-        // … but it is the trigger that increments it, never the `set` clause. See docs/versioning.md.
-        expect(code).not.toContain('assignments.push("\\"version\\" = data.\\"version\\"");');
-        expect(code).not.toContain("if (row.version !== undefined)");
-        expect(code).toContain("            if (affectedRows(result) === 0) {");
-        expect(code).toContain("code: \"40001\"");
-        expect(code).toContain("no row of customer is at the version this patch supplied for ' + row.id");
+        // The version travels among the values the `where` compares, so it is read unconditionally …
+        expect(code).toContain("                versionValues.push(row.version ?? null);");
+        expect(code).toContain('\'where u."id" = v."id" and u."version" = v."version" \'');
+        // … but it is the trigger that increments it, never the `set` clause, and a patch cannot omit it.
+        expect(code).not.toContain('"version" = case when');
+        expect(code).not.toContain("versionPresent");
+        expect(code).toContain("no row of customer is at the version this patch supplied for ' + named.map(keyOf).join(\", \")");
+        expect(code).toContain('code: "40001"');
     });
 
     it("carries no version for an entity that has none, and still rejects an unmatched row", () => {
@@ -384,10 +401,10 @@ describe("generateUpdate", () => {
             table("invoice_sent", "InvoiceSent", [column("id", { sqlType: "uuid", primaryKey: true }), column("number")]),
         );
 
-        expect(snapshot).not.toContain('add("version"');
-        expect(snapshot).not.toContain('"invoice_sent"."version"');
-        expect(snapshot).toContain("no row of invoice_sent matches this patch: ' + row.id");
-        expect(snapshot).toContain("code: \"40001\"");
+        expect(snapshot).not.toContain("versionValues");
+        expect(snapshot).not.toContain('u."version"');
+        expect(snapshot).toContain("no row of invoice_sent matches this patch: ' + named.map(keyOf).join(\", \")");
+        expect(snapshot).toContain('code: "40001"');
     });
 
     it("names every key column of a composite key in the rejection message", () => {
@@ -398,7 +415,8 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        expect(code).toContain("no row of translation matches this patch: ' + row.lang + \"/\" + row.key");
+        expect(code).toContain('const keyOf = (row: TranslationPatch): string => String(row.lang + "/" + row.key);');
+        expect(code).toContain('new Set(resultRows(result).map((row) => String(row["lang"]) + "/" + String(row["key"])))');
     });
 
     it("reads each column through its recorded accessor, and tests the outer field for an inlined one", () => {
@@ -409,20 +427,20 @@ describe("generateUpdate", () => {
             ]),
         );
 
-        expect(code).toContain("            if (row.customer !== undefined) {");
-        expect(code).toContain('                add("customerName", "text", row.customer?.name);');
+        expect(code).toContain("                customerNameValues.push(row.customer?.name ?? null);");
+        expect(code).toContain("                customerNamePresent.push(row.customer !== undefined);");
     });
 
-    it("sets the key to itself when an entity with no version is patched with no fields", () => {
+    it("sets the key to itself when the entity has no writable column, so the statement still writes", () => {
         const code = generateUpdate(
-            table("invoice_sent", "InvoiceSent", [
+            table("gate", "Gate", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
-                column("note", { notNull: false }),
+                column("derived", { notNull: false, updatable: false }),
             ]),
         );
 
-        expect(code).toContain("            if (assignments.length === 0) {");
-        expect(code).toContain('                assignments.push("\\"id\\" = data.\\"id\\"");');
+        expect(code).toContain('\'"id" = u."id" \'');
+        expect(code).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 0;");
     });
 
     it("takes one statement without a boundary for a single row, and opens one for several", () => {
@@ -433,11 +451,27 @@ describe("generateUpdate", () => {
         expect(code).toContain("    await db.transaction(write);");
     });
 
+    it("sizes a chunk by the cells a row carries, so a wider entity carries fewer rows", () => {
+        const narrow = generateUpdate(
+            table("narrow", "Narrow", [column("id", { sqlType: "uuid", primaryKey: true }), column("label")]),
+        );
+        const wide = generateUpdate(
+            table("wide", "Wide", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                ...Array.from({ length: 4 }, (_, index) => column(`c${index}`)),
+            ]),
+        );
+
+        expect(narrow).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 1;");
+        expect(wide).toContain("const PARAMETERS_PER_ROW = 1 + 2 * 4;");
+    });
+
     it("names every key column of a composite key, so a row is matched on all of them", () => {
         const code = generateUpdate(translation);
 
-        expect(code).toContain('            add("languageCode", "text", row.languageCode);');
-        expect(code).toContain('            add("key", "text", row.key);');
+        expect(code).toContain('u."languageCode" = v."languageCode" and u."key" = v."key"');
+        expect(code).toContain("                languageCodeValues.push(row.languageCode ?? null);");
+        expect(code).toContain("                keyValues.push(row.key ?? null);");
     });
 });
 
@@ -752,6 +786,41 @@ describe("generated repositories against PGlite", () => {
             { id: WIDGET_ID, name: "run", note: "changed" },
             { id: WIDGET_ID_OTHER, name: "renamed", note: "keep" },
         ]);
+    });
+
+    it("patches a call too large for one statement, carrying the rest in a further statement", async () => {
+        const rows = Array.from({ length: 400 }, (_, index) => wideRow(wideId(index), "before"));
+        // The premise: this many rows of this many columns cannot travel in a single statement.
+        expect(rows.length).toBeGreaterThan(Math.floor(sqlExecutor.MAX_STATEMENT_PARAMETERS / (1 + 2 * (WIDE_COLUMNS - 1))));
+        await wides.create(db, rows);
+
+        await wides.update(db, rows.map((row) => ({ id: row.id, c0: "after" })));
+
+        const { rows: stored } = await driver.query<{ count: number }>(
+            'select count(*)::int as count from "wide" where "c0" = $1',
+            ["after"],
+        );
+        expect(stored).toEqual([{ count: 400 }]);
+    });
+
+    it("rolls a chunked patch back when a later statement finds no row of its chunk", async () => {
+        const rows = Array.from({ length: 200 }, (_, index) => wideRow(wideId(index), "before"));
+        await wides.create(db, rows);
+        const patches = [
+            ...rows.map((row) => ({ id: row.id, c0: "after" })),
+            // The last chunk also names an id no row carries, and the chunks before it have written.
+            { id: wideId(999), c0: "after" },
+        ];
+
+        await expect(wides.update(db, patches)).rejects.toThrow(
+            `no row of wide matches this patch: ${wideId(999)}`,
+        );
+
+        const { rows: stored } = await driver.query<{ count: number }>(
+            'select count(*)::int as count from "wide" where "c0" = $1',
+            ["after"],
+        );
+        expect(stored).toEqual([{ count: 0 }]);
     });
 
     it("deletes rows through the generated delete function", async () => {

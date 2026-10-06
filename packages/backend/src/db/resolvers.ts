@@ -6,7 +6,7 @@
  * no JSON aggregation.
  */
 import type { Direction, Selection, Selected } from "validation/selection.ts";
-import type { SqlExecutor } from "./sql-executor.ts";
+import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
 /** How a branch field of a table reaches another table. */
 export interface QueryRelation {
@@ -134,17 +134,6 @@ function foreignKeyAlias(field: string): string {
 /** The alias an inlined column is projected under. */
 function inlinedAlias(field: string, target: string): string {
     return `__in_${field}_${target}`;
-}
-
-/** The `rows` array from a driver result, whatever else it carries. */
-function rowsOf(result: unknown): Record<string, unknown>[] {
-    if (result !== null && typeof result === "object" && "rows" in result) {
-        const rows = (result as { rows?: unknown }).rows;
-        if (Array.isArray(rows)) {
-            return rows as Record<string, unknown>[];
-        }
-    }
-    throw new Error("the executor did not return rows");
 }
 
 /** The values, with nulls and duplicates dropped, as the keys of an `in (…)` list. */
@@ -526,7 +515,7 @@ async function fetchRows(
     }
 
     const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}${orderSql}${pageSql}`;
-    const rows = rowsOf(await db.query(sql, params));
+    const rows = resultRows(await db.query(sql, params));
     const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
 
     await attachToOne(model, db, table, projection.toOne, rows, fetched);

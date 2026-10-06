@@ -1,10 +1,10 @@
 # Transactions
 
 A repository function takes `db: SqlExecutor`, and a create or a delete returns
-after one statement. A patch of several rows is one statement per row, so the
-repository opens a boundary itself and the rows commit together; a single row is
-a single statement and runs on the handle it was given. Anything spanning two
-*calls* still belongs to the caller (`docs/repositories.md`, "No transaction
+after one statement. A patch of several rows is one statement per chunk, so the
+repository opens a boundary itself and the chunks commit together; a single row
+is one atomic statement and runs on the handle it was given. Anything spanning
+two *calls* still belongs to the caller (`docs/repositories.md`, "No transaction
 wrapping"). This note records the port that lets a caller own that unit, and the
 two places a boundary is opened over REST: inside a handler that owns its own
 sequence, and around a group of calls a client composes into one request.
@@ -51,14 +51,15 @@ applied. A one-connection driver reaches it through
 `createSingleConnectionPool` (`src/db/sql-pool.ts`), which serialises its one
 session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
 
-`query` returns `unknown` because the result is the driver's: the rows are
-mapped by the result mapping and read through `rowsOf` (`src/db/resolvers.ts`),
-and a write is read through `affectedRows` (`src/db/sql-executor.ts`), which
-answers the count from whichever name the driver used — `affectedRows` on PGlite,
-`rowCount` on `pg`. A result that carries neither name is a driver the port does
-not know, so it throws rather than answering `0`, which would read as a conflict.
-A generated patch uses it to reject a statement that matched no row
-(`docs/versioning.md`).
+`query` returns `unknown` because the result is the driver's. Two readers
+(`src/db/sql-executor.ts`) take the two shapes out of it: `resultRows` answers
+the `rows` array both drivers carry, which the result mapping and a generated
+patch both read, and `affectedRows` answers the count from whichever name the
+driver used — `affectedRows` on PGlite, `rowCount` on `pg`. A result that
+carries neither is a driver the port does not know, so the reader throws rather
+than answering no rows or `0`, which would read as a statement that matched
+nothing. A generated patch reads the rows it wrote to reject a chunk that wrote
+fewer (`docs/versioning.md`).
 
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
 over a pool:
@@ -448,9 +449,9 @@ client imports nothing from the backend.
   get a clock of its own.
 - **A version conflict aborts its transaction.** One stale version rolls back
   every entry of the group it is in, up to the nearest enclosing boundary. A patch
-  that matched no row counts the same way, since it is the same `40001`. The
-  caller resends after re-reading, or wraps the entry in an `attempt` to keep the
-  rest of the group.
+  whose statement wrote fewer rows than it carried counts the same way, since it
+  is the same `40001`. The caller resends after re-reading, or wraps the entry in
+  an `attempt` to keep the rest of the group.
 - **A transaction holds one connection and its locks.** A long group reduces the
   pool available to other requests and holds row locks for its duration, so the
   entry cap and a statement timeout are the backstops. A nested boundary adds a

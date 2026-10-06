@@ -51,7 +51,7 @@ an array lets one call carry many rows, which is the whole reason the functions
 exist in this shape:
 
 - **create** — one `insert into "t" (...) values ($1, ...), ($n, ...)` per chunk of rows, in one boundary when a call spans several chunks.
-- **update** — one statement per row, `update "t" set ... from (values (...)) as data(...) where "t"."id" = data."id"`, all in one boundary.
+- **update** — one statement per chunk of rows, `update "t" as u set ... from unnest(...) as v(...) where u."id" = v."id"`, in one boundary whenever the call carries more than one row.
 - **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
 
 Each function returns early on an empty array, so the caller does not have to
@@ -138,39 +138,49 @@ column (`@pgVirtual`), or a nullable `@computed` field its mechanism fills in.
 A `@pgDefault` column is *not* on this list: a patch may override a default, the
 same way a create may.
 
-`update` writes one statement per row, naming only the columns that row
-supplies. An omitted field is not in the `set` clause at all, so it keeps its
-stored value, while a field the caller sets to `null` writes a null:
+`update` writes one statement per chunk of rows, naming every column a patch may
+supply. Whether a row supplied one travels with the row as a presence flag, so a
+field the caller omitted keeps its stored value while a field the caller sets to
+`null` writes a null:
 
 ```sql
-update "customer"
-    set "name" = data."name"
-from (values (…) ) as data("id", "name", "version")
-where "customer"."id" = data."id" and "customer"."version" = data."version"
+update "customer" as u
+    set "name" = case when v."name#present" then v."name" else u."name" end
+from unnest($1::uuid[], $2::text[], $3::bool[]) as v("id", "name", "name#present")
+where u."id" = v."id" and u."version" = v."version"
+returning u."id"
 ```
 
-Nothing is derived from a `null`: the two requests are told apart before the SQL
-is built, by the emitted `if (row.name !== undefined)`, rather than folded into
-one `coalesce`. `coalesce` could not do it — it cannot distinguish a field the
-caller omitted from one set to `null`, so a null read as "not supplied" and the
-stored value was kept.
+Nothing is derived from a `null` on its own, because a null cannot say whether
+the caller omitted the field or sent it as `null`; each row therefore carries the
+flag beside the value, and the `set` clause asks for the flag. `coalesce` cannot
+tell the two apart, so a null would read as "not supplied" and the stored value
+would be kept. The `#present` suffix cannot collide with a column, because a spec
+field name holds no `#`.
 
-The key columns travel in the tuple so the statement is matched to a row on all
-of them, and the version travels in it so the `where` can compare it. The version
-is never in the `set` clause: the trigger increments the column, and a statement
-that assigned it would make the trigger's own guard fire. See `docs/versioning.md`.
+A column therefore costs two elements per row, its value and its flag, and a
+chunk is sized on that: `ROWS_PER_STATEMENT` counts the cells a row carries the
+way the insert counts its columns. An entity with no writable column at all sets
+its key to the key it already holds, so the statement stays valid whatever a
+patch carries.
 
-A statement that matches no row is a rejected call rather than a no-op: the
-generated code reads the affected-row count and throws `code: "40001"`, which is
-the `409` the router already serves for a version conflict. That covers both a
-stale version and an id that is not there, and it aborts the surrounding
-transaction, so a multi-row patch whose second row is stale writes nothing.
+The key columns and the version travel in the same arrays: the keys match each
+row to the one it addresses, and the version goes into the `where`, so a stale
+one matches no row. The version is never in the `set` clause: the trigger
+increments the column, and a statement that assigned it would make the trigger's
+own guard fire. See `docs/versioning.md`.
 
-More than one row is more than one statement, so the call opens a boundary and
-the rows commit together; a single row is a single statement and runs on the
-handle it was given. A row that supplies no field at all sets its key to the key
-it already holds, so the statement stays valid — and still puts the version
-predicate in front of it.
+A statement that writes fewer rows than its chunk carried is a rejected call
+rather than a no-op: the statement returns the keys it wrote, and the generated
+code throws `code: "40001"` naming the rows it did not, which is the `409` the
+router already serves for a version conflict. That covers both a stale version
+and an id that is not there.
+
+A call carrying more than one row opens a boundary, and its chunks commit
+together; a single row is one atomic statement and runs on the handle it was
+given. Several rows need the boundary even when one statement carries all of
+them, because the statement writes the rows it matches before the rejection is
+raised. See `docs/transactions.md`.
 
 `<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
 `omittedFromPatch` and `nullablePatchProperties` (`packages/spec/scripts/spec-model.ts`)
@@ -265,23 +275,25 @@ patch column sets separately; see `docs/versioning.md`.
   `insert` too, and on update it goes into the `where` rather than the `set`.
 - **`update` enforces the version with a predicate, and the database raises it.**
   The `@version` column is matched in the `where`, so a stale one matches no row
-  and the generated code rejects the call with the `40001` that maps to a `409`.
-  The increment stays in a database trigger. A rejection does not say whether the
-  version was stale or the row was missing. See `docs/versioning.md`.
+  and the generated code rejects the call with the `40001` that maps to a `409`,
+  naming the rows the statement did not write. The increment stays in a database
+  trigger. A rejection does not say whether the version was stale or the row was
+  missing. See `docs/versioning.md`.
 - **A patch cannot set a non-nullable column to null.** Nullable columns are the
   exception: a patch sets one to `null` to clear it. `Invoice.notes`,
   `Invoice.number`, and the optional foreign keys are the ones in this model.
-- **A patch of several rows is several statements.** They commit together in one
-  boundary, so the call is atomic, but it is not the single statement a create
-  or a delete is. Passing one row avoids the boundary entirely. See
-  `docs/transactions.md`.
+- **A patch of several rows is one statement per chunk of rows.** The chunks
+  commit together in one boundary, so the call is atomic, but it is not the
+  single statement a create or a delete is. Passing one row avoids the boundary
+  entirely. See `docs/transactions.md`.
 - **A patch whose rows disagree about who won rejects all of them.** One stale
   row aborts the boundary, so rows the earlier statements already matched are
   rolled back too. Retrying is the caller's job. See `docs/versioning.md`.
-- **A patch is all-or-nothing per row, not per field-set.** Each statement names
-  the columns its row supplies, so a row that omits a field leaves that column
-  alone rather than writing the stored value back. That is a no-op either way,
-  but it means the written columns are a signal of what the caller sent.
+- **A patch is all-or-nothing per row, not per field-set.** The statement names
+  every column a patch may write, and each row's flag says which of them the
+  caller sent, so a row that omits a field writes the stored value back. That is
+  a no-op, but it means the flags are the signal of what the caller sent rather
+  than the `set` clause.
 - **`delete` keys on the primary key only.** `deleteCustomer` takes
   `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
 - **No transaction wrapping by the caller.** A create or a delete is atomic on
