@@ -85,6 +85,15 @@ describe("createRouter", () => {
         expect(response.status).toBe(404);
     });
 
+    it("serves a PUT, the verb an upsert reaches the server with", async () => {
+        const router = createRouter(db, [echoRoute({ method: "PUT" })]);
+
+        const response = await router.handle({ method: "PUT", url: "/echo", body: stringify(payload) });
+
+        expect(response.status).toBe(200);
+        expect(decode(response.body)).toEqual(payload);
+    });
+
     it("answers 400 for a body that is not decodable", async () => {
         const router = createRouter(db, [echoRoute()]);
 
@@ -282,6 +291,17 @@ describe("createRouter groups", () => {
         const response = await router.handle(groupRequest(groupBody("batch", [callEntry("POST", "/echo", {})])));
 
         expect(decode(response.body)).toEqual([null]);
+    });
+
+    it("runs a PUT entry, which a group names for an upsert", async () => {
+        const router = createRouter(db, [echoRoute({ method: "PUT" })]);
+
+        const response = await router.handle(
+            groupRequest(groupBody("transaction", [callEntry("PUT", "/echo", { n: 1 })])),
+        );
+
+        expect(response.status).toBe(200);
+        expect(decode(response.body)).toEqual([{ n: 1 }]);
     });
 
     it("refuses a group whose call names no route, without running any of it", async () => {

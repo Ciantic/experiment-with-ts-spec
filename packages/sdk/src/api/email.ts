@@ -3,9 +3,10 @@ import type { Email } from "spec/domain/Email.ts";
 import type { Filters, Order, Selected, Selection } from "validation/selection.ts";
 import type { EmailInsert } from "validation/repositories/emailInsertSchema.ts";
 import type { EmailPatch } from "validation/repositories/emailPatchSchema.ts";
+import type { EmailUpsert } from "validation/repositories/emailUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { EmailInsert, EmailPatch };
+export type { EmailInsert, EmailPatch, EmailUpsert };
 
 /** Query `Email` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryEmail<S extends Selection<Email>>(
@@ -17,6 +18,11 @@ export function queryEmail<S extends Selection<Email>>(
 /** Create `Email` rows. */
 export function createEmail(rows: EmailInsert[]): Call<void> {
     return call<void>("POST", "/email", rows);
+}
+
+/** Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
+export function upsertEmail(rows: EmailUpsert[]): Call<void> {
+    return call<void>("PUT", "/email", rows);
 }
 
 /** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

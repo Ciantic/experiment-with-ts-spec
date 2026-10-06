@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
+import type { Tenant } from "spec/domain/Tenant.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes/index.ts";
 import { createDatabase, parseArgs, startServer, type StartedServer } from "./main.ts";
@@ -10,7 +11,7 @@ import { createDatabase, parseArgs, startServer, type StartedServer } from "./ma
 type Builder = (argument: unknown) => Call<unknown>;
 
 /** The prefixes the generator gives its builders. Narrow, so no hand-written export is probed. */
-const GENERATED = /^(?:query|create|update|delete)[A-Z]/;
+const GENERATED = /^(?:query|create|upsert|update|delete)[A-Z]/;
 
 /** The hand-written exports; probing `createHttpClient` would call it, as it shares the `create` prefix. */
 const HAND_WRITTEN = new Set(["createHttpClient", "exec", "transaction", "attempt", "batch", "bundle", "toWire"]);
@@ -100,6 +101,30 @@ describe("a live server", () => {
 
             expect(thrown.status, name).toBe(400);
         }
+    });
+
+    it("replaces a seeded row through the generated upsert, and reads it back", async () => {
+        // The read selects the fields an upsert writes, so its result is a valid body.
+        const select = { id: true, name: true, version: true } as const;
+        const [tenant] = (await api.exec(
+            http,
+            api.queryTenant({ select, limit: 1 }),
+        )) as unknown as Tenant[];
+        if (!tenant) {
+            throw new Error("the seeded database carries no tenant");
+        }
+
+        await api.exec(http, api.upsertTenant([{ id: tenant.id, name: "upserted", version: tenant.version }]));
+
+        // A filter takes a list of values, so it names the row the call just replaced.
+        const [again] = (await api.exec(
+            http,
+            api.queryTenant({ select, filter: { id: [tenant.id] } }),
+        )) as unknown as Tenant[];
+
+        expect(again?.name).toBe("upserted");
+        // The row was replaced at the version it claimed, and the trigger owns the counter.
+        expect(again?.version).toBe(tenant.version + 1n);
     });
 
     it("carries a value JSON cannot, so the body codec is exercised end to end", async () => {

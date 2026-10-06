@@ -40,8 +40,9 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
   domain. A second group transpiles the generated module, builds a matching
-  `create table` from the fixture's column metadata, and runs create/update/delete
-  against PGlite. It asserts the generated SQL *executes*, not what the data means.
+  `create table` from the fixture's column metadata, and runs create/upsert/
+  update/delete against PGlite. It asserts the generated SQL *executes*, not what
+  the data means.
 - `packages/backend/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
   over a real PGlite, so a driver's boundary semantics are observable: a commit,
   a rollback, and that a nested boundary is a savepoint the outer transaction

@@ -3,9 +3,10 @@ import type { Customer } from "spec/domain/Customer.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";
 import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";
+import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { CustomerInsert, CustomerPatch };
+export type { CustomerInsert, CustomerPatch, CustomerUpsert };
 
 /** Query `Customer` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryCustomer<S extends Selection<Customer>>(
@@ -17,6 +18,11 @@ export function queryCustomer<S extends Selection<Customer>>(
 /** Create `Customer` rows. */
 export function createCustomer(rows: CustomerInsert[]): Call<void> {
     return call<void>("POST", "/customer", rows);
+}
+
+/** Upsert `Customer` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
+export function upsertCustomer(rows: CustomerUpsert[]): Call<void> {
+    return call<void>("PUT", "/customer", rows);
 }
 
 /** Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

@@ -114,6 +114,7 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain('call<void>("POST", "/widget", rows)');
+        expect(code).toContain('call<void>("PUT", "/widget", rows)');
         expect(code).toContain('call<void>("PATCH", "/widget", rows)');
         expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
@@ -142,15 +143,24 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "validation/selection.ts";');
     });
 
-    it("imports and re-exports the patch type from the validation package", () => {
+    it("imports and re-exports the write types from the validation package", () => {
         const code = widgetModule();
 
         expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
             '\n' +
-            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
-        expect(code).toContain("export type { WidgetInsert, WidgetPatch };");
+            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";' +
+            '\n' +
+            'import type { WidgetUpsert } from "validation/repositories/widgetUpsertSchema.ts";');
+        expect(code).toContain("export type { WidgetInsert, WidgetPatch, WidgetUpsert };");
         expect(code).toContain("rows: WidgetPatch[]");
         expect(code).not.toContain("export type WidgetPatch =");
+    });
+
+    it("upserts with the validation upsert type, which carries the version a create omits", () => {
+        const code = widgetModule();
+
+        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<void> {");
+        expect(code).toContain("replaces the row at the version it claims");
     });
 
     it("does not decide the patch shape, so a table without a version needs no generator branch", () => {
@@ -159,7 +169,9 @@ describe("renderClientModule", () => {
 
         expect(code).toContain('import type { MarkerInsert } from "validation/repositories/markerInsertSchema.ts";' +
             '\n' +
-            'import type { MarkerPatch } from "validation/repositories/markerPatchSchema.ts";');
+            'import type { MarkerPatch } from "validation/repositories/markerPatchSchema.ts";' +
+            '\n' +
+            'import type { MarkerUpsert } from "validation/repositories/markerUpsertSchema.ts";');
         expect(code).not.toContain("and the version");
     });
 
@@ -199,7 +211,9 @@ describe("renderClientModule", () => {
 
         expect(code).toContain('import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";' +
             '\n' +
-            'import type { LimitedPatch } from "validation/repositories/limitedPatchSchema.ts";');
+            'import type { LimitedPatch } from "validation/repositories/limitedPatchSchema.ts";' +
+            '\n' +
+            'import type { LimitedUpsert } from "validation/repositories/limitedUpsertSchema.ts";');
     });
 
     it("emits no getter", () => {
@@ -265,7 +279,7 @@ describe("generateRestClient", () => {
             ),
         );
         const called = [...generateRestClient(model).values()].flatMap((content) =>
-            [...content.matchAll(/call<.*?>\("(GET|POST|PATCH|DELETE)", "([^"]+)"/g)].map(
+            [...content.matchAll(/call<.*?>\("([A-Z]+)", "([^"]+)"/g)].map(
                 (match) => `${match[1]} ${match[2]}`,
             ),
         );

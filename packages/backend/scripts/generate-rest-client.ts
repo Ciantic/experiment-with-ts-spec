@@ -88,6 +88,10 @@ function comment(entity: RestEntity, kind: RestKind): string {
             return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
+        case "upsert":
+            return entity.versionFields.length > 0
+                ? `/** Upsert \`${name}\` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */`
+                : `/** Upsert \`${name}\` rows: each row is created, or replaces the row it keys on. */`;
         case "update":
             return entity.versionFields.length > 0
                 ? `/** Patch \`${name}\` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */`
@@ -107,6 +111,7 @@ export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const query = operation(entity, "query");
     const create = operation(entity, "create");
+    const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
 
@@ -130,6 +135,9 @@ export function renderClientModule(entity: RestEntity): string {
     const writeTypes: string[] = [];
     if (create) {
         writeTypes.push(`${name}Insert`);
+    }
+    if (upsert) {
+        writeTypes.push(`${name}Upsert`);
     }
     if (update) {
         writeTypes.push(`${name}Patch`);
@@ -172,6 +180,14 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("}");
     }
 
+    if (upsert) {
+        lines.push("");
+        lines.push(comment(entity, "upsert"));
+        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<void> {`);
+        lines.push(`    return call<void>("${upsert.method}", "${upsert.path}", rows);`);
+        lines.push("}");
+    }
+
     if (update) {
         lines.push("");
         lines.push(comment(entity, "update"));
@@ -179,7 +195,6 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`    return call<void>("${update.method}", "${update.path}", rows);`);
         lines.push("}");
     }
-
     if (remove) {
         lines.push("");
         lines.push(comment(entity, "delete"));

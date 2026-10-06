@@ -3,9 +3,10 @@ import type { Seller } from "spec/domain/Seller.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { SellerInsert } from "validation/repositories/sellerInsertSchema.ts";
 import type { SellerPatch } from "validation/repositories/sellerPatchSchema.ts";
+import type { SellerUpsert } from "validation/repositories/sellerUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { SellerInsert, SellerPatch };
+export type { SellerInsert, SellerPatch, SellerUpsert };
 
 /** Query `Seller` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
@@ -17,6 +18,11 @@ export function querySeller<S extends Selection<Seller>>(
 /** Create `Seller` rows. */
 export function createSeller(rows: SellerInsert[]): Call<void> {
     return call<void>("POST", "/seller", rows);
+}
+
+/** Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
+export function upsertSeller(rows: SellerUpsert[]): Call<void> {
+    return call<void>("PUT", "/seller", rows);
 }
 
 /** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

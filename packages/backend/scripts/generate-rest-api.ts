@@ -56,6 +56,8 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
             return `query${entity.entity}Schema`;
         case "create":
             return `${entity.module}InsertSchema`;
+        case "upsert":
+            return `${entity.module}UpsertSchema`;
         // A delete carries only the key, so it validates against the key schema, not the whole entity.
         case "delete":
             return `${entity.module}PrimaryKeySchema`;
@@ -71,11 +73,9 @@ function inputExpression(entity: RestEntity, kind: RestKind): string {
 
 /** Every repository function one entity needs. */
 function repositoryFunctions(entity: RestEntity): string[] {
+    // Every write kind names a repository function of its own; a read is served by the query module.
     return entity.operations
-        .filter(
-            (operation) =>
-                operation.kind === "create" || operation.kind === "update" || operation.kind === "delete",
-        )
+        .filter((operation) => operation.kind !== "query")
         .map((operation) => functionName(entity, operation.kind))
         .sort((a, b) => a.localeCompare(b));
 }

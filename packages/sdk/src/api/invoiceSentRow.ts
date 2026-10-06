@@ -3,9 +3,10 @@ import type { InvoiceSentRow } from "spec/domain/InvoiceSentRow.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { InvoiceSentRowInsert } from "validation/repositories/invoiceSentRowInsertSchema.ts";
 import type { InvoiceSentRowPatch } from "validation/repositories/invoiceSentRowPatchSchema.ts";
+import type { InvoiceSentRowUpsert } from "validation/repositories/invoiceSentRowUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceSentRowInsert, InvoiceSentRowPatch };
+export type { InvoiceSentRowInsert, InvoiceSentRowPatch, InvoiceSentRowUpsert };
 
 /** Query `InvoiceSentRow` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
@@ -17,6 +18,11 @@ export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
 /** Create `InvoiceSentRow` rows. */
 export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<void> {
     return call<void>("POST", "/invoice_sent_row", rows);
+}
+
+/** Upsert `InvoiceSentRow` rows: each row is created, or replaces the row it keys on. */
+export function upsertInvoiceSentRow(rows: InvoiceSentRowUpsert[]): Call<void> {
+    return call<void>("PUT", "/invoice_sent_row", rows);
 }
 
 /** Patch `InvoiceSentRow` rows; a row that is not there rejects the call. See docs/versioning.md. */

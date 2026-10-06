@@ -3,9 +3,10 @@ import type { Invoice } from "spec/domain/Invoice.ts";
 import type { Filters, Order, Selected, Selection, Where } from "validation/selection.ts";
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 import type { InvoicePatch } from "validation/repositories/invoicePatchSchema.ts";
+import type { InvoiceUpsert } from "validation/repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceInsert, InvoicePatch };
+export type { InvoiceInsert, InvoicePatch, InvoiceUpsert };
 
 /** Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
@@ -17,6 +18,11 @@ export function queryInvoice<S extends Selection<Invoice>>(
 /** Create `Invoice` rows. */
 export function createInvoice(rows: InvoiceInsert[]): Call<void> {
     return call<void>("POST", "/invoice", rows);
+}
+
+/** Upsert `Invoice` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
+export function upsertInvoice(rows: InvoiceUpsert[]): Call<void> {
+    return call<void>("PUT", "/invoice", rows);
 }
 
 /** Patch `Invoice` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

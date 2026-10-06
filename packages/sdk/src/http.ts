@@ -12,7 +12,7 @@ import { parse as decode, stringify as encode } from "devalue";
 export type QueryMethod = "GET" | "DELETE";
 
 /** The verbs that carry their argument in the request body. */
-export type SendMethod = "POST" | "PATCH";
+export type SendMethod = "POST" | "PUT" | "PATCH";
 
 /** What the generated modules call. */
 export interface HttpClient {

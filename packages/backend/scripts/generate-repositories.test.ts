@@ -5,7 +5,7 @@ import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts"
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
-import { generateCreate, generateDelete, generateIndex, generateRepositories, generateUpdate } from "./generate-repositories.ts";
+import { generateCreate, generateDelete, generateIndex, generateRepositories, generateUpdate, generateUpsert } from "./generate-repositories.ts";
 import type { Column, Table } from "./postgres-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
@@ -87,6 +87,7 @@ function versionTriggerSql(table: Table): string {
 /** The three generated CRUD functions, resolved from the three operation modules. */
 interface GeneratedRepository {
     create: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+    upsert: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
     update: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
     delete: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
 }
@@ -118,14 +119,15 @@ function loadRepository(table: Table): GeneratedRepository {
     };
     return {
         create: pick("create", generateCreate(table)),
+        upsert: pick("upsert", generateUpsert(table)),
         update: pick("update", generateUpdate(table)),
         delete: pick("delete", generateDelete(table)),
     };
 }
 
-/** The three operation modules for a table, so a test can assert across all of them. */
+/** Every operation module for a table, so a test can assert across all of them. */
 function moduleCodes(table: Table): string[] {
-    return [generateCreate(table), generateUpdate(table), generateDelete(table)];
+    return [generateCreate(table), generateUpsert(table), generateUpdate(table), generateDelete(table)];
 }
 
 describe("generateCreate", () => {
@@ -490,6 +492,163 @@ describe("generateUpdate", () => {
     });
 });
 
+describe("generateUpsert", () => {
+    const versioned = table("customer", "Customer", [
+        column("id", { sqlType: "uuid", primaryKey: true }),
+        column("name"),
+        column("version", { sqlType: "int8", default: "0", version: true }),
+    ]);
+
+    it("inserts a chunk of rows, replacing the row each key already holds", () => {
+        const code = generateUpsert(customer);
+
+        expect(code).toContain(
+            'import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";',
+        );
+        expect(code).toContain("export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<void> {");
+        expect(code).toContain('\'insert into "customer" ("id", "name", "email") select \' +');
+        expect(code).toContain('\'on conflict ("id") do update set \' +');
+        expect(code).toContain('\'"name" = excluded."name", \' +');
+        expect(code).toContain('"email" = excluded."email"');
+        expect(code).toContain("                nameValues.push(row.name ?? null);");
+        // The key is what the conflict matched, so the `set` list leaves it alone.
+        expect(code).not.toContain("excluded.\"id\"");
+    });
+
+    it("claims the version a create leaves to its default, and compares it instead of assigning it", () => {
+        const code = generateUpsert(versioned);
+
+        // The version is the one column a create omits and an upsert always writes.
+        expect(code).toContain('\'insert into "customer" as u ("id", "name", "version") select \' +');
+        expect(code).toContain('\'v."version" \' +');
+        expect(code).toContain("                versionValues.push(row.version ?? null);");
+        expect(code).toContain("const PARAMETERS_PER_ROW = 3;");
+        // The assignments end where the predicate begins, so the version is never one of them.
+        expect(code).toContain('\'"name" = excluded."name" \' +');
+        expect(code).toContain('\'where u."version" = excluded."version" \' +');
+        expect(code).not.toContain('\'"version" = excluded."version"');
+        // The claim is always present, so it carries no flag.
+        expect(code).not.toContain("versionPresent");
+    });
+
+    it("returns the keys it wrote, so a chunk that skipped a row names it as a stale claim", () => {
+        const code = generateUpsert(versioned);
+
+        expect(code).toContain('\'returning u."id"\'');
+        expect(code).toContain("const keyOf = (row: CustomerUpsert): string => String(row.id);");
+        expect(code).toContain('            const written = new Set(resultRows(result).map((row) => String(row["id"])));');
+        expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+        expect(code).toContain(
+            "throw Object.assign(new Error('no row of customer is at the version this upsert claims for ' + named.map(keyOf).join(\", \")), { code: \"40001\" });",
+        );
+    });
+
+    it("replaces a conflicting row outright when the entity has no version", () => {
+        const snapshot = generateUpsert(
+            table("invoice_sent", "InvoiceSent", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("number"),
+            ]),
+        );
+
+        expect(snapshot).toContain('\'on conflict ("id") do update set \' +');
+        expect(snapshot).not.toContain("versionValues");
+        // Nothing to compare, so the target needs no alias, no predicate, and no returning.
+        expect(snapshot).not.toContain("as u");
+        expect(snapshot).not.toContain("returning");
+        expect(snapshot).toContain("            const written = affectedRows(result);");
+        expect(snapshot).toContain(
+            "throw new Error('the upsert wrote ' + written + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
+        );
+    });
+
+    it("falls back to the column default for a field a row omits, so the replacement carries it too", () => {
+        const code = generateUpsert(
+            table("email", "Email", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("subject"),
+                column("status", { default: "'pending'" }),
+            ]),
+        );
+
+        expect(code).toContain("'case when v.\"status#present\" then v.\"status\" else \\'pending\\' end ' +");
+        expect(code).toContain("                statusPresent.push(row.status !== undefined);");
+        // The conflict path can only read `excluded`, so the default is what an omitted field replaces with.
+        expect(code).toContain('\'"status" = excluded."status" \'');
+    });
+
+    it("matches every column of a composite key, and conflicts on all of them", () => {
+        const code = generateUpsert(translation);
+
+        expect(code).toContain('\'on conflict ("languageCode", "key") do update set \' +');
+        expect(code).toContain('"value" = excluded."value"');
+        expect(code).toContain("                languageCodeValues.push(row.languageCode ?? null);");
+    });
+
+    it("sets the key to the stored one when the entity has no column to replace", () => {
+        const code = generateUpsert(
+            table("gate", "Gate", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("derived", { notNull: false, insertable: false }),
+            ]),
+        );
+
+        // The target is unaliased here, so the `set` names the table the row is already in.
+        expect(code).toContain('\'"id" = "gate"."id" \'');
+        expect(code).toContain("const PARAMETERS_PER_ROW = 1;");
+    });
+
+    it("reads an inlined optional field through optional chaining", () => {
+        const code = generateUpsert(
+            table("invoice_sent", "InvoiceSent", [
+                column("id", { sqlType: "uuid", primaryKey: true }),
+                column("customerName", { read: "customer?.name", notNull: false }),
+            ]),
+        );
+
+        expect(code).toContain("                customerNameValues.push(row.customer?.name ?? null);");
+    });
+
+    it("leaves a non-insertable column out, since an upsert writes what a create writes", () => {
+        const limited = table("limited", "Limited", [
+            column("id", { sqlType: "uuid", primaryKey: true }),
+            column("label"),
+            column("derived", { insertable: false }),
+        ]);
+        const code = generateUpsert(limited);
+
+        expect(code).toContain('\'insert into "limited" ("id", "label") select \' +');
+        expect(code).not.toContain('"derived"');
+    });
+
+    it("takes no boundary for a versionless call one statement carries, since every row it matches is written", () => {
+        expect(generateUpsert(customer)).toContain("    if (rows.length <= ROWS_PER_STATEMENT) {");
+        expect(generateUpsert(customer)).toContain("    await db.transaction(write);");
+    });
+
+    it("opens a boundary for a longer versioned call, since a chunk writes the rows it matched before it rejects", () => {
+        const code = generateUpsert(versioned);
+
+        expect(code).toContain("    if (rows.length === 1) {");
+        expect(code).toContain("        await write(db);");
+        expect(code).toContain("    await db.transaction(write);");
+    });
+
+    it("takes the port helpers its own check uses, and no more", () => {
+        expect(generateUpsert(customer)).toContain(
+            'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
+        );
+        expect(generateUpsert(versioned)).toContain(
+            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        );
+    });
+
+    it("sizes a chunk by the arrays a row binds, counting the version array", () => {
+        expect(generateUpsert(customer)).toContain("const PARAMETERS_PER_ROW = 3;");
+        expect(generateUpsert(versioned)).toContain("const PARAMETERS_PER_ROW = 3;");
+    });
+});
+
 describe("generateDelete", () => {
     it("deletes by the primary key columns only", () => {
         const code = generateDelete(customer);
@@ -519,9 +678,11 @@ describe("generateIndex", () => {
             [
                 "// Generated by scripts/generate-repositories.ts. Do not edit.",
                 'export * from "./createCustomer.ts";',
+                'export * from "./upsertCustomer.ts";',
                 'export * from "./updateCustomer.ts";',
                 'export * from "./deleteCustomer.ts";',
                 'export * from "./createInvoiceRow.ts";',
+                'export * from "./upsertInvoiceRow.ts";',
                 'export * from "./updateInvoiceRow.ts";',
                 'export * from "./deleteInvoiceRow.ts";',
                 "",
@@ -547,6 +708,8 @@ describe("generateRepositories", () => {
             "index.ts",
             "updateCustomer.ts",
             "updateInvoice.ts",
+            "upsertCustomer.ts",
+            "upsertInvoice.ts",
         ]);
     });
 });
@@ -681,6 +844,103 @@ describe("generated repositories against PGlite", () => {
             { id: MARKER_ID, source: "manual" },
             { id: MARKER_ID_OVERRIDDEN, source: "import" },
         ]);
+    });
+
+    it("upserts a row no statement has written yet, claiming the version it carries", async () => {
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "created", note: null, owner: null, version: 0n }]);
+
+        const { rows } = await driver.query<{ name: string; version: bigint }>(
+            'select "name", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "created", version: 0n }]);
+    });
+
+    it("replaces the whole row it keys on when the claim matches, leaving the counter to the trigger", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "before", note: "carried", owner: { id: OWNER_ID } }]);
+
+        // An upsert is a replacement, so a column the row states is overwritten whatever it held.
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "after", note: null, owner: null, version: 0n }]);
+
+        const { rows } = await driver.query<{ name: string; note: string | null; ownerId: string | null; version: bigint }>(
+            'select "name", "note", "ownerId", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "after", note: null, ownerId: null, version: 1n }]);
+    });
+
+    it("rejects an upsert whose claim the stored row has moved past, leaving the row as it was", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: null }]);
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "first", note: null, owner: null, version: 0n }]);
+
+        await expect(
+            widgets.upsert(db, [{ id: WIDGET_ID, name: "second", note: null, owner: null, version: 0n }]),
+        ).rejects.toMatchObject({
+            code: "40001",
+            message: `no row of widget is at the version this upsert claims for ${WIDGET_ID}`,
+        });
+
+        const { rows } = await driver.query<{ name: string; version: bigint }>(
+            'select "name", "version" from "widget"',
+        );
+
+        expect(rows).toEqual([{ name: "first", version: 1n }]);
+    });
+
+    it("rolls a call back when one row of several is a stale claim", async () => {
+        await widgets.create(db, [{ id: WIDGET_ID, name: "run", note: null, owner: null }]);
+        await widgets.upsert(db, [{ id: WIDGET_ID, name: "first", note: null, owner: null, version: 0n }]);
+
+        await expect(
+            widgets.upsert(db, [
+                { id: WIDGET_ID_OTHER, name: "created", note: null, owner: null, version: 0n },
+                { id: WIDGET_ID, name: "second", note: null, owner: null, version: 0n },
+            ]),
+        ).rejects.toThrow(`no row of widget is at the version this upsert claims for ${WIDGET_ID}`);
+
+        const { rows } = await driver.query<{ id: string; name: string }>(
+            'select "id", "name" from "widget" order by "id"',
+        );
+
+        // The row the statement did write is rolled back with the row it skipped.
+        expect(rows).toEqual([{ id: WIDGET_ID, name: "first" }]);
+    });
+
+    it("replaces a row outright when the entity carries no version, naming no claim", async () => {
+        await translations.upsert(db, [{ languageCode: "en", key: "greeting", value: "hi" }]);
+        await translations.upsert(db, [{ languageCode: "en", key: "greeting", value: "hello" }]);
+
+        const { rows } = await driver.query<{ value: string }>('select "value" from "translation"');
+
+        expect(rows).toEqual([{ value: "hello" }]);
+    });
+
+    it("carries a replacement too large for one statement in a further statement", async () => {
+        const rows = Array.from({ length: 400 }, (_, index) => wideRow(wideId(index), "before"));
+        expect(rows.length).toBeGreaterThan(Math.floor(sqlExecutor.MAX_STATEMENT_PARAMETERS / WIDE_COLUMNS));
+        await wides.create(db, rows);
+
+        await wides.upsert(db, rows.map((row) => ({ ...row, c0: "after" })));
+
+        const { rows: stored } = await driver.query<{ count: number }>(
+            'select count(*)::int as count from "wide" where "c0" = $1',
+            ["after"],
+        );
+        expect(stored).toEqual([{ count: 400 }]);
+    });
+
+    it("reports a versionless upsert the database would not write every row of", async () => {
+        // The `gate` fixture drops a row it is handed, which no statement can write. One statement
+        // carries this call, so the rows it did write stand: the create behaves the same way.
+        await expect(
+            gates.upsert(db, [
+                { id: WIDGET_ID, label: "kept" },
+                { id: WIDGET_ID_OTHER, label: "skip" },
+            ]),
+        ).rejects.toThrow("the upsert wrote 1 of the 2 gate rows this upsert supplied");
+
+        const { rows } = await driver.query<{ id: string }>('select "id" from "gate"');
+        expect(rows).toEqual([{ id: WIDGET_ID }]);
     });
 
     it("carries a related entity's key through the generated read accessor", async () => {
@@ -850,6 +1110,7 @@ describe("generated repositories against PGlite", () => {
 
     it("treats an empty array as a no-op", async () => {
         await expect(widgets.create(db, [])).resolves.toBeUndefined();
+        await expect(widgets.upsert(db, [])).resolves.toBeUndefined();
         await expect(widgets.update(db, [])).resolves.toBeUndefined();
         await expect(widgets.delete(db, [])).resolves.toBeUndefined();
     });

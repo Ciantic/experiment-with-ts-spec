@@ -166,7 +166,7 @@ The `version` omitted row is the aggregate: a writer that does not claim a
 version never conflicts, but it still advances the counter. Any write moves the
 version, so a client holding a pre-aggregate version is told its view is stale.
 
-## Insert vs update
+## Insert vs update vs upsert
 
 The version has a different lifecycle from both timestamps, and it is the one
 defaulted column a create never carries:
@@ -174,6 +174,7 @@ defaulted column a create never carries:
 | Path | `version` | Why |
 | --- | --- | --- |
 | insert | omitted | `default 0` supplies the first revision. |
+| repository upsert | written, as `v."version"` | It is the revision the caller claims. |
 | repository patch | in the `where`, as `v."version"` | It carries the caller's precondition. |
 | aggregate update | omitted | Raw SQL; the trigger advances it without a claim. |
 
@@ -192,16 +193,62 @@ Because an update is a patch (`docs/repositories.md`), the version is one of the
 two columns the patch type makes mandatory — the other is the primary key. A
 caller cannot build a patch that omits the precondition.
 
+## The upsert's claim
+
+An upsert is the one generated write that carries the version as a value rather
+than as a precondition, because it must say which revision it believes the row is
+at even when no row is there yet:
+
+```sql
+insert into "customer" as u ("id", "name", "version") select v."id", v."name", v."version"
+from unnest($1::uuid[], $2::text[], $3::int8[]) as v("id", "name", "version")
+on conflict ("id") do update set "name" = excluded."name"
+where u."version" = excluded."version"
+returning u."id"
+```
+
+`excluded` is the only row the `do update` can read, so the value the statement
+inserted and the value the predicate compares are necessarily the same one. That
+gives an upsert three outcomes per row:
+
+| Stored | Claimed | Result |
+| --- | --- | --- |
+| no row | `3` | Inserted at `3`. |
+| `3` | `3` | Replaced, stored becomes `4`. |
+| `4` | `3` | Left alone. The call is rejected, the rows it did write rolled back. |
+
+- **A row is born at the claimed version**, since the claim is a value in the
+  insert list. The alternative — a nullable claim meaning "no such row" — cannot
+  be told apart from a claim of `0`, which is a real revision, so the field is
+  required and the claim is taken at face value.
+- **The conflict path cannot assign the version**, for the reason above: the
+  trigger's guard would fire on a correct replacement.
+- **A rejection is the same one a stale patch raises**, `code: "40001"` naming
+  the rows the statement did not write, and the same `409` on the wire
+  (`docs/rest-api.md`). Both ways of missing a row — a version the row has moved
+  past, and an id that is not there — arrive as that one rejection here, since a
+  missing row is inserted rather than rejected.
+- **The conflict target is the primary key.** An upsert of a row whose unique
+  *other* column is taken raises the database's `23505` rather than replacing,
+  and the router serves it as a `409` like any other unique violation.
+
+Because the claim is written, an upsert of several rows opens a boundary where a
+create does not: a chunk whose claim is stale has already written the rows that
+matched before the generated code rejects the call
+(`docs/transactions.md`).
+
 ## Gotchas
 
 - **A conflict aborts the statement and the transaction.** For a multi-row
   `update…`, one stale row rolls back all of them, including the rest of its own
   chunk and the rows the earlier chunks already wrote. This is intended — a batch
   is one logical write and retrying it is the caller's job — but it is a change
-  from "skip the losing row".
+  from "skip the losing row". An upsert behaves the same way for the rows it
+  wrote before the claim it could not match.
 - **A rejection names the rows it did not write, but not why.** A stale version
   and a missing id are both `40001` → `409`. A caller that needs to tell them
-  apart reads first.
+  apart reads first. An upsert reads a missing row as a row to create, so the
+  only way it rejects a row is a version the stored one has moved past.
 - **The aggregate update bumps the version.** Editing an `invoice_row` reassigns
   `invoice.netAmount`, which fires the invoice's version trigger. A user editing
   the invoice in that window gets a conflict. Correct, since their `totalAmount`
@@ -214,7 +261,9 @@ caller cannot build a patch that omits the precondition.
 - **The first version is not returned.** Every repository function returns
   `Promise<void>` and reading is deliberately not generated
   (`docs/repositories.md`), so `createCustomer` does not tell the caller that the
-  row is now at version `0`. Learning it takes a `RETURNING` or a read path.
+  row is now at version `0`. Learning it takes a `RETURNING` or a read path. An
+  upsert does not return the version it produced either, so a caller replacing a
+  row it read at `3` learns only that the row is now at `4` by reading again.
 - **`@inlined` leaks `customerVersion`.** Inlining flattens every scalar
   field, so `invoice_sent` gains a nullable `customerVersion int8` — the
   customer's revision at send time, alongside the `customerCreatedAt` and
@@ -248,9 +297,12 @@ caller cannot build a patch that omits the precondition.
    `Column.version` from the tag.
 3. `packages/backend/scripts/generate-postgres-schema.ts` emits the column and
    `renderVersionTrigger`.
-4. `packages/backend/scripts/generate-repositories.ts` omits the column on insert
-   and writes it on update.
-5. `packages/spec/scripts/lint-spec.ts` requires `@version` on a `Version` field,
+4. `packages/backend/scripts/generate-repositories.ts` omits the column on
+   insert, writes the claimed one on upsert, and predicates on it on update.
+5. `packages/validation/scripts/generate-zod-schemas.ts` omits the column from
+   the create's field set and puts it back, required, for the upsert and the
+   patch.
+6. `packages/spec/scripts/lint-spec.ts` requires `@version` on a `Version` field,
    at most one per interface, exclusive with `@computed`,
    `@createdAt`, and `@updatedAt`.
 

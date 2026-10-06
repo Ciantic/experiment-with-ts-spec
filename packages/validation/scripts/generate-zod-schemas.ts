@@ -55,6 +55,11 @@ export function patchModuleName(entity: string): string {
     return `${lowerFirst(entity)}PatchSchema.ts`;
 }
 
+/** Invoice -> invoiceUpsertSchema.ts, the module holding the upsert schema and its type. */
+export function upsertModuleName(entity: string): string {
+    return `${lowerFirst(entity)}UpsertSchema.ts`;
+}
+
 /** Invoice -> invoicePrimaryKeySchema.ts, the module holding the by-key schema and its type. */
 export function primaryKeyModuleName(entity: string): string {
     return `${lowerFirst(entity)}PrimaryKeySchema.ts`;
@@ -262,8 +267,56 @@ export function generatePatchSchema(entity: ZodEntity): string {
     return lines.join("\n") + "\n";
 }
 
+/** One generated write shape: the schema, the type, and the field set the two share. */
+interface WriteShape {
+    /** The schema constant, e.g. `invoiceInsertSchema`. */
+    schemaName: string;
+    /** The type alias, e.g. `InvoiceInsert`. */
+    typeName: string;
+    /** The one-line doc the schema and its type carry. */
+    comment: string;
+    /** The field names the shape omits from the entity schema. */
+    omit: string[];
+}
+
+/** The shape a create writes. */
+function insertShape(entity: ZodEntity): WriteShape {
+    return {
+        schemaName: entity.insertName,
+        typeName: `${entity.name}Insert`,
+        comment: "/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */",
+        omit: entity.insertOmit,
+    };
+}
+
+/**
+ * The shape an upsert writes. It is the create's field set plus the version a create leaves to its
+ * column default, so an upsert always claims one. See docs/versioning.md.
+ */
+function upsertShape(entity: ZodEntity): WriteShape {
+    return {
+        schemaName: entity.upsertName,
+        typeName: `${entity.name}Upsert`,
+        comment:
+            entity.versionFields.length > 0
+                ? "/** The fields an upsert writes: what a create carries, plus the `@version` it claims. */"
+                : "/** The fields an upsert writes: what a create carries, since the entity carries no version. */",
+        omit: entity.insertOmit.filter((name) => !entity.versionFields.includes(name)),
+    };
+}
+
 /** Render one entity's insert module: `<name>InsertSchema` and the `<Entity>Insert` type. */
 export function generateInsertSchema(entity: ZodEntity, byName: Map<string, ZodEntity>): string {
+    return renderWriteSchema(entity, byName, insertShape(entity));
+}
+
+/** Render one entity's upsert module: `<name>UpsertSchema` and the `<Entity>Upsert` type. */
+export function generateUpsertSchema(entity: ZodEntity, byName: Map<string, ZodEntity>): string {
+    return renderWriteSchema(entity, byName, upsertShape(entity));
+}
+
+/** Render one entity's write module: a schema derived from the entity's own, and the type beside it. */
+function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, shape: WriteShape): string {
     const lines: string[] = [HEADER];
     // Every write schema derives from the entity's own schema, so `z` is needed only for the
     // `z.never()` an `@inlined` branch falls back to when its target is missing.
@@ -285,11 +338,11 @@ export function generateInsertSchema(entity: ZodEntity, byName: Map<string, ZodE
     }
 
     lines.push("");
-    lines.push("/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */");
-    lines.push(`export const ${entity.insertName} = ${entity.schemaName}`);
-    if (entity.insertOmit.length > 0) {
+    lines.push(shape.comment);
+    lines.push(`export const ${shape.schemaName} = ${entity.schemaName}`);
+    if (shape.omit.length > 0) {
         lines.push("    .omit({");
-        for (const name of entity.insertOmit) {
+        for (const name of shape.omit) {
             lines.push(`        ${name}: true,`);
         }
         lines.push("    })");
@@ -313,17 +366,15 @@ export function generateInsertSchema(entity: ZodEntity, byName: Map<string, ZodE
     lines.push("    .strict();");
 
     lines.push("");
-    lines.push("/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */");
-    const insertOmitted = [...entity.insertOmit, ...entity.insertOptional];
+    lines.push(shape.comment);
+    const omitted = [...shape.omit, ...entity.insertOptional];
     const insertBase =
-        insertOmitted.length === 0
-            ? entity.name
-            : `Omit<${entity.name}, ${insertOmitted.map(quote).join(" | ")}>`;
+        omitted.length === 0 ? entity.name : `Omit<${entity.name}, ${omitted.map(quote).join(" | ")}>`;
     const insertOptionalType =
         entity.insertOptional.length === 0
             ? ""
             : ` & Partial<Pick<${entity.name}, ${entity.insertOptional.map(quote).join(" | ")}>>`;
-    lines.push(`export type ${entity.name}Insert = ${insertBase}${insertOptionalType};`);
+    lines.push(`export type ${shape.typeName} = ${insertBase}${insertOptionalType};`);
 
     return lines.join("\n") + "\n";
 }
@@ -378,6 +429,7 @@ export function generateRepositoriesIndex(entities: ZodEntity[]): string {
     const lines = [HEADER];
     for (const entity of entities) {
         lines.push(`export * from "./${insertModuleName(entity.name)}";`);
+        lines.push(`export * from "./${upsertModuleName(entity.name)}";`);
         lines.push(`export * from "./${patchModuleName(entity.name)}";`);
         if (entity.keys.length > 0) {
             lines.push(`export * from "./${primaryKeyModuleName(entity.name)}";`);
@@ -407,6 +459,7 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     for (const entity of model.entities) {
         files.set(join(DOMAIN_DIR, domainModuleName(entity.name)), generateDomainEntity(entity, byName));
         files.set(join(REPOSITORIES_DIR, insertModuleName(entity.name)), generateInsertSchema(entity, byName));
+        files.set(join(REPOSITORIES_DIR, upsertModuleName(entity.name)), generateUpsertSchema(entity, byName));
         files.set(join(REPOSITORIES_DIR, patchModuleName(entity.name)), generatePatchSchema(entity));
         if (entity.keys.length > 0) {
             files.set(

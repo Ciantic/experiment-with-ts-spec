@@ -2,7 +2,7 @@
 import type { HttpClient } from "./http.ts";
 
 /** The verbs a call may name. Declared here so the client imports no backend type. */
-export type Method = "GET" | "POST" | "PATCH" | "DELETE";
+export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** Whether a group runs its calls as one boundary, and whether it tolerates failure. */
 export type GroupKind = "batch" | "transaction" | "attempt";

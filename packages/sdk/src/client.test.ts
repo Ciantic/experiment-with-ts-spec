@@ -91,6 +91,15 @@ describe("exec", () => {
         expect(calls[0]?.init?.method).toBe("PATCH");
     });
 
+    it("sends a PUT call's argument as the body, as an upsert does", async () => {
+        const { http, calls } = client(stringify(null));
+
+        await exec(http, call("PUT", "/widget", [payload]));
+
+        expect(calls[0]?.init?.method).toBe("PUT");
+        expect(calls[0]?.init?.body).toBe(stringify([payload]));
+    });
+
     it("decodes the result, restoring a Date and a bigint", async () => {
         const { http } = client(stringify([payload]));
 

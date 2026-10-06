@@ -3,9 +3,10 @@ import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { InvoiceSentInsert } from "validation/repositories/invoiceSentInsertSchema.ts";
 import type { InvoiceSentPatch } from "validation/repositories/invoiceSentPatchSchema.ts";
+import type { InvoiceSentUpsert } from "validation/repositories/invoiceSentUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceSentInsert, InvoiceSentPatch };
+export type { InvoiceSentInsert, InvoiceSentPatch, InvoiceSentUpsert };
 
 /** Query `InvoiceSent` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
@@ -17,6 +18,11 @@ export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
 /** Create `InvoiceSent` rows. */
 export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<void> {
     return call<void>("POST", "/invoice_sent", rows);
+}
+
+/** Upsert `InvoiceSent` rows: each row is created, or replaces the row it keys on. */
+export function upsertInvoiceSent(rows: InvoiceSentUpsert[]): Call<void> {
+    return call<void>("PUT", "/invoice_sent", rows);
 }
 
 /** Patch `InvoiceSent` rows; a row that is not there rejects the call. See docs/versioning.md. */

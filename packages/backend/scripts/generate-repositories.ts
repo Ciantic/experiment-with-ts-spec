@@ -27,7 +27,9 @@ export function validationFileName(writeType: string): string {
         ? "PrimaryKey"
         : writeType.endsWith("Insert")
           ? "Insert"
-          : "Patch";
+          : writeType.endsWith("Upsert")
+            ? "Upsert"
+            : "Patch";
     return `repositories/${lowerFirst(writeType.slice(0, -kind.length))}${kind}Schema.ts`;
 }
 
@@ -37,7 +39,7 @@ function operationFileName(operation: Operation, entity: string): string {
 }
 
 /** The operations every entity gets, in the order the barrel lists them. */
-const OPERATIONS = ["create", "update", "delete"] as const;
+const OPERATIONS = ["create", "upsert", "update", "delete"] as const;
 
 type Operation = (typeof OPERATIONS)[number];
 
@@ -75,9 +77,9 @@ function keptAssignment(column: Column): string {
     return `${quote(column.name)} = ${suppliedValue(column, `${TARGET_ALIAS}.${quote(column.name)}`)}`;
 }
 
-/** The `set` entry of an entity with no writable column: its key to the key it already holds. */
-function identityAssignment(column: Column): string {
-    return `${quote(column.name)} = ${TARGET_ALIAS}.${quote(column.name)}`;
+/** The `set` entry of an entity with no writable column: its key to the key the stored row already holds. */
+function identityAssignment(column: Column, target: string): string {
+    return `${quote(column.name)} = ${target}.${quote(column.name)}`;
 }
 
 /** The value a bound column takes when a row supplies it, and the given one otherwise. */
@@ -308,7 +310,7 @@ export function generateUpdate(table: Table): string {
     ];
     const assignments =
         setColumns.length === 0
-            ? [identityAssignment(primaryKeys[0] as Column)]
+            ? [identityAssignment(primaryKeys[0] as Column, TARGET_ALIAS)]
             : setColumns.map(keptAssignment);
     // A patch addresses the row at the version the caller holds, so a stale one matches no row. See docs/versioning.md.
     const match = [
@@ -376,6 +378,124 @@ export function generateUpdate(table: Table): string {
     return lines.join("\n") + "\n";
 }
 
+/**
+ * Render `upsert<Entity>`: a chunk of rows per statement, each inserted, or replacing the row at the
+ * version it claims. See docs/repositories.md and docs/versioning.md.
+ */
+export function generateUpsert(table: Table): string {
+    const entity = table.interfaceName;
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    // An upsert writes the fields a create writes, plus the version an existing row is claimed at.
+    // The conflict path cannot see the values alias, so `excluded` carries every column it stores.
+    const insertColumns = table.columns.filter((column) => column.insertable !== false);
+    const version = table.columns.find((column) => column.version);
+    const writeColumns = version === undefined ? insertColumns : [...insertColumns, version];
+    // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
+    // The version is always claimed, so it carries no flag.
+    const arrays = [
+        ...insertColumns.flatMap((column) => columnArrays(column, column.default !== undefined)),
+        ...(version === undefined ? [] : columnArrays(version, false)),
+    ];
+    const selectItems = [
+        ...insertColumns.map((column) => {
+            const value = `${VALUES_ALIAS}.${quote(column.name)}`;
+            return column.default === undefined ? value : suppliedValue(column, column.default);
+        }),
+        ...(version === undefined ? [] : [`${VALUES_ALIAS}.${quote(version.name)}`]),
+    ];
+    // The key is what the conflict matches on; the version is compared, never assigned, because the
+    // trigger owns the increment and rejects a statement that names the column. See docs/versioning.md.
+    // A keyless or versionless write has nothing to compare, so the target stays unnamed and `stored`
+    // is the table itself.
+    const stored = version === undefined ? quote(table.name) : TARGET_ALIAS;
+    const target = version === undefined ? quote(table.name) : `${quote(table.name)} as ${TARGET_ALIAS}`;
+    const assigned = writeColumns
+        .filter((column) => !column.primaryKey && !column.version)
+        .map((column) => `${quote(column.name)} = excluded.${quote(column.name)}`);
+    const assignments =
+        assigned.length === 0 ? [identityAssignment(primaryKeys[0] as Column, stored)] : assigned;
+    const statement: ChunkStatement = {
+        fragments: [
+            `insert into ${target} (${writeColumns.map((column) => quote(column.name)).join(", ")}) select `,
+            ...selectItems.map((item, index) => `${item}${index === selectItems.length - 1 ? " " : ", "}`),
+            ...unnestFragments(arrays),
+            `on conflict (${primaryKeys.map((column) => quote(column.name)).join(", ")}) do update set `,
+            ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
+            // A row at another version is left alone, so the statement writes fewer rows than it carried.
+            ...(version === undefined ? [] : [`where ${aliasMatch(version, stored, "excluded")} `]),
+            // The written keys come back, so a chunk that skipped a row names it.
+            ...(version === undefined
+                ? []
+                : [`returning ${primaryKeys.map((column) => `${stored}.${quote(column.name)}`).join(", ")}`]),
+        ],
+        arrays,
+    };
+    const lines = modulePrologue(
+        `${entity}Upsert`,
+        version === undefined
+            ? 'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";'
+            : 'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+    );
+
+    if (version !== undefined) {
+        lines.push("/** The key an upsert addresses, as the statement returns it, so a rejected chunk names its rows. */");
+        lines.push(`const keyOf = (row: ${entity}Upsert): string => String(${keyExpression(primaryKeys)});`);
+        lines.push("");
+    }
+    lines.push("/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */");
+    lines.push(`const PARAMETERS_PER_ROW = ${arrays.length};`);
+    lines.push("");
+    lines.push("/** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
+    lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
+    lines.push("");
+    lines.push(`export async function upsert${entity}(db: SqlExecutor, rows: ${entity}Upsert[]): Promise<void> {`);
+    lines.push("    if (rows.length === 0) {");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
+    lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
+    lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
+    lines.push(...bindArrays(arrays));
+    lines.push(...chunkQuery(statement));
+    if (version === undefined) {
+        // Every conflicting row is replaced, so a short count is lost data rather than a stale claim.
+        lines.push("            const written = affectedRows(result);");
+        lines.push("            if (written !== chunk.length) {");
+        lines.push(
+            `                throw new Error('the upsert wrote ' + written + ' of the ' + chunk.length + ' ${table.name} rows this upsert supplied');`,
+        );
+        lines.push("            }");
+    } else {
+        // The statement leaves a row the version predicate did not match, so a short write is a stale claim.
+        lines.push(
+            `            const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`,
+        );
+        lines.push("            if (written.size !== chunk.length) {");
+        lines.push("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+        lines.push("                const named = missed.length > 0 ? missed : chunk;");
+        lines.push(
+            `                throw Object.assign(new Error('no row of ${table.name} is at the version this upsert claims for ' + named.map(keyOf).join(", ")), { code: "40001" });`,
+        );
+        lines.push("            }");
+    }
+    lines.push("        }");
+    lines.push("    };");
+    if (version === undefined) {
+        // One statement is atomic on its own; only a call that spills past the limit opens a boundary.
+        lines.push("    if (rows.length <= ROWS_PER_STATEMENT) {");
+    } else {
+        // A chunk that skipped a row has written the rest before it rejects, so a longer call opens a boundary.
+        lines.push("    if (rows.length === 1) {");
+    }
+    lines.push("        await write(db);");
+    lines.push("        return;");
+    lines.push("    }");
+    lines.push("    await db.transaction(write);");
+    lines.push("}");
+
+    return lines.join("\n") + "\n";
+}
+
 /** Render `delete<Entity>`: one multi-row delete matching on the primary key alone. */
 export function generateDelete(table: Table): string {
     const entity = table.interfaceName;
@@ -399,6 +519,7 @@ export function generateDelete(table: Table): string {
 /** The generator for each operation, so the barrel and the file set come from one list. */
 const OPERATION_GENERATORS: Record<Operation, (table: Table) => string> = {
     create: generateCreate,
+    upsert: generateUpsert,
     update: generateUpdate,
     delete: generateDelete,
 };

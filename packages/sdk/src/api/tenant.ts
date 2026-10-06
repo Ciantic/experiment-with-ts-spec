@@ -3,9 +3,10 @@ import type { Tenant } from "spec/domain/Tenant.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { TenantInsert } from "validation/repositories/tenantInsertSchema.ts";
 import type { TenantPatch } from "validation/repositories/tenantPatchSchema.ts";
+import type { TenantUpsert } from "validation/repositories/tenantUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { TenantInsert, TenantPatch };
+export type { TenantInsert, TenantPatch, TenantUpsert };
 
 /** Query `Tenant` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryTenant<S extends Selection<Tenant>>(
@@ -17,6 +18,11 @@ export function queryTenant<S extends Selection<Tenant>>(
 /** Create `Tenant` rows. */
 export function createTenant(rows: TenantInsert[]): Call<void> {
     return call<void>("POST", "/tenant", rows);
+}
+
+/** Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
+export function upsertTenant(rows: TenantUpsert[]): Call<void> {
+    return call<void>("PUT", "/tenant", rows);
 }
 
 /** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

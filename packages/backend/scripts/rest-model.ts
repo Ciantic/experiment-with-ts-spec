@@ -20,10 +20,10 @@ import {
 export type { Diagnostic };
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
-export type RestMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** One kind of call. The kind decides the path and the argument, not the method. */
-export type RestKind = "query" | "create" | "update" | "delete";
+export type RestKind = "query" | "create" | "upsert" | "update" | "delete";
 
 /** Where a call carries its argument: the `q` query parameter, or the request body. */
 export type RestSource = "query" | "body";
@@ -87,6 +87,8 @@ function operationsFor(path: string): RestOperation[] {
     ];
     operations.push(
         { kind: "create", method: "POST", path, source: "body" },
+        // An upsert declares a row's whole state and the version it claims, so it replaces: `PUT` is idempotent.
+        { kind: "upsert", method: "PUT", path, source: "body" },
         { kind: "update", method: "PATCH", path, source: "body" },
         // A delete carries keys, not row data, and a `DELETE` body is not universally relayed.
         { kind: "delete", method: "DELETE", path, source: "query" },

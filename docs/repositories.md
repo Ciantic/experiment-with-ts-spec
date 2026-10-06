@@ -2,7 +2,8 @@
 
 `packages/backend/scripts/generate-repositories.ts` writes one module per
 operation into `packages/backend/src/db/repositories/`, named after the function
-it exports: `createInvoice.ts`, `updateInvoice.ts`, `deleteInvoice.ts`.
+it exports: `createInvoice.ts`, `upsertInvoice.ts`, `updateInvoice.ts`,
+`deleteInvoice.ts`.
 
 - `pnpm generate:repositories` — writes the operation modules and their barrel.
 - `pnpm generate:repositories --out <dir>` — writes elsewhere. A missing directory is created.
@@ -11,11 +12,13 @@ The output is committed. Regenerate rather than editing it by hand.
 
 ## What a repository is here
 
-Each entity gets three modules, one per operation:
+Each entity gets four modules, one per operation:
 
 ```ts
 // createCustomer.ts
 createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void>
+// upsertCustomer.ts
+upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<void>
 // updateCustomer.ts
 updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
 // deleteCustomer.ts
@@ -27,8 +30,10 @@ function it wants from one path.
 
 `create` takes an **insert** — the fields a create writes — and `update` takes a
 **patch**, so a caller changes the fields it has without having to read and
-resend the rest; see "Inserting" and "Patching" below. `delete` takes the
-**primary key**, because the key is the whole of what its statement reads.
+resend the rest; see "Inserting" and "Patching" below. `upsert` takes an
+**upsert**, which is the insert's field set plus the version the caller claims,
+and writes the row whole; see "Upserting". `delete` takes the **primary key**,
+because the key is the whole of what its statement reads.
 
 Every function takes an array and returns nothing. **Reading is not part of a
 repository.** There is no `getById`, no list, no query builder. Those belong to
@@ -51,6 +56,7 @@ an array lets one call carry many rows, which is the whole reason the functions
 exist in this shape:
 
 - **create** — one `insert into "t" (...) select … from unnest(...)` per chunk of rows, in one boundary when a call spans several chunks.
+- **upsert** — the same insert with `on conflict ("id") do update set … = excluded.…`, predicated on the version where the entity has one, in one boundary whenever the call carries more than one row.
 - **update** — one statement per chunk of rows, `update "t" as u set ... from unnest(...) as v(...) where u."id" = v."id"`, in one boundary whenever the call carries more than one row.
 - **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
 
@@ -203,6 +209,70 @@ into one `packages/validation` module, so the repository type and the wire schem
 cannot drift apart. A field neither writes is a 400 on the wire and a type error
 in process, rather than a field that quietly does nothing (`docs/validation.md`).
 
+## Upserting
+
+`upsert` writes a row whole: **the row a create would write, if the key is free,
+and a replacement of the stored row if it is not**. It takes `<Entity>Upsert`,
+the insert's field set with the `@version` column put back:
+
+```ts
+import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";
+
+export type CustomerUpsert = Omit<Customer, "createdAt" | "updatedAt">;
+```
+
+A create omits a defaulted version, because its default *is* the first revision
+(`docs/versioning.md`). An upsert cannot: it has to say which revision it
+believes the row is at, so the column is required and the statement writes what
+it carries:
+
+```sql
+insert into "customer" as u ("id", "name", "email", "version") select
+    v."id", v."name", v."email", v."version"
+from unnest($1::uuid[], $2::text[], $3::text[], $4::int8[]) as v("id", "name", "email", "version")
+on conflict ("id") do update set "name" = excluded."name", "email" = excluded."email"
+where u."version" = excluded."version"
+returning u."id"
+```
+
+- **The key is the conflict target.** A row is addressed the way a delete
+  addresses one, and the `set` list never names a key column.
+- **The version is compared, never assigned.** `do update` writes `excluded`
+  values, and the trigger owns the counter: a statement that assigned the
+  version would make the trigger's own guard fire. The claimed version is
+  therefore both what a new row is born at and what the stored row must hold for
+  the replacement to happen (`docs/versioning.md`).
+- **A row at another version is left alone**, so the statement writes fewer rows
+  than it carried, and the generated code rejects the call with `code: "40001"`
+  naming those rows — the same rejection a stale patch raises. The target is
+  aliased only where the predicate needs it, so an entity with no version
+  conflicts on the key and replaces unconditionally.
+- **An entity with no version** — the snapshots — has nothing to claim, so its
+  upsert is the create's statement plus `on conflict ("id") do update`: no
+  predicate, no `returning`, and every conflicting row replaced. A short count
+  there is not a stale claim but a row the database declined to write, and it
+  raises the same plain error a create raises.
+
+`excluded` is the whole of what the conflict path can read: PostgreSQL does not
+let the `do update` see the statement's own source relation, so the upsert cannot
+ask whether a row supplied a field. **An upsert is a replacement, not a patch.**
+Every column the insert names is written on both paths, so
+
+- a column a row omits takes its default, even on a row that already holds a
+  value, where a patch would have kept it, and
+- a branch the row leaves out writes nulls over the stored snapshot, where a
+  patch would have left `row.customer` alone.
+
+A caller that wants to change some fields without reading the rest wants
+`update`; a caller that holds the whole row wants `upsert`. The `<Entity>Upsert`
+type is the create's, so it inherits the create's relaxed fields: a required
+`@pgDefault` field may still be omitted, and an omitted defaulted column takes its
+default here exactly as it does in an insert.
+
+A call carrying more than one row opens a boundary, as a patch does: a chunk
+whose claim is stale has already written the rows that matched before the
+rejection is raised.
+
 ## Deleting
 
 `delete` takes an entity's **primary key**, `<Entity>PrimaryKey`, the key alone
@@ -266,8 +336,9 @@ it has no stored value to fall back on.
 
 The one exception is a `@version` column. It is defaulted, so it is omitted on
 insert, but a patch sends it into the `where` as the optimistic-lock
-precondition the trigger checks. The generator therefore builds the insert and
-patch column sets separately; see `docs/versioning.md`.
+precondition the trigger checks, and an upsert writes the revision it claims. The
+generator therefore builds the insert, upsert, and patch column sets separately;
+see `docs/versioning.md`.
 
 ## Gotchas
 
@@ -284,11 +355,12 @@ patch column sets separately; see `docs/versioning.md`.
   (`docs/validation.md`).
 - **A defaulted column is written only when the caller supplies it.** A create
   that omits one writes the default the spec declares, so that row gets the same
-  value the database would have; a patch that omits one keeps the stored value.
-  The clock fields are the different
-  case: `createdAt` and `updatedAt` are excluded from `insert` and `update`
-  outright, so writing one takes raw SQL. A `@version` column is excluded from
-  `insert` too, and on update it goes into the `where` rather than the `set`.
+  value the database would have; a patch that omits one keeps the stored value,
+  and an upsert that omits one resets it to the default. The clock fields are the
+  different case: `createdAt` and `updatedAt` are excluded from `insert` and
+  `update` outright, so writing one takes raw SQL. A `@version` column is
+  excluded from `insert` too, and on update it goes into the `where` rather than
+  the `set`, while an upsert writes the revision it carries.
 - **`update` enforces the version with a predicate, and the database raises it.**
   The `@version` column is matched in the `where`, so a stale one matches no row
   and the generated code rejects the call with the `40001` that maps to a `409`,
@@ -298,13 +370,14 @@ patch column sets separately; see `docs/versioning.md`.
 - **A patch cannot set a non-nullable column to null.** Nullable columns are the
   exception: a patch sets one to `null` to clear it. `Invoice.notes`,
   `Invoice.number`, and the optional foreign keys are the ones in this model.
-- **A patch of several rows is one statement per chunk of rows.** The chunks
-  commit together in one boundary, so the call is atomic, but it is not the
-  single statement a create or a delete is. Passing one row avoids the boundary
-  entirely. See `docs/transactions.md`.
-- **A patch whose rows disagree about who won rejects all of them.** One stale
-  row aborts the boundary, so rows the earlier statements already matched are
-  rolled back too. Retrying is the caller's job. See `docs/versioning.md`.
+- **A patch or an upsert of several rows is one statement per chunk of rows.**
+  The chunks commit together in one boundary, so the call is atomic, but it is
+  not the single statement a create or a delete is. Passing one row avoids the
+  boundary entirely. See `docs/transactions.md`.
+- **A patch or an upsert whose rows disagree about who won rejects all of them.**
+  One stale row aborts the boundary, so rows the earlier statements already
+  matched are rolled back too. Retrying is the caller's job.
+  See `docs/versioning.md`.
 - **A patch is all-or-nothing per row, not per field-set.** The statement names
   every column a patch may write, and each row's flag says which of them the
   caller sent, so a row that omits a field writes the stored value back. That is
@@ -312,18 +385,26 @@ patch column sets separately; see `docs/versioning.md`.
   than the `set` clause.
 - **`delete` keys on the primary key only.** `deleteCustomer` takes
   `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
+- **An upsert replaces; it does not patch.** Every column the insert names is
+  written whether the row exists or not, so a field the caller leaves out takes
+  its default and a branch it leaves out is written as nulls. `excluded` is all
+  the conflict path can read, so there is no per-field "keep what is stored".
+- **An upsert conflicts on the primary key.** A clash on another unique index —
+  `Invoice.number`, `InvoiceSent.number` — is a `23505`, and a `409`, rather than
+  the row being replaced. There is no `@upsertKey` annotation.
+- **An upsert claims a version, so its rows are born at one.** A missing row is
+  created at the version its row carries rather than at `0`, and a row that
+  exists at another version rejects the call. See `docs/versioning.md`.
 - **No transaction wrapping by the caller.** A create or a delete is atomic on
-  its own, and a patch of several rows opens its own boundary; anything spanning
-  more than one *call* needs a boundary the caller opens: `SqlExecutor` carries
-  `transaction`, and a repository does not call it for that
+  its own, and a patch or an upsert of several rows opens its own boundary;
+  anything spanning more than one *call* needs a boundary the caller opens:
+  `SqlExecutor` carries `transaction`, and a repository does not call it for that
   (`docs/transactions.md`).
 
 ## Deliberately not implemented
 
 - **Queries.** Reads are generated from the entities in
   `packages/backend/src/db/queries/`, not in a repository; see `docs/queries.md`.
-- **Upsert and full-row replacement.** `update` is a patch; there is no "write
-  exactly this object" variant, and no insert-or-update.
 - **Cascade delete** for `@children`. A child table's foreign key has no
   `ON DELETE`, so a parent with children cannot be deleted.
 - **A unit of work inside a repository.** No function opens a boundary: a

@@ -35,6 +35,7 @@ their argument in a single `q` query parameter; a write carries it in the body.
 | --- | --- | --- | --- |
 | query | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
 | create | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
+| upsert | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
 | group | `POST` | `/$group` | a tree of the calls above, in the body |
@@ -58,10 +59,13 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 
 A create takes `<entity>InsertSchema`, the columns the database does not own, and
 a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly
-(`docs/repositories.md`). A delete needs only the key, so it takes
-`<entity>PrimaryKeySchema`: the entity projected to its `@primaryKey` fields — one
-per column of a composite key — made strict so a key the statement ignores is a
-400 (`docs/validation.md`).
+(`docs/repositories.md`). An upsert takes `<entity>UpsertSchema` — the create's
+field set plus the version it claims — and is a `PUT`, since replacing a row
+whole is idempotent: the same body sent twice leaves the row in the same state,
+except for the counter the trigger moves. A delete needs only the key, so it
+takes `<entity>PrimaryKeySchema`: the entity projected to its `@primaryKey`
+fields — one per column of a composite key — made strict so a key the statement
+ignores is a 400 (`docs/validation.md`).
 
 ## Why a read is a `GET` with `q`
 
@@ -221,7 +225,7 @@ The router turns a thrown database error into a status from its `code`:
 | `23502` | 400 | not-null violation |
 | `23503` | 409 | foreign-key violation |
 | `23505` | 409 | unique violation |
-| `40001` | 409 | a version conflict, or a patch that matched no row (`docs/versioning.md`) |
+| `40001` | 409 | a version conflict, or a patch or upsert that matched no row (`docs/versioning.md`) |
 | anything else | 500 | a server fault |
 
 A `q` parameter or a body that does not decode is 400, an argument the schema
@@ -256,12 +260,20 @@ failed, so a caller can name it without re-deriving it from the tree it sent.
   be sent to override the default. The generated `<Entity>Patch` type narrows
   with it. A field with a nullable column also takes `null`, which clears it,
   where omitting the field keeps the stored value (`docs/repositories.md`).
+- **An upsert replaces the row whole, and claims its version.**
+  `<entity>UpsertSchema` is the create's field set plus the version, so a field
+  it omits takes its default rather than the stored value, and a branch it omits
+  writes nulls over the snapshot. The version it carries is the revision a new
+  row is born at and the revision a stored row must hold; a stored row at another
+  version answers `409` (`docs/versioning.md`).
 - **A `query` with no filters scans the table, up to `limit`.**
   `queryInvoice(http, { select })` is legal by design and returns the first 1000
   rows. There is no authorization.
 - **The version precondition is the client's to send.** `update` requires the
   version the client read; the statement matches on it, so a stale one is a 409
   rather than a silent skip. An id that is not there answers the same way.
+  `upsert` requires one too, and answers the same way when the stored row is at
+  another version.
 - **The server reads no configuration.** `createApiServer(db)` takes the
   executor; the caller owns the port, TLS, and the driver.
 

@@ -98,6 +98,7 @@ describe("buildRestModel", () => {
         expect(widget?.operations.map((operation) => operation.kind)).toEqual([
             "query",
             "create",
+            "upsert",
             "update",
             "delete",
         ]);
@@ -115,6 +116,12 @@ describe("buildRestModel", () => {
         expect(widget?.operations).toContainEqual({
             kind: "create",
             method: "POST",
+            path: "/widget",
+            source: "body",
+        });
+        expect(widget?.operations).toContainEqual({
+            kind: "upsert",
+            method: "PUT",
             path: "/widget",
             source: "body",
         });
@@ -139,6 +146,7 @@ describe("buildRestModel", () => {
         expect(byKind.get("query")?.source).toBe("query");
         expect(byKind.get("delete")?.source).toBe("query");
         expect(byKind.get("create")?.source).toBe("body");
+        expect(byKind.get("upsert")?.source).toBe("body");
         expect(byKind.get("update")?.source).toBe("body");
     });
 

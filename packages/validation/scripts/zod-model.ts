@@ -50,6 +50,8 @@ export interface ZodEntity {
     insertName: string;
     /** The schema validating a by-key write: the entity projected to its `@primaryKey`. */
     primaryKeyName: string;
+    /** The schema validating an upsert: what a create carries, plus the `@version` it claims. */
+    upsertName: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
     fields: ZodField[];
@@ -71,6 +73,8 @@ export interface ZodEntity {
     patchNullable: string[];
     /** The `@primaryKey` field names, in declaration order, so a patch's mandatory fields can name them. */
     keys: string[];
+    /** The `@version` field names, which an upsert claims and a create never carries. */
+    versionFields: string[];
     /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
     selectFields: ZodSelectField[];
 }
@@ -163,6 +167,11 @@ export function insertSchemaName(name: string): string {
 /** Invoice -> invoicePrimaryKeySchema. */
 export function primaryKeySchemaName(name: string): string {
     return `${lowerFirst(name)}PrimaryKeySchema`;
+}
+
+/** Invoice -> invoiceUpsertSchema. */
+export function upsertSchemaName(name: string): string {
+    return `${lowerFirst(name)}UpsertSchema`;
 }
 
 /** Unwrap `(T)` to `T`, so a parenthesized union member is inspected as itself. */
@@ -418,6 +427,7 @@ function buildEntities(
         const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
         const fields: ZodField[] = [];
         const required: string[] = [];
+        const versionFields: string[] = [];
 
         for (const property of spec.properties) {
             const typeNode = property.declaration.getTypeNode();
@@ -440,6 +450,9 @@ function buildEntities(
             if (property.tags.primaryKey || property.tags.version) {
                 required.push(property.name);
             }
+            if (property.tags.version) {
+                versionFields.push(property.name);
+            }
         }
 
         // A self-reference is not imported; the schema is in the same module.
@@ -460,6 +473,7 @@ function buildEntities(
             querySelectName: querySelectSchemaName(spec.name),
             insertName: insertSchemaName(spec.name),
             primaryKeyName: primaryKeySchemaName(spec.name),
+            upsertName: upsertSchemaName(spec.name),
             importSpecifier: spec.importSpecifier,
             fields,
             insertOmit,
@@ -475,6 +489,7 @@ function buildEntities(
             usesPrimitives: context.usesPrimitives,
             required,
             keys: primaryKeyProperties(spec).map((property) => property.name),
+            versionFields,
             selectFields: selectFieldsFor(spec, interfaces),
         });
     }

@@ -12,10 +12,12 @@ import {
     generatePrimitives,
     generatePrimaryKeySchema,
     generateQueryFile,
+    generateUpsertSchema,
     generateZodSchemas,
     insertModuleName,
     patchModuleName,
     primaryKeyModuleName,
+    upsertModuleName,
 } from "./generate-zod-schemas.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
@@ -95,6 +97,11 @@ function patchFile(files: Map<string, string>, entity: string): string {
 /** The rendered by-key module for a fixture entity. */
 function primaryKeyFile(files: Map<string, string>, entity: string): string {
     return files.get(join("repositories", primaryKeyModuleName(entity))) ?? "";
+}
+
+/** The rendered upsert module for a fixture entity. */
+function upsertFile(files: Map<string, string>, entity: string): string {
+    return files.get(join("repositories", upsertModuleName(entity))) ?? "";
 }
 
 /** A field that resolves to an entity, a primitive, and an open-union alias. */
@@ -299,6 +306,7 @@ describe("generateRepositoryEntity", () => {
         const repo = 'import { thingSchema } from "../domain/thingSchema.ts";';
 
         expect(insertFile(files, "Thing")).toContain(repo);
+        expect(upsertFile(files, "Thing")).toContain(repo);
         expect(patchFile(files, "Thing")).toContain(repo);
         expect(primaryKeyFile(files, "Thing")).toContain(repo);
     });
@@ -380,6 +388,28 @@ describe("generateRepositoryEntity", () => {
         expect(files.has(join("repositories", primaryKeyModuleName("Keyless")))).toBe(false);
         expect(files.get(join("repositories", "index.ts"))).not.toContain("keylessPrimaryKeySchema");
     });
+
+    it("keeps the version a create omits, and keeps the create's relaxed fields relaxed", () => {
+        const { files } = generate({ domain: { Revision: REVISION } });
+        const insert = insertFile(files, "Revision");
+        const upsert = upsertFile(files, "Revision");
+
+        // A create leaves the version and the status to their defaults.
+        expect(insert).toContain("    .omit({\n        version: true,\n    })");
+        expect(insert).toContain('export type RevisionInsert = Omit<Revision, "version" | "status"> & Partial<Pick<Revision, "status">>;');
+        // An upsert claims the version, and still lets a caller omit the field the database defaults.
+        expect(upsert).not.toContain("        version: true,");
+        expect(upsert).toContain("    .partial({\n        status: true,\n    })");
+        expect(upsert).toContain('export type RevisionUpsert = Omit<Revision, "status"> & Partial<Pick<Revision, "status">>;');
+        expect(upsert).toContain("plus the `@version` it claims");
+    });
+
+    it("derives every write module from the same entity schema, naming its own const", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+
+        expect(upsertFile(files, "Thing")).toContain("export const thingUpsertSchema = thingSchema");
+        expect(upsertFile(files, "Thing")).toContain('import type { Thing } from "spec/');
+    });
 });
 
 describe("generateIndex", () => {
@@ -399,6 +429,7 @@ describe("generateIndex", () => {
         expect(files.get(join("domain", "index.ts"))).toContain('export * from "./thingSchema.ts";');
         const repositoryIndex = files.get(join("repositories", "index.ts"));
         expect(repositoryIndex).toContain('export * from "./thingInsertSchema.ts";');
+        expect(repositoryIndex).toContain('export * from "./thingUpsertSchema.ts";');
         expect(repositoryIndex).toContain('export * from "./thingPatchSchema.ts";');
         expect(repositoryIndex).toContain('export * from "./thingPrimaryKeySchema.ts";');
     });
@@ -427,6 +458,7 @@ describe("generateEntity standalone", () => {
 
         expect(thing && generateDomainEntity(thing, byName)).toBe(domainFile(files, "Thing"));
         expect(thing && generateInsertSchema(thing, byName)).toBe(insertFile(files, "Thing"));
+        expect(thing && generateUpsertSchema(thing, byName)).toBe(upsertFile(files, "Thing"));
         expect(thing && generatePatchSchema(thing)).toBe(patchFile(files, "Thing"));
         expect(thing && generatePrimaryKeySchema(thing)).toBe(primaryKeyFile(files, "Thing"));
     });
@@ -675,6 +707,41 @@ describe("select schemas", () => {
 });
 
 /** A column the database defaults, one it derives, and one the insert must carry. */
+/** An entity whose version the database owns: the one field a create omits and an upsert claims. */
+const REVISION = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a revision. */
+export type RevisionId = BrandedId<"RevisionId">;
+
+/**
+ * A revision.
+ *
+ * @pgTable revision
+ */
+export interface Revision {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: RevisionId;
+    /**
+     * The status, which the database fills when a caller leaves it out.
+     *
+     * @pgDefault 'pending'
+     */
+    status: string;
+    /**
+     * The revision.
+     *
+     * @version
+     * @pgDefault 0
+     */
+    version: Version;
+}
+`.trim();
+
 const MARKER = `
 import type { BrandedId } from "./primitives.ts";
 

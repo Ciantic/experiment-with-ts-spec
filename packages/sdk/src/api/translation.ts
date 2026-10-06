@@ -3,9 +3,10 @@ import type { Translation } from "spec/domain/Translation.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { TranslationInsert } from "validation/repositories/translationInsertSchema.ts";
 import type { TranslationPatch } from "validation/repositories/translationPatchSchema.ts";
+import type { TranslationUpsert } from "validation/repositories/translationUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { TranslationInsert, TranslationPatch };
+export type { TranslationInsert, TranslationPatch, TranslationUpsert };
 
 /** Query `Translation` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryTranslation<S extends Selection<Translation>>(
@@ -17,6 +18,11 @@ export function queryTranslation<S extends Selection<Translation>>(
 /** Create `Translation` rows. */
 export function createTranslation(rows: TranslationInsert[]): Call<void> {
     return call<void>("POST", "/translation", rows);
+}
+
+/** Upsert `Translation` rows: each row is created, or replaces the row it keys on. */
+export function upsertTranslation(rows: TranslationUpsert[]): Call<void> {
+    return call<void>("PUT", "/translation", rows);
 }
 
 /** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */

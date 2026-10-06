@@ -9,8 +9,8 @@ schemas without the backend. A schema is what validates a value at the boundary
 and the repositories are generated from; the write types are what a caller passes
 in process. A write type is the spec's own type narrowed by the same omit list its
 schema uses, so the backend repositories, the REST API, the generated client, and
-(eventually) the frontend share one definition of "the fields a create writes" and
-"the fields a patch writes".
+(eventually) the frontend share one definition of "the fields a create writes",
+"the fields an upsert writes", and "the fields a patch writes".
 
 ## Output
 
@@ -21,6 +21,8 @@ schema uses, so the backend repositories, the REST API, the generated client, an
   whole entity, with every field the spec declares.
 - `packages/validation/src/repositories/<entity>InsertSchema.ts` — the create
   schema and its type (`<name>InsertSchema`, `<Entity>Insert`).
+- `packages/validation/src/repositories/<entity>UpsertSchema.ts` — the upsert
+  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).
 - `packages/validation/src/repositories/<entity>PatchSchema.ts` — the update
   schema and its type (`<name>PatchSchema`, `<Entity>Patch`).
 - `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
@@ -213,6 +215,32 @@ imported from this package, and its `insert` names exactly those columns
 (`docs/repositories.md`). So the type a caller passes, the schema that validates
 it, and the statement that runs all carry one set of fields, and a field added to
 the spec narrows all three at once.
+
+## Upsert schemas
+
+`<name>UpsertSchema` is the insert schema with the version put back, and
+`<Entity>Upsert` is the same field set at the type level:
+
+```typescript
+export const customerUpsertSchema = customerSchema
+    .omit({
+        createdAt: true,
+        updatedAt: true,
+    })
+    .strict();
+
+export type CustomerUpsert = Omit<Customer, "createdAt" | "updatedAt">;
+```
+
+The omit list is the create's, less the `@version` field — the one field a create
+leaves to its column default and an upsert has to claim
+(`docs/repositories.md`, `docs/versioning.md`). Everything else follows the
+create: the same branches, clock fields, and derivable values are absent, the
+same `@inlined` branches nest as the target's own insert schema, and a required
+`@pgDefault` field is relaxed with the same `.partial()`.
+
+An entity with no version therefore has two identical field sets, and the modules
+differ only in the doc their schema and type carry.
 
 ## Primary key schema and type
 

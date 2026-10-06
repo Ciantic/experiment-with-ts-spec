@@ -1,13 +1,14 @@
 # Transactions
 
 A repository function takes `db: SqlExecutor`, and a create or a delete returns
-after one statement. A patch of several rows is one statement per chunk, so the
-repository opens a boundary itself and the chunks commit together; a single row
-is one atomic statement and runs on the handle it was given. Anything spanning
-two *calls* still belongs to the caller (`docs/repositories.md`, "No transaction
-wrapping"). This note records the port that lets a caller own that unit, and the
-two places a boundary is opened over REST: inside a handler that owns its own
-sequence, and around a group of calls a client composes into one request.
+after one statement. A patch or an upsert of several rows is one statement per
+chunk, so the repository opens a boundary itself and the chunks commit together; a
+single row is one atomic statement and runs on the handle it was given. Anything
+spanning two *calls* still belongs to the caller (`docs/repositories.md`, "No
+transaction wrapping"). This note records the port that lets a caller own that
+unit, and the two places a boundary is opened over REST: inside a handler that
+owns its own sequence, and around a group of calls a client composes into one
+request.
 
 Two places exist because a boundary is asked for by two different parties. A
 handler asks for one when the server authored the sequence, such as issuing and
@@ -58,8 +59,8 @@ patch both read, and `affectedRows` answers the count from whichever name the
 driver used — `affectedRows` on PGlite, `rowCount` on `pg`. A result that
 carries neither is a driver the port does not know, so the reader throws rather
 than answering no rows or `0`, which would read as a statement that matched
-nothing. A generated patch reads the rows it wrote to reject a chunk that wrote
-fewer (`docs/versioning.md`).
+nothing. A generated patch or upsert reads the rows it wrote to reject a chunk
+that wrote fewer (`docs/versioning.md`).
 
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
 over a pool:
@@ -221,11 +222,12 @@ So the same handler behaves correctly wherever it is called:
 
 A handler never needs to know whether its caller already asked for a unit of
 work. A per-entity CRUD route asks for nothing: `delete` is one multi-row
-statement, and a patch of one row is one statement, so each is already atomic,
-and a boundary around it would add a round trip and a held connection without
-changing what a concurrent writer can observe. A patch of several rows, and a
-create whose rows spill past the statement's parameter limit, open their own
-boundary, which nests as a savepoint inside one the caller already holds.
+statement, and a patch or an upsert of one row is one statement, so each is
+already atomic, and a boundary around it would add a round trip and a held
+connection without changing what a concurrent writer can observe. A patch or an
+upsert of several rows — and a create whose rows spill past the statement's
+parameter limit — open their own boundary, which nests as a savepoint inside one
+the caller already holds.
 
 The root boundary is the port's own `begin`/`commit`, issued on the session the
 pool checked out. What makes that safe is the checkout, not the statement: a `pg`

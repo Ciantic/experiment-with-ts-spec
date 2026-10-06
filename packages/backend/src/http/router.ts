@@ -4,7 +4,7 @@ import { attempt, batch, transaction } from "../db/group.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 
 /** The verbs the route table uses. */
-export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** The part of a schema the router uses, structurally, so the router couples to no Zod version. */
 export interface RouteInput {
@@ -95,7 +95,7 @@ const ERROR_STATUSES: Record<string, number> = {
 };
 
 /** Every verb a route or a group entry may name. */
-const METHODS: HttpMethod[] = ["GET", "POST", "PATCH", "DELETE"];
+const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 /** The status a thrown database error maps to. */
 function statusFor(thrown: unknown): number {

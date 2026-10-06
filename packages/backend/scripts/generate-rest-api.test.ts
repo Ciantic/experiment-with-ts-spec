@@ -69,6 +69,7 @@ describe("renderEntityRoutes", () => {
         expect(code).toContain('path: "/widget/query"');
         expect(code).toContain("input: queryWidgetSchema");
         expect(code).toContain("input: z.array(widgetInsertSchema)");
+        expect(code).toContain("input: z.array(widgetUpsertSchema)");
         expect(code).toContain("input: z.array(widgetPatchSchema)");
     });
 
@@ -76,6 +77,7 @@ describe("renderEntityRoutes", () => {
         const code = render();
 
         expect(code).toContain("input: z.array(widgetInsertSchema)");
+        expect(code).toContain("input: z.array(widgetUpsertSchema)");
         expect(code).toContain("input: z.array(widgetPatchSchema)");
         expect(code).toContain("input: z.array(widgetPrimaryKeySchema)");
     });
@@ -86,10 +88,11 @@ describe("renderEntityRoutes", () => {
         expect(code).toMatch(/method: "GET",\s*\n\s*path: "\/widget\/query",\s*\n\s*source: "query",/);
     });
 
-    it("posts an entity and patches a patch from the body", () => {
+    it("posts an entity, puts a replacement, and patches a patch from the body", () => {
         const code = render();
 
         expect(code).toMatch(/method: "POST",\s*\n\s*path: "\/widget",\s*\n\s*source: "body",/);
+        expect(code).toMatch(/method: "PUT",\s*\n\s*path: "\/widget",\s*\n\s*source: "body",/);
         expect(code).toMatch(/method: "PATCH",\s*\n\s*path: "\/widget",\s*\n\s*source: "body",/);
     });
 
@@ -105,6 +108,7 @@ describe("renderEntityRoutes", () => {
 
         expect(code).toContain("handler: (db, body) => queryWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => createWidget(db, body as never)");
+        expect(code).toContain("handler: (db, body) => upsertWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => updateWidget(db, body as never)");
         expect(code).toContain("handler: (db, body) => deleteWidget(db, body as never)");
     });
