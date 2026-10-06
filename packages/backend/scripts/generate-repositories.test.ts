@@ -18,6 +18,7 @@ import {
     updateStatement,
     upsertStatement,
 } from "./generate-repositories.ts";
+import { renderCreateTable, renderVersionTrigger } from "./generate-postgres-schema.ts";
 import type { Column, Table } from "./postgres-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
@@ -75,45 +76,9 @@ const defaulted = table("email", "Email", [
     column("status", { default: "'pending'" }),
 ]);
 
-/** A `create table` for a fixture, derived from its column metadata so this stays domain-free. */
-function createTableSql(table: Table): string {
-    const definitions = table.columns.map((column) => {
-        const parts = [`"${column.name}" ${column.sqlType}`];
-        if (column.notNull) {
-            parts.push("not null");
-        }
-        if (column.default !== undefined) {
-            parts.push(`default ${column.default}`);
-        }
-        return `    ${parts.join(" ")}`;
-    });
-    const keys = table.columns.filter((column) => column.primaryKey).map((column) => `"${column.name}"`);
-    if (keys.length > 0) {
-        definitions.push(`    primary key (${keys.join(", ")})`);
-    }
-    return `create table "${table.name}" (\n${definitions.join(",\n")}\n);`;
-}
-
-/**
- * A `before update` trigger that owns the version counter, for a fixture with a version column: a
- * statement that sets the version itself is rejected, and every other update bumps it once.
- */
-function versionTriggerSql(table: Table): string {
-    const version = table.columns.find((column) => column.version);
-    if (version === undefined) {
-        return "";
-    }
-    const name = `${table.name}_version`;
-    return [
-        `create function "${name}"() returns trigger as $$ begin`,
-        `    if new."${version.name}" is distinct from old."${version.name}" then`,
-        "        raise exception 'the version column is not assignable' using errcode = '40001';",
-        "    end if;",
-        `    new."${version.name}" := old."${version.name}" + 1;`,
-        "    return new;",
-        "end; $$ language plpgsql;",
-        `create trigger "${name}" before update on "${table.name}" for each row execute function "${name}"();`,
-    ].join("\n");
+/** The DDL for a fixture: the table and its version trigger, rendered by the same generator that writes `schema.sql`. */
+function fixtureDdl(table: Table): string {
+    return [...renderCreateTable(table), ...renderVersionTrigger(table)].join("\n");
 }
 
 /** The three generated CRUD functions, resolved from the three operation modules. */
@@ -1017,13 +982,12 @@ describe("generated repositories against PGlite", () => {
     beforeAll(async () => {
         driver = createPglite();
         db = createTransactionalDb(createPglitePool(driver));
-        await driver.exec(createTableSql(owner));
-        await driver.exec(createTableSql(widget));
-        await driver.exec(versionTriggerSql(widget));
-        await driver.exec(createTableSql(translation));
-        await driver.exec(createTableSql(marker));
-        await driver.exec(createTableSql(wide));
-        await driver.exec(createTableSql(gate));
+        await driver.exec(fixtureDdl(owner));
+        await driver.exec(fixtureDdl(widget));
+        await driver.exec(fixtureDdl(translation));
+        await driver.exec(fixtureDdl(marker));
+        await driver.exec(fixtureDdl(wide));
+        await driver.exec(fixtureDdl(gate));
         await driver.exec(skipTriggerSql(gate));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);

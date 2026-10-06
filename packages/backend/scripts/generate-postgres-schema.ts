@@ -51,7 +51,8 @@ function orderTables(tables: Map<string, Table>, diagnostics: Diagnostic[], spec
     return ordered;
 }
 
-function renderTable(table: Table): string[] {
+/** Render a table's `create table` and its constraints; a test fixture is built from it, so it cannot drift from `schema.sql`. */
+export function renderCreateTable(table: Table): string[] {
     const lines: string[] = [`create table ${quote(table.name)} (`];
     const parts: string[] = [];
 
@@ -144,7 +145,7 @@ function renderTriggers(table: Table): string[] {
 }
 
 /** The before-update guard for a @version column: validate the caller's revision, then increment it. */
-function renderVersionTrigger(table: Table): string[] {
+export function renderVersionTrigger(table: Table): string[] {
     const version = table.columns.find((column) => column.version);
     if (!version) {
         return [];
@@ -191,7 +192,7 @@ export function generateSchema(
     lines.push("");
 
     for (const table of ordered) {
-        lines.push(...renderTable(table));
+        lines.push(...renderCreateTable(table));
         lines.push("");
     }
 
