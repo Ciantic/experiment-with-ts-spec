@@ -57,6 +57,11 @@ them apart: omitting the field leaves the stored value alone, and `null` clears
 the column, which is the only way to write a null
 (`docs/repositories.md`).
 
+An upsert takes both like a create and stores them like one — it writes the row
+whole, so omitting the field and sending `null` are again one request. It accepts
+`null` anyway, because a caller holding a row from a form or another JSON surface
+carries `null` where this spec carries an absent field.
+
 ## Generation
 
 `packages/backend/scripts/postgres-model.ts` makes a defaulted column `not null`

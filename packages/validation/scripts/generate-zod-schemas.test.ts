@@ -400,8 +400,42 @@ describe("generateRepositoryEntity", () => {
         // An upsert claims the version, and still lets a caller omit the field the database defaults.
         expect(upsert).not.toContain("        version: true,");
         expect(upsert).toContain("    .partial({\n        status: true,\n    })");
-        expect(upsert).toContain('export type RevisionUpsert = Omit<Revision, "status"> & Partial<Pick<Revision, "status">>;');
+        expect(upsert).toContain('export type RevisionUpsert = Upsert<Revision, never, "id" | "version", never, "status">;');
+        expect(upsert).toContain('import type { Upsert } from "../upsert.ts";');
         expect(upsert).toContain("plus the `@version` it claims");
+    });
+
+    it("accepts null for a nullable column, as a patch does, and for nothing else", () => {
+        const { files } = generate({ domain: { Thing: THING } });
+        const code = upsertFile(files, "Thing");
+
+        // The same nullable set a patch widens, from the same helper.
+        expect(code).toContain(
+            [
+                "    .extend({",
+                "        name: thingSchema.shape.name.nullable(),",
+                "        amount: thingSchema.shape.amount.nullable(),",
+                "        format: thingSchema.shape.format.nullable(),",
+                "    })",
+            ].join("\n"),
+        );
+        expect(code).toContain(
+            'export type ThingUpsert = Upsert<Thing, "children" | "parent", "id" | "version", "name" | "amount" | "format", never>;',
+        );
+        // The key and the version are locked, so neither may be cleared.
+        expect(code).not.toContain("id: thingSchema.shape.id.nullable()");
+        expect(code).not.toContain("version: thingSchema.shape.version.nullable()");
+    });
+
+    it("widens an inlined branch where it is extended, so a snapshot can be cleared whole", () => {
+        const { files } = generate({ domain: { Thing: INLINED } });
+        const code = upsertFile(files, "Thing");
+
+        // `snapshot` is optional, so its column is nullable and the branch takes `null` as a patch does.
+        expect(code).toContain("snapshot: childInsertSchema.nullable().optional(),");
+        expect(code).toContain('"snapshot"');
+        // The widening rides on the branch's own insert schema, not the domain schema it replaced.
+        expect(code).not.toContain("snapshot: thingSchema.shape.snapshot.nullable()");
     });
 
     it("derives every write module from the same entity schema, naming its own const", () => {
@@ -961,7 +995,6 @@ describe("patch schemas", () => {
 
         expect(code).not.toContain(".extend({");
     });
-
     it("requires only the key when the entity has no version", () => {
         const { files } = generate({ domain: { Thing: THING } });
         const code = patchFile(files, "Child");
@@ -977,5 +1010,99 @@ describe("patch schemas", () => {
         expect(code).toContain("        total: true,");
         expect(code).not.toContain("        createdAt: true,");
         expect(code).not.toContain("        required: true,");
+    });
+});
+
+/** An entity with one nullable column, one defaulted column, and a version, for the upsert checks. */
+const NOTE = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a note. */
+export type NoteId = BrandedId<"NoteId">;
+
+/**
+ * A note.
+ *
+ * @pgTable note
+ */
+export interface Note {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: NoteId;
+    /** Free-form text, which a caller may clear. */
+    text?: string;
+    /**
+     * The status, which the database fills when a caller leaves it out.
+     *
+     * @pgDefault 'pending'
+     */
+    status: string;
+    /**
+     * The revision.
+     *
+     * @version
+     * @pgDefault 0
+     */
+    version: Version;
+}
+`.trim();
+
+describe("upsert schemas", () => {
+    /** The evaluated `noteUpsertSchema`, built over a stub domain module the fixture would import. */
+    function noteUpsert() {
+        const { files } = generate({ domain: { Note: NOTE } });
+        const code = upsertFile(files, "Note");
+        const require = createRequire(import.meta.url);
+        const z = zodStub();
+        const exportedCode = ts.transpileModule(code, {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
+        const stubRequire = (id: string) => {
+            if (id === "zod") {
+                return { z };
+            }
+            if (id === "../domain/noteSchema.ts") {
+                return {
+                    noteSchema: z.strictObject({
+                        id: z.string(),
+                        text: z.string().optional(),
+                        status: z.string(),
+                        version: z.bigint(),
+                    }),
+                };
+            }
+            return require(id);
+        };
+        new Function("exports", "require", exportedCode)(exports, stubRequire);
+        return exports.noteUpsertSchema;
+    }
+
+    it("clears a nullable column with null, exactly as a patch does", () => {
+        expect(noteUpsert()?.safeParse({ id: "n1", version: 0n, text: null }).success).toBe(true);
+    });
+
+    it("still accepts the column omitted, since an upsert writes every column it names", () => {
+        expect(noteUpsert()?.safeParse({ id: "n1", version: 0n }).success).toBe(true);
+        expect(noteUpsert()?.safeParse({ id: "n1", version: 0n, text: "kept" }).success).toBe(true);
+    });
+
+    it("refuses null for the key, the version, and a column that cannot hold one", () => {
+        // The key and the version are locked, so neither can be cleared.
+        expect(noteUpsert()?.safeParse({ id: null, version: 0n }).success).toBe(false);
+        expect(noteUpsert()?.safeParse({ id: "n1", version: null }).success).toBe(false);
+        // `status` is required with a default, so it is relaxed but not nullable.
+        expect(noteUpsert()?.safeParse({ id: "n1", version: 0n, status: null }).success).toBe(false);
+    });
+
+    it("still requires the version a create omits", () => {
+        expect(noteUpsert()?.safeParse({ id: "n1", text: null }).success).toBe(false);
+    });
+
+    it("rejects a field the statement would never write", () => {
+        expect(noteUpsert()?.safeParse({ id: "n1", version: 0n, extra: 1 }).success).toBe(false);
     });
 });

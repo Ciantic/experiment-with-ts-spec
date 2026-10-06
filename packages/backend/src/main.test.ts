@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
+import type { Invoice } from "spec/domain/Invoice.ts";
 import type { Tenant } from "spec/domain/Tenant.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes/index.ts";
@@ -125,6 +126,32 @@ describe("a live server", () => {
         expect(again?.name).toBe("upserted");
         // The row was replaced at the version it claimed, and the trigger owns the counter.
         expect(again?.version).toBe(tenant.version + 1n);
+    });
+
+    it("clears a nullable column through the generated upsert, as a patch can", async () => {
+        const select = { id: true, notes: true, version: true } as const;
+        const [invoice] = (await api.exec(
+            http,
+            api.queryInvoice({ select, limit: 1 }),
+        )) as unknown as Invoice[];
+
+        await api.exec(http, api.upsertInvoice([{ id: invoice!.id, notes: "written", version: invoice!.version }]));
+        const [written] = (await api.exec(
+            http,
+            api.queryInvoice({ select, filter: { id: [invoice!.id] } }),
+        )) as unknown as Invoice[];
+
+        expect(written?.notes).toBe("written");
+
+        // `null` is accepted on the wire and stores a null; the read then drops it, as an optional field.
+        await api.exec(http, api.upsertInvoice([{ id: invoice!.id, notes: null, version: written!.version }]));
+        const [cleared] = (await api.exec(
+            http,
+            api.queryInvoice({ select, filter: { id: [invoice!.id] } }),
+        )) as unknown as Invoice[];
+
+        expect(cleared?.notes).toBeUndefined();
+        expect(cleared?.version).toBe(written!.version + 1n);
     });
 
     it("carries a value JSON cannot, so the body codec is exercised end to end", async () => {

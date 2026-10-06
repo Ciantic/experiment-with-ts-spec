@@ -22,8 +22,7 @@ schema uses, so the backend repositories, the REST API, the generated client, an
 - `packages/validation/src/repositories/<entity>InsertSchema.ts` — the create
   schema and its type (`<name>InsertSchema`, `<Entity>Insert`).
 - `packages/validation/src/repositories/<entity>UpsertSchema.ts` — the upsert
-  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).
-- `packages/validation/src/repositories/<entity>PatchSchema.ts` — the update
+  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).- `packages/validation/src/repositories/<entity>PatchSchema.ts` — the update
   schema and its type (`<name>PatchSchema`, `<Entity>Patch`).
 - `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
   schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
@@ -50,7 +49,11 @@ the route table validates with the schemas through the barrel, and the client
 imports its write types type-only, so `zod` never enters the client runtime. Not
 everything here is generated: the read types (`Selection`, `Selected`, `Filters`,
 `Order`, `Where`) are hand-written in `packages/validation/src/selection.ts`,
-outside the barrels, and imported by path. See `docs/queries.md`.
+outside the barrels, and imported by path. See `docs/queries.md`. The write types
+are hand-written too, in `packages/validation/src/patch.ts` and
+`packages/validation/src/upsert.ts`, and the generated modules import them the
+same way: they express a shape a mapped type cannot, and they are what keeps the
+type and the schema on one field set.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -222,14 +225,23 @@ the spec narrows all three at once.
 `<Entity>Upsert` is the same field set at the type level:
 
 ```typescript
-export const customerUpsertSchema = customerSchema
+export const invoiceUpsertSchema = invoiceSchema
     .omit({
+        customer: true,
+        seller: true,
+        netAmount: true,
+        totalAmount: true,
+        rows: true,
         createdAt: true,
         updatedAt: true,
     })
+    .extend({
+        number: invoiceSchema.shape.number.nullable(),
+        notes: invoiceSchema.shape.notes.nullable(),
+    })
     .strict();
 
-export type CustomerUpsert = Omit<Customer, "createdAt" | "updatedAt">;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | …, "id" | "version", "number" | "notes" | …, never>;
 ```
 
 The omit list is the create's, less the `@version` field — the one field a create
@@ -241,6 +253,14 @@ same `@inlined` branches nest as the target's own insert schema, and a required
 
 An entity with no version therefore has two identical field sets, and the modules
 differ only in the doc their schema and type carry.
+
+The one addition is the nullable set: `nullablePatchProperties` again, so a
+nullable column accepts `null` exactly where a patch accepts it — the key and the
+version stay locked, and a column that cannot hold a null is not widened. The
+type is built by `Upsert` (`packages/validation/src/upsert.ts`), which is `Patch`'s
+sibling and not `Patch` itself: a patch makes every field optional, while an
+upsert must still require the fields a create requires, so the helper relaxes
+only the create's `@pgDefault` fields.
 
 ## Primary key schema and type
 

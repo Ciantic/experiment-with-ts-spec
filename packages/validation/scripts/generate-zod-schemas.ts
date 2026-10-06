@@ -259,15 +259,14 @@ export function generatePatchSchema(entity: ZodEntity): string {
     // a caller passes and the value the schema accepts name one field set. See docs/validation.md.
     lines.push("");
     lines.push(patchComment(versioned));
-    const union = (names: string[]) => (names.length === 0 ? "never" : names.map(quote).join(" | "));
     lines.push(
-        `export type ${entity.name}Patch = Patch<${entity.name}, ${union(entity.patchOmit)}, ${union(entity.required)}, ${union(entity.patchNullable)}>;`,
+        `export type ${entity.name}Patch = Patch<${entity.name}, ${unionType(entity.patchOmit)}, ${unionType(entity.required)}, ${unionType(entity.patchNullable)}>;`,
     );
 
     return lines.join("\n") + "\n";
 }
 
-/** One generated write shape: the schema, the type, and the field set the two share. */
+/** One generated write shape: the schema, the type, and the field sets the two share. */
 interface WriteShape {
     /** The schema constant, e.g. `invoiceInsertSchema`. */
     schemaName: string;
@@ -277,15 +276,31 @@ interface WriteShape {
     comment: string;
     /** The field names the shape omits from the entity schema. */
     omit: string[];
+    /** The nullable field names the shape accepts `null` for, so a caller may clear one. */
+    nullable: string[];
+    /** The rendered type alias. */
+    typeExpression: string;
+    /** The import the type alias needs, when one of the shared write helpers builds it. */
+    helperImport?: string;
 }
 
 /** The shape a create writes. */
 function insertShape(entity: ZodEntity): WriteShape {
+    const omitted = [...entity.insertOmit, ...entity.insertOptional];
+    const base =
+        omitted.length === 0 ? entity.name : `Omit<${entity.name}, ${unionType(omitted)}>`;
+    const relaxed =
+        entity.insertOptional.length === 0
+            ? ""
+            : ` & Partial<Pick<${entity.name}, ${unionType(entity.insertOptional)}>>`;
     return {
         schemaName: entity.insertName,
         typeName: `${entity.name}Insert`,
         comment: "/** The fields a create writes: a defaulted column may be omitted, and the database fills it. */",
         omit: entity.insertOmit,
+        // A create writes a nullable column as `null` whether the caller omits it or sends `null`.
+        nullable: [],
+        typeExpression: `${base}${relaxed}`,
     };
 }
 
@@ -294,6 +309,9 @@ function insertShape(entity: ZodEntity): WriteShape {
  * column default, so an upsert always claims one. See docs/versioning.md.
  */
 function upsertShape(entity: ZodEntity): WriteShape {
+    // The version is the one field a create leaves out that an upsert has to carry.
+    const omit = entity.insertOmit.filter((name) => !entity.versionFields.includes(name));
+    const locked = [...entity.keys, ...entity.versionFields];
     return {
         schemaName: entity.upsertName,
         typeName: `${entity.name}Upsert`,
@@ -301,7 +319,11 @@ function upsertShape(entity: ZodEntity): WriteShape {
             entity.versionFields.length > 0
                 ? "/** The fields an upsert writes: what a create carries, plus the `@version` it claims. */"
                 : "/** The fields an upsert writes: what a create carries, since the entity carries no version. */",
-        omit: entity.insertOmit.filter((name) => !entity.versionFields.includes(name)),
+        omit,
+        // An upsert writes the row whole, so a nullable column takes `null` as a patch does.
+        nullable: entity.patchNullable,
+        typeExpression: `Upsert<${entity.name}, ${unionType(omit)}, ${unionType(locked)}, ${unionType(entity.patchNullable)}, ${unionType(entity.insertOptional)}>`,
+        helperImport: 'import type { Upsert } from "../upsert.ts";',
     };
 }
 
@@ -324,6 +346,9 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
         lines.push('import { z } from "zod";');
     }
     lines.push(`import type { ${entity.name} } from "${entity.importSpecifier}";`);
+    if (shape.helperImport !== undefined) {
+        lines.push(shape.helperImport);
+    }
     lines.push(
         `import { ${entity.schemaName} } from "../${join(DOMAIN_DIR, domainModuleName(entity.name))}";`,
     );
@@ -352,7 +377,9 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
         for (const branch of entity.insertInlined) {
             const target = byName.get(branch.target);
             const insertName = target ? target.insertName : "z.never()";
-            lines.push(`        ${branch.name}: ${insertName}.optional(),`);
+            // A snapshot the caller can clear: `null` writes a null into every inlined column.
+            const nullable = shape.nullable.includes(branch.name) ? ".nullable()" : "";
+            lines.push(`        ${branch.name}: ${insertName}${nullable}.optional(),`);
         }
         lines.push("    })");
     }
@@ -363,18 +390,21 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
         }
         lines.push("    })");
     }
+    // An inlined branch above was widened where it was extended, so only the plain columns are left.
+    const inlinedNames = new Set(entity.insertInlined.map((branch) => branch.name));
+    const plainNullable = shape.nullable.filter((name) => !inlinedNames.has(name));
+    if (plainNullable.length > 0) {
+        lines.push("    .extend({");
+        for (const name of plainNullable) {
+            lines.push(`        ${name}: ${entity.schemaName}.shape.${name}.nullable(),`);
+        }
+        lines.push("    })");
+    }
     lines.push("    .strict();");
 
     lines.push("");
     lines.push(shape.comment);
-    const omitted = [...shape.omit, ...entity.insertOptional];
-    const insertBase =
-        omitted.length === 0 ? entity.name : `Omit<${entity.name}, ${omitted.map(quote).join(" | ")}>`;
-    const insertOptionalType =
-        entity.insertOptional.length === 0
-            ? ""
-            : ` & Partial<Pick<${entity.name}, ${entity.insertOptional.map(quote).join(" | ")}>>`;
-    lines.push(`export type ${shape.typeName} = ${insertBase}${insertOptionalType};`);
+    lines.push(`export type ${shape.typeName} = ${shape.typeExpression};`);
 
     return lines.join("\n") + "\n";
 }
@@ -413,6 +443,11 @@ function patchComment(versioned: boolean): string {
 /** `"id"`, the quoted form a generated type alias uses. */
 function quote(name: string): string {
     return JSON.stringify(name);
+}
+
+/** `"id" | "version"`, or `never` when a field set is empty. */
+function unionType(names: string[]): string {
+    return names.length === 0 ? "never" : names.map(quote).join(" | ");
 }
 
 /** Render the barrel that re-exports every 1:1 entity schema module. */

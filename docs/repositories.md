@@ -269,6 +269,22 @@ type is the create's, so it inherits the create's relaxed fields: a required
 `@pgDefault` field may still be omitted, and an omitted defaulted column takes its
 default here exactly as it does in an insert.
 
+A nullable column also accepts `null`, the way a patch does:
+
+```ts
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | … , "id" | "version", "number" | "notes" | …, never>;
+```
+
+Because the statement writes every column it names either way, `null` and an
+omitted field are one request here — there is no "keep the stored value" to
+distinguish them from. `null` is accepted because a caller holding a row from a
+form or another JSON surface carries `null` where the spec carries an absent
+field, and the value array takes it unchanged. The key and the version stay
+locked, so neither can be cleared, and a column that cannot hold a null is not
+widened: sending one is the database's `23502`, which the router serves as a 400.
+The set the schema widens is the patch's, from `nullablePatchProperties`, so the
+two agree on which columns are nullable.
+
 A call carrying more than one row opens a boundary, as a patch does: a chunk
 whose claim is stale has already written the rows that matched before the
 rejection is raised.
@@ -388,7 +404,9 @@ see `docs/versioning.md`.
 - **An upsert replaces; it does not patch.** Every column the insert names is
   written whether the row exists or not, so a field the caller leaves out takes
   its default and a branch it leaves out is written as nulls. `excluded` is all
-  the conflict path can read, so there is no per-field "keep what is stored".
+  the conflict path can read, so there is no per-field "keep what is stored". A
+  nullable column accepts `null` for convenience, but it means the same as
+  omitting the field.
 - **An upsert conflicts on the primary key.** A clash on another unique index —
   `Invoice.number`, `InvoiceSent.number` — is a `23505`, and a `409`, rather than
   the row being replaced. There is no `@upsertKey` annotation.
