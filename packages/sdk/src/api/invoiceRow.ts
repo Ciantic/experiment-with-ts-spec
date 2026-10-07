@@ -16,13 +16,13 @@ export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
 }
 
 /** Create `InvoiceRow` rows. */
-export function createInvoiceRow(rows: InvoiceRowInsert[]): Call<void> {
-    return call<void>("POST", "/invoice_row", rows);
+export function createInvoiceRow(rows: InvoiceRowInsert[]): Call<Pick<InvoiceRow, "id">[]> {
+    return call<Pick<InvoiceRow, "id">[]>("POST", "/invoice_row", rows);
 }
 
 /** Upsert `InvoiceRow` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertInvoiceRow(rows: InvoiceRowUpsert[]): Call<void> {
-    return call<void>("PUT", "/invoice_row", rows);
+export function upsertInvoiceRow(rows: InvoiceRowUpsert[]): Call<Pick<InvoiceRow, "id">[]> {
+    return call<Pick<InvoiceRow, "id">[]>("PUT", "/invoice_row", rows);
 }
 
 /** Patch `InvoiceRow` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

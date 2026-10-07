@@ -83,10 +83,10 @@ function fixtureDdl(table: Table): string {
 
 /** The three generated CRUD functions, resolved from the three operation modules. */
 interface GeneratedRepository {
-    create: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
-    upsert: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
-    update: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
-    delete: (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+    create: (db: SqlExecutor, rows: unknown[]) => Promise<unknown[]>;
+    upsert: (db: SqlExecutor, rows: unknown[]) => Promise<unknown[]>;
+    update: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+    delete: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
 }
 
 /** Strips a generated module's type-only imports and evaluates the rest in memory. */
@@ -112,7 +112,7 @@ function loadRepository(table: Table): GeneratedRepository {
         if (typeof fn !== "function") {
             throw new Error(`the generated module does not export ${prefix}${table.interfaceName}`);
         }
-        return fn as (db: SqlExecutor, rows: unknown[]) => Promise<void>;
+        return fn as (db: SqlExecutor, rows: unknown[]) => Promise<unknown[]>;
     };
     return {
         create: pick("create", generateCreate(table)),
@@ -172,7 +172,8 @@ describe("createStatement", () => {
     it("builds the insert from the table alone, with no database and no rows", () => {
         expect(statementSql(createStatement(customer))).toBe(
             'insert into "customer" ("id", "name", "email") select v."id", v."name", v."email" ' +
-                'from unnest($1::uuid[], $2::text[], $3::text[]) as v("id", "name", "email") ',
+                'from unnest($1::uuid[], $2::text[], $3::text[]) as v("id", "name", "email") ' +
+                'returning "customer"."id"',
         );
     });
 
@@ -189,7 +190,8 @@ describe("createStatement", () => {
             'insert into "email" ("id", "subject", "status") select v."id", v."subject", ' +
                 "case when v.\"status#present\" then v.\"status\" else 'pending' end " +
                 'from unnest($1::uuid[], $2::text[], $3::text[], $4::bool[]) ' +
-                'as v("id", "subject", "status", "status#present") ',
+                'as v("id", "subject", "status", "status#present") ' +
+                'returning "email"."id"',
         );
         expect(createStatement(defaulted).arrays.map((array) => array.alias)).toEqual([
             "id",
@@ -202,7 +204,8 @@ describe("createStatement", () => {
     it("leaves the version out of the insert, since a create takes it from its default", () => {
         expect(statementSql(createStatement(versioned))).toBe(
             'insert into "customer" ("id", "name") select v."id", v."name" ' +
-                'from unnest($1::uuid[], $2::text[]) as v("id", "name") ',
+                'from unnest($1::uuid[], $2::text[]) as v("id", "name") ' +
+                'returning "customer"."id"',
         );
     });
 
@@ -284,7 +287,8 @@ describe("upsertStatement", () => {
         expect(statementSql(upsertStatement(customer))).toBe(
             'insert into "customer" ("id", "name", "email") select v."id", v."name", v."email" ' +
                 'from unnest($1::uuid[], $2::text[], $3::text[]) as v("id", "name", "email") ' +
-                'on conflict ("id") do update set "name" = excluded."name", "email" = excluded."email" ',
+                'on conflict ("id") do update set "name" = excluded."name", "email" = excluded."email" ' +
+                'returning "customer"."id"',
         );
     });
 
@@ -293,7 +297,8 @@ describe("upsertStatement", () => {
             'insert into "translation" ("languageCode", "key", "value") ' +
                 'select v."languageCode", v."key", v."value" ' +
                 'from unnest($1::text[], $2::text[], $3::text[]) as v("languageCode", "key", "value") ' +
-                'on conflict ("languageCode", "key") do update set "value" = excluded."value" ',
+                'on conflict ("languageCode", "key") do update set "value" = excluded."value" ' +
+                'returning "translation"."languageCode", "translation"."key"',
         );
     });
 
@@ -308,12 +313,12 @@ describe("upsertStatement", () => {
         expect(upsertStatement(versioned).arrays.map((array) => array.alias)).toEqual(["id", "name", "version"]);
     });
 
-    it("carries no alias, version predicate, or returning for an entity with no version", () => {
+    it("carries no alias or version predicate, and still returns the keys, for an entity with no version", () => {
         const sql = statementSql(upsertStatement(customer));
 
         expect(sql).not.toContain(" as u ");
         expect(sql).not.toContain("where");
-        expect(sql).not.toContain("returning");
+        expect(sql).toContain('returning "customer"."id"');
     });
 
     it("falls back to the column default on the conflict path, which can only read `excluded`", () => {
@@ -326,7 +331,8 @@ describe("upsertStatement", () => {
     it("sets the key to the stored one when the entity has no column to replace", () => {
         expect(statementSql(upsertStatement(keyOnly))).toBe(
             'insert into "key_only" ("id") select v."id" from unnest($1::uuid[]) as v("id") ' +
-                'on conflict ("id") do update set "id" = "key_only"."id" ',
+                'on conflict ("id") do update set "id" = "key_only"."id" ' +
+                'returning "key_only"."id"',
         );
     });
 });
@@ -379,7 +385,7 @@ describe("generateCreate", () => {
         }
     });
 
-    it("imports the write type for its operation and the executor interface", () => {
+    it("imports the write types for its operation and the executor interface", () => {
         expect(generateCreate(customer)).toContain(
             'import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";',
         );
@@ -389,13 +395,20 @@ describe("generateCreate", () => {
         expect(generateDelete(customer)).toContain(
             'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
         );
+        // A create reports the keys it wrote, so it names the key type the delete also takes.
+        expect(generateCreate(customer)).toContain(
+            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
+        );
+        expect(generateUpsert(customer)).toContain(
+            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
+        );
         for (const code of [generateCreate(customer), generateDelete(customer)]) {
             expect(code).not.toContain("spec/domain");
         }
-        // A delete is one statement, so it takes the executor type alone; a create chunks and counts, so it takes both helpers.
+        // A delete is one statement, so it takes the executor type alone; a create reads its keys back, so it takes the helpers too.
         expect(generateDelete(customer)).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
         expect(generateCreate(customer)).toContain(
-            'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
         );
         // A patch reads the rows a statement wrote back, so it takes the port's runtime helpers with it.
         expect(generateUpdate(customer)).toContain(
@@ -404,9 +417,12 @@ describe("generateCreate", () => {
         expect(generateUpdate(customer)).not.toContain('import type { SqlExecutor } from "../sql-executor.ts";');
     });
 
-    it("exports the operation taking rows and returning nothing", () => {
+    it("exports the operation taking rows and returning the keys it wrote", () => {
         expect(generateCreate(customer)).toContain(
-            "export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void> {",
+            "export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<CustomerPrimaryKey[]> {",
+        );
+        expect(generateUpsert(customer)).toContain(
+            "export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<CustomerPrimaryKey[]> {",
         );
         expect(generateUpdate(customer)).toContain(
             "export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void> {",
@@ -517,10 +533,10 @@ describe("generateCreate", () => {
         const code = generateCreate(customer);
 
         expect(code).toContain("const result = await tx.query(");
-        expect(code).toContain("const written = affectedRows(result);");
-        expect(code).toContain("if (written !== chunk.length) {");
+        expect(code).toContain("const written = resultRows(result);");
+        expect(code).toContain("if (written.length !== chunk.length) {");
         expect(code).toContain(
-            "throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' customer rows this create supplied');",
+            "throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');",
         );
     });
 
@@ -531,8 +547,8 @@ describe("generateCreate", () => {
         expect(code).toContain("    if (rows.length <= ROWS_PER_STATEMENT) {");
         expect(code).toContain("        await write(db);");
         expect(code).toContain("    await db.transaction(write);");
-        // Nothing but the exported function and its two constants is declared at module scope.
-        expect(code.match(/^const |^async function |^function /gm)).toEqual(["const ", "const "]);
+        // Nothing but the exported function and its three constants is declared at module scope.
+        expect(code.match(/^const |^async function |^function /gm)).toEqual(["const ", "const ", "const "]);
     });
 
     it("sizes a chunk by the arrays a row binds, so a wider entity carries fewer rows", () => {
@@ -715,7 +731,9 @@ describe("generateUpsert", () => {
         expect(code).toContain(
             'import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";',
         );
-        expect(code).toContain("export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<void> {");
+        expect(code).toContain(
+            "export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<CustomerPrimaryKey[]> {",
+        );
         expect(code).toContain("                nameValues.push(row.name ?? null);");
         // The key is what the conflict matched, so the `set` list leaves it alone.
         expect(code).not.toContain("excluded.\"id\"");
@@ -736,12 +754,14 @@ describe("generateUpsert", () => {
     it("returns the keys it wrote, so a chunk that skipped a row names it as a stale claim", () => {
         const code = generateUpsert(versioned);
 
-        expect(code).toContain("const keyOf = (row: CustomerUpsert): string => String(row.id);");
-        expect(code).toContain('            const written = new Set(resultRows(result).map((row) => String(row["id"])));');
-        expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+        expect(code).toContain("const keyName = (row: CustomerUpsert): string => String(row.id);");
+        expect(code).toContain('            const writtenKeys = new Set(written.map((row) => String(row["id"])));');
+        expect(code).toContain("                const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));");
         expect(code).toContain(
-            "throw Object.assign(new Error('no row of customer is at the version this upsert claims for ' + named.map(keyOf).join(\", \")), { code: \"40001\" });",
+            "throw Object.assign(new Error('no row of customer is at the version this upsert claims for ' + named.map(keyName).join(\", \")), { code: \"40001\" });",
         );
+        // The rows the predicate matched come back as the call's keys.
+        expect(code).toContain("            keys.push(...written.map(keyOf));");
     });
 
     it("replaces a conflicting row outright when the entity has no version", () => {
@@ -753,12 +773,13 @@ describe("generateUpsert", () => {
         );
 
         expect(snapshot).not.toContain("versionValues");
-        // Nothing to compare, so the target needs no alias, no predicate, and no returning.
+        // Nothing to compare, so the target needs no alias and no predicate.
         expect(snapshot).not.toContain("as u");
-        expect(snapshot).not.toContain("returning");
-        expect(snapshot).toContain("            const written = affectedRows(result);");
+        expect(snapshot).toContain('returning "invoice_sent"."id"');
+        expect(snapshot).toContain("            const written = resultRows(result);");
+        expect(snapshot).toContain("if (written.length !== chunk.length) {");
         expect(snapshot).toContain(
-            "throw new Error('the upsert wrote ' + written + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
+            "throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
         );
     });
 
@@ -829,7 +850,7 @@ describe("generateUpsert", () => {
 
     it("takes the port helpers its own check uses, and no more", () => {
         expect(generateUpsert(customer)).toContain(
-            'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
         );
         expect(generateUpsert(versioned)).toContain(
             'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
@@ -1307,10 +1328,26 @@ describe("generated repositories against PGlite", () => {
     });
 
     it("treats an empty array as a no-op", async () => {
-        await expect(widgets.create(db, [])).resolves.toBeUndefined();
-        await expect(widgets.upsert(db, [])).resolves.toBeUndefined();
+        await expect(widgets.create(db, [])).resolves.toEqual([]);
+        await expect(widgets.upsert(db, [])).resolves.toEqual([]);
         await expect(widgets.update(db, [])).resolves.toBeUndefined();
         await expect(widgets.delete(db, [])).resolves.toBeUndefined();
+    });
+
+    it("answers each create and upsert with the keys it wrote, in the order it carried the rows", async () => {
+        const created = await widgets.create(db, [
+            { id: WIDGET_ID, name: "first", note: null, owner: null },
+            { id: WIDGET_ID_OTHER, name: "second", note: null, owner: null },
+        ]);
+
+        expect(created).toEqual([{ id: WIDGET_ID }, { id: WIDGET_ID_OTHER }]);
+
+        const upserted = await widgets.upsert(db, [
+            { id: WIDGET_ID, name: "first", note: null, owner: null, version: 0n },
+            { id: WIDGET_ID_OTHER, name: "second", note: null, owner: null, version: 0n },
+        ]);
+
+        expect(upserted).toEqual([{ id: WIDGET_ID }, { id: WIDGET_ID_OTHER }]);
     });
 
     it("addresses a composite-key row by all of its key columns", async () => {

@@ -175,16 +175,16 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         lines.push("");
         lines.push(comment(entity, "create"));
-        lines.push(`export function create${name}(rows: ${name}Insert[]): Call<void> {`);
-        lines.push(`    return call<void>("${create.method}", "${create.path}", rows);`);
+        lines.push(`export function create${name}(rows: ${name}Insert[]): Call<${keyPick(entity)}[]> {`);
+        lines.push(`    return call<${keyPick(entity)}[]>("${create.method}", "${create.path}", rows);`);
         lines.push("}");
     }
 
     if (upsert) {
         lines.push("");
         lines.push(comment(entity, "upsert"));
-        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<void> {`);
-        lines.push(`    return call<void>("${upsert.method}", "${upsert.path}", rows);`);
+        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<${keyPick(entity)}[]> {`);
+        lines.push(`    return call<${keyPick(entity)}[]>("${upsert.method}", "${upsert.path}", rows);`);
         lines.push("}");
     }
 

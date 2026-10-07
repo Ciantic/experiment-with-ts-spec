@@ -189,6 +189,17 @@ function returnedKeyExpression(primaryKeys: Column[]): string {
     return primaryKeys.map((column) => `String(row[${JSON.stringify(column.name)}])`).join(' + "/" + ');
 }
 
+/** The `const keyOf` that turns a written row, as the statement returned it, into the entity's key. */
+function keyReader(entity: string, primaryKeys: Column[]): string {
+    const fields = primaryKeys
+        .map(
+            (column) =>
+                `${column.name}: row[${JSON.stringify(column.name)}] as ${entity}PrimaryKey[${JSON.stringify(column.name)}]`,
+        )
+        .join(", ");
+    return `const keyOf = (row: Record<string, unknown>): ${entity}PrimaryKey => ({ ${fields} });`;
+}
+
 /** The indentation and row source of the loop that gathers values for the delete's `using (values …)` list. */
 interface ValueLoop {
     /** The indentation every emitted line carries. */
@@ -218,12 +229,13 @@ function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
     ];
 }
 
-/** The header and type imports every operation module carries, naming the one write type it uses. */
-function modulePrologue(writeType: string, executorImport?: string): string[] {
+/** The header and type imports every operation module carries, naming the write types it uses. */
+function modulePrologue(writeTypes: string | string[], executorImport?: string): string[] {
+    const types = typeof writeTypes === "string" ? [writeTypes] : writeTypes;
     return [
         HEADER,
         // The repository, the wire schema, and the client all name the one type validation declares.
-        `import type { ${writeType} } from "validation/${validationFileName(writeType)}";`,
+        ...types.map((writeType) => `import type { ${writeType} } from "validation/${validationFileName(writeType)}";`),
         executorImport ?? 'import type { SqlExecutor } from "../sql-executor.ts";',
         "",
     ];
@@ -264,56 +276,68 @@ export function createStatement(table: Table): ChunkStatement {
         return column.default === undefined ? value : suppliedValue(column, column.default);
     });
     const insertColumnNames = insertColumns.map((column) => quote(column.name)).join(", ");
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
     return {
         fragments: [
             `insert into ${quote(table.name)} (${insertColumnNames}) select `,
             ...selectItems.map((item, index) => `${item}${index === selectItems.length - 1 ? " " : ", "}`),
             ...unnestFragments(arrays),
+            // The assigned keys come back, so a create reports the rows it wrote and a short count stays detectable.
+            `returning ${primaryKeys.map((column) => `${quote(table.name)}.${quote(column.name)}`).join(", ")}`,
         ],
         arrays,
     };
 }
 
-/** Render `create<Entity>`: a chunk of rows per insert, in the shape a patch runner takes. */
+/** Render `create<Entity>`: a chunk of rows per insert, returning the keys it wrote in the order it carried them. */
 export function generateCreate(table: Table): string {
     const entity = table.interfaceName;
     const statement = createStatement(table);
     const { arrays } = statement;
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
     const lines = modulePrologue(
-        `${entity}Insert`,
-        'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
+        [`${entity}Insert`, `${entity}PrimaryKey`],
+        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
     );
 
+    lines.push("/** The key a written row was given, as the insert returned it. */");
+    lines.push(keyReader(entity, primaryKeys));
+    lines.push("");
     lines.push("/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */");
     lines.push(`const PARAMETERS_PER_ROW = ${arrays.length};`);
     lines.push("");
     lines.push("/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
-    lines.push(`export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<void> {`);
+    lines.push(
+        `export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<${entity}PrimaryKey[]> {`,
+    );
     lines.push("    if (rows.length === 0) {");
-    lines.push("        return;");
+    lines.push("        return [];");
     lines.push("    }");
+    lines.push(`    const keys: ${entity}PrimaryKey[] = [];`);
     lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
     lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
     lines.push(...bindArrays(arrays));
     lines.push(...chunkQuery(statement));
     // An insert writes every row it carries, so a short count is lost data rather than a caller's mistake. See docs/repositories.md.
-    lines.push("            const written = affectedRows(result);");
-    lines.push("            if (written !== chunk.length) {");
+    lines.push("            const written = resultRows(result);");
+    lines.push("            if (written.length !== chunk.length) {");
     lines.push(
-        `                throw new Error('the insert wrote ' + written + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
+        `                throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
     );
     lines.push("            }");
+    lines.push("            keys.push(...written.map(keyOf));");
     lines.push("        }");
     lines.push("    };");
     // One statement is atomic on its own; only a call that spills past the limit opens a boundary.
     lines.push("    if (rows.length <= ROWS_PER_STATEMENT) {");
     lines.push("        await write(db);");
-    lines.push("        return;");
+    lines.push("        return keys;");
     lines.push("    }");
     lines.push("    await db.transaction(write);");
+    lines.push("    return keys;");
     lines.push("}");
 
     return lines.join("\n") + "\n";
@@ -450,10 +474,8 @@ export function upsertStatement(table: Table): ChunkStatement {
             ...assignments.map((entry, index) => `${entry}${index === assignments.length - 1 ? " " : ", "}`),
             // A row at another version is left alone, so the statement writes fewer rows than it carried.
             ...(version === undefined ? [] : [`where ${aliasMatch(version, stored, "excluded")} `]),
-            // The written keys come back, so a chunk that skipped a row names it.
-            ...(version === undefined
-                ? []
-                : [`returning ${primaryKeys.map((column) => `${stored}.${quote(column.name)}`).join(", ")}`]),
+            // The written keys come back, so the call reports what it wrote and a chunk that skipped a row names it.
+            `returning ${primaryKeys.map((column) => `${stored}.${quote(column.name)}`).join(", ")}`,
         ],
         arrays,
     };
@@ -470,15 +492,16 @@ export function generateUpsert(table: Table): string {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     const version = versionColumn(table);
     const lines = modulePrologue(
-        `${entity}Upsert`,
-        version === undefined
-            ? 'import { affectedRows, MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";'
-            : 'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        [`${entity}Upsert`, `${entity}PrimaryKey`],
+        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
     );
 
+    lines.push("/** The key a written row carries, as the upsert returned it. */");
+    lines.push(keyReader(entity, primaryKeys));
+    lines.push("");
     if (version !== undefined) {
-        lines.push("/** The key an upsert addresses, as the statement returns it, so a rejected chunk names its rows. */");
-        lines.push(`const keyOf = (row: ${entity}Upsert): string => String(${keyExpression(primaryKeys)});`);
+        lines.push("/** The key a claimed row carries, as the caller names it, so a stale claim names its rows. */");
+        lines.push(`const keyName = (row: ${entity}Upsert): string => String(${keyExpression(primaryKeys)});`);
         lines.push("");
     }
     lines.push("/** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */");
@@ -487,36 +510,38 @@ export function generateUpsert(table: Table): string {
     lines.push("/** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
-    lines.push(`export async function upsert${entity}(db: SqlExecutor, rows: ${entity}Upsert[]): Promise<void> {`);
+    lines.push(
+        `export async function upsert${entity}(db: SqlExecutor, rows: ${entity}Upsert[]): Promise<${entity}PrimaryKey[]> {`,
+    );
     lines.push("    if (rows.length === 0) {");
-    lines.push("        return;");
+    lines.push("        return [];");
     lines.push("    }");
+    lines.push(`    const keys: ${entity}PrimaryKey[] = [];`);
     lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
     lines.push("        for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {");
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
     lines.push(...bindArrays(arrays));
     lines.push(...chunkQuery(statement));
+    lines.push("            const written = resultRows(result);");
     if (version === undefined) {
         // Every conflicting row is replaced, so a short count is lost data rather than a stale claim.
-        lines.push("            const written = affectedRows(result);");
-        lines.push("            if (written !== chunk.length) {");
+        lines.push("            if (written.length !== chunk.length) {");
         lines.push(
-            `                throw new Error('the upsert wrote ' + written + ' of the ' + chunk.length + ' ${table.name} rows this upsert supplied');`,
+            `                throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this upsert supplied');`,
         );
         lines.push("            }");
     } else {
         // The statement leaves a row the version predicate did not match, so a short write is a stale claim.
-        lines.push(
-            `            const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`,
-        );
-        lines.push("            if (written.size !== chunk.length) {");
-        lines.push("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
+        lines.push(`            const writtenKeys = new Set(written.map((row) => ${returnedKeyExpression(primaryKeys)}));`);
+        lines.push("            if (writtenKeys.size !== chunk.length) {");
+        lines.push("                const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));");
         lines.push("                const named = missed.length > 0 ? missed : chunk;");
         lines.push(
-            `                throw Object.assign(new Error('no row of ${table.name} is at the version this upsert claims for ' + named.map(keyOf).join(", ")), { code: "40001" });`,
+            `                throw Object.assign(new Error('no row of ${table.name} is at the version this upsert claims for ' + named.map(keyName).join(", ")), { code: "40001" });`,
         );
         lines.push("            }");
     }
+    lines.push("            keys.push(...written.map(keyOf));");
     lines.push("        }");
     lines.push("    };");
     if (version === undefined) {
@@ -527,9 +552,10 @@ export function generateUpsert(table: Table): string {
         lines.push("    if (rows.length === 1) {");
     }
     lines.push("        await write(db);");
-    lines.push("        return;");
+    lines.push("        return keys;");
     lines.push("    }");
     lines.push("    await db.transaction(write);");
+    lines.push("    return keys;");
     lines.push("}");
 
     return lines.join("\n") + "\n";

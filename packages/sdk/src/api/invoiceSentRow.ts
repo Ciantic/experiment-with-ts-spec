@@ -16,13 +16,13 @@ export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
 }
 
 /** Create `InvoiceSentRow` rows. */
-export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<void> {
-    return call<void>("POST", "/invoice_sent_row", rows);
+export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<Pick<InvoiceSentRow, "id">[]> {
+    return call<Pick<InvoiceSentRow, "id">[]>("POST", "/invoice_sent_row", rows);
 }
 
 /** Upsert `InvoiceSentRow` rows: each row is created, or replaces the row it keys on. */
-export function upsertInvoiceSentRow(rows: InvoiceSentRowUpsert[]): Call<void> {
-    return call<void>("PUT", "/invoice_sent_row", rows);
+export function upsertInvoiceSentRow(rows: InvoiceSentRowUpsert[]): Call<Pick<InvoiceSentRow, "id">[]> {
+    return call<Pick<InvoiceSentRow, "id">[]>("PUT", "/invoice_sent_row", rows);
 }
 
 /** Patch `InvoiceSentRow` rows; a row that is not there rejects the call. See docs/versioning.md. */

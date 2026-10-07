@@ -16,13 +16,13 @@ export function queryTranslation<S extends Selection<Translation>>(
 }
 
 /** Create `Translation` rows. */
-export function createTranslation(rows: TranslationInsert[]): Call<void> {
-    return call<void>("POST", "/translation", rows);
+export function createTranslation(rows: TranslationInsert[]): Call<Pick<Translation, "lang" | "key">[]> {
+    return call<Pick<Translation, "lang" | "key">[]>("POST", "/translation", rows);
 }
 
 /** Upsert `Translation` rows: each row is created, or replaces the row it keys on. */
-export function upsertTranslation(rows: TranslationUpsert[]): Call<void> {
-    return call<void>("PUT", "/translation", rows);
+export function upsertTranslation(rows: TranslationUpsert[]): Call<Pick<Translation, "lang" | "key">[]> {
+    return call<Pick<Translation, "lang" | "key">[]>("PUT", "/translation", rows);
 }
 
 /** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */

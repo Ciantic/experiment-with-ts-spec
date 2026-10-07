@@ -67,6 +67,12 @@ takes `<entity>PrimaryKeySchema`: the entity projected to its `@primaryKey`
 fields — one per column of a composite key — made strict so a key the statement
 ignores is a 400 (`docs/validation.md`).
 
+A create and an upsert answer `200` with the keys they wrote, in the order the
+rows were carried — the rows the repository returned, unchanged
+(`docs/repositories.md`). The client types the response `Pick<<Entity>, keys>[]`.
+`update` and `delete` answer `200` with `null`, the codec's spelling of a void
+write.
+
 ## Why a read is a `GET` with `q`
 
 A read is safe, idempotent, and fully determined by its URL, so `GET` is what it

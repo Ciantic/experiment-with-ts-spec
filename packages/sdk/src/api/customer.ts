@@ -16,13 +16,13 @@ export function queryCustomer<S extends Selection<Customer>>(
 }
 
 /** Create `Customer` rows. */
-export function createCustomer(rows: CustomerInsert[]): Call<void> {
-    return call<void>("POST", "/customer", rows);
+export function createCustomer(rows: CustomerInsert[]): Call<Pick<Customer, "id">[]> {
+    return call<Pick<Customer, "id">[]>("POST", "/customer", rows);
 }
 
 /** Upsert `Customer` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertCustomer(rows: CustomerUpsert[]): Call<void> {
-    return call<void>("PUT", "/customer", rows);
+export function upsertCustomer(rows: CustomerUpsert[]): Call<Pick<Customer, "id">[]> {
+    return call<Pick<Customer, "id">[]>("PUT", "/customer", rows);
 }
 
 /** Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

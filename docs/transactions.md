@@ -54,13 +54,14 @@ session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
 
 `query` returns `unknown` because the result is the driver's. Two readers
 (`src/db/sql-executor.ts`) take the two shapes out of it: `resultRows` answers
-the `rows` array both drivers carry, which the result mapping and a generated
-patch both read, and `affectedRows` answers the count from whichever name the
-driver used — `affectedRows` on PGlite, `rowCount` on `pg`. A result that
-carries neither is a driver the port does not know, so the reader throws rather
-than answering no rows or `0`, which would read as a statement that matched
-nothing. A generated patch or upsert reads the rows it wrote to reject a chunk
-that wrote fewer (`docs/versioning.md`).
+the `rows` array both drivers carry, which the result mapping and every generated
+write read, and `affectedRows` answers the count from whichever name the driver
+used — `affectedRows` on PGlite, `rowCount` on `pg`. A result that carries
+neither is a driver the port does not know, so the reader throws rather than
+answering no rows or `0`, which would read as a statement that matched nothing. A
+generated create, patch, or upsert reads the rows it wrote, both to reject a
+chunk that wrote fewer (`docs/versioning.md`) and to answer a create or an upsert
+with the keys it wrote (`docs/repositories.md`).
 
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
 over a pool:
@@ -300,12 +301,13 @@ Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
 
 ```ts
-export function createInvoice(rows: InvoiceInsert[]): Call<void>
+export function createInvoice(rows: InvoiceInsert[]): Call<Pick<Invoice, "id">[]>
 export function queryInvoice<S extends Selection<Invoice>>(opts: { …; select: S }): Call<Selected<Invoice, S>[]>
 ```
 
 ```ts
-await exec(http, createInvoice(rows));
+// answers the keys the rows were given, in the order they were carried
+const keys = await exec(http, createInvoice(rows));
 const [invoice] = await exec(http, queryInvoice({ filter: { id: [id] }, select: { number: true } }));
 ```
 
@@ -327,11 +329,11 @@ A group's result is a tuple aligned with its arguments, and nesting composes:
 
 | Call | Result |
 | --- | --- |
-| `exec(http, createInvoice(rows))` | `Promise<void>` |
+| `exec(http, createInvoice(rows))` | `Promise<Pick<Invoice, "id">[]>` |
 | `exec(http, transaction(writeA, writeB))` | `Promise<void>` — an all-void group collapses to `void` |
 | `exec(http, batch(read, writeA))` | `Promise<[Row[], void]>` |
-| `exec(http, transaction(batch(readA, readB), write))` | `Promise<[[RowA[], RowB[]], void]>` |
-| `exec(http, attempt(read, writeA))` | `Promise<Attempted<[Row[], void]>>` |
+| `exec(http, transaction(batch(readA, readB), createInvoice(rows)))` | `Promise<[[RowA[], RowB[]], Pick<Invoice, "id">[]]>` |
+| `exec(http, attempt(read, createInvoice(rows)))` | `Promise<Attempted<[Row[], Pick<Invoice, "id">[]]>>` |
 
 An all-void group collapses to `void`, which is why the rejected branch of an
 `attempt` over writes is `Attempted<void>` rather than a tuple of nothings.
@@ -392,7 +394,7 @@ await exec(client, transaction(
     createCustomer([patient]),
 ));
 // the survivor and patient commit; the victim's group is rolled back to its savepoint
-// [null, { ok: false, error: { message: …, path: [1, 1] } }, null]
+// [[{ id: … }], { ok: false, error: { message: …, path: [1, 1] } }, [{ id: … }]]
 ```
 
 An `attempt` reports rather than raises, so it answers a marker instead of a
@@ -467,8 +469,10 @@ client imports nothing from the backend.
   client may not import the backend. No generated artifact keeps them in step, so
   the end-to-end test is what does: a group is the only call whose path is not
   derived from `rest-model.ts`.
-- **Writes answer `null`.** A group follows the single-call codec rule that a
-  void write encodes as `null`; the generated signature types it `void`.
+- **A void write answers `null`; a create and an upsert answer their keys.** A
+  group follows the single-call codec rule: `update` and `delete` encode as
+  `null`, which the generated signature types `void`, while a create or an upsert
+  carries the key list the repository returned (`docs/repositories.md`).
 - **An all-void group has no tuple.** `transaction(writeA, writeB)` resolves to
   `void`, not `[void, void]`, so it cannot be destructured — the collapse that
   makes `const done = await exec(…)` read well is what removes the positions.

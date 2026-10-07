@@ -16,9 +16,9 @@ Each entity gets four modules, one per operation:
 
 ```ts
 // createCustomer.ts
-createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<void>
+createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<CustomerPrimaryKey[]>
 // upsertCustomer.ts
-upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<void>
+upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<CustomerPrimaryKey[]>
 // updateCustomer.ts
 updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
 // deleteCustomer.ts
@@ -35,7 +35,7 @@ resend the rest; see "Inserting" and "Patching" below. `upsert` takes an
 and writes the row whole; see "Upserting". `delete` takes the **primary key**,
 because the key is the whole of what its statement reads.
 
-Every function takes an array and returns nothing. **Reading is not part of a
+**Reading is not part of a
 repository.** There is no `getById`, no list, no query builder. Those belong to
 whatever reads the data — a projection, a report, a view — and are deliberately
 not part of a repository, because their shape is a product decision rather than
@@ -48,6 +48,21 @@ import a driver, so `pg` stays an optional dependency. A driver reaches the port
 as a `SqlPool` (`src/db/sql-pool.ts`): `pg`'s `Pool` satisfies it directly, and
 PGlite through `createPglitePool`. Tests assert both fits, so the structural
 types cannot drift away from the drivers.
+
+## What a write returns
+
+A create and an upsert return the keys they wrote, one per row they were given,
+in the order they carried them; `update` and `delete` return nothing. A call
+with no rows returns an empty array, so an empty call and a short write read
+differently.
+
+The key comes back from the statement rather than being echoed from the input,
+because the database may own it: an `@pgAutoIncrement` column is assigned on
+insert, and a `@pgDefault` key expression is evaluated there. The type is the one
+`delete` takes — the entity projected to its `@primaryKey` fields — so a composite
+key returns every column of the key. A caller that supplied the key itself may
+ignore the result; one that did not needs it, and over REST it is the response
+body (`docs/rest-api.md`).
 
 ## Why arrays
 
@@ -72,7 +87,7 @@ same fields, and the repository imports it:
 ```ts
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 
-export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<void>
+export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<InvoicePrimaryKey[]>
 ```
 
 `InvoiceInsert` is the entity minus every field the statement does not write, so
@@ -128,12 +143,14 @@ where the wire format is unsigned. Filed upstream as
 [electric-sql/pglite#1118](https://github.com/electric-sql/pglite/issues/1118);
 the constant can move to the protocol's 65535 once that is fixed.
 
-An insert writes every row it carries, so each statement's affected-row count is
+An insert writes every row it carries, so each statement's returned-row count is
 compared with the chunk it was given, and a short count is a rejected call. That
 is what makes a silent loss loud: a `before insert` trigger returning `null`
 skips its row without raising, and a driver that quietly declines a statement
 answers nothing at all. Neither is a caller's mistake, so the thrown error
-carries no SQLSTATE and the router serves it as a server fault.
+carries no SQLSTATE and the router serves it as a server fault. The rows the
+statement returns are the keys the call answers with, so the check and the return
+value are the same read.
 
 ## Patching
 
@@ -256,7 +273,7 @@ returning u."id"
   conflicts on the key and replaces unconditionally.
 - **An entity with no version** — the snapshots — has nothing to claim, so its
   upsert is the create's statement plus `on conflict ("id") do update`: no
-  predicate, no `returning`, and every conflicting row replaced. A short count
+  predicate, and every conflicting row replaced. A short count
   there is not a stale claim but a row the database declined to write, and it
   raises the same plain error a create raises.
 

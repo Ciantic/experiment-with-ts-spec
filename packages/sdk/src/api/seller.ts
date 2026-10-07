@@ -16,13 +16,13 @@ export function querySeller<S extends Selection<Seller>>(
 }
 
 /** Create `Seller` rows. */
-export function createSeller(rows: SellerInsert[]): Call<void> {
-    return call<void>("POST", "/seller", rows);
+export function createSeller(rows: SellerInsert[]): Call<Pick<Seller, "id">[]> {
+    return call<Pick<Seller, "id">[]>("POST", "/seller", rows);
 }
 
 /** Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertSeller(rows: SellerUpsert[]): Call<void> {
-    return call<void>("PUT", "/seller", rows);
+export function upsertSeller(rows: SellerUpsert[]): Call<Pick<Seller, "id">[]> {
+    return call<Pick<Seller, "id">[]>("PUT", "/seller", rows);
 }
 
 /** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

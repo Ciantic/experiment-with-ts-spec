@@ -16,13 +16,13 @@ export function queryEmail<S extends Selection<Email>>(
 }
 
 /** Create `Email` rows. */
-export function createEmail(rows: EmailInsert[]): Call<void> {
-    return call<void>("POST", "/email", rows);
+export function createEmail(rows: EmailInsert[]): Call<Pick<Email, "id">[]> {
+    return call<Pick<Email, "id">[]>("POST", "/email", rows);
 }
 
 /** Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertEmail(rows: EmailUpsert[]): Call<void> {
-    return call<void>("PUT", "/email", rows);
+export function upsertEmail(rows: EmailUpsert[]): Call<Pick<Email, "id">[]> {
+    return call<Pick<Email, "id">[]>("PUT", "/email", rows);
 }
 
 /** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

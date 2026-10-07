@@ -16,13 +16,13 @@ export function queryTenant<S extends Selection<Tenant>>(
 }
 
 /** Create `Tenant` rows. */
-export function createTenant(rows: TenantInsert[]): Call<void> {
-    return call<void>("POST", "/tenant", rows);
+export function createTenant(rows: TenantInsert[]): Call<Pick<Tenant, "id">[]> {
+    return call<Pick<Tenant, "id">[]>("POST", "/tenant", rows);
 }
 
 /** Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertTenant(rows: TenantUpsert[]): Call<void> {
-    return call<void>("PUT", "/tenant", rows);
+export function upsertTenant(rows: TenantUpsert[]): Call<Pick<Tenant, "id">[]> {
+    return call<Pick<Tenant, "id">[]>("PUT", "/tenant", rows);
 }
 
 /** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */

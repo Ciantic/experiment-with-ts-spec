@@ -258,10 +258,10 @@ matched before the generated code rejects the call
   `packages/` serializes a spec object today, but the first HTTP or RPC boundary
   to do so will throw. Serializing with a replacer, or converting at that
   boundary, is the fix.
-- **The first version is not returned.** Every repository function returns
-  `Promise<void>` and reading is deliberately not generated
-  (`docs/repositories.md`), so `createCustomer` does not tell the caller that the
-  row is now at version `0`. Learning it takes a `RETURNING` or a read path. An
+- **The first version is not returned.** A create and an upsert answer the keys
+  they wrote, not the columns the database assigned (`docs/repositories.md`), so
+  `createCustomer` does not tell the caller that the row is now at version `0`.
+  Learning it takes a `RETURNING` that names the column or a read path. An
   upsert does not return the version it produced either, so a caller replacing a
   row it read at `3` learns only that the row is now at `4` by reading again.
 - **`@inlined` leaks `customerVersion`.** Inlining flattens every scalar

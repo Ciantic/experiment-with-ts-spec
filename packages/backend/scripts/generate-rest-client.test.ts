@@ -113,8 +113,8 @@ describe("renderClientModule", () => {
     it("names the verb and the path of each call, leaving the carrier to exec", () => {
         const code = widgetModule();
 
-        expect(code).toContain('call<void>("POST", "/widget", rows)');
-        expect(code).toContain('call<void>("PUT", "/widget", rows)');
+        expect(code).toContain('call<Pick<Widget, "id">[]>("POST", "/widget", rows)');
+        expect(code).toContain('call<Pick<Widget, "id">[]>("PUT", "/widget", rows)');
         expect(code).toContain('call<void>("PATCH", "/widget", rows)');
         expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
@@ -159,7 +159,7 @@ describe("renderClientModule", () => {
     it("upserts with the validation upsert type, which carries the version a create omits", () => {
         const code = widgetModule();
 
-        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<void> {");
+        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<Pick<Widget, \"id\">[]> {");
         expect(code).toContain("replaces the row at the version it claims");
     });
 
@@ -201,7 +201,7 @@ describe("renderClientModule", () => {
             '\n' +
             'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
         expect(code).toContain(
-            "export function createWidget(rows: WidgetInsert[]): Call<void> {",
+            "export function createWidget(rows: WidgetInsert[]): Call<Pick<Widget, \"id\">[]> {",
         );
         expect(code).not.toContain("export type WidgetInsert =");
     });
