@@ -12,6 +12,8 @@ export type EmailStatus = "pending" | "sending" | "sent" | "failed";
  * An outbound email waiting for a delivery service to pick it up.
  *
  * @pgTable email
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  * @pgTrigger before insert or update for each row: if NEW."status" = 'pending' and NEW."attempts" >= NEW."maxAttempts" then raise exception 'email attempt limit reached on %', NEW."id" using errcode = '23514'; end if
  */
 export interface Email {

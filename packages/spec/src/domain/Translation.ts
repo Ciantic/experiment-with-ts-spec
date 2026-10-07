@@ -2,6 +2,8 @@
  * A translation entry for an invoice.
  * 
  * @pgTable translation
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Translation {
 

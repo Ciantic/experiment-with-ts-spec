@@ -42,6 +42,12 @@ A write module derives from the domain module rather than restating the entity:
 each one imports `<name>Schema` from `../domain/<entity>Schema.ts` and projects it.
 The directory is what says "write"; a `domain/` module is never a write.
 
+The whole write set is generated for every entity, whatever its `@repository`
+tag names. The schemas are the shared write-type layer, and a create may inline
+another entity's insert shape, so the insert module has to exist even for an
+entity that names no create of its own. The repository generator and the REST
+table select from this set; see `docs/repositories.md` and `docs/rest-api.md`.
+
 The package is consumed as TypeScript through its `exports` map, like every other
 package here. `packages/backend` and `packages/sdk` depend on it: a repository
 imports one write type from its `repositories/<entity><Kind>Schema.ts` module,

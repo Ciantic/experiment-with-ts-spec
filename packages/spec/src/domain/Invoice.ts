@@ -13,6 +13,8 @@ export type InvoiceId = BrandedId<"InvoiceId">;
  * An invoice.
  * 
  * @pgTable invoice
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Invoice {
     /**

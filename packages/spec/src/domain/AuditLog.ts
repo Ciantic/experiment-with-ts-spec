@@ -10,6 +10,8 @@ export type AuditLogId = AutoIncrement<"AuditLogId">;
  * no `@version` and no `@updatedAt`.
  *
  * @pgTable audit_log
+ * @repository create
+ * @restRepository create
  */
 export interface AuditLog {
     /**

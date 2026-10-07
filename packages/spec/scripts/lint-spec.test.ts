@@ -1512,7 +1512,12 @@ describe("lintProject", () => {
         const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
 
         expect(interfaces).toBe(1);
-        expect(messages(findings)).toEqual(["`label`: missing @fieldName", "`label`: missing @widget"]);
+        expect(messages(findings)).toEqual([
+            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
+            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+            "`label`: missing @fieldName",
+            "`label`: missing @widget",
+        ]);
     });
 
     it("skips contract interfaces outside domain/", () => {
@@ -1526,7 +1531,12 @@ describe("lintProject", () => {
         const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
 
         expect(interfaces).toBe(1);
-        expect(messages(findings)).toEqual(["`label`: missing @fieldName", "`label`: missing @widget"]);
+        expect(messages(findings)).toEqual([
+            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
+            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+            "`label`: missing @fieldName",
+            "`label`: missing @widget",
+        ]);
     });
 
     it("still scans type aliases outside domain/", () => {
@@ -1536,6 +1546,94 @@ describe("lintProject", () => {
         const { findings } = lintProject(project, { entityGlob, aliasGlob });
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
+    });
+
+    /** Lint one entity with the given interface doc, and no field problems, for the operation rules. */
+    function lintEntity(doc: string): string[] {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/domain/Invoice.ts",
+            `${doc}
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}`,
+        );
+        return messages(lintProject(project, { entityGlob, aliasGlob }).findings);
+    }
+
+    it("accepts an entity that names the writes it generates and exposes", () => {
+        const findings = lintEntity(`/**
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
+ */`);
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a missing @repository and @restRepository", () => {
+        const findings = lintEntity("/** @pgTable invoice */");
+
+        expect(findings).toEqual([
+            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
+            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+        ]);
+    });
+
+    it("reports an operation that is not one of the four writes", () => {
+        const findings = lintEntity(`/**
+ * @repository creat
+ * @restRepository creat
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @repository `creat` is not one of: create, upsert, update, delete",
+            "`Invoice`: @restRepository `creat` is not one of: create, upsert, update, delete",
+        ]);
+    });
+
+    it("reports an operation named twice", () => {
+        const findings = lintEntity(`/**
+ * @repository create create
+ * @restRepository create
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @repository names `create` twice"]);
+    });
+
+    it("requires at least one operation in each list", () => {
+        const findings = lintEntity(`/**
+ * @repository
+ * @restRepository
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @repository requires at least one of: create, upsert, update, delete",
+            "`Invoice`: @restRepository requires at least one of: create, upsert, update, delete",
+        ]);
+    });
+
+    it("reports an exposed operation the repository does not generate", () => {
+        const findings = lintEntity(`/**
+ * @repository create update
+ * @restRepository create upsert
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @restRepository `upsert` is not in @repository"]);
+    });
+
+    it("reports a tag that appears twice", () => {
+        const findings = lintEntity(`/**
+ * @repository create
+ * @repository update
+ * @restRepository create
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @repository appears more than once"]);
     });
 });
 

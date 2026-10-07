@@ -22,6 +22,8 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 const WIDGET = `
 /**
  * @pgTable widget
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Widget {
     /** @primaryKey */
@@ -45,6 +47,8 @@ export interface Widget {
 const MARKER = `
 /**
  * @pgTable marker
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Marker {
     /** @primaryKey */
@@ -56,6 +60,8 @@ export interface Marker {
 const TRANSLATION = `
 /**
  * @pgTable translation
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Translation {
     /** @primaryKey */
@@ -72,6 +78,8 @@ export interface Translation {
 const LIMITED = `
 /**
  * @pgTable limited
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Limited {
     /** @primaryKey */
@@ -233,6 +241,30 @@ describe("renderClientModule", () => {
         expect(code).not.toContain("getWidget");
         expect(code).not.toContain("AtLeastOne");
         expect(markerCode).not.toContain("getMarker");
+    });
+
+    it("builds only the calls @restRepository exposes, and keeps the read", () => {
+        const audit = `
+/**
+ * @pgTable audit_log
+ * @repository create
+ * @restRepository create
+ */
+export interface AuditLog {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const entity = build({ AuditLog: audit }).entities[0]!;
+        const code = renderClientModule(entity);
+
+        expect(code).toContain("export function queryAuditLog");
+        expect(code).toContain("export function createAuditLog");
+        expect(code).not.toContain("export function upsertAuditLog");
+        expect(code).not.toContain("export function updateAuditLog");
+        expect(code).not.toContain("export function deleteAuditLog");
+        expect(code).not.toContain("AuditLogPatch");
+        expect(code).not.toContain("AuditLogUpsert");
     });
 });
 

@@ -13,6 +13,8 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 const WIDGET = `
 /**
  * @pgTable widget
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Widget {
     /** @primaryKey */
@@ -27,6 +29,8 @@ export interface Widget {
 const MARKER = `
 /**
  * @pgTable marker
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Marker {
     /** @primaryKey */
@@ -142,6 +146,32 @@ describe("renderEntityRoutes", () => {
 
         expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
         expect(new Set(names).size).toBe(names.length);
+    });
+
+    it("emits only the writes @restRepository exposes, keeping the read", () => {
+        const audit = `
+/**
+ * @pgTable audit_log
+ * @repository create
+ * @restRepository create
+ */
+export interface AuditLog {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const entity = build({ AuditLog: audit }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the audit entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain("handler: (db, body) => createAuditLog(db, body as never)");
+        expect(code).toContain("handler: (db, body) => queryAuditLog(db, body as never)");
+        expect(code).not.toContain("upsertAuditLog");
+        expect(code).not.toContain("updateAuditLog");
+        expect(code).not.toContain("deleteAuditLog");
+        expect(code).not.toContain("auditLogPatchSchema");
     });
 });
 

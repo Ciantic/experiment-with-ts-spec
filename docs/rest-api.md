@@ -28,7 +28,11 @@ The generated output is committed. Regenerate rather than editing it by hand.
 
 ## The surface
 
-One collection per entity, at the `@pgTable` name. A read and a delete carry
+One collection per entity, at the `@pgTable` name. The collection exposes the
+read and the writes its `@restRepository` tag names: a write `@repository`
+generates but `@restRepository` omits is reachable to backend callers and absent
+from the route table and the SDK, and the read is exposed for every entity. See
+`docs/spec-annotations.md`. A read and a delete carry
 their argument in a single `q` query parameter; a write carries it in the body.
 
 | Call | Method | Path | Argument |

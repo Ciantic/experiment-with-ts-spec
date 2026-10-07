@@ -48,7 +48,7 @@ export const FIELD_TAGS = [
 ] as const;
 
 /** Tags an interface may carry. */
-export const INTERFACE_TAGS = ["pgTable", "pgTrigger"] as const;
+export const INTERFACE_TAGS = ["pgTable", "pgTrigger", "repository", "restRepository"] as const;
 
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
@@ -125,6 +125,15 @@ export function isCompareOperator(value: string): value is CompareOperator {
     return (COMPARE_OPERATORS as readonly string[]).includes(value);
 }
 
+/** The write operations `@repository` and `@restRepository` may name, in canonical order. */
+export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
+export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
+
+/** True when the text is one of {@link WRITE_OPERATIONS}. */
+export function isWriteOperation(value: string): value is WriteOperation {
+    return (WRITE_OPERATIONS as readonly string[]).includes(value);
+}
+
 /** A problem found while reading the spec. */
 export interface Diagnostic {
     filePath: string;
@@ -169,6 +178,10 @@ export interface Tags {
     version: boolean;
     /** The Postgres table name for the interface. */
     pgTable?: string;
+    /** The write operations `@repository` declares, in {@link WRITE_OPERATIONS} order. See docs/repositories.md. */
+    repository?: WriteOperation[];
+    /** The write operations `@restRepository` exposes, in {@link WRITE_OPERATIONS} order. See docs/rest-api.md. */
+    restRepository?: WriteOperation[];
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
@@ -203,6 +216,10 @@ export interface SpecInterface {
     properties: SpecProperty[];
     /** The interface-level `@pgTrigger`, which runs for the table rather than for one field. */
     trigger?: PgTrigger;
+    /** The write operations `@repository` declares; empty when the tag is absent. See docs/repositories.md. */
+    repositoryOperations: WriteOperation[];
+    /** The write operations `@restRepository` exposes; empty when the tag is absent. See docs/rest-api.md. */
+    restRepositoryOperations: WriteOperation[];
 }
 
 /** A type alias in the spec. */
@@ -441,6 +458,12 @@ export function assignsColumn(statement: string): boolean {
     return /NEW\s*\.\s*(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*:=/.test(statement);
 }
 
+/** The write operations an operation tag names, de-duplicated and in {@link WRITE_OPERATIONS} order. */
+function parseWriteOperations(value: string | undefined): WriteOperation[] {
+    const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
+    return WRITE_OPERATIONS.filter((operation) => tokens.includes(operation));
+}
+
 /** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
@@ -500,6 +523,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "pgTable":
                     if (value !== undefined) tags.pgTable ??= value;
+                    break;
+                case "repository":
+                    if (tags.repository === undefined) tags.repository = parseWriteOperations(value);
+                    break;
+                case "restRepository":
+                    if (tags.restRepository === undefined) tags.restRepository = parseWriteOperations(value);
                     break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
@@ -611,6 +640,8 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                         tags,
                     };
                 }),
+                repositoryOperations: declarationTags.repository ?? [],
+                restRepositoryOperations: declarationTags.restRepository ?? [],
             };
             if (declarationTags.pgTrigger !== undefined) {
                 entity.trigger = declarationTags.pgTrigger;

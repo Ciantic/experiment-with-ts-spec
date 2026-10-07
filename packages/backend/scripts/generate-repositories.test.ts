@@ -20,6 +20,7 @@ import {
 } from "./generate-repositories.ts";
 import { renderCreateTable, renderVersionTrigger } from "./generate-postgres-schema.ts";
 import type { Column, Table } from "./postgres-model.ts";
+import { WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     // A defaulted column is written when the row supplies it; the version is the database's on create.
@@ -41,6 +42,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         columns,
         relations: new Map(),
         triggers: [],
+        repositoryOperations: [...WRITE_OPERATIONS],
     };
 }
 
@@ -946,6 +948,21 @@ describe("generateRepositories", () => {
             "upsertCustomer.ts",
             "upsertInvoice.ts",
         ]);
+    });
+
+    it("emits only the operations a table declares, and lists them in the barrel", () => {
+        const audit: Table = {
+            ...table("audit_log", "AuditLog", [column("id", { sqlType: "uuid", primaryKey: true })]),
+            repositoryOperations: ["create"],
+        };
+
+        const files = generateRepositories(new Map([["AuditLog", audit]]));
+
+        expect([...files.keys()].sort()).toEqual(["createAuditLog.ts", "index.ts"]);
+        expect(files.get("index.ts")).toContain('export * from "./createAuditLog.ts";');
+        expect(files.get("index.ts")).not.toContain("upsertAuditLog");
+        expect(files.get("index.ts")).not.toContain("updateAuditLog");
+        expect(files.get("index.ts")).not.toContain("deleteAuditLog");
     });
 });
 

@@ -12,6 +12,8 @@ const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 const WIDGET = `
 /**
  * @pgTable widget
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Widget {
     /** @primaryKey */
@@ -35,6 +37,8 @@ export interface Widget {
 const MARKER = `
 /**
  * @pgTable marker
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Marker {
     /** @primaryKey */
@@ -46,6 +50,8 @@ export interface Marker {
 const TRANSLATION = `
 /**
  * @pgTable translation
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Translation {
     /** @primaryKey */
@@ -62,6 +68,8 @@ export interface Translation {
 const KEYLESS = `
 /**
  * @pgTable keyless
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Keyless {
     name: string;
@@ -169,6 +177,81 @@ describe("buildRestModel", () => {
 
         expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
             "`Keyless`: no `@primaryKey` field",
+        ]);
+    });
+
+    it("exposes only the writes @restRepository names, keeping the read", () => {
+        const audit = `
+/**
+ * @pgTable audit_log
+ * @repository create
+ * @restRepository create
+ */
+export interface AuditLog {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const entity = build({ AuditLog: audit }).entities[0];
+
+        expect(entity?.operations.map((operation) => operation.kind)).toEqual(["query", "create"]);
+    });
+
+    it("keeps a generated write out of the surface when @restRepository omits it", () => {
+        const internal = `
+/**
+ * @pgTable internal
+ * @repository create update
+ * @restRepository create
+ */
+export interface Internal {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const model = build({ Internal: internal });
+
+        expect(model.entities[0]?.operations.map((operation) => operation.kind)).toEqual([
+            "query",
+            "create",
+        ]);
+        expect(model.diagnostics).toEqual([]);
+    });
+
+    it("reports an entity that names no operation, and an exposed write it does not generate", () => {
+        const bad = `
+/**
+ * @pgTable bad
+ * @repository create
+ * @restRepository delete
+ */
+export interface Bad {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const diagnostics = build({ Bad: bad }).diagnostics;
+
+        expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`Bad`: @restRepository `delete` is not in @repository",
+        ]);
+    });
+
+    it("reports an entity that carries neither operation tag", () => {
+        const unannotated = `
+/**
+ * @pgTable plain
+ */
+export interface Plain {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const diagnostics = build({ Plain: unannotated }).diagnostics;
+
+        expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`Plain`: @repository names no operation",
+            "`Plain`: @restRepository names no operation",
         ]);
     });
 

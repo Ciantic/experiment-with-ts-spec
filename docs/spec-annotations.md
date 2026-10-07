@@ -8,9 +8,10 @@ consumes. This note records what each tag means and how it lands in Postgres.
 Two rules decide every tag name, and both are checkable by eye.
 
 **A multi-word tag is camelCase.** `@fieldName`, `@createdAt`, `@updatedAt`,
-`@primaryKey`, `@foreignKey`, `@queryFilter`, `@queryOrderBy`, `@queryWhere`. A
-one-word tag is lowercase: `@widget`, `@computed`, `@unique`, `@version`,
-`@relation`, `@children`, `@inlined`, `@primitive`, `@zod`.
+`@primaryKey`, `@foreignKey`, `@queryFilter`, `@queryOrderBy`, `@queryWhere`,
+`@restRepository`. A one-word tag is lowercase: `@widget`, `@computed`,
+`@unique`, `@version`, `@relation`, `@children`, `@inlined`, `@primitive`,
+`@repository`, `@zod`.
 
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
 `@pgDefault`, `@pgAutoIncrement`, `@pgVirtual`, `@pgTrigger`. The prefix and the word
@@ -90,6 +91,14 @@ Field tags:
 Interface tags:
 
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
+- `@repository <operation>…` — the write operations whose repository modules the
+  generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
+  operation left out has no module, no function, and no barrel export. Required
+  on every entity. See "`@repository` and `@restRepository`" below.
+- `@restRepository <operation>…` — the subset of `@repository` that the route
+  table and the generated SDK expose. A write may be generated and not exposed,
+  so a seed or a group can still call it. Required on every entity. See
+  "`@repository` and `@restRepository`" below.
 - `@pgTrigger <statement>` or `@pgTrigger <header>: <statement>` — a trigger that runs
   for the table rather than for one field, so it may not assign a column (there is
   no field to claim) and may not carry `on` (it is already attached). The header
@@ -134,6 +143,38 @@ trigger. Everything else is an ordinary field — a key the
 application assigns, a key the database assigns with `@pgAutoIncrement`, a column
 with a `@pgDefault` — and no other tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
+
+## `@repository` and `@restRepository`
+
+Every entity names the writes it materializes and the writes it publishes:
+
+```ts
+/**
+ * @pgTable audit_log
+ * @repository create
+ * @restRepository create
+ */
+export interface AuditLog {
+```
+
+`@repository` lists the write operations whose repository modules
+`generate-repositories.ts` writes: one or more of `create`, `upsert`, `update`,
+`delete`, in any order. An operation the list leaves out has no module, no
+function, and no barrel export. `@restRepository` lists the subset of those the
+route table and the generated SDK expose; it may not name an operation
+`@repository` omits, since a route would call a function that does not exist. A
+write may be generated and not exposed — a seed or a group can still call it —
+and an entity whose writes are not published keeps its read.
+
+Reads are not part of either list. A `query` is generated and exposed for every
+entity, because the tags select the writes. See `docs/queries.md` and
+`docs/rest-api.md`.
+
+Both tags are required on an entity and are validated as a group: the linter
+reports a missing tag, an empty list, a token that is not one of the four
+writes, a token named twice, and a `@restRepository` operation the repository
+set does not contain. Each list is the whole set, so the entity that wants the
+full surface names all four in both.
 
 ## `@primaryKey` and `@foreignKey`
 
@@ -545,6 +586,11 @@ Enforced:
   See `docs/queries.md`.
 - `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
+- `@repository` and `@restRepository` are required on every entity, appear at most
+  once, and name one or more of `create`, `upsert`, `update`, `delete`. An
+  unknown token, a token named twice, an empty list, and a `@restRepository`
+  operation the repository set does not contain are each reported. See
+  "`@repository` and `@restRepository`".
 - Tags may not repeat on a field.
 
 Gotchas:

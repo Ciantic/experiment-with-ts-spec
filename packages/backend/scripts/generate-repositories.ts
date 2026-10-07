@@ -1,8 +1,8 @@
 /** Generate CRUD repositories from `spec/domain`. See docs/repositories.md. */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Project } from "ts-morph";
-import { lowerFirst } from "spec/scripts/spec-model.ts";
+import { lowerFirst, type WriteOperation } from "spec/scripts/spec-model.ts";
 import {
     BACKEND_PACKAGE_ROOT,
     DEFAULT_SPEC_GLOB,
@@ -34,14 +34,9 @@ export function validationFileName(writeType: string): string {
 }
 
 /** The module for one operation, named after the function it exports: ("create", "Invoice") -> createInvoice.ts. */
-function operationFileName(operation: Operation, entity: string): string {
+function operationFileName(operation: WriteOperation, entity: string): string {
     return `${operation}${entity}.ts`;
 }
-
-/** The operations every entity gets, in the order the barrel lists them. */
-const OPERATIONS = ["create", "upsert", "update", "delete"] as const;
-
-type Operation = (typeof OPERATIONS)[number];
 
 /** A column's value expression and the type its placeholder is cast to. */
 interface ValueEntry {
@@ -602,7 +597,7 @@ export function generateDelete(table: Table): string {
 }
 
 /** The generator for each operation, so the barrel and the file set come from one list. */
-const OPERATION_GENERATORS: Record<Operation, (table: Table) => string> = {
+const OPERATION_GENERATORS: Record<WriteOperation, (table: Table) => string> = {
     create: generateCreate,
     upsert: generateUpsert,
     update: generateUpdate,
@@ -613,7 +608,7 @@ const OPERATION_GENERATORS: Record<Operation, (table: Table) => string> = {
 export function generateIndex(tables: Table[]): string {
     const lines = [HEADER];
     for (const table of [...tables].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName))) {
-        for (const operation of OPERATIONS) {
+        for (const operation of table.repositoryOperations) {
             lines.push(`export * from "./${operationFileName(operation, table.interfaceName)}";`);
         }
     }
@@ -624,7 +619,7 @@ export function generateIndex(tables: Table[]): string {
 export function generateRepositories(tables: Map<string, Table>): Map<string, string> {
     const files = new Map<string, string>();
     for (const table of tables.values()) {
-        for (const operation of OPERATIONS) {
+        for (const operation of table.repositoryOperations) {
             files.set(
                 operationFileName(operation, table.interfaceName),
                 OPERATION_GENERATORS[operation](table),
@@ -633,6 +628,19 @@ export function generateRepositories(tables: Map<string, Table>): Map<string, st
     }
     files.set(INDEX_FILE, generateIndex([...tables.values()]));
     return files;
+}
+
+/** Remove the generated modules the spec no longer declares, so a narrowed operation set leaves no file. */
+function pruneStale(outDir: string, keep: Set<string>): void {
+    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+            continue;
+        }
+        const file = join(outDir, entry.name);
+        if (readFileSync(file, "utf8").split("\n", 1)[0] === HEADER) {
+            rmSync(file);
+        }
+    }
 }
 
 function main(): void {
@@ -665,6 +673,7 @@ function main(): void {
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);
     }
+    pruneStale(outDir, new Set(files.keys()));
     console.log(`wrote ${files.size} files to ${outDir}`);
 }
 

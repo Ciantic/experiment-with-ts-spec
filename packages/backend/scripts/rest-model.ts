@@ -10,11 +10,13 @@ import type { Node, Project } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    WRITE_OPERATIONS,
     isCompareOperator,
     lowerFirst,
     parseSpec,
     type Diagnostic,
     type SpecInterface,
+    type WriteOperation,
 } from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
@@ -79,20 +81,34 @@ function queryPath(path: string): string {
     return `${path}/query`;
 }
 
-/** The calls one entity exposes, in a stable order. */
-function operationsFor(path: string): RestOperation[] {
+/** The method, carrier, and path of one exposed write. */
+function writeOperation(path: string, kind: WriteOperation): RestOperation {
+    switch (kind) {
+        case "create":
+            return { kind, method: "POST", path, source: "body" };
+        // An upsert declares a row's whole state and the version it claims, so it replaces: `PUT` is idempotent.
+        case "upsert":
+            return { kind, method: "PUT", path, source: "body" };
+        case "update":
+            return { kind, method: "PATCH", path, source: "body" };
+        // A delete carries keys, not row data, and a `DELETE` body is not universally relayed.
+        case "delete":
+            return { kind, method: "DELETE", path, source: "query" };
+    }
+}
+
+/** The calls one entity exposes, in a stable order: the read, then each write `@restRepository` names. */
+function operationsFor(path: string, exposed: WriteOperation[]): RestOperation[] {
     // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
+    // It is always exposed; the operation tags govern only the writes.
     const operations: RestOperation[] = [
         { kind: "query", method: "GET", path: queryPath(path), source: "query" },
     ];
-    operations.push(
-        { kind: "create", method: "POST", path, source: "body" },
-        // An upsert declares a row's whole state and the version it claims, so it replaces: `PUT` is idempotent.
-        { kind: "upsert", method: "PUT", path, source: "body" },
-        { kind: "update", method: "PATCH", path, source: "body" },
-        // A delete carries keys, not row data, and a `DELETE` body is not universally relayed.
-        { kind: "delete", method: "DELETE", path, source: "query" },
-    );
+    for (const kind of WRITE_OPERATIONS) {
+        if (exposed.includes(kind)) {
+            operations.push(writeOperation(path, kind));
+        }
+    }
     return operations;
 }
 
@@ -122,7 +138,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        operations: operationsFor(path),
+        operations: operationsFor(path, spec.restRepositoryOperations),
     };
 }
 
@@ -144,6 +160,21 @@ export function buildRestModel(project: Project, options: GenerateOptions = {}):
         // A write addresses a row by its key, so a keyless entity has no delete or patch.
         if (entity.keys.length === 0) {
             report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
+        }
+        // The two tags are required, and REST can only expose a repository function that exists.
+        if (spec.repositoryOperations.length === 0) {
+            report(spec.declaration, `\`${spec.name}\`: @repository names no operation`);
+        }
+        if (spec.restRepositoryOperations.length === 0) {
+            report(spec.declaration, `\`${spec.name}\`: @restRepository names no operation`);
+        }
+        for (const operation of spec.restRepositoryOperations) {
+            if (!spec.repositoryOperations.includes(operation)) {
+                report(
+                    spec.declaration,
+                    `\`${spec.name}\`: @restRepository \`${operation}\` is not in @repository`,
+                );
+            }
         }
         entities.push(entity);
     }

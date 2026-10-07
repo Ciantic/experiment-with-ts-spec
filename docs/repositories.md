@@ -3,7 +3,9 @@
 `packages/backend/scripts/generate-repositories.ts` writes one module per
 operation into `packages/backend/src/db/repositories/`, named after the function
 it exports: `createInvoice.ts`, `upsertInvoice.ts`, `updateInvoice.ts`,
-`deleteInvoice.ts`.
+`deleteInvoice.ts`. An entity generates only the operations its `@repository`
+tag names, so a table that is appended to and never changed has a create module
+and no others. See `docs/spec-annotations.md`.
 
 - `pnpm generate:repositories` — writes the operation modules and their barrel.
 - `pnpm generate:repositories --out <dir>` — writes elsewhere. A missing directory is created.
@@ -12,7 +14,8 @@ The output is committed. Regenerate rather than editing it by hand.
 
 ## What a repository is here
 
-Each entity gets four modules, one per operation:
+Each entity gets one module per operation `@repository` names — four for an
+entity that carries the whole set:
 
 ```ts
 // createCustomer.ts
@@ -25,8 +28,11 @@ updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
 deleteCustomer(db: SqlExecutor, rows: CustomerPrimaryKey[]): Promise<void>
 ```
 
-The barrel `index.ts` re-exports every operation module, so a caller imports the
-function it wants from one path.
+The barrel `index.ts` re-exports every generated operation module, so a caller
+imports the function it wants from one path. An operation the tag omits is
+absent from the barrel and has no module, so a caller cannot reach it. A
+regeneration also removes a module the spec no longer declares, so a narrowed
+`@repository` leaves no stale file behind.
 
 `create` takes an **insert** — the fields a create writes — and `update` takes a
 **patch**, so a caller changes the fields it has without having to read and

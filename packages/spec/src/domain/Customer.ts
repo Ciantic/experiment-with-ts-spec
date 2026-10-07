@@ -11,6 +11,8 @@ export type CustomerId = BrandedId<"CustomerId">;
  * A customer that invoices can be issued to.
  * 
  * @pgTable customer
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */
 export interface Customer {
     /**

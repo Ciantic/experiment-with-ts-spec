@@ -22,6 +22,7 @@ import {
     type TriggerEvent,
     type TriggerLevel,
     type TriggerTiming,
+    type WriteOperation,
     assignsColumn,
     triggerLevel,
 } from "spec/scripts/spec-model.ts";
@@ -125,6 +126,8 @@ export interface Table {
     relations: Map<string, Relation>;
     /** Row triggers, one per timing and event set, in the order they were first contributed to. */
     triggers: Trigger[];
+    /** The write operations `@repository` declares, which the repository generator renders. */
+    repositoryOperations: WriteOperation[];
 }
 
 interface TypeResolution {
@@ -212,6 +215,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         columns: [],
         relations: new Map(),
         triggers: [],
+        repositoryOperations: spec.repositoryOperations,
     };
 
     for (const property of spec.properties) {

@@ -17,8 +17,10 @@ import {
     SPEC_GLOB,
     TYPE_TAGS,
     WIDGETS,
+    WRITE_OPERATIONS,
     isCompareOperator,
     isOrderDirection,
+    isWriteOperation,
     parseParameters,
     assignsColumn,
     hasTriggerHeader,
@@ -181,6 +183,50 @@ export function lintInterface(
 
 /** Report a finding on the field under lint, at the tag's line or the field's. */
 type Report = (message: string, tag?: JSDocTag) => void;
+
+/** An entity names the writes it generates with `@repository` and the writes it exposes with `@restRepository`. */
+function lintOperationTags(declaration: InterfaceDeclaration, report: Report): void {
+    const byName = readTags(declaration).byName;
+    const declared = new Map<string, Set<string>>();
+    for (const name of ["repository", "restRepository"] as const) {
+        const tags = byName.get(name) ?? [];
+        for (const duplicate of tags.slice(1)) {
+            report(`@${name} appears more than once`, duplicate);
+        }
+        const tag = tags[0];
+        if (!tag) {
+            report(`missing @${name}, naming at least one of: ${WRITE_OPERATIONS.join(", ")}`);
+            continue;
+        }
+        const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
+        if (tokens.length === 0) {
+            report(`@${name} requires at least one of: ${WRITE_OPERATIONS.join(", ")}`, tag);
+        }
+        const named = new Set<string>();
+        for (const token of tokens) {
+            if (!isWriteOperation(token)) {
+                report(`@${name} \`${token}\` is not one of: ${WRITE_OPERATIONS.join(", ")}`, tag);
+            } else if (named.has(token)) {
+                report(`@${name} names \`${token}\` twice`, tag);
+            } else {
+                named.add(token);
+            }
+        }
+        declared.set(name, named);
+    }
+
+    // REST can only expose a repository function that exists, so the exposed set is a subset.
+    const repository = declared.get("repository");
+    const rest = declared.get("restRepository");
+    if (repository && rest) {
+        const restTag = (byName.get("restRepository") ?? [])[0];
+        for (const operation of rest) {
+            if (!repository.has(operation)) {
+                report(`@restRepository \`${operation}\` is not in @repository`, restTag);
+            }
+        }
+    }
+}
 
 /** A branch marker on an entity-typed field: `@relation`, `@children`, or `@inlined`. */
 interface BranchTag {
@@ -713,6 +759,13 @@ export function lintProject(
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
             lintInterface(declaration, filePath, findings);
+            lintOperationTags(declaration, (message, tag) => {
+                findings.push({
+                    filePath,
+                    line: (tag ?? declaration).getStartLineNumber(),
+                    message: `\`${declaration.getName()}\`: ${message}`,
+                });
+            });
             for (const property of declaration.getProperties()) {
                 properties += 1;
                 lintProperty(property, filePath, findings);
