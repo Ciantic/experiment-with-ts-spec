@@ -26,8 +26,8 @@ export type { Diagnostic };
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
 export type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-/** One kind of call. The kind decides the path and the argument, not the method. */
-export type RestKind = "query" | "create" | "upsert" | "update" | "delete";
+/** One kind of call: the operations the spec declares, since the tag is what exposes one. */
+export type RestKind = ReadOperation | WriteOperation;
 
 /** Where a call carries its argument: the `q` query parameter, or the request body. */
 export type RestSource = "query" | "body";
