@@ -113,8 +113,8 @@ describe("renderClientModule", () => {
     it("names the verb and the path of each call, leaving the carrier to exec", () => {
         const code = widgetModule();
 
-        expect(code).toContain('call<Pick<Widget, "id">[]>("POST", "/widget", rows)');
-        expect(code).toContain('call<Pick<Widget, "id">[]>("PUT", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[]>("POST", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[]>("PUT", "/widget", rows)');
         expect(code).toContain('call<void>("PATCH", "/widget", rows)');
         expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
@@ -143,15 +143,17 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "validation/selection.ts";');
     });
 
-    it("imports and re-exports the write types from the validation package", () => {
+    it("imports and re-exports the write types and the key from the validation package", () => {
         const code = widgetModule();
 
         expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
             '\n' +
             'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";' +
             '\n' +
+            'import type { WidgetPrimaryKey } from "validation/repositories/widgetPrimaryKeySchema.ts";' +
+            '\n' +
             'import type { WidgetUpsert } from "validation/repositories/widgetUpsertSchema.ts";');
-        expect(code).toContain("export type { WidgetInsert, WidgetPatch, WidgetUpsert };");
+        expect(code).toContain("export type { WidgetInsert, WidgetPatch, WidgetPrimaryKey, WidgetUpsert };");
         expect(code).toContain("rows: WidgetPatch[]");
         expect(code).not.toContain("export type WidgetPatch =");
     });
@@ -159,7 +161,7 @@ describe("renderClientModule", () => {
     it("upserts with the validation upsert type, which carries the version a create omits", () => {
         const code = widgetModule();
 
-        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<Pick<Widget, \"id\">[]> {");
+        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<WidgetPrimaryKey[]> {");
         expect(code).toContain("replaces the row at the version it claims");
     });
 
@@ -171,6 +173,8 @@ describe("renderClientModule", () => {
             '\n' +
             'import type { MarkerPatch } from "validation/repositories/markerPatchSchema.ts";' +
             '\n' +
+            'import type { MarkerPrimaryKey } from "validation/repositories/markerPrimaryKeySchema.ts";' +
+            '\n' +
             'import type { MarkerUpsert } from "validation/repositories/markerUpsertSchema.ts";');
         expect(code).not.toContain("and the version");
     });
@@ -178,7 +182,7 @@ describe("renderClientModule", () => {
     it("deletes by the key", () => {
         const code = widgetModule();
 
-        expect(code).toContain('rows: Pick<Widget, "id">[]');
+        expect(code).toContain("rows: WidgetPrimaryKey[]");
         expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
 
@@ -190,7 +194,10 @@ describe("renderClientModule", () => {
 
         const code = renderClientModule(entity);
 
-        expect(code).toContain('rows: Pick<Translation, "languageCode" | "key">[]');
+        // The key projection is the one validation declares, not a second one written here.
+        expect(code).toContain("rows: TranslationPrimaryKey[]");
+        expect(code).toContain('import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";');
+        expect(code).not.toContain("Pick<Translation,");
         expect(code).toContain("keyed on `languageCode`, `key`");
     });
 
@@ -201,7 +208,7 @@ describe("renderClientModule", () => {
             '\n' +
             'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
         expect(code).toContain(
-            "export function createWidget(rows: WidgetInsert[]): Call<Pick<Widget, \"id\">[]> {",
+            "export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[]> {",
         );
         expect(code).not.toContain("export type WidgetInsert =");
     });
@@ -212,6 +219,8 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";' +
             '\n' +
             'import type { LimitedPatch } from "validation/repositories/limitedPatchSchema.ts";' +
+            '\n' +
+            'import type { LimitedPrimaryKey } from "validation/repositories/limitedPrimaryKeySchema.ts";' +
             '\n' +
             'import type { LimitedUpsert } from "validation/repositories/limitedUpsertSchema.ts";');
     });

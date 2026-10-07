@@ -69,9 +69,10 @@ ignores is a 400 (`docs/validation.md`).
 
 A create and an upsert answer `200` with the keys they wrote, in the order the
 rows were carried — the rows the repository returned, unchanged
-(`docs/repositories.md`). The client types the response `Pick<<Entity>, keys>[]`.
+(`docs/repositories.md`) — and the client types the response `<Entity>PrimaryKey[]`.
 `update` and `delete` answer `200` with `null`, the codec's spelling of a void
-write.
+write. The key type is the one validation declares, so the client's read of a
+write's answer and the key a delete sends are one definition.
 
 ## Why a read is a `GET` with `q`
 
@@ -179,12 +180,15 @@ client cannot drift from the server:
 ```typescript
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 import type { InvoicePatch } from "validation/repositories/invoicePatchSchema.ts";
+import type { InvoicePrimaryKey } from "validation/repositories/invoicePrimaryKeySchema.ts";
 
 export function updateInvoice(rows: InvoicePatch[]): Call<void>
+export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void>
 ```
 
 A create narrows the same way, to `<Entity>Insert`, so the type a caller sends
-and the schema that validates it agree (`docs/validation.md`). Both are imported
+and the schema that validates it agree, and it answers `<Entity>PrimaryKey[]`
+(`docs/validation.md`). Every one is imported
 type-only and re-exported, so `zod` stays out of the client's runtime.
 
 A builder carries no client, which is what lets `exec` accept several of them at

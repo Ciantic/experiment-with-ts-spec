@@ -3,10 +3,11 @@ import type { InvoiceSentRow } from "spec/domain/InvoiceSentRow.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { InvoiceSentRowInsert } from "validation/repositories/invoiceSentRowInsertSchema.ts";
 import type { InvoiceSentRowPatch } from "validation/repositories/invoiceSentRowPatchSchema.ts";
+import type { InvoiceSentRowPrimaryKey } from "validation/repositories/invoiceSentRowPrimaryKeySchema.ts";
 import type { InvoiceSentRowUpsert } from "validation/repositories/invoiceSentRowUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceSentRowInsert, InvoiceSentRowPatch, InvoiceSentRowUpsert };
+export type { InvoiceSentRowInsert, InvoiceSentRowPatch, InvoiceSentRowPrimaryKey, InvoiceSentRowUpsert };
 
 /** Query `InvoiceSentRow` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
@@ -16,13 +17,13 @@ export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
 }
 
 /** Create `InvoiceSentRow` rows. */
-export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<Pick<InvoiceSentRow, "id">[]> {
-    return call<Pick<InvoiceSentRow, "id">[]>("POST", "/invoice_sent_row", rows);
+export function createInvoiceSentRow(rows: InvoiceSentRowInsert[]): Call<InvoiceSentRowPrimaryKey[]> {
+    return call<InvoiceSentRowPrimaryKey[]>("POST", "/invoice_sent_row", rows);
 }
 
 /** Upsert `InvoiceSentRow` rows: each row is created, or replaces the row it keys on. */
-export function upsertInvoiceSentRow(rows: InvoiceSentRowUpsert[]): Call<Pick<InvoiceSentRow, "id">[]> {
-    return call<Pick<InvoiceSentRow, "id">[]>("PUT", "/invoice_sent_row", rows);
+export function upsertInvoiceSentRow(rows: InvoiceSentRowUpsert[]): Call<InvoiceSentRowPrimaryKey[]> {
+    return call<InvoiceSentRowPrimaryKey[]>("PUT", "/invoice_sent_row", rows);
 }
 
 /** Patch `InvoiceSentRow` rows; a row that is not there rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateInvoiceSentRow(rows: InvoiceSentRowPatch[]): Call<void> {
 }
 
 /** Delete `InvoiceSentRow` rows, keyed on `id`. */
-export function deleteInvoiceSentRow(rows: Pick<InvoiceSentRow, "id">[]): Call<void> {
+export function deleteInvoiceSentRow(rows: InvoiceSentRowPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/invoice_sent_row", rows);
 }

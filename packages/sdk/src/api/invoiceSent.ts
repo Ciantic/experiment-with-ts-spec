@@ -3,10 +3,11 @@ import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { InvoiceSentInsert } from "validation/repositories/invoiceSentInsertSchema.ts";
 import type { InvoiceSentPatch } from "validation/repositories/invoiceSentPatchSchema.ts";
+import type { InvoiceSentPrimaryKey } from "validation/repositories/invoiceSentPrimaryKeySchema.ts";
 import type { InvoiceSentUpsert } from "validation/repositories/invoiceSentUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceSentInsert, InvoiceSentPatch, InvoiceSentUpsert };
+export type { InvoiceSentInsert, InvoiceSentPatch, InvoiceSentPrimaryKey, InvoiceSentUpsert };
 
 /** Query `InvoiceSent` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
@@ -16,13 +17,13 @@ export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
 }
 
 /** Create `InvoiceSent` rows. */
-export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<Pick<InvoiceSent, "id">[]> {
-    return call<Pick<InvoiceSent, "id">[]>("POST", "/invoice_sent", rows);
+export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<InvoiceSentPrimaryKey[]> {
+    return call<InvoiceSentPrimaryKey[]>("POST", "/invoice_sent", rows);
 }
 
 /** Upsert `InvoiceSent` rows: each row is created, or replaces the row it keys on. */
-export function upsertInvoiceSent(rows: InvoiceSentUpsert[]): Call<Pick<InvoiceSent, "id">[]> {
-    return call<Pick<InvoiceSent, "id">[]>("PUT", "/invoice_sent", rows);
+export function upsertInvoiceSent(rows: InvoiceSentUpsert[]): Call<InvoiceSentPrimaryKey[]> {
+    return call<InvoiceSentPrimaryKey[]>("PUT", "/invoice_sent", rows);
 }
 
 /** Patch `InvoiceSent` rows; a row that is not there rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateInvoiceSent(rows: InvoiceSentPatch[]): Call<void> {
 }
 
 /** Delete `InvoiceSent` rows, keyed on `id`. */
-export function deleteInvoiceSent(rows: Pick<InvoiceSent, "id">[]): Call<void> {
+export function deleteInvoiceSent(rows: InvoiceSentPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/invoice_sent", rows);
 }

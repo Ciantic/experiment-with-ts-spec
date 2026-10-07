@@ -301,7 +301,7 @@ Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
 
 ```ts
-export function createInvoice(rows: InvoiceInsert[]): Call<Pick<Invoice, "id">[]>
+export function createInvoice(rows: InvoiceInsert[]): Call<InvoicePrimaryKey[]>
 export function queryInvoice<S extends Selection<Invoice>>(opts: { …; select: S }): Call<Selected<Invoice, S>[]>
 ```
 
@@ -329,11 +329,11 @@ A group's result is a tuple aligned with its arguments, and nesting composes:
 
 | Call | Result |
 | --- | --- |
-| `exec(http, createInvoice(rows))` | `Promise<Pick<Invoice, "id">[]>` |
+| `exec(http, createInvoice(rows))` | `Promise<InvoicePrimaryKey[]>` |
 | `exec(http, transaction(writeA, writeB))` | `Promise<void>` — an all-void group collapses to `void` |
 | `exec(http, batch(read, writeA))` | `Promise<[Row[], void]>` |
-| `exec(http, transaction(batch(readA, readB), createInvoice(rows)))` | `Promise<[[RowA[], RowB[]], Pick<Invoice, "id">[]]>` |
-| `exec(http, attempt(read, createInvoice(rows)))` | `Promise<Attempted<[Row[], Pick<Invoice, "id">[]]>>` |
+| `exec(http, transaction(batch(readA, readB), createInvoice(rows)))` | `Promise<[[RowA[], RowB[]], InvoicePrimaryKey[]]>` |
+| `exec(http, attempt(read, createInvoice(rows)))` | `Promise<Attempted<[Row[], InvoicePrimaryKey[]]>>` |
 
 An all-void group collapses to `void`, which is why the rejected branch of an
 `attempt` over writes is `Attempted<void>` rather than a tuple of nothings.

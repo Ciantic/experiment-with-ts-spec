@@ -101,9 +101,9 @@ function comment(entity: RestEntity, kind: RestKind): string {
     }
 }
 
-/** `Pick<Invoice, "id">`, or the quoted union a composite key names. */
-function keyPick(entity: RestEntity): string {
-    return `Pick<${entity.entity}, ${entity.keys.map((key) => `"${key}"`).join(" | ")}>`;
+/** The key projection validation declares for the entity, e.g. `InvoicePrimaryKey`. */
+function keyType(entity: RestEntity): string {
+    return `${entity.entity}PrimaryKey`;
 }
 
 /** Render one entity's client module. */
@@ -130,34 +130,39 @@ export function renderClientModule(entity: RestEntity): string {
     const lines: string[] = [HEADER];
     lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
     lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
-    // The write types live in the validation package, so the client, the wire schema, and the server
-    // all name one definition. A type-only import keeps `zod` out of the client's runtime. See docs/validation.md.
-    const writeTypes: string[] = [];
+    // The write types and the key projection live in the validation package, so the client, the wire
+    // schema, and the server all name one definition. A type-only import keeps `zod` out of the
+    // client's runtime. See docs/validation.md.
+    const validationTypes: string[] = [];
     if (create) {
-        writeTypes.push(`${name}Insert`);
+        validationTypes.push(`${name}Insert`);
+    }
+    // Create, upsert, and delete all name the key, so the type follows whichever of them exists.
+    if (create || upsert || remove) {
+        validationTypes.push(keyType(entity));
     }
     if (upsert) {
-        writeTypes.push(`${name}Upsert`);
+        validationTypes.push(`${name}Upsert`);
     }
     if (update) {
-        writeTypes.push(`${name}Patch`);
+        validationTypes.push(`${name}Patch`);
     }
-    writeTypes.sort((a, b) => a.localeCompare(b));
-    if (writeTypes.length > 0) {
-        // Each write type lives in its own module, so the imports group by module rather than by entity.
+    validationTypes.sort((a, b) => a.localeCompare(b));
+    if (validationTypes.length > 0) {
+        // Each type lives in its own module, so the imports group by module rather than by entity.
         const byModule = new Map<string, string[]>();
-        for (const writeType of writeTypes) {
-            const module = validationFileName(writeType);
-            byModule.set(module, [...(byModule.get(module) ?? []), writeType]);
+        for (const validationType of validationTypes) {
+            const module = validationFileName(validationType);
+            byModule.set(module, [...(byModule.get(module) ?? []), validationType]);
         }
         for (const [module, names] of [...byModule].sort(([a], [b]) => a.localeCompare(b))) {
             lines.push(`import type { ${names.join(", ")} } from "${VALIDATION_PACKAGE}/${module}";`);
         }
     }
     lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
-    if (writeTypes.length > 0) {
+    if (validationTypes.length > 0) {
         lines.push("");
-        lines.push(`export type { ${writeTypes.join(", ")} };`);
+        lines.push(`export type { ${validationTypes.join(", ")} };`);
     }
 
     if (query) {
@@ -175,16 +180,16 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         lines.push("");
         lines.push(comment(entity, "create"));
-        lines.push(`export function create${name}(rows: ${name}Insert[]): Call<${keyPick(entity)}[]> {`);
-        lines.push(`    return call<${keyPick(entity)}[]>("${create.method}", "${create.path}", rows);`);
+        lines.push(`export function create${name}(rows: ${name}Insert[]): Call<${keyType(entity)}[]> {`);
+        lines.push(`    return call<${keyType(entity)}[]>("${create.method}", "${create.path}", rows);`);
         lines.push("}");
     }
 
     if (upsert) {
         lines.push("");
         lines.push(comment(entity, "upsert"));
-        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<${keyPick(entity)}[]> {`);
-        lines.push(`    return call<${keyPick(entity)}[]>("${upsert.method}", "${upsert.path}", rows);`);
+        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<${keyType(entity)}[]> {`);
+        lines.push(`    return call<${keyType(entity)}[]>("${upsert.method}", "${upsert.path}", rows);`);
         lines.push("}");
     }
 
@@ -198,7 +203,7 @@ export function renderClientModule(entity: RestEntity): string {
     if (remove) {
         lines.push("");
         lines.push(comment(entity, "delete"));
-        lines.push(`export function delete${name}(rows: ${keyPick(entity)}[]): Call<void> {`);
+        lines.push(`export function delete${name}(rows: ${keyType(entity)}[]): Call<void> {`);
         lines.push(`    return call<void>("${remove.method}", "${remove.path}", rows);`);
         lines.push("}");
     }

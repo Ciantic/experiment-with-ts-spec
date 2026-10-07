@@ -3,10 +3,11 @@ import type { Seller } from "spec/domain/Seller.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { SellerInsert } from "validation/repositories/sellerInsertSchema.ts";
 import type { SellerPatch } from "validation/repositories/sellerPatchSchema.ts";
+import type { SellerPrimaryKey } from "validation/repositories/sellerPrimaryKeySchema.ts";
 import type { SellerUpsert } from "validation/repositories/sellerUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { SellerInsert, SellerPatch, SellerUpsert };
+export type { SellerInsert, SellerPatch, SellerPrimaryKey, SellerUpsert };
 
 /** Query `Seller` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
@@ -16,13 +17,13 @@ export function querySeller<S extends Selection<Seller>>(
 }
 
 /** Create `Seller` rows. */
-export function createSeller(rows: SellerInsert[]): Call<Pick<Seller, "id">[]> {
-    return call<Pick<Seller, "id">[]>("POST", "/seller", rows);
+export function createSeller(rows: SellerInsert[]): Call<SellerPrimaryKey[]> {
+    return call<SellerPrimaryKey[]>("POST", "/seller", rows);
 }
 
 /** Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertSeller(rows: SellerUpsert[]): Call<Pick<Seller, "id">[]> {
-    return call<Pick<Seller, "id">[]>("PUT", "/seller", rows);
+export function upsertSeller(rows: SellerUpsert[]): Call<SellerPrimaryKey[]> {
+    return call<SellerPrimaryKey[]>("PUT", "/seller", rows);
 }
 
 /** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateSeller(rows: SellerPatch[]): Call<void> {
 }
 
 /** Delete `Seller` rows, keyed on `id`. */
-export function deleteSeller(rows: Pick<Seller, "id">[]): Call<void> {
+export function deleteSeller(rows: SellerPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/seller", rows);
 }

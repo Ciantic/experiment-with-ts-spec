@@ -3,10 +3,11 @@ import type { Tenant } from "spec/domain/Tenant.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { TenantInsert } from "validation/repositories/tenantInsertSchema.ts";
 import type { TenantPatch } from "validation/repositories/tenantPatchSchema.ts";
+import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import type { TenantUpsert } from "validation/repositories/tenantUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { TenantInsert, TenantPatch, TenantUpsert };
+export type { TenantInsert, TenantPatch, TenantPrimaryKey, TenantUpsert };
 
 /** Query `Tenant` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryTenant<S extends Selection<Tenant>>(
@@ -16,13 +17,13 @@ export function queryTenant<S extends Selection<Tenant>>(
 }
 
 /** Create `Tenant` rows. */
-export function createTenant(rows: TenantInsert[]): Call<Pick<Tenant, "id">[]> {
-    return call<Pick<Tenant, "id">[]>("POST", "/tenant", rows);
+export function createTenant(rows: TenantInsert[]): Call<TenantPrimaryKey[]> {
+    return call<TenantPrimaryKey[]>("POST", "/tenant", rows);
 }
 
 /** Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertTenant(rows: TenantUpsert[]): Call<Pick<Tenant, "id">[]> {
-    return call<Pick<Tenant, "id">[]>("PUT", "/tenant", rows);
+export function upsertTenant(rows: TenantUpsert[]): Call<TenantPrimaryKey[]> {
+    return call<TenantPrimaryKey[]>("PUT", "/tenant", rows);
 }
 
 /** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateTenant(rows: TenantPatch[]): Call<void> {
 }
 
 /** Delete `Tenant` rows, keyed on `id`. */
-export function deleteTenant(rows: Pick<Tenant, "id">[]): Call<void> {
+export function deleteTenant(rows: TenantPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/tenant", rows);
 }

@@ -3,10 +3,11 @@ import type { Email } from "spec/domain/Email.ts";
 import type { Filters, Order, Selected, Selection } from "validation/selection.ts";
 import type { EmailInsert } from "validation/repositories/emailInsertSchema.ts";
 import type { EmailPatch } from "validation/repositories/emailPatchSchema.ts";
+import type { EmailPrimaryKey } from "validation/repositories/emailPrimaryKeySchema.ts";
 import type { EmailUpsert } from "validation/repositories/emailUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { EmailInsert, EmailPatch, EmailUpsert };
+export type { EmailInsert, EmailPatch, EmailPrimaryKey, EmailUpsert };
 
 /** Query `Email` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryEmail<S extends Selection<Email>>(
@@ -16,13 +17,13 @@ export function queryEmail<S extends Selection<Email>>(
 }
 
 /** Create `Email` rows. */
-export function createEmail(rows: EmailInsert[]): Call<Pick<Email, "id">[]> {
-    return call<Pick<Email, "id">[]>("POST", "/email", rows);
+export function createEmail(rows: EmailInsert[]): Call<EmailPrimaryKey[]> {
+    return call<EmailPrimaryKey[]>("POST", "/email", rows);
 }
 
 /** Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertEmail(rows: EmailUpsert[]): Call<Pick<Email, "id">[]> {
-    return call<Pick<Email, "id">[]>("PUT", "/email", rows);
+export function upsertEmail(rows: EmailUpsert[]): Call<EmailPrimaryKey[]> {
+    return call<EmailPrimaryKey[]>("PUT", "/email", rows);
 }
 
 /** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateEmail(rows: EmailPatch[]): Call<void> {
 }
 
 /** Delete `Email` rows, keyed on `id`. */
-export function deleteEmail(rows: Pick<Email, "id">[]): Call<void> {
+export function deleteEmail(rows: EmailPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/email", rows);
 }

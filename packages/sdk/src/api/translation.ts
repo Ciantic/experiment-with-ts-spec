@@ -3,10 +3,11 @@ import type { Translation } from "spec/domain/Translation.ts";
 import type { Filters, Selected, Selection } from "validation/selection.ts";
 import type { TranslationInsert } from "validation/repositories/translationInsertSchema.ts";
 import type { TranslationPatch } from "validation/repositories/translationPatchSchema.ts";
+import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";
 import type { TranslationUpsert } from "validation/repositories/translationUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { TranslationInsert, TranslationPatch, TranslationUpsert };
+export type { TranslationInsert, TranslationPatch, TranslationPrimaryKey, TranslationUpsert };
 
 /** Query `Translation` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryTranslation<S extends Selection<Translation>>(
@@ -16,13 +17,13 @@ export function queryTranslation<S extends Selection<Translation>>(
 }
 
 /** Create `Translation` rows. */
-export function createTranslation(rows: TranslationInsert[]): Call<Pick<Translation, "lang" | "key">[]> {
-    return call<Pick<Translation, "lang" | "key">[]>("POST", "/translation", rows);
+export function createTranslation(rows: TranslationInsert[]): Call<TranslationPrimaryKey[]> {
+    return call<TranslationPrimaryKey[]>("POST", "/translation", rows);
 }
 
 /** Upsert `Translation` rows: each row is created, or replaces the row it keys on. */
-export function upsertTranslation(rows: TranslationUpsert[]): Call<Pick<Translation, "lang" | "key">[]> {
-    return call<Pick<Translation, "lang" | "key">[]>("PUT", "/translation", rows);
+export function upsertTranslation(rows: TranslationUpsert[]): Call<TranslationPrimaryKey[]> {
+    return call<TranslationPrimaryKey[]>("PUT", "/translation", rows);
 }
 
 /** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */
@@ -31,6 +32,6 @@ export function updateTranslation(rows: TranslationPatch[]): Call<void> {
 }
 
 /** Delete `Translation` rows, keyed on `lang`, `key`. */
-export function deleteTranslation(rows: Pick<Translation, "lang" | "key">[]): Call<void> {
+export function deleteTranslation(rows: TranslationPrimaryKey[]): Call<void> {
     return call<void>("DELETE", "/translation", rows);
 }
