@@ -28,12 +28,20 @@ name back.
 
 Named spec types are mapped by the `@pgType` tag their alias declares, so the
 mapping lives in `packages/spec/src/primitives/`, not in the generator. Adding a
-primitive is a spec-only change. The generator hardcodes only the TypeScript
-built-ins:
+primitive is a spec-only change. The tag is checked rather than trusted: the
+linter reads the same vocabulary, and requires the named type to select as the
+JavaScript type the alias resolves to. The vocabulary and the built-in defaults
+below are `packages/spec/scripts/pg-types.ts`, which both the linter and this
+generator read:
 
 - The keyword types `string` → `text`, `number` → `float8`, `boolean` →
   `boolean`, `bigint` → `int8`.
 - `Date` (the built-in) → `timestamptz`.
+
+The model fills `pgType` for an alias that omits it — inheriting the value of the
+alias it names, or the keyword default — so a named type maps by reading
+`tags.pgType`. Only a union, an array, and an entity fall through to the walk
+below, which is where their CHECK, cardinality, and relation are decided.
 
 Everything else resolves through the alias tree:
 

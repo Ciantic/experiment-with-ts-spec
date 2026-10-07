@@ -27,6 +27,7 @@ import {
     assignsColumn,
     triggerLevel,
 } from "spec/scripts/spec-model.ts";
+import { DEFAULT_PG_TYPES } from "spec/scripts/pg-types.ts";
 
 export type { Diagnostic };
 
@@ -41,19 +42,6 @@ export interface GenerateOptions {
     /** Where type aliases (including primitives) are read from; defaults to every spec file. */
     aliasGlob?: string;
 }
-
-/** TypeScript primitives to Postgres types. Names match pg-unified-mapping, not the canonical aliases. */
-const PRIMITIVE_TYPES: Record<string, string> = {
-    string: "text",
-    number: "float8",
-    boolean: "boolean",
-    bigint: "int8",
-};
-
-/** TypeScript built-ins that are not spec aliases; keywords are handled by PRIMITIVE_TYPES. */
-const BUILTIN_TYPES: Record<string, string> = {
-    Date: "timestamptz",
-};
 
 /** The storage types an identity column accepts: Postgres allows an integer type and nothing else. */
 const IDENTITY_TYPES = ["smallint", "integer", "bigint", "int2", "int4", "int8"];
@@ -755,7 +743,7 @@ function createTypeResolver(
 
     /** Resolve a named alias to its type, reading its `@pgType` before its underlying type. */
     function resolveNamedType(name: string): TypeResolution | undefined {
-        const builtin = BUILTIN_TYPES[name];
+        const builtin = DEFAULT_PG_TYPES[name];
         if (builtin) {
             return { sqlType: builtin };
         }
@@ -783,7 +771,7 @@ function createTypeResolver(
         }
 
         if (node.getKindName().endsWith("Keyword")) {
-            const sqlType = PRIMITIVE_TYPES[node.getText()];
+            const sqlType = DEFAULT_PG_TYPES[node.getText()];
             return sqlType ? { sqlType } : undefined;
         }
 

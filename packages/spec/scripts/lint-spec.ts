@@ -5,7 +5,6 @@ import {
     type InterfaceDeclaration,
     type JSDocTag,
     type PropertySignature,
-    type TypeAliasDeclaration,
 } from "ts-morph";
 import {
     COMPARE_OPERATORS,
@@ -19,9 +18,12 @@ import {
     TYPE_TAGS,
     WIDGETS,
     WRITE_OPERATIONS,
+    collectAliases,
     isCompareOperator,
     isOrderDirection,
     parseParameters,
+    resolveType,
+    tagComment,
     assignsColumn,
     hasTriggerHeader,
     parseTrigger,
@@ -31,8 +33,10 @@ import {
     TRIGGER_EVENTS,
     triggerLevel,
     type ComputedKind,
+    type SpecTypeAlias,
     type TriggerHeader,
 } from "./spec-model.ts";
+import { selectJsType } from "./pg-types.ts";
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
 const ALLOWED_TAGS = new Set<string>(FIELD_TAGS);
@@ -61,14 +65,16 @@ export interface Finding {
     message: string;
 }
 
-/** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgType`. */
+/** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgType`, resolving its type through `aliases`. */
 function lintTypeAlias(
-    declaration: TypeAliasDeclaration,
+    alias: SpecTypeAlias,
     filePath: string,
     findings: Finding[],
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
 ): void {
-    const name = declaration.getName();
-    const tags = readTags(declaration).byName;
+    const { declaration } = alias;
+    const name = alias.name;
+    const tags = alias.tags.byName;
     const report = (message: string, tag: JSDocTag) => {
         findings.push({ filePath, line: tag.getStartLineNumber(), message: `\`${name}\`: ${message}` });
     };
@@ -104,6 +110,22 @@ function lintTypeAlias(
     }
     if (primitiveTag && !pgTypeTag) {
         report(`@${PRIMITIVE_TAG} requires @${PG_TYPE_TAG}`, primitiveTag);
+    }
+
+    // The tag names storage; the alias's own type decides whether that is truthful, since nothing else ties the two.
+    const declared = pgTypeTag ? tagComment(pgTypeTag) : undefined;
+    if (pgTypeTag && declared) {
+        const select = selectJsType(declared);
+        const node = alias.declaration.getTypeNode();
+        const actual = node ? resolveType(node, aliases, new Set([name])).jsType : undefined;
+        if (!select) {
+            report(`@${PG_TYPE_TAG} \`${declared}\` is not a Postgres type the mapping knows`, pgTypeTag);
+        } else if (actual && actual !== select) {
+            report(
+                `@${PG_TYPE_TAG} \`${declared}\` selects as a \`${select}\`, but the alias is a \`${actual}\``,
+                pgTypeTag,
+            );
+        }
     }
 }
 
@@ -740,14 +762,15 @@ export function lintSourceText(
     const project = new Project({ useInMemoryFileSystem: true });
     const sourceFile = project.createSourceFile(`/${filePath}`, text);
     const findings: Finding[] = [];
+    const aliases = collectAliases(project);
     for (const declaration of sourceFile.getInterfaces()) {
         lintInterface(declaration, filePath, findings);
         for (const property of declaration.getProperties()) {
             lintProperty(property, filePath, findings);
         }
     }
-    for (const declaration of sourceFile.getTypeAliases()) {
-        lintTypeAlias(declaration, filePath, findings);
+    for (const alias of aliases.values()) {
+        lintTypeAlias(alias, filePath, findings, aliases);
     }
     return findings;
 }
@@ -772,11 +795,9 @@ export function lintProject(
     let properties = 0;
 
     // Type aliases are scanned everywhere: primitives and formulas may sit outside domain/.
-    for (const sourceFile of project.getSourceFiles(aliasGlob)) {
-        const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
-        for (const declaration of sourceFile.getTypeAliases()) {
-            lintTypeAlias(declaration, filePath, findings);
-        }
+    const aliases = collectAliases(project, aliasGlob);
+    for (const alias of aliases.values()) {
+        lintTypeAlias(alias, alias.filePath.replace(`${process.cwd()}/`, ""), findings, aliases);
     }
 
     // Interfaces are entities, and entities live only in domain/; operations/ is a contract.

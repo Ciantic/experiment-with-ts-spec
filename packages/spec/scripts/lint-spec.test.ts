@@ -1053,6 +1053,119 @@ describe("type-level tags", () => {
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
     });
+
+    it("accepts a @pgType whose select type is the alias's JavaScript type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType int8
+             * @zod z.bigint()
+             */
+            export type Version = bigint & $brand<"Version">;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts a Postgres spelling of a mapped type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType integer
+             * @zod z.number().int()
+             */
+            export type Counter = number;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("resolves the alias through its brands before comparing the @pgType", () => {
+        const findings = lintSourceText(
+            `export type GUID = string;
+            /**
+             * @primitive
+             * @pgType decimal
+             * @zod z.string()
+             */
+            export type Decimal = string & $brand<"Decimal">;
+            /**
+             * @primitive
+             * @pgType decimal
+             * @zod z.string()
+             */
+            export type Money = Decimal & $brand<"Money">;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a @pgType that contradicts the alias's JavaScript type", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType int8
+             * @zod z.string()
+             */
+            export type Liar = string;`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Liar`: @pgType `int8` selects as a `bigint`, but the alias is a `string`",
+        ]);
+    });
+
+    it("reports a @pgType the mapping does not know", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgType int83
+             */
+            export type Thing = string;`,
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @pgType `int83` is not a Postgres type the mapping knows"]);
+    });
+
+    it("resolves the built-in types and an array element", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgType timestamptz
+             */
+            export type Moment = Date;
+            /**
+             * @pgType text
+             */
+            export type Lines = string[];
+            /**
+             * @pgType jsonb
+             */
+            export type Bag = Record<string, unknown>;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("gives up on a union whose members disagree, rather than guessing", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgType int8
+             */
+            export type Target = string | number;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("gives up on an alias that refers to itself", () => {
+        const findings = lintSourceText(
+            `/**
+             * @pgType int8
+             */
+            export type Target = Target;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
 });
 
 describe("@queryFilter", () => {
@@ -1546,6 +1659,25 @@ describe("lintProject", () => {
         const { findings } = lintProject(project, { entityGlob, aliasGlob });
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
+    });
+
+    it("checks a @pgType against an alias declared in another file", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        project.createSourceFile(
+            "/src/primitives/Liar.ts",
+            `/**
+ * @primitive
+ * @pgType int8
+ * @zod z.string()
+ */
+export type Liar = string & $brand<"Liar">;`,
+        );
+
+        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+
+        expect(messages(findings)).toEqual([
+            "`Liar`: @pgType `int8` selects as a `bigint`, but the alias is a `string`",
+        ]);
     });
 
     /** Lint one entity with the given interface doc, and no field problems, for the operation rules. */

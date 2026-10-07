@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags, resolveType } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -459,5 +459,157 @@ describe("readTags", () => {
 
         expect(tags.byName.has("fieldName")).toBe(true);
         expect(tags.fieldName).toBeUndefined();
+    });
+});
+
+describe("alias storage types", () => {
+    /** The `pgType` each alias in the fixture resolves to. */
+    function storage(files: Record<string, string>): Record<string, string | undefined> {
+        const { aliases } = parse(files);
+        return Object.fromEntries([...aliases].map(([name, alias]) => [name, alias.tags.pgType]));
+    }
+
+    it("keeps the @pgType an alias declares", () => {
+        expect(
+            storage({
+                "primitives.ts": `/**
+ * @primitive
+ * @pgType uuid
+ * @zod z.uuid()
+ */
+export type GUID = string;`,
+            }),
+        ).toEqual({ GUID: "uuid" });
+    });
+
+    it("fills the bare keyword default an alias does not declare", () => {
+        expect(storage({ "Thing.ts": "export type Note = string;" })).toEqual({ Note: "text" });
+        expect(storage({ "Thing.ts": "export type Moment = Date;" })).toEqual({ Moment: "timestamptz" });
+    });
+
+    it("inherits the storage of the alias it names", () => {
+        expect(
+            storage({
+                "primitives.ts": `/**
+ * @primitive
+ * @pgType uuid
+ * @zod z.uuid()
+ */
+export type BrandedId<Name extends string> = string & $brand<Name>;`,
+                "Thing.ts": 'export type ThingId = BrandedId<"ThingId">;',
+            }),
+        ).toEqual({ BrandedId: "uuid", ThingId: "uuid" });
+    });
+
+    it("reads storage out of an intersection", () => {
+        expect(storage({ "Thing.ts": 'export type Version = bigint & $brand<"Version">;' })).toEqual({
+            Version: "int8",
+        });
+    });
+
+    it("inherits through an alias that resolves to another alias", () => {
+        expect(
+            storage({
+                "primitives.ts": `/**
+ * @primitive
+ * @pgType integer
+ * @zod z.number().int()
+ */
+export type AutoIncrement<Name extends string> = number & $brand<Name>;`,
+                "Thing.ts": 'export type ThingId = AutoIncrement<"ThingId">;',
+            }),
+        ).toEqual({ AutoIncrement: "integer", ThingId: "integer" });
+    });
+
+    it("leaves a union unresolved, since the CHECK constraint is the backend's", () => {
+        expect(storage({ "Thing.ts": 'export type Status = "pending" | "sent";' })).toEqual({
+            Status: undefined,
+        });
+    });
+
+    it("leaves an array and an entity unresolved, which name a cardinality rather than a storage type", () => {
+        expect(
+            storage({
+                "Thing.ts": "export type Lines = string[];",
+                "Other.ts": "export interface Other { id: string; }\nexport type That = Other;",
+            }),
+        ).toEqual({ Lines: undefined, That: undefined });
+    });
+
+    it("terminates on an alias that refers to itself", () => {
+        expect(storage({ "Thing.ts": "export type Loop = Loop;" })).toEqual({ Loop: undefined });
+    });
+
+    it("terminates on a cycle between two aliases", () => {
+        expect(
+            storage({ "Thing.ts": "export type First = Second;\nexport type Second = First;" }),
+        ).toEqual({ First: undefined, Second: undefined });
+    });
+});
+
+describe("resolveType", () => {
+    /** What the `Target` alias resolves to, with its siblings as the alias graph. */
+    function resolution(text: string) {
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile("/spec.ts", text);
+        const aliases = collectAliases(project);
+        const node = sourceFile
+            .getTypeAliases()
+            .find((declaration) => declaration.getName() === "Target")
+            ?.getTypeNode();
+        return node ? resolveType(node, aliases) : undefined;
+    }
+
+    it("names the storage and the JavaScript type of a keyword", () => {
+        expect(resolution("export type Target = bigint;")).toEqual({ storage: "int8", jsType: "bigint" });
+    });
+
+    it("names both for a built-in the spec uses", () => {
+        expect(resolution("export type Target = Date;")).toEqual({ storage: "timestamptz", jsType: "Date" });
+    });
+
+    it("takes a referenced alias's declared storage, with the JavaScript type of its own type", () => {
+        expect(
+            resolution(`/**
+ * @primitive
+ * @pgType decimal
+ * @zod z.string()
+ */
+export type Decimal = string & $brand<"Decimal">;
+export type Target = Decimal & $brand<"Target">;`),
+        ).toEqual({ storage: "decimal", jsType: "string" });
+    });
+
+    it("names nothing for a body that is only a brand, since the alias's own tag is the caller's", () => {
+        expect(resolution('export type Target = $brand<"Target">;')).toEqual({
+            storage: undefined,
+            jsType: undefined,
+        });
+    });
+
+    it("keeps the JavaScript type of a union whose members agree, without inventing a storage type", () => {
+        expect(resolution('export type Target = "a" | "b" | (string & {});')).toEqual({
+            storage: undefined,
+            jsType: "string",
+        });
+    });
+
+    it("gives up on a union whose members disagree", () => {
+        expect(resolution("export type Target = string | number;").jsType).toBeUndefined();
+    });
+
+    it("carries only the element's JavaScript type for an array", () => {
+        expect(resolution("export type Target = bigint[];")).toEqual({ storage: undefined, jsType: "bigint" });
+    });
+
+    it("names neither for an entity", () => {
+        expect(
+            resolution(`export interface Other { id: string; }
+                export type Target = Other;`),
+        ).toEqual({ storage: undefined, jsType: undefined });
+    });
+
+    it("terminates on an alias that refers to itself", () => {
+        expect(resolution("export type Target = Target;")).toEqual({ storage: undefined, jsType: undefined });
     });
 });

@@ -134,6 +134,30 @@ Type tags sit on a type alias and are validated as a group: `@primitive` types
 must declare `@zod` and `@pgType`, and any tag outside the three is reported. A
 field never carries a type tag; an alias never carries a field or interface tag.
 
+`@pgType` is also checked against the alias's own type. The tag names storage,
+the TypeScript type says what the value is, and nothing else ties the two
+together — so the linter refuses a tag the mapping does not know, and one whose
+select type is a different JavaScript type than the alias resolves to. `type
+Money = Decimal & Brand<"Money">` resolves through its brands to `string`, so it
+may declare `decimal` but not `int8`, whose select type is `bigint`.
+`packages/spec/scripts/pg-types.ts` holds that vocabulary and no more, so the
+backend can read it without the parser. `spec-model.ts` owns the resolution:
+`resolveType` walks a type node and reports both what it is stored as and what
+JavaScript type its value has, reading a declared `@pgType` before the type it
+annotates. `lint-spec.ts` owns only the rule, comparing the tag's select type
+against the resolved JavaScript type; the walk ignores brands, follows an alias
+to the type it names, and gives up on a type it cannot read.
+
+An alias need not declare it. `parseSpec` fills `pgType` on an alias that omits
+it: the value the alias it names resolves to, or the bare keyword default
+(`string` → `text`, `bigint` → `int8`, `Date` → `timestamptz`, from
+`DEFAULT_PG_TYPES`). `TenantId = BrandedId<"TenantId">` therefore reads `uuid`
+without a consumer walking the type itself. A union, an array, and an entity
+stay unresolved, because each names more than a storage type — the CHECK that
+closes the value set, the cardinality, the relation — and that part belongs to
+the backend. `Tags.byName` still holds only what the author wrote, so the two
+rules above read the declared tag and never a filled one.
+
 `@relation`, `@children`, and `@inlined` are bare markers: they take no value.
 The entity and the cardinality both come from the field
 type, so `owner?: Owner` with `@relation` links to `Owner`, and `rows?: Row[]`

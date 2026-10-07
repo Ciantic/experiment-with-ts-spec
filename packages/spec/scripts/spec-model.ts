@@ -4,13 +4,16 @@
  */
 import { dirname, join, relative as relativePath } from "node:path";
 import {
+    SyntaxKind,
     type InterfaceDeclaration,
     type JSDoc,
     type JSDocTag,
+    type Node,
     type Project,
     type PropertySignature,
     type TypeAliasDeclaration,
 } from "ts-morph";
+import { DEFAULT_PG_TYPES } from "./pg-types.ts";
 
 /** The `spec` package root, derived from this file's location rather than the cwd. */
 export const SPEC_PACKAGE_ROOT = dirname(import.meta.dirname);
@@ -140,6 +143,23 @@ export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
 export const READ_OPERATIONS = ["query"] as const;
 export type ReadOperation = (typeof READ_OPERATIONS)[number];
 
+/** The JavaScript type a spec value has at the boundary, whatever its storage type spells. */
+export type JsType = "string" | "number" | "bigint" | "boolean" | "Date" | "Uint8Array" | "object";
+
+/**
+ * The JavaScript type a TypeScript type denotes by its own name rather than through an alias the spec declares:
+ * a keyword (`string`, `bigint`) or a built-in the spec names (`Date`, `Record`).
+ */
+export const JS_TYPES: Record<string, JsType> = {
+    string: "string",
+    number: "number",
+    boolean: "boolean",
+    bigint: "bigint",
+    Date: "Date",
+    Uint8Array: "Uint8Array",
+    Record: "object",
+};
+
 /** A problem found while reading the spec. */
 export interface Diagnostic {
     filePath: string;
@@ -194,7 +214,7 @@ export interface Tags {
     restQueries?: ReadOperation[];
     primitive: boolean;
     zod?: string;
-    /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
+    /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
     pgType?: string;
     /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
     queryFilter: boolean;
@@ -617,6 +637,121 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     return tags;
 }
 
+/** Every type alias in the spec, decoded once so a consumer reads tags rather than walking JSDoc. */
+export function collectAliases(project: Project, aliasGlob?: string): Map<string, SpecTypeAlias> {
+    const aliases = new Map<string, SpecTypeAlias>();
+    const sourceFiles = aliasGlob ? project.getSourceFiles(aliasGlob) : project.getSourceFiles();
+    for (const sourceFile of sourceFiles) {
+        const filePath = sourceFile.getFilePath();
+        for (const declaration of sourceFile.getTypeAliases()) {
+            aliases.set(declaration.getName(), {
+                name: declaration.getName(),
+                filePath,
+                declaration,
+                tags: readTags(declaration),
+            });
+        }
+    }
+    return aliases;
+}
+
+/** What a type node denotes: the storage it names, and the JavaScript type its value has at the boundary. */
+export interface TypeResolution {
+    /** The storage type the node names, or undefined when it names more than one: a union, an array, an entity. */
+    storage: string | undefined;
+    /** The JavaScript type the value has, when the node is a scalar this mapping knows. */
+    jsType: JsType | undefined;
+}
+
+/** A node that names neither a storage type nor a JavaScript type this mapping knows. */
+const NOTHING: TypeResolution = { storage: undefined, jsType: undefined };
+
+/** Resolve a type node through the alias graph; `path` holds the aliases already visited, so a self-referential alias ends. */
+export function resolveType(
+    node: Node,
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
+    path: Set<string> = new Set(),
+): TypeResolution {
+    const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
+    if (parenthesized) {
+        return resolveType(parenthesized.getTypeNode(), aliases, path);
+    }
+
+    if (node.getKindName().endsWith("Keyword")) {
+        const text = node.getText();
+        return { storage: DEFAULT_PG_TYPES[text], jsType: JS_TYPES[text] };
+    }
+
+    // A string literal is a closed set of one, which the storage model carries as text plus a CHECK.
+    const literal = node.asKind(SyntaxKind.LiteralType);
+    if (literal) {
+        return literal.getLiteral().asKind(SyntaxKind.StringLiteral)
+            ? { storage: undefined, jsType: "string" }
+            : NOTHING;
+    }
+
+    // An array names a cardinality rather than a storage type, so only its element's JavaScript type carries.
+    const array = node.asKind(SyntaxKind.ArrayType);
+    if (array) {
+        return { storage: undefined, jsType: resolveType(array.getElementTypeNode(), aliases, path).jsType };
+    }
+
+    const reference = node.asKind(SyntaxKind.TypeReference);
+    if (reference) {
+        const name = reference.getTypeName().getText();
+        // A type the spec names rather than declares: a keyword, `Date`, `Record`.
+        if (JS_TYPES[name] || DEFAULT_PG_TYPES[name]) {
+            return { storage: DEFAULT_PG_TYPES[name], jsType: JS_TYPES[name] };
+        }
+        const alias = aliases.get(name);
+        if (!alias || path.has(name)) {
+            return NOTHING;
+        }
+        const aliasType = alias.declaration.getTypeNode();
+        const inherited = aliasType ? resolveType(aliasType, aliases, new Set([...path, name])) : NOTHING;
+        // A declared storage type wins over the one the alias's own type would name.
+        return { ...inherited, storage: alias.tags.pgType ?? inherited.storage };
+    }
+
+    // A union names no single storage type; its members' shared JavaScript type is what a value has.
+    const union = node.asKind(SyntaxKind.UnionType);
+    if (union) {
+        const members = union.getTypeNodes().map((member) => resolveType(member, aliases, path).jsType);
+        const uniform = members.length > 0 && members.every((member) => member === members[0]);
+        return { storage: undefined, jsType: uniform ? members[0] : undefined };
+    }
+
+    // An intersection's members are alternatives, so the first one that names either decides.
+    const intersection = node.asKind(SyntaxKind.IntersectionType);
+    if (intersection) {
+        for (const member of intersection.getTypeNodes()) {
+            const resolved = resolveType(member, aliases, path);
+            if (resolved.storage || resolved.jsType) {
+                return resolved;
+            }
+        }
+    }
+
+    return NOTHING;
+}
+
+/**
+ * Fill each alias's `pgType`, so a consumer reads the alias rather than walking its type again.
+ * A union, an array, or an entity names more than a storage type, so it stays unresolved. See docs/schema-generation.md.
+ */
+function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
+    for (const alias of aliases.values()) {
+        if (alias.tags.pgType) {
+            continue;
+        }
+        const node = alias.declaration.getTypeNode();
+        const storage = node ? resolveType(node, aliases, new Set([alias.name])).storage : undefined;
+        if (storage) {
+            alias.tags.pgType = storage;
+        }
+    }
+}
+
 /** Parse the spec into interfaces and aliases. */
 export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
     const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
@@ -624,20 +759,10 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     const interfaces = new Map<string, SpecInterface>();
     const aliases = new Map<string, SpecTypeAlias>();
 
-    for (const sourceFile of project.getSourceFiles(aliasGlob)) {
-        const filePath = sourceFile.getFilePath();
-
-        for (const declaration of sourceFile.getTypeAliases()) {
-            const tags = readTags(declaration);
-            const alias: SpecTypeAlias = {
-                name: declaration.getName(),
-                filePath,
-                declaration,
-                tags,
-            };
-            aliases.set(alias.name, alias);
-        }
+    for (const [name, alias] of collectAliases(project, aliasGlob)) {
+        aliases.set(name, alias);
     }
+    fillAliasStorageTypes(aliases);
 
     for (const sourceFile of project.getSourceFiles(entityGlob)) {
         const filePath = sourceFile.getFilePath();
