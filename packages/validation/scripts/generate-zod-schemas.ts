@@ -4,8 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Project } from "ts-morph";
-import { DEFAULT_SPEC_GLOB, SPEC_GLOB, lowerFirst } from "spec/scripts/spec-model.ts";
+import { loadSpec, lowerFirst } from "spec/scripts/spec-model.ts";
 import {
     buildZodModel,
     type ZodEntity,
@@ -530,9 +529,7 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
 }
 
 function main(): void {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    project.addSourceFilesAtPaths(SPEC_GLOB);
-    const model = buildZodModel(project, { specGlob: DEFAULT_SPEC_GLOB, aliasGlob: SPEC_GLOB });
+    const model = buildZodModel(loadSpec());
 
     for (const diagnostic of model.diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);

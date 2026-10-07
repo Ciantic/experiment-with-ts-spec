@@ -13,8 +13,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Project } from "ts-morph";
-import { DEFAULT_SPEC_GLOB, SPEC_GLOB } from "spec/scripts/spec-model.ts";
+import { loadSpec } from "spec/scripts/spec-model.ts";
 import { validationFileName } from "./generate-repositories.ts";
 import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
 
@@ -237,9 +236,7 @@ export function generateRestClient(model: RestModel): Map<string, string> {
 }
 
 function main(): void {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    project.addSourceFilesAtPaths(SPEC_GLOB);
-    const model = buildRestModel(project, { specGlob: DEFAULT_SPEC_GLOB, aliasGlob: SPEC_GLOB });
+    const model = buildRestModel(loadSpec());
 
     for (const diagnostic of model.diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);

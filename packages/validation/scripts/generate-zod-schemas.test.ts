@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project, ts } from "ts-morph";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
+import { parseSpec } from "spec/scripts/spec-model.ts";
 import {
     domainModuleName,
     generateDomainEntity,
@@ -78,7 +79,7 @@ function generate(fixture: Fixture) {
     for (const [name, text] of Object.entries(fixture.domain)) {
         project.createSourceFile(`fixtures/domain/${name}.ts`, text);
     }
-    const model = buildZodModel(project, { specGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB });
+    const model = buildZodModel(parseSpec(project, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
     return { model, files: generateZodSchemas(model), diagnostics: model.diagnostics };
 }
 

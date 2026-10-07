@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
 import { PGlite } from "@electric-sql/pglite";
+import { parseSpec } from "spec/scripts/spec-model.ts";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
@@ -61,7 +62,7 @@ function generate(fixture: Fixture) {
     for (const [name, text] of Object.entries(fixture.domain)) {
         project.createSourceFile(`fixtures/domain/${name}.ts`, text);
     }
-    return generateSchema(project, { specGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB });
+    return generateSchema(parseSpec(project, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
 }
 
 function messages(diagnostics: Diagnostic[]): string[] {

@@ -6,18 +6,16 @@
  * server's route table and `generate-rest-client.ts` into the SDK, so neither
  * generator may re-derive a path. See docs/rest-api.md.
  */
-import type { Node, Project } from "ts-morph";
 import {
-    DEFAULT_SPEC_GLOB,
     READ_OPERATIONS,
-    SPEC_GLOB,
     WRITE_OPERATIONS,
     isCompareOperator,
     lowerFirst,
-    parseSpec,
     type Diagnostic,
     type ReadOperation,
     type SpecInterface,
+    type SpecLocation,
+    type SpecModel,
     type WriteOperation,
 } from "spec/scripts/spec-model.ts";
 
@@ -61,14 +59,6 @@ export interface RestEntity {
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
     operations: RestOperation[];
-}
-
-/** Input paths, overridable so tests can generate from fixtures. */
-export interface GenerateOptions {
-    /** Where the entities are read from. */
-    specGlob?: string;
-    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
-    aliasGlob?: string;
 }
 
 /** The parsed spec mapped to a REST surface, with the problems found while mapping it. */
@@ -146,44 +136,44 @@ function restEntityFor(spec: SpecInterface): RestEntity {
     };
 }
 
-/** Build the REST model from an in-memory spec project. */
-export function buildRestModel(project: Project, options: GenerateOptions = {}): RestModel {
-    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
+/** Build the REST model from the parsed spec. */
+export function buildRestModel(spec: SpecModel): RestModel {
     const diagnostics: Diagnostic[] = [];
-    const { interfaces } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+    const { interfaces } = spec;
 
-    const report = (node: Node, message: string) => {
-        const filePath = node.getSourceFile().getFilePath().replace(`${process.cwd()}/`, "");
-        diagnostics.push({ filePath, line: node.getStartLineNumber(), message });
+    const report = (location: SpecLocation, message: string) => {
+        diagnostics.push({ ...location, message });
     };
 
     const entities: RestEntity[] = [];
-    for (const spec of interfaces.values()) {
-        const entity = restEntityFor(spec);
+    for (const entitySpec of interfaces.values()) {
+        const entity = restEntityFor(entitySpec);
         // A write addresses a row by its key, so a keyless entity has no delete or patch.
         if (entity.keys.length === 0) {
-            report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
+            report(entitySpec.location, `\`${entitySpec.name}\`: no \`@primaryKey\` field`);
         }
         // The two tags are required, and REST can only expose a repository function that exists.
-        if (spec.repositoryOperations.length === 0) {
-            report(spec.declaration, `\`${spec.name}\`: @repository names no operation`);
+        if (entitySpec.repositoryOperations.length === 0) {
+            report(entitySpec.location, `\`${entitySpec.name}\`: @repository names no operation`);
         }
-        if (spec.restRepositoryOperations.length === 0) {
-            report(spec.declaration, `\`${spec.name}\`: @restRepository names no operation`);
+        if (entitySpec.restRepositoryOperations.length === 0) {
+            report(entitySpec.location, `\`${entitySpec.name}\`: @restRepository names no operation`);
         }
-        for (const operation of spec.restRepositoryOperations) {
-            if (!spec.repositoryOperations.includes(operation)) {
+        for (const operation of entitySpec.restRepositoryOperations) {
+            if (!entitySpec.repositoryOperations.includes(operation)) {
                 report(
-                    spec.declaration,
-                    `\`${spec.name}\`: @restRepository \`${operation}\` is not in @repository`,
+                    entitySpec.location,
+                    `\`${entitySpec.name}\`: @restRepository \`${operation}\` is not in @repository`,
                 );
             }
         }
         // A read the generator does not write cannot be served, just as a write it does not generate cannot.
-        for (const operation of spec.restQueries) {
-            if (!spec.queries.includes(operation)) {
-                report(spec.declaration, `\`${spec.name}\`: @restQueries \`${operation}\` is not in @queries`);
+        for (const operation of entitySpec.restQueries) {
+            if (!entitySpec.queries.includes(operation)) {
+                report(
+                    entitySpec.location,
+                    `\`${entitySpec.name}\`: @restQueries \`${operation}\` is not in @queries`,
+                );
             }
         }
         entities.push(entity);

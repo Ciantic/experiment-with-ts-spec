@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseSpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestEntity, type RestModel } from "./rest-model.ts";
 import { renderEntityRoutes, renderRoutes, renderRoutesIndex } from "./generate-rest-api.ts";
 
@@ -48,7 +48,7 @@ function build(domain: Record<string, string>): RestModel {
     for (const [name, text] of Object.entries(domain)) {
         project.createSourceFile(join(SPEC_SRC_ROOT, "domain", `${name}.ts`), text);
     }
-    return buildRestModel(project, { specGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB });
+    return buildRestModel(parseSpec(project, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
 }
 
 function widgetEntity(): RestEntity {

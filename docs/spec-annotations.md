@@ -142,11 +142,18 @@ Money = Decimal & Brand<"Money">` resolves through its brands to `string`, so it
 may declare `decimal` but not `int8`, whose select type is `bigint`.
 `packages/spec/scripts/pg-types.ts` holds that vocabulary and no more, so the
 backend can read it without the parser. `spec-model.ts` owns the resolution:
-`resolveType` walks a type node and reports both what it is stored as and what
+`readType` turns a written type into a `SpecType` shape, and `resolveType` walks
+that shape through the alias graph and reports both what it is stored as and what
 JavaScript type its value has, reading a declared `@pgType` before the type it
 annotates. `lint-spec.ts` owns only the rule, comparing the tag's select type
 against the resolved JavaScript type; the walk ignores brands, follows an alias
 to the type it names, and gives up on a type it cannot read.
+
+`SpecType` is also what the generators map from. A generator model reads a
+field's shape, location, and tags off the parsed spec, so no generator needs
+ts-morph and a new shape (an array of literals, say) is read once, in one place,
+rather than in each model. The linter reads the same model: `Tags.written` is
+the tags as written, which is what a rule about spelling needs.
 
 An alias need not declare it. `parseSpec` fills `pgType` on an alias that omits
 it: the value the alias it names resolves to, or the bare keyword default
@@ -155,7 +162,7 @@ it: the value the alias it names resolves to, or the bare keyword default
 without a consumer walking the type itself. A union, an array, and an entity
 stay unresolved, because each names more than a storage type — the CHECK that
 closes the value set, the cardinality, the relation — and that part belongs to
-the backend. `Tags.byName` still holds only what the author wrote, so the two
+the backend. `Tags.written.byName` holds only what the author wrote, so the two
 rules above read the declared tag and never a filled one.
 
 `@relation`, `@children`, and `@inlined` are bare markers: they take no value.
@@ -577,8 +584,20 @@ totalAmount?: Money;
 
 ## Linting
 
-`pnpm lint:spec` runs `packages/spec/scripts/lint-spec.ts`, which walks the
-interfaces in `packages/spec/` with ts-morph. Run it whenever a tag changes.
+`pnpm lint:spec` runs `packages/spec/scripts/lint-spec.ts` over the parsed
+`SpecModel`, the same one the generators read. Run it whenever a tag changes.
+
+The linter reads the tags as written: `Tags.written` holds a `SpecTag` per
+occurrence — its name, its trimmed comment, and its line — because the rules are
+about the spelling, not the decoded meaning. `written.all` is in source order
+and `written.byName` groups the repeats, so a duplicate or retired tag is
+reported where the author wrote it. `SpecLocation` on an interface, a field, and
+an alias is what a finding points at, so no finding needs a syntax node to place
+itself. Nothing else in the model reads `written`; a generator reads a decoded
+flag.
+
+`lintSpec(spec)` lints a whole model; `lintSourceText(text)` parses one snippet
+and lints that, which is how the rules are tested. Neither takes a `Project`.
 
 Enforced:
 

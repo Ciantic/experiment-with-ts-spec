@@ -7,15 +7,13 @@
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Project } from "ts-morph";
+import { loadSpec } from "spec/scripts/spec-model.ts";
 import {
-    DEFAULT_SPEC_GLOB,
-    SPEC_GLOB,
+    BACKEND_PACKAGE_ROOT,
     buildSpecTables,
     primaryKeyColumns,
     type Table,
 } from "./postgres-model.ts";
-import { BACKEND_PACKAGE_ROOT } from "./postgres-model.ts";
 
 /** Where the generated modules are written when no `--out` is given. */
 const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/db/queries");
@@ -246,12 +244,7 @@ function pruneStale(outDir: string, keep: Set<string>): void {
 }
 
 function main(): void {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-    project.addSourceFilesAtPaths(SPEC_GLOB);
-    const { tables, diagnostics } = buildSpecTables(project, {
-        specGlob: DEFAULT_SPEC_GLOB,
-        aliasGlob: SPEC_GLOB,
-    });
+    const { tables, diagnostics } = buildSpecTables(loadSpec());
 
     for (const diagnostic of diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);

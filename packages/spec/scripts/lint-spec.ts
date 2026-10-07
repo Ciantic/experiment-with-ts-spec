@@ -1,42 +1,40 @@
 /** Check the annotation tags on `spec/` interfaces. See docs/spec-annotations.md. */
 import {
-    Project,
-    Node,
-    type InterfaceDeclaration,
-    type JSDocTag,
-    type PropertySignature,
-} from "ts-morph";
-import {
     COMPARE_OPERATORS,
     COMPUTED_KINDS,
-    DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
     READ_OPERATIONS,
     RETIRED_TAGS,
-    SPEC_GLOB,
     TYPE_TAGS,
     WIDGETS,
     WRITE_OPERATIONS,
-    collectAliases,
     isCompareOperator,
     isOrderDirection,
+    loadSpec,
     parseParameters,
+    parseSpecText,
     resolveType,
-    tagComment,
     assignsColumn,
     hasTriggerHeader,
     parseTrigger,
     parseTriggerHeader,
-    readTags,
     triggerHeaderText,
     TRIGGER_EVENTS,
     triggerLevel,
     type ComputedKind,
+    type Diagnostic,
+    type SpecInterface,
+    type SpecModel,
+    type SpecProperty,
+    type SpecTag,
     type SpecTypeAlias,
+    type WrittenTags,
     type TriggerHeader,
 } from "./spec-model.ts";
 import { selectJsType } from "./pg-types.ts";
+
+export type { Diagnostic };
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
 const ALLOWED_TAGS = new Set<string>(FIELD_TAGS);
@@ -59,24 +57,17 @@ const ZOD_TAG = "zod";
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */
 const PG_TYPE_TAG = "pgType";
 
-export interface Finding {
-    filePath: string;
-    line: number;
-    message: string;
-}
-
 /** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgType`, resolving its type through `aliases`. */
 function lintTypeAlias(
     alias: SpecTypeAlias,
-    filePath: string,
-    findings: Finding[],
+    findings: Diagnostic[],
     aliases: ReadonlyMap<string, SpecTypeAlias>,
 ): void {
-    const { declaration } = alias;
     const name = alias.name;
-    const tags = alias.tags.byName;
-    const report = (message: string, tag: JSDocTag) => {
-        findings.push({ filePath, line: tag.getStartLineNumber(), message: `\`${name}\`: ${message}` });
+    const filePath = alias.location.filePath;
+    const tags = alias.tags.written.byName;
+    const report = (message: string, tag: SpecTag) => {
+        findings.push({ filePath, line: tag.line, message: `\`${name}\`: ${message}` });
     };
 
     for (const [tagName, instances] of tags) {
@@ -96,13 +87,13 @@ function lintTypeAlias(
     const primitiveTag = (tags.get(PRIMITIVE_TAG) ?? [])[0];
     const zodTag = (tags.get(ZOD_TAG) ?? [])[0];
     const pgTypeTag = (tags.get(PG_TYPE_TAG) ?? [])[0];
-    if (primitiveTag && (primitiveTag.getCommentText() ?? "").trim()) {
+    if (primitiveTag && (primitiveTag.value ?? "")) {
         report(`@${PRIMITIVE_TAG} takes no value`, primitiveTag);
     }
-    if (zodTag && !(zodTag.getCommentText() ?? "").trim()) {
+    if (zodTag && !(zodTag.value ?? "")) {
         report(`@${ZOD_TAG} is missing its schema expression`, zodTag);
     }
-    if (pgTypeTag && !(pgTypeTag.getCommentText() ?? "").trim()) {
+    if (pgTypeTag && !(pgTypeTag.value ?? "")) {
         report(`@${PG_TYPE_TAG} is missing its storage type`, pgTypeTag);
     }
     if (primitiveTag && !zodTag) {
@@ -113,11 +104,10 @@ function lintTypeAlias(
     }
 
     // The tag names storage; the alias's own type decides whether that is truthful, since nothing else ties the two.
-    const declared = pgTypeTag ? tagComment(pgTypeTag) : undefined;
+    const declared = pgTypeTag?.value;
     if (pgTypeTag && declared) {
         const select = selectJsType(declared);
-        const node = alias.declaration.getTypeNode();
-        const actual = node ? resolveType(node, aliases, new Set([name])).jsType : undefined;
+        const actual = resolveType(alias.type, aliases, new Set([name])).jsType;
         if (!select) {
             report(`@${PG_TYPE_TAG} \`${declared}\` is not a Postgres type the mapping knows`, pgTypeTag);
         } else if (actual && actual !== select) {
@@ -130,81 +120,78 @@ function lintTypeAlias(
 }
 
 /** True when a property carries `@version`. */
-function hasVersionTag(property: PropertySignature): boolean {
-    return property
-        .getJsDocs()
-        .some((doc) => doc.getTags().some((tag) => tag.getTagName() === "version"));
+function hasVersionTag(property: SpecProperty): boolean {
+    return property.tags.written.byName.has("version");
 }
 
-/** Check the tags on the interface declaration itself. */
-export function lintInterface(
-    declaration: InterfaceDeclaration,
-    filePath: string,
-    findings: Finding[],
+/** Check the tags on the interface itself, and the per-entity uniqueness rules. */
+function lintEntity(
+    spec: SpecInterface,
+    findings: Diagnostic[],
 ): void {
-    const name = declaration.getName();
-    for (const doc of declaration.getJsDocs()) {
-        for (const tag of doc.getTags()) {
-            const tagName = tag.getTagName();
-            if (ALLOWED_INTERFACE_TAGS.has(tagName)) {
-                continue;
-            }
-            const retired = RETIRED_TAGS.get(tagName);
-            findings.push({
-                filePath,
-                line: tag.getStartLineNumber(),
-                message: retired
-                    ? `\`${name}\`: @${tagName} is retired; ${retired}`
-                    : `\`${name}\`: @${tagName} is not a recognised interface tag`,
-            });
+    const name = spec.name;
+    const filePath = spec.location.filePath;
+    for (const tag of spec.tags.written.all) {
+        if (ALLOWED_INTERFACE_TAGS.has(tag.name)) {
+            continue;
         }
+        const retired = RETIRED_TAGS.get(tag.name);
+        findings.push({
+            filePath,
+            line: tag.line,
+            message: retired
+                ? `\`${name}\`: @${tag.name} is retired; ${retired}`
+                : `\`${name}\`: @${tag.name} is not a recognised interface tag`,
+        });
     }
 
     // An entity has at most one optimistic-lock column.
-    const versioned = declaration.getProperties().filter(hasVersionTag);
+    const versioned = spec.properties.filter(hasVersionTag);
     for (const property of versioned.slice(1)) {
         findings.push({
             filePath,
-            line: property.getStartLineNumber(),
+            line: property.location.line,
             message: `\`${name}\`: @version may appear on at most one field`,
         });
     }
 
     // The interface-level tag is checked against the declaration, not against a field.
     const interfaceReport: Report = (message, tag) => {
-        findings.push({ filePath, line: (tag ?? declaration).getStartLineNumber(), message: `\`${name}\`: ${message}` });
+        findings.push({
+            filePath,
+            line: tag?.line ?? spec.location.line,
+            message: `\`${name}\`: ${message}`,
+        });
     };
-    lintEntityTrigger(declaration, interfaceReport);
+    lintEntityTrigger(spec.tags.written, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.
     for (const clock of ["createdAt", "updatedAt"] as const) {
-        const clocked = declaration
-            .getProperties()
-            .filter((property) => readTags(property)[clock]);
+        const clocked = spec.properties.filter((property) => property.tags[clock]);
         for (const property of clocked.slice(1)) {
             findings.push({
                 filePath,
-                line: property.getStartLineNumber(),
+                line: property.location.line,
                 message: `\`${name}\`: @${clock} may appear on at most one field`,
             });
         }
     }
 
     // At most one ordering field may declare the entity default; otherwise it is ambiguous.
-    const defaultOrdered = declaration
-        .getProperties()
-        .filter((property) => readTags(property).queryOrderBy?.default !== undefined);
+    const defaultOrdered = spec.properties.filter(
+        (property) => property.tags.queryOrderBy?.default !== undefined,
+    );
     for (const property of defaultOrdered.slice(1)) {
         findings.push({
             filePath,
-            line: property.getStartLineNumber(),
+            line: property.location.line,
             message: `\`${name}\`: @queryOrderBy default may appear on at most one field`,
         });
     }
 }
 
 /** Report a finding on the field under lint, at the tag's line or the field's. */
-type Report = (message: string, tag?: JSDocTag) => void;
+type Report = (message: string, tag?: SpecTag) => void;
 
 /** An operation list tag: the name, the operations it may name, and whether every entity must carry it. */
 interface OperationTag {
@@ -228,8 +215,8 @@ const EXPOSED_BY: [string, string][] = [
 ];
 
 /** An entity declares its surface: the operations it generates, and the subset it exposes. */
-function lintSurfaceTags(declaration: InterfaceDeclaration, report: Report): void {
-    const byName = readTags(declaration).byName;
+function lintSurfaceTags(spec: SpecInterface, report: Report): void {
+    const byName = spec.tags.written.byName;
     const declared = new Map<string, Set<string>>();
     for (const { name, vocabulary, required } of SURFACE_TAGS) {
         const tags = byName.get(name) ?? [];
@@ -243,7 +230,7 @@ function lintSurfaceTags(declaration: InterfaceDeclaration, report: Report): voi
             }
             continue;
         }
-        const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
+        const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
         if (tokens.length === 0) {
             report(`@${name} requires at least one of: ${vocabulary.join(", ")}`, tag);
         }
@@ -279,30 +266,30 @@ function lintSurfaceTags(declaration: InterfaceDeclaration, report: Report): voi
 /** A branch marker on an entity-typed field: `@relation`, `@children`, or `@inlined`. */
 interface BranchTag {
     name: string;
-    tag: JSDocTag;
+    tag: SpecTag;
 }
 
 /** The tags and type shape one field's rules share, resolved once so no rule walks the map itself. */
 interface FieldTags {
     /** Every occurrence, keyed by name, for the vocabulary rules. */
-    byName: Map<string, JSDocTag[]>;
-    fieldName: JSDocTag | undefined;
-    widget: JSDocTag | undefined;
-    computed: JSDocTag | undefined;
+    byName: Map<string, SpecTag[]>;
+    fieldName: SpecTag | undefined;
+    widget: SpecTag | undefined;
+    computed: SpecTag | undefined;
     /** The `@computed` mechanism tags present, in `COMPUTED_KINDS` order. */
-    mechanism: { name: ComputedKind; tag: JSDocTag }[];
-    trigger: JSDocTag | undefined;
-    createdAt: JSDocTag | undefined;
-    updatedAt: JSDocTag | undefined;
-    pgDefault: JSDocTag | undefined;
-    pgAutoIncrement: JSDocTag | undefined;
+    mechanism: { name: ComputedKind; tag: SpecTag }[];
+    trigger: SpecTag | undefined;
+    createdAt: SpecTag | undefined;
+    updatedAt: SpecTag | undefined;
+    pgDefault: SpecTag | undefined;
+    pgAutoIncrement: SpecTag | undefined;
     branches: BranchTag[];
-    primaryKey: JSDocTag | undefined;
-    foreignKey: JSDocTag | undefined;
-    queryFilter: JSDocTag | undefined;
-    version: JSDocTag | undefined;
-    queryOrderBy: JSDocTag | undefined;
-    queryWhere: JSDocTag | undefined;
+    primaryKey: SpecTag | undefined;
+    foreignKey: SpecTag | undefined;
+    queryFilter: SpecTag | undefined;
+    version: SpecTag | undefined;
+    queryOrderBy: SpecTag | undefined;
+    queryWhere: SpecTag | undefined;
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
@@ -311,21 +298,20 @@ interface FieldTags {
 }
 
 /** Resolve the tags a field's rules share: the first occurrence of each, plus the type shape. */
-function resolveFieldTags(property: PropertySignature): FieldTags {
-    const byName = readTags(property).byName;
+function resolveFieldTags(property: SpecProperty): FieldTags {
+    const byName = property.tags.written.byName;
     const first = (name: string) => (byName.get(name) ?? [])[0];
     const branch = (name: string): BranchTag[] => {
         const tag = first(name);
         return tag ? [{ name, tag }] : [];
     };
-    const typeNode = property.getTypeNode();
     return {
         byName,
         fieldName: first("fieldName"),
         widget: first("widget"),
         computed: first("computed"),
         mechanism: COMPUTED_KINDS.map((name) => ({ name, tag: first(name) })).filter(
-            (entry): entry is { name: ComputedKind; tag: JSDocTag } => entry.tag !== undefined,
+            (entry): entry is { name: ComputedKind; tag: SpecTag } => entry.tag !== undefined,
         ),
         trigger: first("pgTrigger"),
         createdAt: first("createdAt"),
@@ -339,9 +325,9 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         version: first("version"),
         queryOrderBy: first("queryOrderBy"),
         queryWhere: first("queryWhere"),
-        typeText: typeNode?.getText(),
-        isArray: typeNode !== undefined && Node.isArrayTypeNode(typeNode),
-        optional: property.hasQuestionToken(),
+        typeText: property.type.kind === "missing" ? undefined : property.typeText,
+        isArray: property.type.kind === "array",
+        optional: property.optional,
     };
 }
 
@@ -373,7 +359,7 @@ function lintDuplicateTags(tags: FieldTags, report: Report): void {
 function lintFieldName(tags: FieldTags, report: Report): void {
     if (!tags.fieldName) {
         report("missing @fieldName");
-    } else if (!(tags.fieldName.getCommentText() ?? "").trim()) {
+    } else if (!(tags.fieldName.value ?? "")) {
         report("@fieldName is empty", tags.fieldName);
     }
 }
@@ -384,7 +370,7 @@ function lintWidget(tags: FieldTags, report: Report): void {
         report("missing @widget");
         return;
     }
-    const widget = (tags.widget.getCommentText() ?? "").trim();
+    const widget = tags.widget.value ?? "";
     if (!ALLOWED_WIDGETS.has(widget)) {
         report(`@widget \`${widget}\` is not one of: ${[...ALLOWED_WIDGETS].join(", ")}`, tags.widget);
     }
@@ -408,7 +394,7 @@ function lintOwnership(tags: FieldTags, report: Report): void {
 /** A `@computed` field names one mechanism, with an expression. See docs/spec-annotations.md. */
 function lintComputedMechanism(tags: FieldTags, report: Report): void {
     for (const { name, tag } of tags.mechanism) {
-        if (!(tag.getCommentText() ?? "").trim()) {
+        if (!(tag.value ?? "")) {
             report(`@${name} is missing its expression`, tag);
         }
         if (!tags.computed) {
@@ -424,7 +410,7 @@ function lintComputedMechanism(tags: FieldTags, report: Report): void {
 }
 
 /** The header rules both placements share: the events, and the level when the header names one. */
-function lintTriggerHeader(tag: JSDocTag, parsed: TriggerHeader, report: Report): void {
+function lintTriggerHeader(tag: SpecTag, parsed: TriggerHeader, report: Report): void {
     for (const token of parsed.events) {
         if (token !== "or" && !(TRIGGER_EVENTS as readonly string[]).includes(token)) {
             report(`@pgTrigger event \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
@@ -444,7 +430,7 @@ function lintTrigger(tags: FieldTags, report: Report): void {
     if (!tag) {
         return;
     }
-    const text = (tag.getCommentText() ?? "").trim();
+    const text = tag.value ?? "";
     // A bare statement is the field's own table, before insert or update; its text is checked above.
     if (!hasTriggerHeader(text)) {
         if (/^instead\s+of\b/.test(text)) {
@@ -473,16 +459,13 @@ function lintTrigger(tags: FieldTags, report: Report): void {
 }
 
 /** An interface-level `@pgTrigger` runs for the table, so it can neither assign a column nor name one. */
-function lintEntityTrigger(declaration: InterfaceDeclaration, report: Report): void {
-    const tag = declaration
-        .getJsDocs()
-        .flatMap((doc) => doc.getTags())
-        .find((candidate) => candidate.getTagName() === "pgTrigger");
+function lintEntityTrigger(tags: WrittenTags, report: Report): void {
+    const tag = tags.byName.get("pgTrigger")?.[0];
     if (!tag) {
         return;
     }
-    const trigger = parseTrigger((tag.getCommentText() ?? "").trim());
-    const text = (tag.getCommentText() ?? "").trim();
+    const text = tag.value ?? "";
+    const trigger = parseTrigger(text);
     // A bare statement is a legitimate interface-level trigger; only `on` is out of place there.
     if (hasTriggerHeader(text)) {
         lintTriggerHeader(tag, parseTriggerHeader(triggerHeaderText(text)), report);
@@ -500,7 +483,7 @@ function lintEntityTrigger(declaration: InterfaceDeclaration, report: Report): v
 
 /** The clock tags are self-contained and exclusive of each other. See docs/timestamps.md. */
 function lintClocks(tags: FieldTags, report: Report): void {
-    const clocks: [string, JSDocTag | undefined][] = [
+    const clocks: [string, SpecTag | undefined][] = [
         ["createdAt", tags.createdAt],
         ["updatedAt", tags.updatedAt],
     ];
@@ -508,7 +491,7 @@ function lintClocks(tags: FieldTags, report: Report): void {
         if (!tag) {
             continue;
         }
-        if ((tag.getCommentText() ?? "").trim()) {
+        if ((tag.value ?? "")) {
             report(`@${name} takes no value`, tag);
         }
         if (tags.computed) {
@@ -531,7 +514,7 @@ function lintClocks(tags: FieldTags, report: Report): void {
 
 /** `@pgDefault` carries the expression the database applies when the column is omitted. */
 function lintDefaultTag(tags: FieldTags, report: Report): void {
-    if (tags.pgDefault && !(tags.pgDefault.getCommentText() ?? "").trim()) {
+    if (tags.pgDefault && !(tags.pgDefault.value ?? "")) {
         report("@pgDefault is missing its expression", tags.pgDefault);
     }
 }
@@ -542,7 +525,7 @@ function lintAutoIncrement(tags: FieldTags, report: Report): void {
     if (!tag) {
         return;
     }
-    if ((tag.getCommentText() ?? "").trim()) {
+    if ((tag.value ?? "")) {
         report("@pgAutoIncrement takes no value", tag);
     }
     reportIfBranch(tags, tag, report);
@@ -568,17 +551,17 @@ function lintAutoIncrement(tags: FieldTags, report: Report): void {
 }
 
 /** A scalar-only tag may not sit on a branch field. */
-function reportIfBranch(tags: FieldTags, tag: JSDocTag, report: Report): void {
+function reportIfBranch(tags: FieldTags, tag: SpecTag, report: Report): void {
     const branch = tags.branches[0];
     if (branch) {
-        report(`@${tag.getTagName()} must be on a scalar field, not a @${branch.name} field`, tag);
+        report(`@${tag.name} must be on a scalar field, not a @${branch.name} field`, tag);
     }
 }
 
 /** The branch markers are bare, mutually exclusive, and match the field's cardinality. */
 function lintBranches(tags: FieldTags, report: Report): void {
     for (const { name, tag } of tags.branches) {
-        if ((tag.getCommentText() ?? "").trim()) {
+        if ((tag.value ?? "")) {
             report(`@${name} takes no value; the entity comes from the field type`, tag);
         }
     }
@@ -602,7 +585,7 @@ function lintBranches(tags: FieldTags, report: Report): void {
 /** `@primaryKey` and `@foreignKey` say what a column is; both sit on a single scalar field. */
 function lintKeyTags(tags: FieldTags, report: Report): void {
     if (tags.primaryKey) {
-        if ((tags.primaryKey.getCommentText() ?? "").trim()) {
+        if ((tags.primaryKey.value ?? "")) {
             report("@primaryKey takes no value", tags.primaryKey);
         }
         reportIfBranch(tags, tags.primaryKey, report);
@@ -611,7 +594,7 @@ function lintKeyTags(tags: FieldTags, report: Report): void {
         }
     }
     if (tags.foreignKey) {
-        if (!(tags.foreignKey.getCommentText() ?? "").trim()) {
+        if (!(tags.foreignKey.value ?? "")) {
             report(
                 "@foreignKey is missing the interface it references, such as `@foreignKey Customer`",
                 tags.foreignKey,
@@ -633,7 +616,7 @@ function lintQueryFilter(tags: FieldTags, report: Report): void {
     if (!tag) {
         return;
     }
-    if ((tag.getCommentText() ?? "").trim()) {
+    if ((tag.value ?? "")) {
         report("@queryFilter takes no value", tag);
     }
     reportIfBranch(tags, tag, report);
@@ -669,7 +652,7 @@ function lintForcedNotNull(tags: FieldTags, report: Report): void {
         return;
     }
     // One finding per field, in this order: a `@version` field carries its own `@pgDefault`, and the fix is the same for both.
-    const forced: [string, JSDocTag | undefined][] = [
+    const forced: [string, SpecTag | undefined][] = [
         ["primaryKey", tags.primaryKey],
         ["createdAt", tags.createdAt],
         ["updatedAt", tags.updatedAt],
@@ -691,7 +674,7 @@ function lintQueryOrderBy(tags: FieldTags, report: Report): void {
     if (!tag) {
         return;
     }
-    const text = (tag.getCommentText() ?? "").trim();
+    const text = tag.value ?? "";
     if (text !== "") {
         const tokens = text.split(/\s+/);
         const isDefault = tokens.length === 2 && tokens[0] === "default" && isOrderDirection(tokens[1]);
@@ -708,7 +691,7 @@ function lintWhere(tags: FieldTags, report: Report): void {
     if (!tag) {
         return;
     }
-    const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
+    const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
     if (tokens.length === 0) {
         report(`@queryWhere requires at least one operator, one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
     }
@@ -722,14 +705,13 @@ function lintWhere(tags: FieldTags, report: Report): void {
 
 /** Check one field: its tag vocabulary, then each tag family's rules. */
 function lintProperty(
-    property: PropertySignature,
-    filePath: string,
-    findings: Finding[],
+    property: SpecProperty,
+    findings: Diagnostic[],
 ): void {
-    const fieldName = property.getName();
+    const fieldName = property.name;
+    const filePath = property.location.filePath;
     const report: Report = (message, tag) => {
-        const line = (tag ?? property).getStartLineNumber();
-        findings.push({ filePath, line, message: `\`${fieldName}\`: ${message}` });
+        findings.push({ filePath, line: tag?.line ?? property.location.line, message: `\`${fieldName}\`: ${message}` });
     };
 
     const tags = resolveFieldTags(property);
@@ -754,79 +736,65 @@ function lintProperty(
     lintWhere(tags, report);
 }
 
-/** Lint an in-memory source string, for tests and one-off checks. */
-export function lintSourceText(
-    text: string,
-    filePath = "fixture.ts",
-): Finding[] {
-    const project = new Project({ useInMemoryFileSystem: true });
-    const sourceFile = project.createSourceFile(`/${filePath}`, text);
-    const findings: Finding[] = [];
-    const aliases = collectAliases(project);
-    for (const declaration of sourceFile.getInterfaces()) {
-        lintInterface(declaration, filePath, findings);
-        for (const property of declaration.getProperties()) {
-            lintProperty(property, filePath, findings);
-        }
+/** Lint each field of an entity. */
+function lintFields(spec: SpecInterface, findings: Diagnostic[]): void {
+    for (const property of spec.properties) {
+        lintProperty(property, findings);
     }
-    for (const alias of aliases.values()) {
-        lintTypeAlias(alias, filePath, findings, aliases);
-    }
-    return findings;
 }
 
-/** Inputs to {@link lintProject}. */
-export interface LintOptions {
-    /** Where entities (interfaces) are read from; defaults to the domain entities. */
-    entityGlob?: string;
-    /** Where type aliases are scanned; defaults to every spec file. */
-    aliasGlob?: string;
+/** Lint an entity's surface tags: the operations it generates, and the subset it exposes. */
+function lintSurface(spec: SpecInterface, findings: Diagnostic[]): void {
+    lintSurfaceTags(spec, (message, tag) => {
+        findings.push({
+            filePath: spec.location.filePath,
+            line: tag?.line ?? spec.location.line,
+            message: `\`${spec.name}\`: ${message}`,
+        });
+    });
 }
 
-/** Lint every entity in the project's spec files: interfaces under `domain/`, type aliases everywhere. */
-export function lintProject(
-    project: Project,
-    options: LintOptions = {},
-): { findings: Finding[]; interfaces: number; properties: number } {
-    const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
-    const findings: Finding[] = [];
-    let interfaces = 0;
+/**
+ * Lint a model's aliases and entities. A snippet has no surface, since the `@repository` rules
+ * are about an entity the spec declares rather than about a rule that stands alone.
+ */
+function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[]; properties: number } {
+    const findings: Diagnostic[] = [];
     let properties = 0;
 
     // Type aliases are scanned everywhere: primitives and formulas may sit outside domain/.
-    const aliases = collectAliases(project, aliasGlob);
-    for (const alias of aliases.values()) {
-        lintTypeAlias(alias, alias.filePath.replace(`${process.cwd()}/`, ""), findings, aliases);
+    for (const alias of spec.aliases.values()) {
+        lintTypeAlias(alias, findings, spec.aliases);
     }
 
     // Interfaces are entities, and entities live only in domain/; operations/ is a contract.
-    for (const sourceFile of project.getSourceFiles(entityGlob)) {
-        const filePath = sourceFile.getFilePath().replace(`${process.cwd()}/`, "");
-        for (const declaration of sourceFile.getInterfaces()) {
-            interfaces += 1;
-            lintInterface(declaration, filePath, findings);
-            lintSurfaceTags(declaration, (message, tag) => {
-                findings.push({
-                    filePath,
-                    line: (tag ?? declaration).getStartLineNumber(),
-                    message: `\`${declaration.getName()}\`: ${message}`,
-                });
-            });
-            for (const property of declaration.getProperties()) {
-                properties += 1;
-                lintProperty(property, filePath, findings);
-            }
+    for (const entity of spec.interfaces.values()) {
+        lintEntity(entity, findings);
+        if (surface) {
+            lintSurface(entity, findings);
         }
+        lintFields(entity, findings);
+        properties += entity.properties.length;
     }
 
-    return { findings, interfaces, properties };
+    return { findings, properties };
+}
+
+/** Lint every entity and type alias in the parsed spec. */
+export function lintSpec(
+    spec: SpecModel,
+): { findings: Diagnostic[]; interfaces: number; properties: number } {
+    const { findings, properties } = lintModel(spec, true);
+    return { findings, interfaces: spec.interfaces.size, properties };
+}
+
+/** Lint one in-memory source string, for tests and one-off checks. */
+export function lintSourceText(text: string, filePath = "fixture.ts"): Diagnostic[] {
+    return lintModel(parseSpecText(text, filePath), false).findings;
 }
 
 function main(): void {
-    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-
-    const { findings, interfaces, properties } = lintProject(project);
+    const { findings, interfaces, properties } = lintSpec(loadSpec());
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
 
     for (const finding of findings) {

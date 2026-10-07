@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { lintProject, lintSourceText, type Finding } from "./lint-spec.ts";
+import { loadSpec, parseSpec } from "./spec-model.ts";
+import { lintSourceText, lintSpec, type Diagnostic } from "./lint-spec.ts";
 
 /** Format findings as `field: message` for concise assertions. */
-function messages(findings: Finding[]): string[] {
+function messages(findings: Diagnostic[]): string[] {
     return findings.map((finding) => finding.message);
 }
 
@@ -1614,7 +1615,7 @@ describe("retired @formula", () => {
     });
 });
 
-describe("lintProject", () => {
+describe("lintSpec over a project", () => {
     const entityGlob = "/src/domain/**/*.ts";
     const aliasGlob = "/src/**/*.ts";
 
@@ -1622,7 +1623,7 @@ describe("lintProject", () => {
         const project = new Project({ useInMemoryFileSystem: true });
         project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
 
-        const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
+        const { findings, interfaces } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
@@ -1641,7 +1642,7 @@ describe("lintProject", () => {
         );
         project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
 
-        const { findings, interfaces } = lintProject(project, { entityGlob, aliasGlob });
+        const { findings, interfaces } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
@@ -1656,7 +1657,7 @@ describe("lintProject", () => {
         const project = new Project({ useInMemoryFileSystem: true });
         project.createSourceFile("/src/operations/bad.ts", "/** @nonsense */ export type Thing = string;");
 
-        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+        const { findings } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
     });
@@ -1673,7 +1674,7 @@ describe("lintProject", () => {
 export type Liar = string & $brand<"Liar">;`,
         );
 
-        const { findings } = lintProject(project, { entityGlob, aliasGlob });
+        const { findings } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(messages(findings)).toEqual([
             "`Liar`: @pgType `int8` selects as a `bigint`, but the alias is a `string`",
@@ -1695,7 +1696,7 @@ export interface Invoice {
     id: string;
 }`,
         );
-        return messages(lintProject(project, { entityGlob, aliasGlob }).findings);
+        return messages(lintSpec(parseSpec(project, { entityGlob, aliasGlob })).findings);
     }
 
     it("accepts an entity that names the writes it generates and exposes", () => {
@@ -1820,8 +1821,7 @@ export interface Invoice {
 
 describe("the committed spec", () => {
     it("passes lint", () => {
-        const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-        const { findings, interfaces, properties } = lintProject(project);
+        const { findings, interfaces, properties } = lintSpec(loadSpec());
 
         expect(findings).toEqual([]);
         expect(interfaces).toBeGreaterThan(0);

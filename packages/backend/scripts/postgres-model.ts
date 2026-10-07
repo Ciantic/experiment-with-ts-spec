@@ -4,20 +4,19 @@
  * See docs/schema-generation.md.
  */
 import { dirname } from "node:path";
-import { Node, SyntaxKind, type Project } from "ts-morph";
 import {
-    DEFAULT_SPEC_GLOB,
-    SPEC_GLOB,
     isCompareOperator,
     isInsertable,
     isUpdatable,
-    parseSpec,
     type CompareOperator,
     type Diagnostic,
     type OrderDirection,
     type PgTrigger,
     type SpecInterface,
+    type SpecLocation,
+    type SpecModel,
     type SpecProperty,
+    type SpecType,
     type SpecTypeAlias,
     type TriggerEvent,
     type TriggerLevel,
@@ -33,15 +32,6 @@ export type { Diagnostic };
 
 /** This package's root, so paths do not depend on the current working directory. */
 export const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
-export { DEFAULT_SPEC_GLOB, SPEC_GLOB };
-
-/** Input paths, overridable so tests can generate from fixtures. */
-export interface GenerateOptions {
-    /** Where the entities are read from. */
-    specGlob?: string;
-    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
-    aliasGlob?: string;
-}
 
 /** The storage types an identity column accepts: Postgres allows an integer type and nothing else. */
 const IDENTITY_TYPES = ["smallint", "integer", "bigint", "int2", "int4", "int8"];
@@ -151,16 +141,16 @@ function inlinedColumnName(fieldName: string, targetField: string): string {
     return fieldName + targetField.charAt(0).toUpperCase() + targetField.slice(1);
 }
 
-/** How a spec type node maps to Postgres storage. */
+/** How a spec type maps to Postgres storage. */
 interface TypeResolver {
-    resolveTypeNode(node: Node): TypeResolution | undefined;
+    resolveType(type: SpecType): TypeResolution | undefined;
     primaryKeyFields(entity: string): SpecProperty[];
     primaryKeySqlType(entity: string): string;
 }
 
 /** Where a build reports problems it finds in the spec. */
 interface Reporter {
-    report(node: Node, message: string): void;
+    report(location: SpecLocation, message: string): void;
     reportField(table: Table, fieldName: string, message: string): void;
 }
 
@@ -171,13 +161,8 @@ interface BuildContext extends TypeResolver, Reporter {
 }
 
 /** Build the table model shared by the schema and repository generators. */
-export function buildSpecTables(
-    project: Project,
-    options: GenerateOptions = {},
-): { tables: Map<string, Table>; diagnostics: Diagnostic[] } {
-    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
-    const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+export function buildSpecTables(spec: SpecModel): { tables: Map<string, Table>; diagnostics: Diagnostic[] } {
+    const { interfaces, aliases } = spec;
     const diagnostics: Diagnostic[] = [];
     const context: BuildContext = {
         interfaces,
@@ -218,7 +203,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
     attachEntityTrigger(context, table, spec);
 
     if (!table.columns.some((column) => column.primaryKey)) {
-        context.report(spec.declaration, `\`${spec.name}\`: no \`@primaryKey\` field`);
+        context.report(spec.location, `\`${spec.name}\`: no \`@primaryKey\` field`);
     }
     return table;
 }
@@ -226,11 +211,11 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
 /** Add the column or branch relation a field declares. */
 function addProperty(context: BuildContext, table: Table, property: SpecProperty): void {
     const fieldName = property.name;
-    const typeNode = property.declaration.getTypeNode();
+    const type = property.type;
     const tags = property.tags;
 
-    if (!typeNode) {
-        context.report(property.declaration, `\`${fieldName}\`: cannot resolve a type node`);
+    if (type.kind === "missing") {
+        context.report(property.location, `\`${fieldName}\`: cannot resolve a type node`);
         return;
     }
 
@@ -244,19 +229,19 @@ function addProperty(context: BuildContext, table: Table, property: SpecProperty
     const foreignKeyTable = foreignKeyTarget ? entityTableName(context, foreignKeyTarget) : undefined;
     if (foreignKeyTarget && !foreignKeyTable) {
         context.report(
-            property.declaration,
+            property.location,
             `\`${fieldName}\`: @foreignKey has no interface for \`${foreignKeyTarget}\``,
         );
         return;
     }
 
-    const resolved = context.resolveTypeNode(typeNode);
+    const resolved = context.resolveType(type);
     if (!resolved && !foreignKeyTarget) {
-        context.report(property.declaration, `\`${fieldName}\`: unsupported type \`${typeNode.getText()}\``);
+        context.report(property.location, `\`${fieldName}\`: unsupported type \`${property.typeText}\``);
         return;
     }
 
-    if (addBranch(context, table, property, typeNode, resolved)) {
+    if (addBranch(context, table, property, type, resolved)) {
         return;
     }
 
@@ -268,7 +253,7 @@ function addBranch(
     context: BuildContext,
     table: Table,
     property: SpecProperty,
-    typeNode: Node,
+    type: SpecType,
     resolved: TypeResolution | undefined,
 ): boolean {
     const fieldName = property.name;
@@ -284,8 +269,8 @@ function addBranch(
                 : undefined;
     if (branchName && !resolved?.entity) {
         context.report(
-            property.declaration,
-            `\`${fieldName}\`: @${branchName} needs an entity type, found \`${typeNode.getText()}\``,
+            property.location,
+            `\`${fieldName}\`: @${branchName} needs an entity type, found \`${property.typeText}\``,
         );
         return true;
     }
@@ -293,7 +278,7 @@ function addBranch(
     if (resolved?.isArray) {
         if (!tags.children) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: array fields need @children and are not columns`,
             );
             return true;
@@ -301,8 +286,8 @@ function addBranch(
         const childTable = resolved.entity ? entityTableName(context, resolved.entity) : undefined;
         if (!childTable) {
             context.report(
-                property.declaration,
-                `\`${fieldName}\`: @children needs an array of an entity, found \`${typeNode.getText()}\``,
+                property.location,
+                `\`${fieldName}\`: @children needs an array of an entity, found \`${property.typeText}\``,
             );
             return true;
         }
@@ -318,21 +303,21 @@ function addBranch(
         }
         if (tags.foreignKey !== undefined) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: @foreignKey must be on the scalar key field, not the entity`,
             );
             return true;
         }
         if (!tags.relation) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: \`${resolved.entity}\` is an entity; add @relation`,
             );
             return true;
         }
         const targetTable = entityTableName(context, resolved.entity);
         if (!targetTable) {
-            context.report(property.declaration, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
+            context.report(property.location, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
             return true;
         }
         // @relation navigates through the `@foreignKey <entity>` field the interface declares;
@@ -399,10 +384,10 @@ function addScalarColumn(
     if (tags.pgAutoIncrement) {
         // An identity column is the table's key and an integer, which is what lets a create leave it out and read the assigned value back.
         if (!isPrimaryKey) {
-            context.report(property.declaration, `\`${fieldName}\`: @pgAutoIncrement must be on a @primaryKey field`);
+            context.report(property.location, `\`${fieldName}\`: @pgAutoIncrement must be on a @primaryKey field`);
         } else if (!IDENTITY_TYPES.includes(column.sqlType)) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: @pgAutoIncrement needs an integer column, and \`${column.sqlType}\` is not one of: ${IDENTITY_TYPES.join(", ")}`,
             );
         } else {
@@ -417,7 +402,7 @@ function addScalarColumn(
         const targetKey = context.primaryKeyFields(foreignKeyTarget);
         if (targetKey.length === 0) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
             );
             return;
@@ -425,7 +410,7 @@ function addScalarColumn(
         // One column cannot carry a composite key, so a reference to one is a diagnostic.
         if (targetKey.length > 1) {
             context.report(
-                property.declaration,
+                property.location,
                 `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has a composite @primaryKey`,
             );
             return;
@@ -482,7 +467,7 @@ function attachEntityTrigger(context: BuildContext, table: Table, spec: SpecInte
     if (trigger === undefined) {
         return;
     }
-    const report = (message: string) => context.report(spec.declaration, `\`${spec.name}\`: ${message}`);
+    const report = (message: string) => context.report(spec.location, `\`${spec.name}\`: ${message}`);
     // `on` attaches a field's trigger to another table; an interface's is already on its own.
     if (trigger.table !== undefined) {
         report("@pgTrigger on an interface is already attached to its own table; `on` is for a field");
@@ -513,24 +498,23 @@ function inlineColumns(context: BuildContext, table: Table, property: SpecProper
 
     const declaration = context.interfaces.get(entity);
     if (!declaration) {
-        context.report(property.declaration, `\`${fieldName}\`: @inlined ${entity} has no interface`);
+        context.report(property.location, `\`${fieldName}\`: @inlined ${entity} has no interface`);
         return;
     }
     const columns: Record<string, string> = {};
     for (const inner of declaration.properties) {
         const innerName = inner.name;
-        const innerType = inner.declaration.getTypeNode();
-        if (!innerType) {
-            context.report(inner.declaration, `\`${entity}.${innerName}\`: cannot resolve a type node`);
+        if (inner.type.kind === "missing") {
+            context.report(inner.location, `\`${entity}.${innerName}\`: cannot resolve a type node`);
             continue;
         }
-        const resolved = context.resolveTypeNode(innerType);
+        const resolved = context.resolveType(inner.type);
         if (!resolved) {
-            context.report(inner.declaration, `\`${entity}.${innerName}\`: unsupported type \`${innerType.getText()}\``);
+            context.report(inner.location, `\`${entity}.${innerName}\`: unsupported type \`${inner.typeText}\``);
             continue;
         }
         if (resolved.isArray || resolved.entity) {
-            context.report(inner.declaration, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
+            context.report(inner.location, `\`${entity}.${innerName}\`: @inlined only inlines scalar fields`);
             continue;
         }
         const columnName = inlinedColumnName(fieldName, innerName);
@@ -737,8 +721,8 @@ function createTypeResolver(
 
     /** The SQL type of a single-column primary key, read from its `@primaryKey` field rather than assumed. */
     function primaryKeySqlType(entity: string): string {
-        const typeNode = primaryKeyFields(entity)[0]?.declaration.getTypeNode();
-        return typeNode ? resolveTypeNode(typeNode)?.sqlType ?? "text" : "text";
+        const type = primaryKeyFields(entity)[0]?.type;
+        return type ? resolveType(type)?.sqlType ?? "text" : "text";
     }
 
     /** Resolve a named alias to its type, reading its `@pgType` before its underlying type. */
@@ -755,29 +739,18 @@ function createTypeResolver(
         if (interfaces.has(name)) {
             return { entity: name };
         }
-        const aliasType = alias?.declaration.getTypeNode();
-        if (aliasType) {
-            return resolveTypeNode(aliasType);
-        }
-        return undefined;
+        return alias ? resolveType(alias.type) : undefined;
     }
 
-    function resolveTypeNode(node: Node): TypeResolution | undefined {
+    function resolveType(type: SpecType): TypeResolution | undefined {
         // string, number, boolean, bigint and friends.
-        // `(string & {})` reaches here as a parenthesized type, so unwrap it first.
-        const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
-        if (parenthesized) {
-            return resolveTypeNode(parenthesized.getTypeNode());
-        }
-
-        if (node.getKindName().endsWith("Keyword")) {
-            const sqlType = DEFAULT_PG_TYPES[node.getText()];
+        if (type.kind === "keyword") {
+            const sqlType = DEFAULT_PG_TYPES[type.name];
             return sqlType ? { sqlType } : undefined;
         }
 
-        const array = node.asKind(SyntaxKind.ArrayType);
-        if (array) {
-            const element = resolveTypeNode(array.getElementTypeNode());
+        if (type.kind === "array") {
+            const element = resolveType(type.element);
             const resolution: TypeResolution = { isArray: true };
             if (element?.entity) {
                 resolution.entity = element.entity;
@@ -788,33 +761,24 @@ function createTypeResolver(
             return resolution;
         }
 
-        const reference = node.asKind(SyntaxKind.TypeReference);
-        if (reference) {
-            const name = reference.getTypeName().getText();
-            return resolveNamedType(name);
+        if (type.kind === "reference") {
+            return resolveNamedType(type.name);
         }
 
         // A lone literal is a closed set of one, not a union.
-        const literal = node.asKind(SyntaxKind.LiteralType);
-        if (literal) {
-            const value = literal.getLiteral().asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
-            return value === undefined ? undefined : { sqlType: "text", checkValues: [value] };
+        if (type.kind === "stringLiteral") {
+            return { sqlType: "text", checkValues: [type.value] };
         }
 
-        const union = node.asKind(SyntaxKind.UnionType);
-        if (union) {
+        if (type.kind === "union") {
             const literals: string[] = [];
             let openString = false;
-            for (const member of union.getTypeNodes()) {
-                const literal = member.asKind(SyntaxKind.LiteralType);
-                if (literal) {
-                    const value = literal.getLiteral().asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
-                    if (value !== undefined) {
-                        literals.push(value);
-                        continue;
-                    }
+            for (const member of type.members) {
+                if (member.kind === "stringLiteral") {
+                    literals.push(member.value);
+                    continue;
                 }
-                const resolved = resolveTypeNode(member);
+                const resolved = resolveType(member);
                 if (resolved?.sqlType === "text") {
                     openString = true;
                     continue;
@@ -830,10 +794,9 @@ function createTypeResolver(
             return { sqlType: "text", checkValues: literals };
         }
 
-        const intersection = node.asKind(SyntaxKind.IntersectionType);
-        if (intersection) {
-            for (const member of intersection.getTypeNodes()) {
-                const resolved = resolveTypeNode(member);
+        if (type.kind === "intersection") {
+            for (const member of type.members) {
+                const resolved = resolveType(member);
                 if (resolved?.sqlType || resolved?.entity) {
                     return resolved;
                 }
@@ -844,7 +807,7 @@ function createTypeResolver(
         return undefined;
     }
 
-    return { resolveTypeNode, primaryKeyFields, primaryKeySqlType };
+    return { resolveType, primaryKeyFields, primaryKeySqlType };
 }
 
 /** Collect diagnostics, with file paths relative to the working directory. */
@@ -852,14 +815,8 @@ function createReporter(
     interfaces: Map<string, SpecInterface>,
     diagnostics: Diagnostic[],
 ): Reporter {
-    const relative = (filePath: string) => filePath.replace(`${process.cwd()}/`, "");
-    const report = (node: Node, message: string) => {
-        const sourceFile = node.getSourceFile();
-        diagnostics.push({
-            filePath: relative(sourceFile.getFilePath()),
-            line: node.getStartLineNumber(),
-            message,
-        });
+    const report = (location: SpecLocation, message: string) => {
+        diagnostics.push({ ...location, message });
     };
 
     /** Report a problem with a branch field, pointing at the field's declaration when it can be found. */
@@ -867,9 +824,9 @@ function createReporter(
         const spec = interfaces.get(table.interfaceName);
         const property = spec?.properties.find((candidate) => candidate.name === fieldName);
         if (property) {
-            report(property.declaration, `\`${fieldName}\`: ${message}`);
+            report(property.location, `\`${fieldName}\`: ${message}`);
         } else if (spec) {
-            report(spec.declaration, `\`${fieldName}\`: ${message}`);
+            report(spec.location, `\`${fieldName}\`: ${message}`);
         }
     };
 

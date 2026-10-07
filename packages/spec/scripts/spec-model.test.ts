@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags, resolveType } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -181,7 +181,7 @@ describe("parseSpec tags", () => {
             "Thing.ts": thing("    /**\n     * @unique\n     * @unique\n     */", "code: string;"),
         });
 
-        const byName = interfaces.get("Thing")?.properties[0]?.tags.byName;
+        const byName = interfaces.get("Thing")?.properties[0]?.tags.written.byName;
 
         expect(byName?.get("unique")).toHaveLength(2);
     });
@@ -457,8 +457,61 @@ describe("readTags", () => {
 
         const tags = readTags(sourceFile.getInterfaces()[0]!.getProperties()[0]!);
 
-        expect(tags.byName.has("fieldName")).toBe(true);
+        expect(tags.written.byName.has("fieldName")).toBe(true);
         expect(tags.fieldName).toBeUndefined();
+    });
+
+    it("keeps every tag in source order, which a rule reporting each occurrence needs", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile(
+            "/Thing.ts",
+            `/**
+ * @pgTable thing
+ * @unknownOne
+ * @unknownTwo
+ * @unknownOne
+ */
+export interface Thing {
+    id: string;
+}`,
+        );
+
+        const tags = readTags(sourceFile.getInterfaces()[0]!);
+
+        expect(tags.written.all.map((tag) => tag.name)).toEqual([
+            "pgTable",
+            "unknownOne",
+            "unknownTwo",
+            "unknownOne",
+        ]);
+        expect(tags.written.byName.get("unknownOne")?.map((tag) => tag.line)).toEqual([3, 5]);
+    });
+
+    it("carries each tag's text trimmed, and none when it has no comment", () => {
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile(
+            "/Thing.ts",
+            "export interface Thing {\n    /**\n     * @fieldName  Label  \n     * @primaryKey\n     */\n    id: string;\n}",
+        );
+
+        const tags = readTags(sourceFile.getInterfaces()[0]!.getProperties()[0]!);
+        const fieldName = tags.written.byName.get("fieldName")?.[0];
+
+        expect(fieldName?.value).toBe("Label");
+        expect(tags.written.byName.get("primaryKey")?.[0]?.value).toBeUndefined();
+    });
+});
+
+describe("interface tags", () => {
+    it("exposes the interface's own tags as written", () => {
+        const { interfaces } = parse({
+            "Thing.ts": "/**\n * @pgTable things\n * @repository create\n */\nexport interface Thing { id: string; }",
+        });
+
+        const tags = interfaces.get("Thing")?.tags;
+
+        expect(tags?.pgTable).toBe("things");
+        expect(tags?.written.all.map((tag) => tag.name)).toEqual(["pgTable", "repository"]);
     });
 });
 
@@ -549,15 +602,15 @@ export type AutoIncrement<Name extends string> = number & $brand<Name>;`,
 
 describe("resolveType", () => {
     /** What the `Target` alias resolves to, with its siblings as the alias graph. */
-    function resolution(text: string) {
+    function resolution(text: string): TypeResolution {
         const project = new Project({ useInMemoryFileSystem: true });
-        const sourceFile = project.createSourceFile("/spec.ts", text);
+        project.createSourceFile("/spec.ts", text);
         const aliases = collectAliases(project);
-        const node = sourceFile
-            .getTypeAliases()
-            .find((declaration) => declaration.getName() === "Target")
-            ?.getTypeNode();
-        return node ? resolveType(node, aliases) : undefined;
+        const alias = aliases.get("Target");
+        if (!alias) {
+            throw new Error(`the fixture declares no Target alias: ${text}`);
+        }
+        return resolveType(alias.type, aliases);
     }
 
     it("names the storage and the JavaScript type of a keyword", () => {

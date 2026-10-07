@@ -3,7 +3,6 @@
  * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the Zod mapping.
  * See docs/validation.md.
  */
-import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNode } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
@@ -15,24 +14,19 @@ import {
     nullablePatchProperties,
     omittedFromInsert,
     omittedFromPatch,
-    parseSpec,
     primaryKeyProperties,
     type Diagnostic,
-    type SpecTypeAlias,
     type SpecInterface,
+    type SpecLocation,
+    type SpecModel,
+    type SpecType,
+    type SpecTypeAlias,
+    type SpecTypeMember,
 } from "spec/scripts/spec-model.ts";
 
 export type { Diagnostic };
 
 export { DEFAULT_SPEC_GLOB, SPEC_GLOB, lowerFirst };
-
-/** Input paths, overridable so tests can generate from fixtures. */
-export interface GenerateOptions {
-    /** Where the entities are read from. */
-    specGlob?: string;
-    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
-    aliasGlob?: string;
-}
 
 /** One field of an entity schema: the name it is written under and the Zod expression that validates it. */
 export interface ZodField {
@@ -177,17 +171,11 @@ export function upsertSchemaName(name: string): string {
     return `${lowerFirst(name)}UpsertSchema`;
 }
 
-/** Unwrap `(T)` to `T`, so a parenthesized union member is inspected as itself. */
-function unwrapParenthesized(node: Node): Node {
-    const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
-    return parenthesized ? parenthesized.getTypeNode() : node;
-}
-
 /** The shared half of a resolution: the spec maps, and where a diagnostic is written. */
 interface Resolver {
     aliases: Map<string, SpecTypeAlias>;
     interfaces: Map<string, SpecInterface>;
-    report: (node: Node, message: string) => void;
+    report: (location: SpecLocation, message: string) => void;
 }
 
 /** The carried state of one entity's resolution: the shared spec, plus what this type reached for. */
@@ -196,28 +184,15 @@ interface ResolveContext extends Resolver {
     usesPrimitives: boolean;
 }
 
-/** The string value of a string-literal type, or undefined for any other node. */
-function stringLiteralValue(node: Node): string | undefined {
-    const literal = node.asKind(SyntaxKind.LiteralType);
-    if (!literal) {
-        return undefined;
-    }
-    const value = literal.getLiteral();
-    return Node.isStringLiteral(value) ? value.getLiteralText() : undefined;
-}
-
 /** True for `string & {}`, the open branch an "any other string" union carries. */
-function isOpenString(node: Node): boolean {
-    const intersection = node.asKind(SyntaxKind.IntersectionType);
-    if (!intersection) {
+function isOpenString(type: SpecType): boolean {
+    if (type.kind !== "intersection") {
         return false;
     }
-    const parts = intersection.getTypeNodes();
-    const hasString = parts.some((part) => part.getText() === "string");
-    const hasEmptyObject = parts.some((part) => {
-        const literal = part.asKind(SyntaxKind.TypeLiteral);
-        return literal !== undefined && literal.getMembers().length === 0;
-    });
+    const hasString = type.members.some((member) => member.kind === "keyword" && member.name === "string");
+    const hasEmptyObject = type.members.some(
+        (member) => member.kind === "object" && member.members.length === 0,
+    );
     return hasString && hasEmptyObject;
 }
 
@@ -231,7 +206,7 @@ function resolveNamedType(name: string, args: string[], context: ResolveContext)
     // A primitive declares its schema; the generator references it rather than inlining it.
     if (alias?.tags.zod) {
         context.usesPrimitives = true;
-        const generic = alias.declaration.getTypeParameters().length > 0;
+        const generic = alias.typeParameters.length > 0;
         return generic
             ? `primitives.${schemaName(name)}<${args.join(", ")}>()`
             : `primitives.${schemaName(name)}`;
@@ -242,20 +217,17 @@ function resolveNamedType(name: string, args: string[], context: ResolveContext)
         return `z.lazy(() => ${schemaName(name)})`;
     }
     // A domain alias such as `InvoiceId = BrandedId<"InvoiceId">` resolves through its target.
-    const aliasType = alias?.declaration.getTypeNode();
-    return aliasType ? resolveTypeNode(aliasType, context) : undefined;
+    return alias ? resolveTypeNode(alias.type, context) : undefined;
 }
 
 /** Resolve a union: a string-literal set becomes an enum, anything else a `z.union`. */
-function resolveUnion(union: UnionTypeNode, context: ResolveContext): string | undefined {
+function resolveUnion(members: SpecType[], context: ResolveContext): string | undefined {
     const literals: string[] = [];
     let open = false;
-    const others: Node[] = [];
-    for (const raw of union.getTypeNodes()) {
-        const member = unwrapParenthesized(raw);
-        const value = stringLiteralValue(member);
-        if (value !== undefined) {
-            literals.push(value);
+    const others: SpecType[] = [];
+    for (const member of members) {
+        if (member.kind === "stringLiteral") {
+            literals.push(member.value);
             continue;
         }
         if (isOpenString(member)) {
@@ -268,80 +240,61 @@ function resolveUnion(union: UnionTypeNode, context: ResolveContext): string | u
         const enumExpression = `z.enum([${literals.map((value) => JSON.stringify(value)).join(", ")}])`;
         return open ? `${enumExpression}.or(z.string())` : enumExpression;
     }
-    const members = union.getTypeNodes().map((member) => resolveTypeNode(member, context));
-    if (members.some((member) => member === undefined)) {
+    const resolved = members.map((member) => resolveTypeNode(member, context));
+    if (resolved.some((member) => member === undefined)) {
         return undefined;
     }
-    return `z.union([${members.join(", ")}])`;
+    return `z.union([${resolved.join(", ")}])`;
 }
 
 /** Resolve an object type literal's members to fields, each carrying its own optionality. */
-function resolveObjectFields(typeLiteral: TypeLiteralNode, context: ResolveContext): ZodField[] | undefined {
+function resolveObjectFields(members: SpecTypeMember[], context: ResolveContext): ZodField[] | undefined {
     const fields: ZodField[] = [];
-    for (const member of typeLiteral.getMembers()) {
-        const property = member.asKind(SyntaxKind.PropertySignature);
-        if (!property) {
-            return undefined;
-        }
-        const memberType = property.getTypeNode();
-        if (!memberType) {
-            return undefined;
-        }
-        const resolvedMember = resolveTypeNode(memberType, context);
+    for (const member of members) {
+        const resolvedMember = resolveTypeNode(member.type, context);
         if (resolvedMember === undefined) {
             return undefined;
         }
         fields.push({
-            name: property.getName(),
-            expression: property.hasQuestionToken() ? `${resolvedMember}.optional()` : resolvedMember,
+            name: member.name,
+            expression: member.optional ? `${resolvedMember}.optional()` : resolvedMember,
         });
     }
     return fields;
 }
 
-/** Resolve a type node to the Zod expression that validates it. */
-function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined {
-    const node = unwrapParenthesized(raw);
-
-    if (node.getKindName().endsWith("Keyword")) {
-        return KEYWORD_SCHEMAS[node.getText()];
+/** Resolve a type shape to the Zod expression that validates it. */
+function resolveTypeNode(type: SpecType, context: ResolveContext): string | undefined {
+    if (type.kind === "keyword") {
+        return KEYWORD_SCHEMAS[type.name];
     }
 
-    const array = node.asKind(SyntaxKind.ArrayType);
-    if (array) {
-        const element = resolveTypeNode(array.getElementTypeNode(), context);
+    if (type.kind === "array") {
+        const element = resolveTypeNode(type.element, context);
         return element === undefined ? undefined : `z.array(${element})`;
     }
 
-    const reference = node.asKind(SyntaxKind.TypeReference);
-    if (reference) {
-        const args = reference.getTypeArguments().map((argument) => argument.getText());
-        return resolveNamedType(reference.getTypeName().getText(), args, context);
+    if (type.kind === "reference") {
+        return resolveNamedType(type.name, type.arguments, context);
     }
 
-    const literal = node.asKind(SyntaxKind.LiteralType);
-    if (literal) {
-        const value = literal.getLiteral();
-        if (Node.isStringLiteral(value)) {
-            return `z.literal(${JSON.stringify(value.getLiteralText())})`;
-        }
-        if (Node.isNumericLiteral(value)) {
-            return `z.literal(${value.getLiteralValue()})`;
-        }
-        return undefined;
+    if (type.kind === "stringLiteral") {
+        return `z.literal(${JSON.stringify(type.value)})`;
     }
 
-    const union = node.asKind(SyntaxKind.UnionType);
-    if (union) {
-        return resolveUnion(union, context);
+    if (type.kind === "numberLiteral") {
+        return `z.literal(${type.value})`;
     }
 
-    const intersection = node.asKind(SyntaxKind.IntersectionType);
-    if (intersection) {
-        if (isOpenString(intersection)) {
+    if (type.kind === "union") {
+        return resolveUnion(type.members, context);
+    }
+
+    if (type.kind === "intersection") {
+        if (isOpenString(type)) {
             return "z.string()";
         }
-        for (const member of intersection.getTypeNodes()) {
+        for (const member of type.members) {
             const resolved = resolveTypeNode(member, context);
             if (resolved !== undefined) {
                 return resolved;
@@ -350,9 +303,8 @@ function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined
         return undefined;
     }
 
-    const typeLiteral = node.asKind(SyntaxKind.TypeLiteral);
-    if (typeLiteral) {
-        const objectFields = resolveObjectFields(typeLiteral, context);
+    if (type.kind === "object") {
+        const objectFields = resolveObjectFields(type.members, context);
         if (objectFields === undefined) {
             return undefined;
         }
@@ -372,27 +324,22 @@ function resolveTypeNode(raw: Node, context: ResolveContext): string | undefined
  * The entity a field selects into: its type resolves to an interface, directly or as an
  * array element. The branch tags only say *how* it is stored; the value shape is the type's.
  */
-function entityNameOf(node: Node, interfaces: Map<string, SpecInterface>): string | undefined {
-    const unwrapped = unwrapParenthesized(node);
-    const array = unwrapped.asKind(SyntaxKind.ArrayType);
-    const element = array ? unwrapParenthesized(array.getElementTypeNode()) : unwrapped;
-    const reference = element.asKind(SyntaxKind.TypeReference);
-    if (!reference) {
+function entityNameOf(type: SpecType, interfaces: Map<string, SpecInterface>): string | undefined {
+    const element = type.kind === "array" ? type.element : type;
+    if (element.kind !== "reference") {
         return undefined;
     }
-    const name = reference.getTypeName().getText();
-    return interfaces.has(name) ? name : undefined;
+    return interfaces.has(element.name) ? element.name : undefined;
 }
 
 /** Classify every field of an interface for `select`: scalars take `true`, branches nest. */
 function selectFieldsFor(spec: SpecInterface, interfaces: Map<string, SpecInterface>): ZodSelectField[] {
     const fields: ZodSelectField[] = [];
     for (const property of spec.properties) {
-        const typeNode = property.declaration.getTypeNode();
-        if (!typeNode) {
+        if (property.type.kind === "missing") {
             continue;
         }
-        const target = entityNameOf(typeNode, interfaces);
+        const target = entityNameOf(property.type, interfaces);
         fields.push(target === undefined ? { name: property.name } : { name: property.name, target });
     }
     return fields;
@@ -408,10 +355,7 @@ function buildPrimitives(aliases: Map<string, SpecTypeAlias>): ZodPrimitive[] {
         primitives.push({
             name: alias.name,
             schemaName: schemaName(alias.name),
-            typeParameters: alias.declaration
-                .getTypeParameters()
-                .map((parameter) => parameter.getText())
-                .join(", "),
+            typeParameters: alias.typeParameters.join(", "),
             expression: alias.tags.zod,
         });
     }
@@ -433,16 +377,15 @@ function buildEntities(
         const versionFields: string[] = [];
 
         for (const property of spec.properties) {
-            const typeNode = property.declaration.getTypeNode();
-            if (!typeNode) {
-                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+            if (property.type.kind === "missing") {
+                resolver.report(property.location, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
-            const resolved = resolveTypeNode(typeNode, context);
+            const resolved = resolveTypeNode(property.type, context);
             if (resolved === undefined) {
                 resolver.report(
-                    property.declaration,
-                    `\`${property.name}\`: unsupported type \`${typeNode.getText()}\``,
+                    property.location,
+                    `\`${property.name}\`: unsupported type \`${property.typeText}\``,
                 );
                 continue;
             }
@@ -484,8 +427,7 @@ function buildEntities(
             patchOmit,
             patchNullable,
             insertInlined: inlinedFromInsert(spec).flatMap((property) => {
-                const typeNode = property.declaration.getTypeNode();
-                const target = typeNode && entityNameOf(typeNode, interfaces);
+                const target = entityNameOf(property.type, interfaces);
                 return target === undefined ? [] : [{ name: property.name, target }];
             }),
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
@@ -514,16 +456,15 @@ function buildQueries(
             if (!property.tags.queryFilter) {
                 continue;
             }
-            const typeNode = property.declaration.getTypeNode();
-            if (!typeNode) {
-                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+            if (property.type.kind === "missing") {
+                resolver.report(property.location, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
-            const resolved = resolveTypeNode(typeNode, context);
+            const resolved = resolveTypeNode(property.type, context);
             if (resolved === undefined) {
                 resolver.report(
-                    property.declaration,
-                    `\`${property.name}\`: unsupported filter type \`${typeNode.getText()}\``,
+                    property.location,
+                    `\`${property.name}\`: unsupported filter type \`${property.typeText}\``,
                 );
                 continue;
             }
@@ -539,16 +480,15 @@ function buildQueries(
             if (!operators || operators.length === 0) {
                 continue;
             }
-            const typeNode = property.declaration.getTypeNode();
-            if (!typeNode) {
-                resolver.report(property.declaration, `\`${property.name}\`: cannot resolve a type node`);
+            if (property.type.kind === "missing") {
+                resolver.report(property.location, `\`${property.name}\`: cannot resolve a type node`);
                 continue;
             }
-            const resolved = resolveTypeNode(typeNode, context);
+            const resolved = resolveTypeNode(property.type, context);
             if (resolved === undefined) {
                 resolver.report(
-                    property.declaration,
-                    `\`${property.name}\`: unsupported where type \`${typeNode.getText()}\``,
+                    property.location,
+                    `\`${property.name}\`: unsupported where type \`${property.typeText}\``,
                 );
                 continue;
             }
@@ -569,15 +509,12 @@ function buildQueries(
 }
 
 /** Build the Zod schema model from the parsed spec. */
-export function buildZodModel(project: Project, options: GenerateOptions = {}): ZodModel {
-    const specGlob = options.specGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
+export function buildZodModel(spec: SpecModel): ZodModel {
     const diagnostics: Diagnostic[] = [];
-    const { interfaces, aliases } = parseSpec(project, { entityGlob: specGlob, aliasGlob });
+    const { interfaces, aliases } = spec;
 
-    const report = (node: Node, message: string) => {
-        const filePath = node.getSourceFile().getFilePath().replace(`${process.cwd()}/`, "");
-        diagnostics.push({ filePath, line: node.getStartLineNumber(), message });
+    const report = (location: SpecLocation, message: string) => {
+        diagnostics.push({ ...location, message });
     };
     const resolver: Resolver = { aliases, interfaces, report };
 

@@ -2,16 +2,13 @@
  * Parse `spec/src` into the model shared by the generators and the linter.
  * See docs/spec-annotations.md.
  */
-import { dirname, join, relative as relativePath } from "node:path";
+import { dirname, isAbsolute, join, relative as relativePath } from "node:path";
 import {
+    Node,
+    Project,
     SyntaxKind,
-    type InterfaceDeclaration,
     type JSDoc,
     type JSDocTag,
-    type Node,
-    type Project,
-    type PropertySignature,
-    type TypeAliasDeclaration,
 } from "ts-morph";
 import { DEFAULT_PG_TYPES } from "./pg-types.ts";
 
@@ -160,20 +157,54 @@ export const JS_TYPES: Record<string, JsType> = {
     Record: "object",
 };
 
-/** A problem found while reading the spec. */
-export interface Diagnostic {
+/** Where a declaration sits in the spec, as a diagnostic reports it. */
+export interface SpecLocation {
+    /** The source path relative to the working directory. */
     filePath: string;
     line: number;
+}
+
+/** A problem found while reading the spec. */
+export interface Diagnostic extends SpecLocation {
     message: string;
+}
+
+/** The location a declaration points at within the spec. */
+function locationOf(declaration: Node): SpecLocation {
+    return {
+        filePath: declaration.getSourceFile().getFilePath().replace(`${process.cwd()}/`, ""),
+        line: declaration.getStartLineNumber(),
+    };
 }
 
 /** The `key=value` parameters on a tag comment, such as `default asc`. */
 export type TagParameters = Map<string, string>;
 
-/** The tags on a declaration, decoded once so consumers never walk JSDoc themselves. */
+/** A JSDoc tag as written: its name, its comment, and where it sits. */
+export interface SpecTag {
+    /** The tag name, without the leading `@`. */
+    name: string;
+    /** The tag's comment text, trimmed, or undefined when it carries none. */
+    value: string | undefined;
+    /** The line the tag sits on. */
+    line: number;
+}
+
+/** A declaration's tags as written, in the order and spelling the author used. Lint only. */
+export interface WrittenTags {
+    /** Every occurrence, in source order. */
+    all: SpecTag[];
+    /** Every occurrence, keyed by tag name. */
+    byName: Map<string, SpecTag[]>;
+}
+
+/**
+ * The tags on a declaration: the decoded flags a generator maps from, and the tags as written.
+ * `written` holds the declared tags alone, so a rule about a missing tag does not see a default in.
+ */
 export interface Tags {
-    /** Every occurrence, keyed by tag name, for rules that need the raw tag. */
-    byName: Map<string, JSDocTag[]>;
+    /** For linting only; a generator reads a decoded flag instead. */
+    written: WrittenTags;
     fieldName?: string;
     widget?: string;
     /** The field is derived; the database owns it, so a create never supplies it. */
@@ -224,13 +255,37 @@ export interface Tags {
     queryWhere?: string[];
 }
 
+/** One member of an object type literal, e.g. the `count: number` in `{ count: number }`. */
+export interface SpecTypeMember {
+    name: string;
+    optional: boolean;
+    type: SpecType;
+}
+
+/** The shape a field's type was written in, with parentheses unwrapped and aliases left as references. See docs/spec-annotations.md. */
+export type SpecType =
+    | { kind: "keyword"; name: string }
+    | { kind: "reference"; name: string; arguments: string[] }
+    | { kind: "array"; element: SpecType }
+    | { kind: "union"; members: SpecType[] }
+    | { kind: "intersection"; members: SpecType[] }
+    | { kind: "object"; members: SpecTypeMember[] }
+    | { kind: "stringLiteral"; value: string }
+    | { kind: "numberLiteral"; value: number }
+    /** The declaration carried no type annotation at all. */
+    | { kind: "missing" }
+    /** A shape this model does not name, such as a function or conditional type; `text` is what was written. */
+    | { kind: "unknown"; text: string };
+
 /** A field of a spec interface. */
 export interface SpecProperty {
     name: string;
     optional: boolean;
     /** The field type as written, e.g. `InvoiceRow[]`. */
     typeText: string;
-    declaration: PropertySignature;
+    /** The field type as a shape. */
+    type: SpecType;
+    location: SpecLocation;
     tags: Tags;
 }
 
@@ -240,10 +295,12 @@ export interface SpecInterface {
     /** The Postgres table name: the `@pgTable` value, or the snake_cased interface name. */
     pgTableName: string;
     filePath: string;
+    location: SpecLocation;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
-    declaration: InterfaceDeclaration;
     properties: SpecProperty[];
+    /** The interface's own tags, as written: `@pgTable`, `@repository`, and friends. */
+    tags: Tags;
     /** The interface-level `@pgTrigger`, which runs for the table rather than for one field. */
     trigger?: PgTrigger;
     /** The write operations `@repository` declares; empty when the tag is absent. See docs/repositories.md. */
@@ -260,7 +317,11 @@ export interface SpecInterface {
 export interface SpecTypeAlias {
     name: string;
     filePath: string;
-    declaration: TypeAliasDeclaration;
+    location: SpecLocation;
+    /** The alias's own type as a shape. */
+    type: SpecType;
+    /** The type parameters as written, e.g. `["T extends string"]`. */
+    typeParameters: string[];
     tags: Tags;
 }
 
@@ -377,16 +438,21 @@ export function specImportSpecifier(sourceFile: string): string {
     return `spec/${relativeToSrc}`;
 }
 
-/** The trimmed comment on a tag, or undefined when it carries none. */
-export function tagComment(tag: JSDocTag): string | undefined {
+/** The trimmed comment on a JSDoc tag, or undefined when it carries none. */
+function tagComment(tag: JSDocTag): string | undefined {
     const text = (tag.getCommentText() ?? "").trim();
     return text === "" ? undefined : text;
 }
 
-/** Parse `key=value` pairs out of a tag comment. */
-export function parseParameters(tag: JSDocTag): TagParameters {
+/** Read a JSDoc tag into the plain shape a consumer sees. */
+function specTagOf(tag: JSDocTag): SpecTag {
+    return { name: tag.getTagName(), value: tagComment(tag), line: tag.getStartLineNumber() };
+}
+
+/** Parse `key=value` pairs out of a tag's comment. */
+export function parseParameters(tag: SpecTag): TagParameters {
     const parameters: TagParameters = new Map();
-    for (const match of (tag.getCommentText() ?? "").matchAll(/([A-Za-z]+)=(\S+)/g)) {
+    for (const match of (tag.value ?? "").matchAll(/([A-Za-z]+)=(\S+)/g)) {
         const key = match[1];
         const value = match[2];
         if (key !== undefined && value !== undefined) {
@@ -504,10 +570,10 @@ function parseReadOperations(value: string | undefined): ReadOperation[] {
     return READ_OPERATIONS.filter((operation) => tokens.includes(operation));
 }
 
-/** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
+/** Decode the JSDoc tags on a declaration, keeping the tags as written for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
-        byName: new Map(),
+        written: { all: [], byName: new Map() },
         computed: false,
         createdAt: false,
         updatedAt: false,
@@ -524,15 +590,17 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
 
     for (const doc of holder.getJsDocs()) {
         for (const tag of doc.getTags()) {
-            const name = tag.getTagName();
-            const instances = tags.byName.get(name);
+            const parsed = specTagOf(tag);
+            const name = parsed.name;
+            tags.written.all.push(parsed);
+            const instances = tags.written.byName.get(name);
             if (instances) {
-                instances.push(tag);
+                instances.push(parsed);
             } else {
-                tags.byName.set(name, [tag]);
+                tags.written.byName.set(name, [parsed]);
             }
 
-            const value = tagComment(tag);
+            const value = parsed.value;
             switch (name) {
                 case "fieldName":
                     if (value !== undefined) tags.fieldName ??= value;
@@ -644,10 +712,13 @@ export function collectAliases(project: Project, aliasGlob?: string): Map<string
     for (const sourceFile of sourceFiles) {
         const filePath = sourceFile.getFilePath();
         for (const declaration of sourceFile.getTypeAliases()) {
+            const typeNode = declaration.getTypeNode();
             aliases.set(declaration.getName(), {
                 name: declaration.getName(),
                 filePath,
-                declaration,
+                location: locationOf(declaration),
+                type: typeNode ? readType(typeNode) : { kind: "missing" },
+                typeParameters: declaration.getTypeParameters().map((parameter) => parameter.getText()),
                 tags: readTags(declaration),
             });
         }
@@ -655,50 +726,107 @@ export function collectAliases(project: Project, aliasGlob?: string): Map<string
     return aliases;
 }
 
-/** What a type node denotes: the storage it names, and the JavaScript type its value has at the boundary. */
+/** Read a type node into its shape, unwrapping parentheses so a member of a union is inspected as itself. */
+export function readType(node: Node): SpecType {
+    const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
+    if (parenthesized) {
+        return readType(parenthesized.getTypeNode());
+    }
+
+    if (node.getKindName().endsWith("Keyword")) {
+        return { kind: "keyword", name: node.getText() };
+    }
+
+    const array = node.asKind(SyntaxKind.ArrayType);
+    if (array) {
+        return { kind: "array", element: readType(array.getElementTypeNode()) };
+    }
+
+    const reference = node.asKind(SyntaxKind.TypeReference);
+    if (reference) {
+        return {
+            kind: "reference",
+            name: reference.getTypeName().getText(),
+            arguments: reference.getTypeArguments().map((argument) => argument.getText()),
+        };
+    }
+
+    const literal = node.asKind(SyntaxKind.LiteralType);
+    if (literal) {
+        const value = literal.getLiteral();
+        if (Node.isStringLiteral(value)) {
+            return { kind: "stringLiteral", value: value.getLiteralValue() };
+        }
+        if (Node.isNumericLiteral(value)) {
+            return { kind: "numberLiteral", value: value.getLiteralValue() };
+        }
+        return { kind: "unknown", text: node.getText() };
+    }
+
+    const union = node.asKind(SyntaxKind.UnionType);
+    if (union) {
+        return { kind: "union", members: union.getTypeNodes().map(readType) };
+    }
+
+    const intersection = node.asKind(SyntaxKind.IntersectionType);
+    if (intersection) {
+        return { kind: "intersection", members: intersection.getTypeNodes().map(readType) };
+    }
+
+    const object = node.asKind(SyntaxKind.TypeLiteral);
+    if (object) {
+        const members: SpecTypeMember[] = [];
+        for (const member of object.getMembers()) {
+            const property = member.asKind(SyntaxKind.PropertySignature);
+            const memberType = property?.getTypeNode();
+            if (!property || !memberType) {
+                return { kind: "unknown", text: node.getText() };
+            }
+            members.push({
+                name: property.getName(),
+                optional: property.hasQuestionToken(),
+                type: readType(memberType),
+            });
+        }
+        return { kind: "object", members };
+    }
+
+    return { kind: "unknown", text: node.getText() };
+}
+
+/** What a type shape denotes: the storage it names, and the JavaScript type its value has at the boundary. */
 export interface TypeResolution {
-    /** The storage type the node names, or undefined when it names more than one: a union, an array, an entity. */
+    /** The storage type the shape names, or undefined when it names more than one: a union, an array, an entity. */
     storage: string | undefined;
     /** The JavaScript type the value has, when the node is a scalar this mapping knows. */
     jsType: JsType | undefined;
 }
 
-/** A node that names neither a storage type nor a JavaScript type this mapping knows. */
+/** A type that names neither a storage type nor a JavaScript type this mapping knows. */
 const NOTHING: TypeResolution = { storage: undefined, jsType: undefined };
 
-/** Resolve a type node through the alias graph; `path` holds the aliases already visited, so a self-referential alias ends. */
+/** Resolve a type shape through the alias graph; `path` holds the aliases already visited, so a self-referential alias ends. */
 export function resolveType(
-    node: Node,
+    type: SpecType,
     aliases: ReadonlyMap<string, SpecTypeAlias>,
     path: Set<string> = new Set(),
 ): TypeResolution {
-    const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
-    if (parenthesized) {
-        return resolveType(parenthesized.getTypeNode(), aliases, path);
-    }
-
-    if (node.getKindName().endsWith("Keyword")) {
-        const text = node.getText();
-        return { storage: DEFAULT_PG_TYPES[text], jsType: JS_TYPES[text] };
+    if (type.kind === "keyword") {
+        return { storage: DEFAULT_PG_TYPES[type.name], jsType: JS_TYPES[type.name] };
     }
 
     // A string literal is a closed set of one, which the storage model carries as text plus a CHECK.
-    const literal = node.asKind(SyntaxKind.LiteralType);
-    if (literal) {
-        return literal.getLiteral().asKind(SyntaxKind.StringLiteral)
-            ? { storage: undefined, jsType: "string" }
-            : NOTHING;
+    if (type.kind === "stringLiteral") {
+        return { storage: undefined, jsType: "string" };
     }
 
     // An array names a cardinality rather than a storage type, so only its element's JavaScript type carries.
-    const array = node.asKind(SyntaxKind.ArrayType);
-    if (array) {
-        return { storage: undefined, jsType: resolveType(array.getElementTypeNode(), aliases, path).jsType };
+    if (type.kind === "array") {
+        return { storage: undefined, jsType: resolveType(type.element, aliases, path).jsType };
     }
 
-    const reference = node.asKind(SyntaxKind.TypeReference);
-    if (reference) {
-        const name = reference.getTypeName().getText();
+    if (type.kind === "reference") {
+        const name = type.name;
         // A type the spec names rather than declares: a keyword, `Date`, `Record`.
         if (JS_TYPES[name] || DEFAULT_PG_TYPES[name]) {
             return { storage: DEFAULT_PG_TYPES[name], jsType: JS_TYPES[name] };
@@ -707,24 +835,21 @@ export function resolveType(
         if (!alias || path.has(name)) {
             return NOTHING;
         }
-        const aliasType = alias.declaration.getTypeNode();
-        const inherited = aliasType ? resolveType(aliasType, aliases, new Set([...path, name])) : NOTHING;
+        const inherited = resolveType(alias.type, aliases, new Set([...path, name]));
         // A declared storage type wins over the one the alias's own type would name.
         return { ...inherited, storage: alias.tags.pgType ?? inherited.storage };
     }
 
     // A union names no single storage type; its members' shared JavaScript type is what a value has.
-    const union = node.asKind(SyntaxKind.UnionType);
-    if (union) {
-        const members = union.getTypeNodes().map((member) => resolveType(member, aliases, path).jsType);
+    if (type.kind === "union") {
+        const members = type.members.map((member) => resolveType(member, aliases, path).jsType);
         const uniform = members.length > 0 && members.every((member) => member === members[0]);
         return { storage: undefined, jsType: uniform ? members[0] : undefined };
     }
 
     // An intersection's members are alternatives, so the first one that names either decides.
-    const intersection = node.asKind(SyntaxKind.IntersectionType);
-    if (intersection) {
-        for (const member of intersection.getTypeNodes()) {
+    if (type.kind === "intersection") {
+        for (const member of type.members) {
             const resolved = resolveType(member, aliases, path);
             if (resolved.storage || resolved.jsType) {
                 return resolved;
@@ -744,8 +869,7 @@ function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
         if (alias.tags.pgType) {
             continue;
         }
-        const node = alias.declaration.getTypeNode();
-        const storage = node ? resolveType(node, aliases, new Set([alias.name])).storage : undefined;
+        const storage = resolveType(alias.type, aliases, new Set([alias.name])).storage;
         if (storage) {
             alias.tags.pgType = storage;
         }
@@ -774,10 +898,12 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 name,
                 pgTableName: declarationTags.pgTable ?? snakeCase(name),
                 filePath,
+                location: locationOf(declaration),
                 importSpecifier: specImportSpecifier(filePath),
-                declaration,
+                tags: declarationTags,
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
+                    const typeNode = property.getTypeNode();
                     // The primary key is a filter every entity has, so writing the tag on it is
                     // redundant. The linter reports that rather than ignoring it.
                     if (tags.primaryKey) {
@@ -786,8 +912,9 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                     return {
                         name: property.getName(),
                         optional: property.hasQuestionToken(),
-                        typeText: property.getTypeNode()?.getText() ?? "",
-                        declaration: property,
+                        typeText: typeNode?.getText() ?? "",
+                        type: typeNode ? readType(typeNode) : { kind: "missing" },
+                        location: locationOf(property),
                         tags,
                     };
                 }),
@@ -804,4 +931,26 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     }
 
     return { interfaces, aliases };
+}
+
+/** The tsconfig the generators read, with every spec source added to it. */
+export function createSpecProject(): Project {
+    const project = new Project({ tsConfigFilePath: "tsconfig.json" });
+    project.addSourceFilesAtPaths(SPEC_GLOB);
+    return project;
+}
+
+/** Parse the spec as the generators see it: the tsconfig's project, then every spec source. */
+export function loadSpec(): SpecModel {
+    return parseSpec(createSpecProject());
+}
+
+/** The in-memory project holds only the file just created, so every source is the spec. */
+const IN_MEMORY_GLOB = "**/*.ts";
+
+/** Parse one in-memory source into the model, for tests and one-off checks such as linting a snippet. */
+export function parseSpecText(text: string, filePath = "fixture.ts"): SpecModel {
+    const project = new Project({ useInMemoryFileSystem: true });
+    project.createSourceFile(isAbsolute(filePath) ? filePath : join(process.cwd(), filePath), text);
+    return parseSpec(project, { entityGlob: IN_MEMORY_GLOB, aliasGlob: IN_MEMORY_GLOB });
 }
