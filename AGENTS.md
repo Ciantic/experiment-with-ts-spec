@@ -42,3 +42,7 @@
   features. Build fixtures in memory; do not read `packages/spec/src/domain`
   from a unit test. A domain change must not require rewriting a test. See
   `docs/testing.md`.
+
+# Specs
+
+- Specs are in the `packages/spec`, currently they are only for demonstration. This means generators should not be tightly coupled with any particular spec.
