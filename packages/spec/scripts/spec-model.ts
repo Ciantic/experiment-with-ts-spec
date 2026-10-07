@@ -40,6 +40,7 @@ export const FIELD_TAGS = [
     "foreignKey",
     "unique",
     "pgDefault",
+    "pgAutoIncrement",
     "version",
     "queryFilter",
     "queryOrderBy",
@@ -163,6 +164,8 @@ export interface Tags {
     unique: boolean;
     /** The database column default, written verbatim into the DDL. */
     pgDefault?: string;
+    /** The database assigns the column at insert, so no write supplies it and a create reads it back. */
+    pgAutoIncrement: boolean;
     version: boolean;
     /** The Postgres table name for the interface. */
     pgTable?: string;
@@ -236,8 +239,8 @@ export function isInsertable(property: SpecProperty): boolean {
     if (tags.version && tags.pgDefault !== undefined) {
         return false;
     }
-    // The clock tags and a virtual generated column are the database's entirely.
-    if (tags.createdAt || tags.updatedAt || tags.pgVirtual !== undefined) {
+    // The clock tags, an identity column, and a virtual generated column are the database's entirely.
+    if (tags.createdAt || tags.updatedAt || tags.pgAutoIncrement || tags.pgVirtual !== undefined) {
         return false;
     }
     // A nullable computation is filled in later by its mechanism; a required one must be carried by the create.
@@ -270,6 +273,10 @@ export function inlinedFromInsert(spec: SpecInterface): SpecProperty[] {
 
 /** True when a patch writes the field: what a create writes, plus the version it carries as its precondition. */
 export function isUpdatable(property: SpecProperty): boolean {
+    // The key addresses the row a patch writes, so a patch carries it whatever a create writes.
+    if (property.tags.primaryKey) {
+        return true;
+    }
     // The version is the optimistic-lock precondition, so a patch always carries it.
     return Boolean(property.tags.version) || (isInsertable(property) && !property.tags.relation && !property.tags.children);
 }
@@ -296,6 +303,11 @@ export function nullablePatchProperties(spec: SpecInterface): SpecProperty[] {
 /** An interface's primary key fields, in declaration order, which is the key's column order. */
 export function primaryKeyProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.primaryKey);
+}
+
+/** The `@pgAutoIncrement` fields: key columns the database assigns, which a create never carries. */
+export function autoIncrementProperties(spec: SpecInterface): SpecProperty[] {
+    return spec.properties.filter((property) => property.tags.pgAutoIncrement);
 }
 
 /** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
@@ -441,6 +453,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         inlined: false,
         primaryKey: false,
         unique: false,
+        pgAutoIncrement: false,
         version: false,
         primitive: false,
         queryFilter: false,
@@ -481,6 +494,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "pgDefault":
                     if (value !== undefined) tags.pgDefault ??= value;
+                    break;
+                case "pgAutoIncrement":
+                    tags.pgAutoIncrement = true;
                     break;
                 case "pgTable":
                     if (value !== undefined) tags.pgTable ??= value;

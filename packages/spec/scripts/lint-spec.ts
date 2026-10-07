@@ -201,6 +201,7 @@ interface FieldTags {
     createdAt: JSDocTag | undefined;
     updatedAt: JSDocTag | undefined;
     pgDefault: JSDocTag | undefined;
+    pgAutoIncrement: JSDocTag | undefined;
     branches: BranchTag[];
     primaryKey: JSDocTag | undefined;
     foreignKey: JSDocTag | undefined;
@@ -236,6 +237,7 @@ function resolveFieldTags(property: PropertySignature): FieldTags {
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
         pgDefault: first("pgDefault"),
+        pgAutoIncrement: first("pgAutoIncrement"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
         primaryKey: first("primaryKey"),
         foreignKey: first("foreignKey"),
@@ -440,6 +442,37 @@ function lintDefaultTag(tags: FieldTags, report: Report): void {
     }
 }
 
+/** `@pgAutoIncrement` makes the column an identity column, which the database fills and a create reads back. */
+function lintAutoIncrement(tags: FieldTags, report: Report): void {
+    const tag = tags.pgAutoIncrement;
+    if (!tag) {
+        return;
+    }
+    if ((tag.getCommentText() ?? "").trim()) {
+        report("@pgAutoIncrement takes no value", tag);
+    }
+    reportIfBranch(tags, tag, report);
+    if (tags.isArray) {
+        report("@pgAutoIncrement must be on a single field, not an array", tag);
+    }
+    // The value a create reads back is the key it left to the database, so the tag belongs on the key alone.
+    if (!tags.primaryKey) {
+        report("@pgAutoIncrement must be on a @primaryKey field", tag);
+    }
+    // Every one of these also owns the column's insert value, and two owners cannot agree.
+    for (const [name, owner] of [
+        ["computed", tags.computed],
+        ["pgDefault", tags.pgDefault],
+        ["version", tags.version],
+        ["createdAt", tags.createdAt],
+        ["updatedAt", tags.updatedAt],
+    ] as const) {
+        if (owner) {
+            report(`@pgAutoIncrement and @${name} are mutually exclusive`, tag);
+        }
+    }
+}
+
 /** A scalar-only tag may not sit on a branch field. */
 function reportIfBranch(tags: FieldTags, tag: JSDocTag, report: Report): void {
     const branch = tags.branches[0];
@@ -548,6 +581,7 @@ function lintForcedNotNull(tags: FieldTags, report: Report): void {
         ["updatedAt", tags.updatedAt],
         ["version", tags.version],
         ["pgDefault", tags.pgDefault],
+        ["pgAutoIncrement", tags.pgAutoIncrement],
     ];
     for (const [name, tag] of forced) {
         if (tag) {
@@ -616,6 +650,7 @@ function lintProperty(
     lintTrigger(tags, report);
     lintClocks(tags, report);
     lintDefaultTag(tags, report);
+    lintAutoIncrement(tags, report);
     lintBranches(tags, report);
     lintKeyTags(tags, report);
     lintQueryFilter(tags, report);

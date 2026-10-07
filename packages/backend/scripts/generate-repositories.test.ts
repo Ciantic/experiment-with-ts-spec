@@ -69,6 +69,12 @@ const keyOnly = table("key_only", "KeyOnly", [
     column("derived", { notNull: false, insertable: false }),
 ]);
 
+/** An identity key the database assigns: a create leaves it out, and an upsert names it to match its conflict. */
+const ticket = table("ticket", "Ticket", [
+    column("id", { sqlType: "integer", primaryKey: true, identity: true, insertable: false }),
+    column("label"),
+]);
+
 /** A defaulted column a row may omit, so a write binds a flag beside its values. */
 const defaulted = table("email", "Email", [
     column("id", { sqlType: "uuid", primaryKey: true }),
@@ -222,6 +228,14 @@ describe("createStatement", () => {
         expect(statementSql(limited)).not.toContain("derived");
         expect(limited.arrays.map((array) => array.alias)).toEqual(["id", "label"]);
     });
+
+    it("leaves the identity column out and returns the key the database assigned", () => {
+        expect(statementSql(createStatement(ticket))).toBe(
+            'insert into "ticket" ("label") select v."label" ' +
+                'from unnest($1::text[]) as v("label") returning "ticket"."id"',
+        );
+        expect(createStatement(ticket).arrays.map((array) => array.alias)).toEqual(["label"]);
+    });
 });
 
 describe("updateStatement", () => {
@@ -334,6 +348,17 @@ describe("upsertStatement", () => {
                 'on conflict ("id") do update set "id" = "key_only"."id" ' +
                 'returning "key_only"."id"',
         );
+    });
+
+    it("names the identity key, which is what the conflict matches and what the caller claims", () => {
+        expect(statementSql(upsertStatement(ticket))).toBe(
+            'insert into "ticket" ("label", "id") select v."label", v."id" ' +
+                'from unnest($1::text[], $2::integer[]) as v("label", "id") ' +
+                'on conflict ("id") do update set "label" = excluded."label" ' +
+                'returning "ticket"."id"',
+        );
+        // The claim is always present, so it binds no presence flag beside its values.
+        expect(upsertStatement(ticket).arrays.map((array) => array.alias)).toEqual(["label", "id"]);
     });
 });
 
@@ -999,6 +1024,7 @@ describe("generated repositories against PGlite", () => {
     let markers: GeneratedRepository;
     let wides: GeneratedRepository;
     let gates: GeneratedRepository;
+    let tickets: GeneratedRepository;
 
     beforeAll(async () => {
         driver = createPglite();
@@ -1009,6 +1035,7 @@ describe("generated repositories against PGlite", () => {
         await driver.exec(fixtureDdl(marker));
         await driver.exec(fixtureDdl(wide));
         await driver.exec(fixtureDdl(gate));
+        await driver.exec(fixtureDdl(ticket));
         await driver.exec(skipTriggerSql(gate));
         owners = loadRepository(owner);
         widgets = loadRepository(widget);
@@ -1016,6 +1043,7 @@ describe("generated repositories against PGlite", () => {
         markers = loadRepository(marker);
         wides = loadRepository(wide);
         gates = loadRepository(gate);
+        tickets = loadRepository(ticket);
     });
 
     afterAll(async () => {
@@ -1029,6 +1057,8 @@ describe("generated repositories against PGlite", () => {
         await db.query('delete from "marker"');
         await db.query('delete from "wide"');
         await db.query('delete from "gate"');
+        // A delete leaves the identity sequence where it stood, so restart it to keep the assigned keys predictable.
+        await db.query('truncate "ticket" restart identity');
     });
 
     it("inserts rows through the generated create function", async () => {
@@ -1348,6 +1378,53 @@ describe("generated repositories against PGlite", () => {
         ]);
 
         expect(upserted).toEqual([{ id: WIDGET_ID }, { id: WIDGET_ID_OTHER }]);
+    });
+
+    it("answers a create with the key the database assigned, and writes rows at those keys", async () => {
+        const keys = await tickets.create(db, [{ label: "first" }, { label: "second" }]);
+
+        expect(keys).toEqual([{ id: 1 }, { id: 2 }]);
+
+        const { rows } = await driver.query<{ id: number; label: string }>(
+            'select "id", "label" from "ticket" order by "id"',
+        );
+        expect(rows).toEqual([
+            { id: 1, label: "first" },
+            { id: 2, label: "second" },
+        ]);
+    });
+
+    it("keeps the assigned key usable: a patch and a delete address the row the create made", async () => {
+        const [created] = (await tickets.create(db, [{ label: "before" }])) as Array<{ id: number }>;
+
+        await tickets.update(db, [{ id: created?.id, label: "after" }]);
+        const patched = await driver.query<{ label: string }>('select "label" from "ticket"');
+
+        expect(patched.rows).toEqual([{ label: "after" }]);
+
+        await tickets.delete(db, [{ id: created?.id }]);
+        const remaining = await driver.query('select "id" from "ticket"');
+
+        expect(remaining.rows).toEqual([]);
+    });
+
+    it("replaces the row an upsert claims, rather than inserting a second one at a fresh key", async () => {
+        const [created] = (await tickets.create(db, [{ label: "before" }])) as Array<{ id: number }>;
+
+        // The key came from the create, which is the only thing that makes an upsert of it idempotent.
+        const keys = await tickets.upsert(db, [{ id: created?.id as number, label: "after" }]);
+
+        expect(keys).toEqual([{ id: 1 }]);
+        const { rows } = await driver.query<{ id: number; label: string }>(
+            'select "id", "label" from "ticket"',
+        );
+        expect(rows).toEqual([{ id: 1, label: "after" }]);
+    });
+
+    it("inserts at a key the sequence has not reached, which is what a claim on a free key means", async () => {
+        const keys = await tickets.upsert(db, [{ id: 7, label: "claimed" }]);
+
+        expect(keys).toEqual([{ id: 7 }]);
     });
 
     it("addresses a composite-key row by all of its key columns", async () => {

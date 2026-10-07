@@ -41,7 +41,8 @@ out the decimal string shape and then apply their brands rather than importing
 
 The schema mirrors the alias:
 
-- A **branded** alias (`EmailAddress`, `Decimal`, `Money`, `Version`, `BrandedId`) gets
+- A **branded** alias (`EmailAddress`, `Decimal`, `Money`, `Version`, `BrandedId`,
+  `AutoIncrement`) gets
   the matching `.brand<…>()`. The brand is the whole point of the alias, so the
   schema must reproduce it. `Money` refines `Decimal`, so its schema chains the
   base brand first, `.brand<"Decimal">().brand<"Money">()`, and
@@ -127,6 +128,11 @@ export type TaxRate = Decimal & Brand<"TaxRate">;
 Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
 `Quantity`, and ratios are `TaxRate`. All are `decimal` in Postgres; the brands
 only exist in the type system.
+
+The counters are integers: `Version` is `bigint` (`int8`) and `AutoIncrement` is
+`number` (`integer`). Both are branded for the same reason the decimals are —
+`Version` is compared rather than computed with, and an assigned key must not be
+assignable to a field holding another entity's key (`docs/auto-increment.md`).
 
 Why the brands:
 

@@ -3,6 +3,16 @@ import type { QueryModel } from "../resolvers.ts";
 
 export const queryModel: QueryModel = {
     "tables": {
+        "audit_log": {
+            "name": "audit_log",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "message": "message",
+                "createdAt": "createdAt"
+            },
+            "relations": {}
+        },
         "customer": {
             "name": "customer",
             "key": "id",

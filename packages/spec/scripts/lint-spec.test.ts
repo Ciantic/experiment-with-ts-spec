@@ -1251,6 +1251,96 @@ describe("@primaryKey and @foreignKey", () => {
     });
 });
 
+describe("@pgAutoIncrement", () => {
+    const field = (extra: string, type = "number") =>
+        `export interface Thing {
+            /**
+             * @fieldName ID
+             * @widget number
+             * @primaryKey
+             * @pgAutoIncrement
+             ${extra}
+             */
+            id: ${type};
+        }`;
+
+    it("accepts @pgAutoIncrement on a primary key", () => {
+        const findings = lintSourceText(field(""));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @pgAutoIncrement with a value", () => {
+        const findings = lintSourceText(field("integer"));
+
+        expect(messages(findings)).toEqual(["`id`: @pgAutoIncrement takes no value"]);
+    });
+
+    it("rejects @pgAutoIncrement on a field that is not the primary key", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName Key
+                 * @widget text
+                 * @primaryKey
+                 */
+                key: string;
+                /**
+                 * @fieldName Counter
+                 * @widget number
+                 * @pgAutoIncrement
+                 */
+                counter: number;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`counter`: @pgAutoIncrement must be on a @primaryKey field"]);
+    });
+
+    it("rejects a second owner of the column's insert value", () => {
+        const findings = lintSourceText(field("@pgDefault 0"));
+
+        expect(messages(findings)).toEqual(["`id`: @pgAutoIncrement and @pgDefault are mutually exclusive"]);
+    });
+
+    it("rejects @pgAutoIncrement on an array field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget number
+                 * @primaryKey
+                 * @pgAutoIncrement
+                 */
+                id: number[];
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`id`: @pgAutoIncrement must be on a single field, not an array",
+            "`id`: @primaryKey must be on a single field, not an array",
+        ]);
+    });
+
+    it("rejects @pgAutoIncrement on an optional field", () => {
+        const findings = lintSourceText(
+            `export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget number
+                 * @pgAutoIncrement
+                 */
+                id?: number;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`id`: @pgAutoIncrement must be on a @primaryKey field",
+            "`id`: @pgAutoIncrement makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+});
+
 describe("@queryOrderBy", () => {
     const field = (name: string, extra: string, type = "string") =>
         `export interface Thing {

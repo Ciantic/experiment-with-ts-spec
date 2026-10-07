@@ -58,7 +58,8 @@ differently.
 
 The key comes back from the statement rather than being echoed from the input,
 because the database may own it: an `@pgAutoIncrement` column is assigned on
-insert, and a `@pgDefault` key expression is evaluated there. The type is the one
+insert (`docs/auto-increment.md`), and a `@pgDefault` key expression is evaluated
+there. The type is the one
 `delete` takes — the entity projected to its `@primaryKey` fields — so a composite
 key returns every column of the key. A caller that supplied the key itself may
 ignore the result; one that did not needs it, and over REST it is the response
@@ -260,7 +261,10 @@ returning u."id"
 ```
 
 - **The key is the conflict target.** A row is addressed the way a delete
-  addresses one, and the `set` list never names a key column.
+  addresses one, and the `set` list never names a key column. An
+  `@pgAutoIncrement` key is named in the insert even though a create leaves it
+  out, because the claim on the key is what the conflict matches
+  (`docs/auto-increment.md`).
 - **The version is compared, never assigned.** `do update` writes `excluded`
   values, and the trigger owns the counter: a statement that assigned the
   version would make the trigger's own guard fire. The claimed version is

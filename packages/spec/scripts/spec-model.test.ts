@@ -205,6 +205,20 @@ describe("parseSpec tags", () => {
         expect(tags?.foreignKey).toBeUndefined();
     });
 
+    it("decodes @pgAutoIncrement as a bare marker, off by default", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @primaryKey\n     */",
+                "id: ThingId;\n    /**\n     * @primaryKey\n     * @pgAutoIncrement\n     */\n    counter: Counter;",
+            ),
+        });
+
+        const [id, counter] = interfaces.get("Thing")?.properties ?? [];
+
+        expect(id?.tags.pgAutoIncrement).toBe(false);
+        expect(counter?.tags.pgAutoIncrement).toBe(true);
+    });
+
     it("decodes @foreignKey with the interface it references", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @foreignKey Owner\n     */", "ownerId?: OwnerId;"),
@@ -363,6 +377,12 @@ describe("patch field rules", () => {
         expect(omitted("    /**\n     * @updatedAt\n     */", "changedAt?: Date;")).toEqual(["changedAt"]);
     });
 
+    it("keeps an assigned key patchable, because the key addresses the row a patch writes", () => {
+        const doc = "    /**\n     * @primaryKey\n     * @pgAutoIncrement\n     */";
+
+        expect(omitted(doc, "id: Counter;")).toEqual([]);
+    });
+
     it("refuses a relation, which is written through the target's own repository", () => {
         expect(omitted("    /**\n     * @relation\n     */", "customer?: Customer;")).toEqual(["customer"]);
     });
@@ -403,6 +423,10 @@ describe("insert field rules", () => {
         expect(omitted('    /**\n     * @computed\n     * @pgVirtual "net" + "tax"\n     */', "total: Money;")).toEqual([
             "total",
         ]);
+    });
+
+    it("refuses an assigned key, which the database fills and a create reads back", () => {
+        expect(omitted("    /**\n     * @primaryKey\n     * @pgAutoIncrement\n     */", "id: Counter;")).toEqual(["id"]);
     });
 
     it("refuses a nullable computation but keeps a required one", () => {

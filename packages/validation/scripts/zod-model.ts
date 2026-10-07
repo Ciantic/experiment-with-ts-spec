@@ -7,6 +7,7 @@ import { Node, SyntaxKind, type Project, type TypeLiteralNode, type UnionTypeNod
 import {
     DEFAULT_SPEC_GLOB,
     SPEC_GLOB,
+    autoIncrementProperties,
     defaultedInsertProperties,
     inlinedFromInsert,
     isCompareOperator,
@@ -75,6 +76,8 @@ export interface ZodEntity {
     keys: string[];
     /** The `@version` field names, which an upsert claims and a create never carries. */
     versionFields: string[];
+    /** The `@pgAutoIncrement` field names, which an upsert claims and a create leaves to the database. */
+    autoIncrementFields: string[];
     /** Every field, classified for `select`: a scalar takes `true`, a branch nests. */
     selectFields: ZodSelectField[];
 }
@@ -490,6 +493,7 @@ function buildEntities(
             required,
             keys: primaryKeyProperties(spec).map((property) => property.name),
             versionFields,
+            autoIncrementFields: autoIncrementProperties(spec).map((property) => property.name),
             selectFields: selectFieldsFor(spec, interfaces),
         });
     }

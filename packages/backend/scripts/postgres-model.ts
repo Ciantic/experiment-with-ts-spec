@@ -53,6 +53,9 @@ const BUILTIN_TYPES: Record<string, string> = {
     Date: "timestamptz",
 };
 
+/** The storage types an identity column accepts: Postgres allows an integer type and nothing else. */
+const IDENTITY_TYPES = ["smallint", "integer", "bigint", "int2", "int4", "int8"];
+
 /** A column generated from a domain field. `read` is the accessor the repository generator emits. */
 export interface Column {
     name: string;
@@ -65,6 +68,8 @@ export interface Column {
     references?: { table: string; column: string };
     /** A database column default, written verbatim; the repository does not write the column. */
     default?: string;
+    /** The column is an identity column the database assigns, so no write carries it. See docs/auto-increment.md. */
+    identity?: boolean;
     /** A virtual generated column's expression, written verbatim without `NEW.`; the database owns the value. */
     generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
@@ -394,6 +399,19 @@ function addScalarColumn(
     }
     if (tags.pgVirtual !== undefined) {
         column.generatedExpression = stripSemicolon(tags.pgVirtual);
+    }
+    if (tags.pgAutoIncrement) {
+        // An identity column is the table's key and an integer, which is what lets a create leave it out and read the assigned value back.
+        if (!isPrimaryKey) {
+            context.report(property.declaration, `\`${fieldName}\`: @pgAutoIncrement must be on a @primaryKey field`);
+        } else if (!IDENTITY_TYPES.includes(column.sqlType)) {
+            context.report(
+                property.declaration,
+                `\`${fieldName}\`: @pgAutoIncrement needs an integer column, and \`${column.sqlType}\` is not one of: ${IDENTITY_TYPES.join(", ")}`,
+            );
+        } else {
+            column.identity = true;
+        }
     }
     if (tags.version) {
         column.version = true;

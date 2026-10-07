@@ -11,10 +11,10 @@ client has something to read without a fixture being written per test.
 - `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
-`mockTables` is ordered so foreign keys resolve: customers and sellers, then
-invoices and their rows, then sent invoices and their rows. Tables with no
-foreign key of their own — `Tenant` and `Translation` — sit at the end, where
-their position cannot matter. `seedMockData` walks the list in that order.
+The `mockTables` are ordered so foreign keys resolve: customers and sellers, then
+invoices and their rows, then sent invoices and their rows. Tables that reference
+nothing — `Tenant`, `Translation`, and `AuditLog` — sit at the end, where their
+position cannot matter. `seedMockData` walks the list in that order.
 
 ## Seeding is generic
 
@@ -29,7 +29,9 @@ with. Computed values — the invoice aggregates and the row amounts — are lef
 out, because their fields are optional and the triggers fill them. The
 database-managed `createdAt`, `updatedAt`, and `version` are declared, since the
 entity requires them, but the repository omits those columns on insert and the
-defaults fill them. See `docs/optionality.md`.
+defaults fill them. An `@pgAutoIncrement` key is declared the same way: the
+identity sequence assigns the stored value, not the row
+(`docs/auto-increment.md`). See `docs/optionality.md`.
 
 ## Running the server
 

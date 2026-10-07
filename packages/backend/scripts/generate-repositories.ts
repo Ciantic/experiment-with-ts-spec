@@ -440,12 +440,15 @@ export function upsertStatement(table: Table): ChunkStatement {
     // An upsert writes the fields a create writes, plus the version an existing row is claimed at.
     // The conflict path cannot see the values alias, so `excluded` carries every column it stores.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
+    // An identity key is the database's on a create, but an upsert names it: the key is what the conflict matches.
+    const identityKeys = table.columns.filter((column) => column.identity);
     const version = versionColumn(table);
-    const writeColumns = version === undefined ? insertColumns : [...insertColumns, version];
+    const writeColumns = [...insertColumns, ...identityKeys, ...(version === undefined ? [] : [version])];
     // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
-    // The version is always claimed, so it carries no flag.
+    // The identity key and the version are always claimed, so they carry no flag.
     const arrays = [
         ...insertColumns.flatMap((column) => columnArrays(column, column.default !== undefined)),
+        ...identityKeys.flatMap((column) => columnArrays(column, false)),
         ...(version === undefined ? [] : columnArrays(version, false)),
     ];
     const selectItems = [
@@ -453,6 +456,7 @@ export function upsertStatement(table: Table): ChunkStatement {
             const value = `${VALUES_ALIAS}.${quote(column.name)}`;
             return column.default === undefined ? value : suppliedValue(column, column.default);
         }),
+        ...identityKeys.map((column) => `${VALUES_ALIAS}.${quote(column.name)}`),
         ...(version === undefined ? [] : [`${VALUES_ALIAS}.${quote(version.name)}`]),
     ];
     // The key is what the conflict matches on; the version is compared, never assigned, because the

@@ -197,10 +197,11 @@ A field is omitted when the database owns it, from either annotation:
 
 - **A branch** — a `@relation` or a `@children` collection — is not a column, so
   a create cannot write it. `customer`, `seller`, and `rows` are omitted.
-- **A clock field, a virtual generated column, and a defaulted `@version`** are
-  the database's own on insert: the two timestamps carry `default now()`,
-  `@pgVirtual` is generated always, and a version's default *is* its first
-  revision.
+- **A clock field, a virtual generated column, an `@pgAutoIncrement` key, and a
+  defaulted `@version`** are the database's own on insert: the two timestamps
+  carry `default now()`, `@pgVirtual` is generated always, the identity column is
+  filled by its sequence, and a version's default *is* its first revision. The
+  assigned key is the one a create answers with (`docs/auto-increment.md`).
 - **A stored computation** is left to its mechanism to derive, but only while the
   column is optional. A required one has no default and no nullable column, so the
   insert has to carry it: `InvoiceSentRow.netAmount` and its siblings stay, while
@@ -258,15 +259,16 @@ export const invoiceUpsertSchema = invoiceSchema
 export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | …, "id" | "version", "number" | "notes" | …, never>;
 ```
 
-The omit list is the create's, less the `@version` field — the one field a create
-leaves to its column default and an upsert has to claim
-(`docs/repositories.md`, `docs/versioning.md`). Everything else follows the
+The omit list is the create's, less everything a create leaves to the database
+that the caller has to name: the `@version` field, and an `@pgAutoIncrement` key
+(`docs/repositories.md`, `docs/versioning.md`, `docs/auto-increment.md`).
+Everything else follows the
 create: the same branches, clock fields, and derivable values are absent, the
 same `@inlined` branches nest as the target's own insert schema, and a required
 `@pgDefault` field is relaxed with the same `.partial()`.
 
-An entity with no version therefore has two identical field sets, and the modules
-differ only in the doc their schema and type carry.
+An entity with neither a version nor an assigned key therefore has two identical
+field sets, and the modules differ only in the doc their schema and type carry.
 
 The one thing the upsert adds is the version: every other field set is the
 create's, including the nullable set `nullablePatchProperties` widens. A nullable

@@ -299,20 +299,29 @@ function insertShape(entity: ZodEntity): WriteShape {
 }
 
 /**
- * The shape an upsert writes. It is the create's field set plus the version a create leaves to its
- * column default, so an upsert always claims one. See docs/versioning.md.
+ * The shape an upsert writes. It is the create's field set plus everything a create leaves to the
+ * database that the caller has to name: the `@version` it claims, and an `@pgAutoIncrement` key.
+ * See docs/versioning.md and docs/auto-increment.md.
  */
 function upsertShape(entity: ZodEntity): WriteShape {
-    // The version is the one field a create leaves out that an upsert has to carry.
-    const omit = entity.insertOmit.filter((name) => !entity.versionFields.includes(name));
+    // The version and an assigned key are the fields a create leaves out that an upsert has to carry.
+    const claimed = [...entity.versionFields, ...entity.autoIncrementFields];
+    const omit = entity.insertOmit.filter((name) => !claimed.includes(name));
     const locked = [...entity.keys, ...entity.versionFields];
+    const plus =
+        entity.versionFields.length > 0 && entity.autoIncrementFields.length > 0
+            ? "the `@version` it claims and the key it assigns"
+            : entity.versionFields.length > 0
+              ? "the `@version` it claims"
+              : entity.autoIncrementFields.length > 0
+                ? "the key it assigns"
+                : "";
     return {
         schemaName: entity.upsertName,
         typeName: `${entity.name}Upsert`,
-        comment:
-            entity.versionFields.length > 0
-                ? "/** The fields an upsert writes: what a create carries, plus the `@version` it claims. */"
-                : "/** The fields an upsert writes: what a create carries, since the entity carries no version. */",
+        comment: plus
+            ? `/** The fields an upsert writes: what a create carries, plus ${plus}. */`
+            : "/** The fields an upsert writes: what a create carries, since the entity carries no version. */",
         omit,
         // An upsert writes the row whole, so a nullable column takes `null` as a patch does.
         nullable: entity.patchNullable,

@@ -62,6 +62,13 @@ export type Language = "fi" | "sv" | (string & {});
  * @zod z.bigint().brand<"Version">()
  */
 export type Version = bigint;
+
+/**
+ * @primitive
+ * @pgType integer
+ * @zod z.number().int()
+ */
+export type Counter = number;
 `.trim();
 
 /** Generate from an in-memory project, so no fixture depends on the real spec. */
@@ -404,6 +411,24 @@ describe("generateRepositoryEntity", () => {
         expect(upsert).toContain('export type RevisionUpsert = Upsert<Revision, never, "id" | "version", never, "status">;');
         expect(upsert).toContain('import type { Upsert } from "../upsert.ts";');
         expect(upsert).toContain("plus the `@version` it claims");
+    });
+
+    it("keeps the assigned key out of a create and claims it in an upsert", () => {
+        const { files } = generate({ domain: { Counter: COUNTER } });
+        const insert = insertFile(files, "Counter");
+        const upsert = upsertFile(files, "Counter");
+        const patch = patchFile(files, "Counter");
+
+        // A create leaves the key to the identity column, so the type and the schema omit it.
+        expect(insert).toContain("    .omit({\n        id: true,\n    })");
+        expect(insert).toContain('export type CounterInsert = Insert<Counter, "id", "label", never>;');
+        // An upsert names the key, which is what its conflict matches, so nothing is omitted.
+        expect(upsert).toContain('export type CounterUpsert = Upsert<Counter, never, "id", "label", never>;');
+        expect(upsert).toContain("plus the key it assigns");
+        expect(upsert).not.toContain("id: true");
+        // A patch addresses the row by the key the create handed back, so it requires it.
+        expect(patch).toContain('export type CounterPatch = Patch<Counter, never, "id", "label">;');
+        expect(patch).toContain("    .required({\n        id: true,\n    })");
     });
 
     it("accepts null for a nullable column, as a patch does, and for nothing else", () => {
@@ -774,6 +799,28 @@ export interface Revision {
      * @pgDefault 0
      */
     version: Version;
+}
+`.trim();
+
+/** An append-only entity whose key the database assigns, so no write supplies it. */
+const COUNTER = `
+/**
+ * A counter whose key the database assigns.
+ *
+ * @pgTable counter
+ */
+export interface Counter {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     * @pgAutoIncrement
+     */
+    id: Counter;
+    /**
+     * A label.
+     */
+    label?: string;
 }
 `.trim();
 
