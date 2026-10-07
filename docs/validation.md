@@ -316,8 +316,9 @@ it as a table before anything consumes it.
 
 ## Query schemas
 
-Every entity gets a generated `query` read (`docs/queries.md`), so every entity
-gets a `query` args schema. A read takes one argument — its filters, its
+Every entity that carries `@queries query` gets a generated `query` read
+(`docs/queries.md`), and a `query` args schema with it. A read takes one
+argument — its filters, its
 ordering, its comparisons, and `select` — so the schema is that object with the
 entity's select schema added as a field. The filters come from the entity's
 `@queryFilter` fields, resolved like any other field (the same primitives,
@@ -326,7 +327,6 @@ ordering keys come from the entity's `@queryOrderBy` fields, and the comparison
 fields and their operators from `@queryWhere`. The schema is named after the read:
 `Invoice` yields `queryInvoiceSchema` in
 `packages/validation/src/queries/queryInvoice.ts`.
-
 ```typescript
 export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
@@ -358,7 +358,7 @@ the resolver. Each `where` field is a `z.strictObject` of **only** the operators
 field's own schema types each operator's value. `limit` is a positive integer
 and `offset` a non-negative integer, so a bad page is a 400. An entity with no
 `@queryOrderBy` field gets no `order` key and an entity with no `@queryWhere` field no
-`where` key; every entity gets `limit` and `offset`.
+`where` key; every read gets `limit` and `offset`.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

@@ -12,6 +12,8 @@ export type AuditLogId = AutoIncrement<"AuditLogId">;
  * @pgTable audit_log
  * @repository create
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface AuditLog {
     /**

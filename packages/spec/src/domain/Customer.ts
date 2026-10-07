@@ -13,6 +13,8 @@ export type CustomerId = BrandedId<"CustomerId">;
  * @pgTable customer
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Customer {
     /**

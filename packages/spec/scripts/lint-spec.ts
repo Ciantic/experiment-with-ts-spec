@@ -13,6 +13,7 @@ import {
     DEFAULT_SPEC_GLOB,
     FIELD_TAGS,
     INTERFACE_TAGS,
+    READ_OPERATIONS,
     RETIRED_TAGS,
     SPEC_GLOB,
     TYPE_TAGS,
@@ -20,7 +21,6 @@ import {
     WRITE_OPERATIONS,
     isCompareOperator,
     isOrderDirection,
-    isWriteOperation,
     parseParameters,
     assignsColumn,
     hasTriggerHeader,
@@ -184,28 +184,51 @@ export function lintInterface(
 /** Report a finding on the field under lint, at the tag's line or the field's. */
 type Report = (message: string, tag?: JSDocTag) => void;
 
-/** An entity names the writes it generates with `@repository` and the writes it exposes with `@restRepository`. */
-function lintOperationTags(declaration: InterfaceDeclaration, report: Report): void {
+/** An operation list tag: the name, the operations it may name, and whether every entity must carry it. */
+interface OperationTag {
+    name: string;
+    vocabulary: readonly string[];
+    required: boolean;
+}
+
+/** The four surface tags, in the order their findings are reported. */
+const SURFACE_TAGS: OperationTag[] = [
+    { name: "repository", vocabulary: WRITE_OPERATIONS, required: true },
+    { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: true },
+    { name: "queries", vocabulary: READ_OPERATIONS, required: false },
+    { name: "restQueries", vocabulary: READ_OPERATIONS, required: false },
+];
+
+/** The exposed tag of each pair, paired with the tag that declares what it may expose. */
+const EXPOSED_BY: [string, string][] = [
+    ["restRepository", "repository"],
+    ["restQueries", "queries"],
+];
+
+/** An entity declares its surface: the operations it generates, and the subset it exposes. */
+function lintSurfaceTags(declaration: InterfaceDeclaration, report: Report): void {
     const byName = readTags(declaration).byName;
     const declared = new Map<string, Set<string>>();
-    for (const name of ["repository", "restRepository"] as const) {
+    for (const { name, vocabulary, required } of SURFACE_TAGS) {
         const tags = byName.get(name) ?? [];
         for (const duplicate of tags.slice(1)) {
             report(`@${name} appears more than once`, duplicate);
         }
         const tag = tags[0];
         if (!tag) {
-            report(`missing @${name}, naming at least one of: ${WRITE_OPERATIONS.join(", ")}`);
+            if (required) {
+                report(`missing @${name}, naming at least one of: ${vocabulary.join(", ")}`);
+            }
             continue;
         }
         const tokens = (tag.getCommentText() ?? "").trim().split(/\s+/).filter((token) => token !== "");
         if (tokens.length === 0) {
-            report(`@${name} requires at least one of: ${WRITE_OPERATIONS.join(", ")}`, tag);
+            report(`@${name} requires at least one of: ${vocabulary.join(", ")}`, tag);
         }
         const named = new Set<string>();
         for (const token of tokens) {
-            if (!isWriteOperation(token)) {
-                report(`@${name} \`${token}\` is not one of: ${WRITE_OPERATIONS.join(", ")}`, tag);
+            if (!vocabulary.includes(token)) {
+                report(`@${name} \`${token}\` is not one of: ${vocabulary.join(", ")}`, tag);
             } else if (named.has(token)) {
                 report(`@${name} names \`${token}\` twice`, tag);
             } else {
@@ -215,14 +238,17 @@ function lintOperationTags(declaration: InterfaceDeclaration, report: Report): v
         declared.set(name, named);
     }
 
-    // REST can only expose a repository function that exists, so the exposed set is a subset.
-    const repository = declared.get("repository");
-    const rest = declared.get("restRepository");
-    if (repository && rest) {
-        const restTag = (byName.get("restRepository") ?? [])[0];
-        for (const operation of rest) {
-            if (!repository.has(operation)) {
-                report(`@restRepository \`${operation}\` is not in @repository`, restTag);
+    // The wire cannot serve an operation the entity does not generate, so the exposed set is a subset.
+    for (const [exposed, declaredBy] of EXPOSED_BY) {
+        const exposedSet = declared.get(exposed);
+        const declaredSet = declared.get(declaredBy) ?? new Set<string>();
+        if (!exposedSet) {
+            continue;
+        }
+        const tag = (byName.get(exposed) ?? [])[0];
+        for (const operation of exposedSet) {
+            if (!declaredSet.has(operation)) {
+                report(`@${exposed} \`${operation}\` is not in @${declaredBy}`, tag);
             }
         }
     }
@@ -759,7 +785,7 @@ export function lintProject(
         for (const declaration of sourceFile.getInterfaces()) {
             interfaces += 1;
             lintInterface(declaration, filePath, findings);
-            lintOperationTags(declaration, (message, tag) => {
+            lintSurfaceTags(declaration, (message, tag) => {
                 findings.push({
                     filePath,
                     line: (tag ?? declaration).getStartLineNumber(),

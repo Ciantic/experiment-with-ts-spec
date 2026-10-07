@@ -9,9 +9,9 @@ Two rules decide every tag name, and both are checkable by eye.
 
 **A multi-word tag is camelCase.** `@fieldName`, `@createdAt`, `@updatedAt`,
 `@primaryKey`, `@foreignKey`, `@queryFilter`, `@queryOrderBy`, `@queryWhere`,
-`@restRepository`. A one-word tag is lowercase: `@widget`, `@computed`,
-`@unique`, `@version`, `@relation`, `@children`, `@inlined`, `@primitive`,
-`@repository`, `@zod`.
+`@restRepository`, `@restQueries`. A one-word tag is lowercase: `@widget`,
+`@computed`, `@unique`, `@version`, `@relation`, `@children`, `@inlined`,
+`@primitive`, `@repository`, `@queries`, `@zod`.
 
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
 `@pgDefault`, `@pgAutoIncrement`, `@pgVirtual`, `@pgTrigger`. The prefix and the word
@@ -94,11 +94,18 @@ Interface tags:
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
   operation left out has no module, no function, and no barrel export. Required
-  on every entity. See "`@repository` and `@restRepository`" below.
+  on every entity. See "`@repository`, `@restRepository`, and the read tags"
+  below.
 - `@restRepository <operation>…` — the subset of `@repository` that the route
   table and the generated SDK expose. A write may be generated and not exposed,
   so a seed or a group can still call it. Required on every entity. See
-  "`@repository` and `@restRepository`" below.
+  "`@repository`, `@restRepository`, and the read tags" below.
+- `@queries <operation>…` — the read operations whose query modules the generator
+  writes. `query` is the only one today, and the tag is a list so another read
+  can be added without a new tag. Optional: an entity that declares no read gets
+  none. See `docs/queries.md`.
+- `@restQueries <operation>…` — the subset of `@queries` that the route table and
+  the generated SDK expose. Optional, like `@queries`. See `docs/rest-api.md`.
 - `@pgTrigger <statement>` or `@pgTrigger <header>: <statement>` — a trigger that runs
   for the table rather than for one field, so it may not assign a column (there is
   no field to claim) and may not carry `on` (it is already attached). The header
@@ -144,37 +151,46 @@ application assigns, a key the database assigns with `@pgAutoIncrement`, a colum
 with a `@pgDefault` — and no other tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
-## `@repository` and `@restRepository`
+## `@repository`, `@restRepository`, and the read tags
 
-Every entity names the writes it materializes and the writes it publishes:
+Every entity names the operations it materializes and the subset it publishes:
 
 ```ts
 /**
  * @pgTable audit_log
  * @repository create
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface AuditLog {
 ```
 
+The four tags are two pairs, and each pair reads the same way: the first tag
+declares the operations a generator writes, the second the subset the route
+table and the generated SDK expose.
+
 `@repository` lists the write operations whose repository modules
 `generate-repositories.ts` writes: one or more of `create`, `upsert`, `update`,
 `delete`, in any order. An operation the list leaves out has no module, no
-function, and no barrel export. `@restRepository` lists the subset of those the
-route table and the generated SDK expose; it may not name an operation
-`@repository` omits, since a route would call a function that does not exist. A
-write may be generated and not exposed — a seed or a group can still call it —
-and an entity whose writes are not published keeps its read.
+function, and no barrel export. `@queries` lists the read operations whose query
+modules `generate-queries.ts` writes. `query` is the only read operation today;
+the tag is a list so a second kind of read is a token rather than a new tag, and
+it is what keeps the shape of the two pairs the same. See `docs/queries.md`.
 
-Reads are not part of either list. A `query` is generated and exposed for every
-entity, because the tags select the writes. See `docs/queries.md` and
-`docs/rest-api.md`.
+`@restRepository` and `@restQueries` list the subset of those the REST surface
+serves; neither may name an operation its declaring tag omits, since a route
+would call a function that does not exist. A write may be generated and not
+exposed — a seed or a group can still call it — and so may a read.
 
-Both tags are required on an entity and are validated as a group: the linter
-reports a missing tag, an empty list, a token that is not one of the four
-writes, a token named twice, and a `@restRepository` operation the repository
-set does not contain. Each list is the whole set, so the entity that wants the
-full surface names all four in both.
+`@repository` and `@restRepository` are required on every entity; an entity with
+no writes is not a thing this spec has, and naming the four makes the surface
+explicit rather than implied. The read pair is optional: an entity that declares
+no read gets no `query<Entity>` and no read route. All four are validated as a
+group: the linter reports a missing required tag, an empty list, a token that is
+not in that tag's vocabulary, a token named twice, a tag that appears twice, and
+an exposed operation the declaring tag does not contain. Each list is the whole
+set, so the entity that wants the full surface names every operation in both.
 
 ## `@primaryKey` and `@foreignKey`
 
@@ -586,11 +602,14 @@ Enforced:
   See `docs/queries.md`.
 - `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
-- `@repository` and `@restRepository` are required on every entity, appear at most
-  once, and name one or more of `create`, `upsert`, `update`, `delete`. An
-  unknown token, a token named twice, an empty list, and a `@restRepository`
-  operation the repository set does not contain are each reported. See
-  "`@repository` and `@restRepository`".
+- `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
+  operations: the write tags one or more of `create`, `upsert`, `update`,
+  `delete`, the read tags one or more of `query`. `@repository` and
+  `@restRepository` are required on every entity; the read pair is optional. An
+  unknown token, a token named twice, an empty list, a tag that appears twice,
+  and a `@restRepository` or `@restQueries` operation its declaring tag does not
+  contain are each reported. See "`@repository`, `@restRepository`, and the read
+  tags".
 - Tags may not repeat on a field.
 
 Gotchas:

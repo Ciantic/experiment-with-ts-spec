@@ -14,6 +14,8 @@ const WIDGET = `
  * @pgTable widget
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Widget {
     /** @primaryKey */
@@ -39,6 +41,8 @@ const MARKER = `
  * @pgTable marker
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Marker {
     /** @primaryKey */
@@ -52,6 +56,8 @@ const TRANSLATION = `
  * @pgTable translation
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Translation {
     /** @primaryKey */
@@ -70,6 +76,8 @@ const KEYLESS = `
  * @pgTable keyless
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Keyless {
     name: string;
@@ -186,6 +194,8 @@ describe("buildRestModel", () => {
  * @pgTable audit_log
  * @repository create
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -203,6 +213,8 @@ export interface AuditLog {
  * @pgTable internal
  * @repository create update
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface Internal {
     /** @primaryKey */
@@ -224,6 +236,8 @@ export interface Internal {
  * @pgTable bad
  * @repository create
  * @restRepository delete
+ * @queries query
+ * @restQueries query
  */
 export interface Bad {
     /** @primaryKey */
@@ -252,6 +266,45 @@ export interface Plain {
         expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
             "`Plain`: @repository names no operation",
             "`Plain`: @restRepository names no operation",
+        ]);
+    });
+
+    it("leaves out the read when the entity does not carry @restQueries", () => {
+        const internal = `
+/**
+ * @pgTable internal
+ * @repository create
+ * @restRepository create
+ * @queries query
+ */
+export interface Internal {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const model = build({ Internal: internal });
+
+        expect(model.entities[0]?.operations.map((operation) => operation.kind)).toEqual(["create"]);
+        expect(model.diagnostics).toEqual([]);
+    });
+
+    it("reports a read the entity does not generate", () => {
+        const bad = `
+/**
+ * @pgTable bad
+ * @repository create
+ * @restRepository create
+ * @restQueries query
+ */
+export interface Bad {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const diagnostics = build({ Bad: bad }).diagnostics;
+
+        expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`Bad`: @restQueries `query` is not in @queries",
         ]);
     });
 

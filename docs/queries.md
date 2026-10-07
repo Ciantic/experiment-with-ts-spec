@@ -1,10 +1,10 @@
 # Queries
 
-Reading is derived from the spec. Every entity in `packages/spec/src/domain/`
-gets a generated `query<Entity>` read; a caller that wants a single row takes the
-first result. A generator emits the typed functions and the physical model; one
-hand-written resolver turns a selection into SQL. See "Why the resolver is
-hand-written".
+Reading is derived from the spec. Every entity that carries `@queries query` in
+`packages/spec/src/domain/` gets a generated `query<Entity>` read; a caller that
+wants a single row takes the first result. A generator emits the typed functions
+and the physical model; one hand-written resolver turns a selection into SQL.
+See "Why the resolver is hand-written".
 
 - `packages/validation/src/selection.ts` — `Selection`/`Selected` (the
   column-limiting types), `Filters` (the filter arguments), and the `Order` and
@@ -13,7 +13,7 @@ hand-written".
   `docs/rest-api.md`.
 - `packages/backend/scripts/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
-  `query<Entity>.ts` (a `query<Entity>` per entity), `index.ts` (barrel).
+  `query<Entity>.ts` (a `query<Entity>` per `@queries` entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/validation/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.
@@ -25,7 +25,14 @@ The generated output is committed. Regenerate rather than editing it by hand.
 
 ## One query per entity
 
-There is no query alias to write. The generator walks the entities and emits
+An entity declares its read with `@queries <operation>…`; `@query` is the only
+operation today, so the tag is written `@queries query`. An entity that declares
+no read gets no `query<Entity>` and no read route — the generator writes a
+module only for the tables the tag names. The tag is a list rather than a bare
+marker because a second kind of read would be a token in it, not a new tag. See
+`docs/spec-annotations.md`.
+
+There is no query alias to write. The generator walks the tables and emits
 `query<Entity>`:
 
 ```ts
@@ -51,6 +58,11 @@ export function queryInvoice<S extends Selection<Invoice>>(
 No domain name is hardcoded: a new entity flows through with no generator edit.
 `Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `queryCustomer`,
 `queryInvoiceRow`, `queryInvoiceSent`, and `querySeller` the same way.
+
+`model.ts` names every table, whether or not the entity reads: a read may select
+into a table that has no read of its own, so the resolver needs its key, fields,
+and branches. Dropping a table from the model would break the read that navigates
+into it.
 
 To read one row, take the first result — there is no `get`. A filter set that
 matches several rows yields them in the order the read names (or the entity

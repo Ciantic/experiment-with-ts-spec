@@ -14,6 +14,8 @@ export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;
  * @pgTable invoice_sent_row
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface InvoiceSentRow {
     /**

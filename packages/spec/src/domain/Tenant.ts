@@ -10,6 +10,8 @@ export type TenantId = BrandedId<"TenantId">;
  * @pgTable tenant
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Tenant {
     /**

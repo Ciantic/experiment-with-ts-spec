@@ -48,7 +48,14 @@ export const FIELD_TAGS = [
 ] as const;
 
 /** Tags an interface may carry. */
-export const INTERFACE_TAGS = ["pgTable", "pgTrigger", "repository", "restRepository"] as const;
+export const INTERFACE_TAGS = [
+    "pgTable",
+    "pgTrigger",
+    "repository",
+    "restRepository",
+    "queries",
+    "restQueries",
+] as const;
 
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
@@ -129,10 +136,9 @@ export function isCompareOperator(value: string): value is CompareOperator {
 export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
 export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
 
-/** True when the text is one of {@link WRITE_OPERATIONS}. */
-export function isWriteOperation(value: string): value is WriteOperation {
-    return (WRITE_OPERATIONS as readonly string[]).includes(value);
-}
+/** The read operations `@queries` and `@restQueries` may name, in canonical order. */
+export const READ_OPERATIONS = ["query"] as const;
+export type ReadOperation = (typeof READ_OPERATIONS)[number];
 
 /** A problem found while reading the spec. */
 export interface Diagnostic {
@@ -182,6 +188,10 @@ export interface Tags {
     repository?: WriteOperation[];
     /** The write operations `@restRepository` exposes, in {@link WRITE_OPERATIONS} order. See docs/rest-api.md. */
     restRepository?: WriteOperation[];
+    /** The read operations `@queries` declares, in {@link READ_OPERATIONS} order. See docs/queries.md. */
+    queries?: ReadOperation[];
+    /** The read operations `@restQueries` exposes, in {@link READ_OPERATIONS} order. See docs/rest-api.md. */
+    restQueries?: ReadOperation[];
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`. Declared by the spec, consumed by a generator. */
@@ -220,6 +230,10 @@ export interface SpecInterface {
     repositoryOperations: WriteOperation[];
     /** The write operations `@restRepository` exposes; empty when the tag is absent. See docs/rest-api.md. */
     restRepositoryOperations: WriteOperation[];
+    /** The read operations `@queries` declares; empty when the tag is absent. See docs/queries.md. */
+    queries: ReadOperation[];
+    /** The read operations `@restQueries` exposes; empty when the tag is absent. See docs/rest-api.md. */
+    restQueries: ReadOperation[];
 }
 
 /** A type alias in the spec. */
@@ -464,6 +478,12 @@ function parseWriteOperations(value: string | undefined): WriteOperation[] {
     return WRITE_OPERATIONS.filter((operation) => tokens.includes(operation));
 }
 
+/** The read operations an operation tag names, de-duplicated and in {@link READ_OPERATIONS} order. */
+function parseReadOperations(value: string | undefined): ReadOperation[] {
+    const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
+    return READ_OPERATIONS.filter((operation) => tokens.includes(operation));
+}
+
 /** Decode the JSDoc tags on a declaration, keeping the raw tags for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
@@ -529,6 +549,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "restRepository":
                     if (tags.restRepository === undefined) tags.restRepository = parseWriteOperations(value);
+                    break;
+                case "queries":
+                    if (tags.queries === undefined) tags.queries = parseReadOperations(value);
+                    break;
+                case "restQueries":
+                    if (tags.restQueries === undefined) tags.restQueries = parseReadOperations(value);
                     break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
@@ -642,6 +668,8 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 }),
                 repositoryOperations: declarationTags.repository ?? [],
                 restRepositoryOperations: declarationTags.restRepository ?? [],
+                queries: declarationTags.queries ?? [],
+                restQueries: declarationTags.restQueries ?? [],
             };
             if (declarationTags.pgTrigger !== undefined) {
                 entity.trigger = declarationTags.pgTrigger;

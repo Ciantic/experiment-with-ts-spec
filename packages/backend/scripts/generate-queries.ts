@@ -1,10 +1,11 @@
 /**
  * Generate the per-entity `query` functions and the query metadata module from
  * the spec entities. See docs/queries.md. The resolver itself is hand-written:
- * this emits the model it reads and the typed `query` function every entity gets.
+ * this emits the model it reads and the typed `query` function each entity
+ * carrying `@queries query` gets.
  * There is no `get`: a caller that wants one row takes the first of a `query`.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Project } from "ts-morph";
 import {
@@ -213,17 +214,35 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
     const entities = [...tables.values()].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName));
 
     const files = new Map<string, string>();
+    // The model names every table, since a read may navigate into one that has no read of its own.
     files.set(MODEL_FILE, renderQueryModelModule(buildQueryModel(tables)));
     for (const table of entities) {
-        files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
+        if (table.queries.includes("query")) {
+            files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
+        }
     }
 
     const lines = [HEADER, `export * from "./${MODEL_FILE}";`];
     for (const table of entities) {
-        lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
+        if (table.queries.includes("query")) {
+            lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
+        }
     }
     files.set(INDEX_FILE, lines.join("\n") + "\n");
     return files;
+}
+
+/** Remove the generated modules the spec no longer declares, so an entity that drops a read leaves no file. */
+function pruneStale(outDir: string, keep: Set<string>): void {
+    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+            continue;
+        }
+        const file = join(outDir, entry.name);
+        if (readFileSync(file, "utf8").split("\n", 1)[0] === HEADER) {
+            rmSync(file);
+        }
+    }
 }
 
 function main(): void {
@@ -255,6 +274,7 @@ function main(): void {
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);
     }
+    pruneStale(outDir, new Set(files.keys()));
     console.log(`wrote ${files.size} files to ${outDir}`);
 }
 

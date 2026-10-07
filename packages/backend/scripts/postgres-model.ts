@@ -22,6 +22,7 @@ import {
     type TriggerEvent,
     type TriggerLevel,
     type TriggerTiming,
+    type ReadOperation,
     type WriteOperation,
     assignsColumn,
     triggerLevel,
@@ -128,6 +129,8 @@ export interface Table {
     triggers: Trigger[];
     /** The write operations `@repository` declares, which the repository generator renders. */
     repositoryOperations: WriteOperation[];
+    /** The read operations `@queries` declares, which the query generator renders. */
+    queries: ReadOperation[];
 }
 
 interface TypeResolution {
@@ -216,6 +219,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         relations: new Map(),
         triggers: [],
         repositoryOperations: spec.repositoryOperations,
+        queries: spec.queries,
     };
 
     for (const property of spec.properties) {

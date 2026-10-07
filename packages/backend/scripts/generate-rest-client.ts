@@ -128,8 +128,12 @@ export function renderClientModule(entity: RestEntity): string {
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
     const lines: string[] = [HEADER];
-    lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
-    lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
+    // The entity type and the selection types are what the read's signature is made of, so only a
+    // read carries them. See docs/queries.md.
+    if (query) {
+        lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
+        lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
+    }
     // The write types and the key projection live in the validation package, so the client, the wire
     // schema, and the server all name one definition. A type-only import keeps `zod` out of the
     // client's runtime. See docs/validation.md.

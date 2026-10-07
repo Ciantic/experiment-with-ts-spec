@@ -13,6 +13,8 @@ export type SellerId = BrandedId<"SellerId">;
  * @pgTable seller
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Seller {
     /**

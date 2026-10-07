@@ -29,6 +29,7 @@ function table(
         relations,
         triggers: [],
         repositoryOperations: [...WRITE_OPERATIONS],
+        queries: ["query"],
     };
 }
 
@@ -234,5 +235,19 @@ describe("generateQueries", () => {
         expect(code).toContain('export * from "./model.ts";');
         expect(code).toContain('export * from "./queryInvoice.ts";');
         expect(code).toContain('export * from "./querySeller.ts";');
+    });
+
+    it("emits no module for an entity that carries no @queries, keeping it in the model", () => {
+        const tables = new Map<string, Table>([
+            ["Invoice", invoice],
+            ["Seller", { ...seller, queries: [] }],
+        ]);
+
+        const files = generateQueries(tables);
+
+        expect([...files.keys()].sort()).toEqual(["index.ts", "model.ts", "queryInvoice.ts"]);
+        expect(files.get("index.ts")).not.toContain("querySeller");
+        // A read may still navigate into the table, so the model names it whether or not it reads.
+        expect(files.get("model.ts")).toContain('"seller"');
     });
 });

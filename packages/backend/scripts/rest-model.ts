@@ -9,12 +9,14 @@
 import type { Node, Project } from "ts-morph";
 import {
     DEFAULT_SPEC_GLOB,
+    READ_OPERATIONS,
     SPEC_GLOB,
     WRITE_OPERATIONS,
     isCompareOperator,
     lowerFirst,
     parseSpec,
     type Diagnostic,
+    type ReadOperation,
     type SpecInterface,
     type WriteOperation,
 } from "spec/scripts/spec-model.ts";
@@ -97,15 +99,17 @@ function writeOperation(path: string, kind: WriteOperation): RestOperation {
     }
 }
 
-/** The calls one entity exposes, in a stable order: the read, then each write `@restRepository` names. */
-function operationsFor(path: string, exposed: WriteOperation[]): RestOperation[] {
-    // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
-    // It is always exposed; the operation tags govern only the writes.
-    const operations: RestOperation[] = [
-        { kind: "query", method: "GET", path: queryPath(path), source: "query" },
-    ];
+/** The calls one entity exposes, in a stable order: the reads `@restQueries` names, then the writes. */
+function operationsFor(path: string, reads: ReadOperation[], writes: WriteOperation[]): RestOperation[] {
+    const operations: RestOperation[] = [];
+    for (const kind of READ_OPERATIONS) {
+        // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
+        if (reads.includes(kind)) {
+            operations.push({ kind, method: "GET", path: queryPath(path), source: "query" });
+        }
+    }
     for (const kind of WRITE_OPERATIONS) {
-        if (exposed.includes(kind)) {
+        if (writes.includes(kind)) {
             operations.push(writeOperation(path, kind));
         }
     }
@@ -138,7 +142,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        operations: operationsFor(path, spec.restRepositoryOperations),
+        operations: operationsFor(path, spec.restQueries, spec.restRepositoryOperations),
     };
 }
 
@@ -174,6 +178,12 @@ export function buildRestModel(project: Project, options: GenerateOptions = {}):
                     spec.declaration,
                     `\`${spec.name}\`: @restRepository \`${operation}\` is not in @repository`,
                 );
+            }
+        }
+        // A read the generator does not write cannot be served, just as a write it does not generate cannot.
+        for (const operation of spec.restQueries) {
+            if (!spec.queries.includes(operation)) {
+                report(spec.declaration, `\`${spec.name}\`: @restQueries \`${operation}\` is not in @queries`);
             }
         }
         entities.push(entity);

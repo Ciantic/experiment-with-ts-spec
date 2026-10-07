@@ -24,6 +24,8 @@ const WIDGET = `
  * @pgTable widget
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Widget {
     /** @primaryKey */
@@ -49,6 +51,8 @@ const MARKER = `
  * @pgTable marker
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Marker {
     /** @primaryKey */
@@ -62,6 +66,8 @@ const TRANSLATION = `
  * @pgTable translation
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Translation {
     /** @primaryKey */
@@ -80,6 +86,8 @@ const LIMITED = `
  * @pgTable limited
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Limited {
     /** @primaryKey */
@@ -249,6 +257,8 @@ describe("renderClientModule", () => {
  * @pgTable audit_log
  * @repository create
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -265,6 +275,28 @@ export interface AuditLog {
         expect(code).not.toContain("export function deleteAuditLog");
         expect(code).not.toContain("AuditLogPatch");
         expect(code).not.toContain("AuditLogUpsert");
+    });
+
+    it("builds no read, and imports nothing for one, when the entity carries no @restQueries", () => {
+        const internal = `
+/**
+ * @pgTable internal
+ * @repository create
+ * @restRepository create
+ * @queries query
+ */
+export interface Internal {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const entity = build({ Internal: internal }).entities[0]!;
+        const code = renderClientModule(entity);
+
+        expect(code).toContain("export function createInternal");
+        expect(code).not.toContain("export function queryInternal");
+        expect(code).not.toContain("Selection");
+        expect(code).not.toContain("spec/domain/Internal.ts");
     });
 });
 

@@ -43,6 +43,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         relations: new Map(),
         triggers: [],
         repositoryOperations: [...WRITE_OPERATIONS],
+        queries: ["query"],
     };
 }
 

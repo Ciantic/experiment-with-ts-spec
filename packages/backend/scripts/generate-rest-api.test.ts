@@ -15,6 +15,8 @@ const WIDGET = `
  * @pgTable widget
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Widget {
     /** @primaryKey */
@@ -31,6 +33,8 @@ const MARKER = `
  * @pgTable marker
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
  */
 export interface Marker {
     /** @primaryKey */
@@ -154,6 +158,8 @@ describe("renderEntityRoutes", () => {
  * @pgTable audit_log
  * @repository create
  * @restRepository create
+ * @queries query
+ * @restQueries query
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -172,6 +178,30 @@ export interface AuditLog {
         expect(code).not.toContain("updateAuditLog");
         expect(code).not.toContain("deleteAuditLog");
         expect(code).not.toContain("auditLogPatchSchema");
+    });
+
+    it("emits no read route when the entity carries no @restQueries", () => {
+        const internal = `
+/**
+ * @pgTable internal
+ * @repository create
+ * @restRepository create
+ * @queries query
+ */
+export interface Internal {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const entity = build({ Internal: internal }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the internal entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain("handler: (db, body) => createInternal(db, body as never)");
+        expect(code).not.toContain("queryInternal");
+        expect(code).not.toContain("/internal/query");
     });
 });
 

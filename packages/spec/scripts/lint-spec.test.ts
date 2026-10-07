@@ -1570,6 +1570,17 @@ export interface Invoice {
         const findings = lintEntity(`/**
  * @repository create upsert update delete
  * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
+ */`);
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts an entity with no @queries, which reads nothing", () => {
+        const findings = lintEntity(`/**
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  */`);
 
         expect(findings).toEqual([]);
@@ -1596,6 +1607,34 @@ export interface Invoice {
         ]);
     });
 
+    it("reports a read that is not one of the known read operations", () => {
+        const findings = lintEntity(`/**
+ * @repository create
+ * @restRepository create
+ * @queries read
+ * @restQueries read
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @queries `read` is not one of: query",
+            "`Invoice`: @restQueries `read` is not one of: query",
+        ]);
+    });
+
+    it("requires a value on the read tags, since the operation is named", () => {
+        const findings = lintEntity(`/**
+ * @repository create
+ * @restRepository create
+ * @queries
+ * @restQueries
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @queries requires at least one of: query",
+            "`Invoice`: @restQueries requires at least one of: query",
+        ]);
+    });
+
     it("reports an operation named twice", () => {
         const findings = lintEntity(`/**
  * @repository create create
@@ -1605,7 +1644,7 @@ export interface Invoice {
         expect(findings).toEqual(["`Invoice`: @repository names `create` twice"]);
     });
 
-    it("requires at least one operation in each list", () => {
+    it("requires at least one operation in each write list", () => {
         const findings = lintEntity(`/**
  * @repository
  * @restRepository
@@ -1624,6 +1663,16 @@ export interface Invoice {
  */`);
 
         expect(findings).toEqual(["`Invoice`: @restRepository `upsert` is not in @repository"]);
+    });
+
+    it("reports an exposed read the entity does not generate", () => {
+        const findings = lintEntity(`/**
+ * @repository create
+ * @restRepository create
+ * @restQueries query
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @restQueries `query` is not in @queries"]);
     });
 
     it("reports a tag that appears twice", () => {
