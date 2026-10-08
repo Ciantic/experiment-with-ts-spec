@@ -1,7 +1,7 @@
 /** Generate CRUD repositories from `spec/domain`. See docs/repositories.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadSpec, lowerFirst, type WriteOperation } from "spec/scripts/spec-model.ts";
+import { loadSpec, lowerFirst, type SpecModel, type WriteOperation } from "spec/scripts/spec-model.ts";
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
@@ -640,24 +640,23 @@ function pruneStale(outDir: string, keep: Set<string>): void {
     }
 }
 
-function main(): void {
-    const { tables, diagnostics } = buildSpecTables(loadSpec());
+/** Write the repository modules for a parsed spec and return the exit code. */
+export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+    const { tables, diagnostics } = buildSpecTables(spec);
 
     for (const diagnostic of diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
 
     if (diagnostics.length > 0) {
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
-    const outIndex = process.argv.indexOf("--out");
-    const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : process.argv[outIndex + 1];
+    const outIndex = argv.indexOf("--out");
+    const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
         console.error("--out needs a directory");
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
     const files = generateRepositories(tables);
@@ -667,8 +666,9 @@ function main(): void {
     }
     pruneStale(outDir, new Set(files.keys()));
     console.log(`wrote ${files.size} files to ${outDir}`);
+    return 0;
 }
 
 if (import.meta.main) {
-    main();
+    process.exitCode = run(loadSpec());
 }

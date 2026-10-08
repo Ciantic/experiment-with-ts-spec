@@ -204,36 +204,36 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     return { sql: lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n", diagnostics };
 }
 
-function main(): void {
-    const { sql, diagnostics } = generateSchema(loadSpec());
+/** Write the schema for a parsed spec and return the exit code. */
+export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+    const { sql, diagnostics } = generateSchema(spec);
 
     for (const diagnostic of diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
 
     if (diagnostics.length > 0) {
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
-    if (process.argv.includes("--stdout")) {
+    if (argv.includes("--stdout")) {
         process.stdout.write(sql);
-        return;
+        return 0;
     }
 
-    const outIndex = process.argv.indexOf("--out");
-    const outPath = outIndex === -1 ? DEFAULT_OUT : process.argv[outIndex + 1];
+    const outIndex = argv.indexOf("--out");
+    const outPath = outIndex === -1 ? DEFAULT_OUT : argv[outIndex + 1];
     if (!outPath) {
         console.error("--out needs a path");
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, sql);
     console.log(`wrote ${outPath}`);
+    return 0;
 }
 
 if (import.meta.main) {
-    main();
+    process.exitCode = run(loadSpec());
 }

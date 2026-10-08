@@ -205,7 +205,20 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      backend:
+        specifier: workspace:*
+        version: link:packages/backend
+      spec:
+        specifier: workspace:*
+        version: link:packages/spec
+      validation:
+        specifier: workspace:*
+        version: link:packages/validation
 
   packages/backend:
     dependencies:

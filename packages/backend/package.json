@@ -5,6 +5,10 @@
   "description": "Postgres schema generation and result mapping for the spec.",
   "license": "ISC",
   "type": "module",
+  "exports": {
+    "./scripts/*.ts": "./scripts/*.ts",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

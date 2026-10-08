@@ -5,10 +5,10 @@
   "private": true,
   "scripts": {
     "test": "pnpm -r run test",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "tsc --noEmit && pnpm -r run typecheck",
     "lint": "pnpm run lint:spec",
     "lint:spec": "pnpm --filter spec run lint:spec",
-    "generate": "pnpm run generate:schema && pnpm run generate:repositories && pnpm run generate:queries && pnpm run generate:validation && pnpm run generate:rest-api && pnpm run generate:rest-client",
+    "generate": "node scripts/generate.ts",
     "spec": "pnpm run lint:spec && pnpm run generate",
     "generate:schema": "pnpm --filter backend run generate:schema",
     "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout",
@@ -23,6 +23,12 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "backend": "workspace:*",
+    "spec": "workspace:*",
+    "validation": "workspace:*"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",

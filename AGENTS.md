@@ -22,6 +22,9 @@
 - A generator lives in the package that owns its artifact. Most of them are in
   `packages/backend/scripts` because they share the table model;
   `packages/validation/scripts` owns the Zod generator.
+- Each generator exports `run(spec, argv)`, so the root `scripts/generate.ts` can
+  load the spec once and pass the same `SpecModel` to every generator. That
+  driver owns no artifact and holds no domain knowledge; it only orders them.
 
 # Code style
 

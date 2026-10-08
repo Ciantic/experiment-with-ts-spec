@@ -1,7 +1,8 @@
 # Tasks
 
-The root `package.json` is private and delegates; it owns no source. Its scripts
-are the entry points for the whole workspace.
+The root `package.json` is private and delegates. Its scripts are the entry
+points for the whole workspace, and `scripts/generate.ts` is the one source it
+owns: the driver that runs every generator.
 
 ## The pipeline
 
@@ -13,10 +14,11 @@ runs, in order:
 
 1. `pnpm run lint` — the linters. Today that is `lint:spec`, which validates the
    `@` annotations in `packages/spec/`.
-2. `pnpm run generate` — `generate:schema`, `generate:repositories`,
-   `generate:queries`, `generate:rest-api`, and `generate:rest-client` in
-   `packages/backend`, plus `generate:validation` in `packages/validation`,
-   which owns the generator for its own schemas.
+2. `pnpm run generate` — `node scripts/generate.ts`, which loads the spec once
+   and runs `generate:schema`, `generate:repositories`, `generate:queries`,
+   `generate:rest-api`, and `generate:rest-client` in `packages/backend`, plus
+   `generate:validation` in `packages/validation`, which owns the generator for
+   its own schemas.
 3. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -42,8 +44,11 @@ The order is load-bearing:
 
 `pnpm run generate` runs the schema generator before the repository generator,
 then the query generator, the validation generator, and the two REST generators
-last. All of them read the
-spec through `packages/spec/scripts/spec-model.ts`: the schema, repository, and
+last. The driver parses the spec once through
+`packages/spec/scripts/spec-model.ts` and hands the same `SpecModel` to every
+generator, because that parse dominates a generate run; each generator keeps a
+standalone `generate:*` script for a single artifact. All of them read the
+spec through that same model: the schema, repository, and
 query generators map it to columns in
 `packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
 Zod schemas in `packages/validation/scripts/zod-model.ts`, and the REST pair maps
@@ -52,7 +57,8 @@ generator references the validation schemas by name, which is why it runs after
 them. None reads another's
 output, so the
 order between them is presentational — it mirrors the order the artifacts appear
-in the repository.
+in the repository. A generator that reports a diagnostic returns a failing exit
+code, and the driver stops rather than writing the artifacts after it.
 
 The validation generator is the one that lives in the package it writes. The
 other generators stay in `packages/backend/scripts`: the schema, repository, and
@@ -60,6 +66,16 @@ query generators share the table model, and the two REST generators share
 `rest-model.ts`. The REST client generator draws only on the spec and that model,
 yet it stays with the API generator so the two cannot drift; its output still
 lands in `packages/sdk`.
+
+## Adding a generator
+
+A generator module exports `run(spec, argv): number`, which reads the model,
+writes its artifact, and returns the process exit code. Its own
+`if (import.meta.main)` block calls `run(loadSpec(), process.argv)`, so the
+package script still works standalone and still accepts its flags. Adding one to
+the pipeline is two lines in `scripts/generate.ts`: the import and the position
+in the driver's list. The driver passes no `argv`, so a generator's flags never
+reach the whole-pipeline run.
 
 ## Why `--if-present`
 

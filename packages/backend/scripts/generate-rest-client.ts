@@ -13,7 +13,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { loadSpec } from "spec/scripts/spec-model.ts";
+import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
 import { validationFileName } from "./generate-repositories.ts";
 import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
 
@@ -235,23 +235,22 @@ export function generateRestClient(model: RestModel): Map<string, string> {
     return files;
 }
 
-function main(): void {
-    const model = buildRestModel(loadSpec());
+/** Write the client modules for a parsed spec and return the exit code. */
+export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+    const model = buildRestModel(spec);
 
     for (const diagnostic of model.diagnostics) {
         console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
     if (model.diagnostics.length > 0) {
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
-    const outIndex = process.argv.indexOf("--out");
-    const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : process.argv[outIndex + 1];
+    const outIndex = argv.indexOf("--out");
+    const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
         console.error("--out needs a directory");
-        process.exitCode = 1;
-        return;
+        return 1;
     }
 
     const files = generateRestClient(model);
@@ -261,8 +260,9 @@ function main(): void {
         writeFileSync(target, content);
     }
     console.log(`wrote ${files.size} files to ${outDir}`);
+    return 0;
 }
 
 if (import.meta.main) {
-    main();
+    process.exitCode = run(loadSpec());
 }
