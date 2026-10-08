@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
-import { loadSpec, parseSpec } from "./spec-model.ts";
+import { loadSpec, parseInMemorySpec } from "./spec-model.ts";
 import { lintSourceText, lintSpec, type Diagnostic } from "./lint-spec.ts";
 
 /** Format findings as `field: message` for concise assertions. */
@@ -1619,11 +1618,16 @@ describe("lintSpec over a project", () => {
     const entityGlob = "/src/domain/**/*.ts";
     const aliasGlob = "/src/**/*.ts";
 
-    it("lints interfaces under domain/", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
+    /** Parse an in-memory spec laid out under /src, so no test reads the real domain. */
+    function parse(files: Record<string, string>) {
+        const spec = Object.entries(files).map(([filePath, sourceFileText]) => ({ filePath, sourceFileText }));
+        return parseInMemorySpec(spec, { entityGlob, aliasGlob });
+    }
 
-        const { findings, interfaces } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
+    it("lints interfaces under domain/", () => {
+        const { findings, interfaces } = lintSpec(
+            parse({ "/src/domain/Invoice.ts": "export interface Invoice { label: string; }" }),
+        );
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
@@ -1635,14 +1639,12 @@ describe("lintSpec over a project", () => {
     });
 
     it("skips contract interfaces outside domain/", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile(
-            "/src/operations/Contract.ts",
-            "export interface Contract { list(): void; }",
+        const { findings, interfaces } = lintSpec(
+            parse({
+                "/src/operations/Contract.ts": "export interface Contract { list(): void; }",
+                "/src/domain/Invoice.ts": "export interface Invoice { label: string; }",
+            }),
         );
-        project.createSourceFile("/src/domain/Invoice.ts", "export interface Invoice { label: string; }");
-
-        const { findings, interfaces } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
@@ -1654,27 +1656,22 @@ describe("lintSpec over a project", () => {
     });
 
     it("still scans type aliases outside domain/", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile("/src/operations/bad.ts", "/** @nonsense */ export type Thing = string;");
-
-        const { findings } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
+        const { findings } = lintSpec(parse({ "/src/operations/bad.ts": "/** @nonsense */ export type Thing = string;" }));
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
     });
 
     it("checks a @pgType against an alias declared in another file", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile(
-            "/src/primitives/Liar.ts",
-            `/**
+        const { findings } = lintSpec(
+            parse({
+                "/src/primitives/Liar.ts": `/**
  * @primitive
  * @pgType int8
  * @zod z.string()
  */
 export type Liar = string & $brand<"Liar">;`,
+            }),
         );
-
-        const { findings } = lintSpec(parseSpec(project, { entityGlob, aliasGlob }));
 
         expect(messages(findings)).toEqual([
             "`Liar`: @pgType `int8` selects as a `bigint`, but the alias is a `string`",
@@ -1683,10 +1680,8 @@ export type Liar = string & $brand<"Liar">;`,
 
     /** Lint one entity with the given interface doc, and no field problems, for the operation rules. */
     function lintEntity(doc: string): string[] {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile(
-            "/src/domain/Invoice.ts",
-            `${doc}
+        const spec = parse({
+            "/src/domain/Invoice.ts": `${doc}
 export interface Invoice {
     /**
      * @fieldName ID
@@ -1695,8 +1690,8 @@ export interface Invoice {
      */
     id: string;
 }`,
-        );
-        return messages(lintSpec(parseSpec(project, { entityGlob, aliasGlob })).findings);
+        });
+        return messages(lintSpec(spec).findings);
     }
 
     it("accepts an entity that names the writes it generates and exposes", () => {

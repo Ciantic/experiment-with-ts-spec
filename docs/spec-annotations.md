@@ -597,7 +597,8 @@ itself. Nothing else in the model reads `written`; a generator reads a decoded
 flag.
 
 `lintSpec(spec)` lints a whole model; `lintSourceText(text)` parses one snippet
-and lints that, which is how the rules are tested. Neither takes a `Project`.
+with `parseInMemorySpec` and lints that, which is how the rules are tested.
+Neither takes a `Project`.
 
 Enforced:
 

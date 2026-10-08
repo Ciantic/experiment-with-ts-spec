@@ -2,7 +2,7 @@
  * Parse `spec/src` into the model shared by the generators and the linter.
  * See docs/spec-annotations.md.
  */
-import { dirname, isAbsolute, join, relative as relativePath } from "node:path";
+import { dirname, join, relative as relativePath } from "node:path";
 import {
     Node,
     Project,
@@ -945,12 +945,31 @@ export function loadSpec(): SpecModel {
     return parseSpec(createSpecProject());
 }
 
-/** The in-memory project holds only the file just created, so every source is the spec. */
+/** The in-memory project holds only the files just created, so every source is the spec. */
 const IN_MEMORY_GLOB = "**/*.ts";
 
-/** Parse one in-memory source into the model, for tests and one-off checks such as linting a snippet. */
-export function parseSpecText(text: string, filePath = "fixture.ts"): SpecModel {
+/** One source of an in-memory spec, at the path its globs are matched against. */
+export interface InMemorySpecFile {
+    filePath: string;
+    sourceFileText: string;
+}
+
+/**
+ * Parse sources held in memory into the model, for tests and one-off checks such as linting a snippet.
+ * A relative path stays relative to the in-memory root, which is how its glob is matched.
+ */
+export function parseInMemorySpec(files: InMemorySpecFile[], options: ParseOptions = {}): SpecModel {
     const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile(isAbsolute(filePath) ? filePath : join(process.cwd(), filePath), text);
-    return parseSpec(project, { entityGlob: IN_MEMORY_GLOB, aliasGlob: IN_MEMORY_GLOB });
+    for (const file of files) {
+        project.createSourceFile(file.filePath, file.sourceFileText);
+    }
+    return parseSpec(project, {
+        entityGlob: options.entityGlob ?? IN_MEMORY_GLOB,
+        aliasGlob: options.aliasGlob ?? IN_MEMORY_GLOB,
+    });
+}
+
+/** Parse one in-memory source into the model. */
+export function parseSpecText(text: string, filePath = "fixture.ts"): SpecModel {
+    return parseInMemorySpec([{ filePath, sourceFileText: text }]);
 }

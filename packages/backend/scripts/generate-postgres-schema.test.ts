@@ -1,8 +1,7 @@
 /** Unit tests for generateSchema, driven by self-contained fixtures. */
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
 import { PGlite } from "@electric-sql/pglite";
-import { parseSpec } from "spec/scripts/spec-model.ts";
+import { parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
 const SPEC_GLOB = "fixtures/domain/**/*.ts";
@@ -55,14 +54,16 @@ export type Version = bigint;
 export type Counter = number;
 `.trim();
 
-/** Generate from an in-memory project, so no fixture depends on the real spec. */
+/** Generate from in-memory sources, so no fixture depends on the real spec. */
 function generate(fixture: Fixture) {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("fixtures/domain/primitives.ts", PRIMITIVES);
-    for (const [name, text] of Object.entries(fixture.domain)) {
-        project.createSourceFile(`fixtures/domain/${name}.ts`, text);
-    }
-    return generateSchema(parseSpec(project, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
+    const spec = [
+        { filePath: "fixtures/domain/primitives.ts", sourceFileText: PRIMITIVES },
+        ...Object.entries(fixture.domain).map(([name, sourceFileText]) => ({
+            filePath: `fixtures/domain/${name}.ts`,
+            sourceFileText,
+        })),
+    ];
+    return generateSchema(parseInMemorySpec(spec, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
 }
 
 function messages(diagnostics: Diagnostic[]): string[] {

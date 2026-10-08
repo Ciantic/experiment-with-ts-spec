@@ -1,8 +1,7 @@
 /** Unit tests for the REST model, driven by self-contained fixtures. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, parseSpec } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
@@ -86,11 +85,11 @@ export interface Keyless {
 
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
-    const project = new Project({ useInMemoryFileSystem: true });
-    for (const [name, text] of Object.entries(domain)) {
-        project.createSourceFile(join(SPEC_SRC_ROOT, "domain", `${name}.ts`), text);
-    }
-    return buildRestModel(parseSpec(project, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
+    const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
+        filePath: join(SPEC_SRC_ROOT, "domain", `${name}.ts`),
+        sourceFileText,
+    }));
+    return buildRestModel(parseInMemorySpec(spec, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
 }
 
 const model = build({ Widget: WIDGET, Marker: MARKER });

@@ -165,8 +165,9 @@ Two test files:
 
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — the generator's
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
-  spec, so it stays valid as the domain changes. `generateSchema` takes
-  `{ specGlob, aliasGlob }` so a fixture can be generated from its own files.
+  spec, so it stays valid as the domain changes. The fixture's sources go through
+  `parseInMemorySpec(files, { entityGlob, aliasGlob })`, so a fixture is generated
+  from its own files.
   Its trigger group also executes the generated triggers in PGlite, which is the
   one place the attachment is observable: a trigger on the wrong table is valid
   SQL, so no text assertion can see it.

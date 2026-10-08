@@ -2,9 +2,9 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Project, ts } from "ts-morph";
+import { ts } from "ts-morph";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
-import { parseSpec } from "spec/scripts/spec-model.ts";
+import { parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import {
     domainModuleName,
     generateDomainEntity,
@@ -72,14 +72,16 @@ export type Version = bigint;
 export type Counter = number;
 `.trim();
 
-/** Generate from an in-memory project, so no fixture depends on the real spec. */
+/** Generate from in-memory sources, so no fixture depends on the real spec. */
 function generate(fixture: Fixture) {
-    const project = new Project({ useInMemoryFileSystem: true });
-    project.createSourceFile("fixtures/domain/primitives.ts", PRIMITIVES);
-    for (const [name, text] of Object.entries(fixture.domain)) {
-        project.createSourceFile(`fixtures/domain/${name}.ts`, text);
-    }
-    const model = buildZodModel(parseSpec(project, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
+    const spec = [
+        { filePath: "fixtures/domain/primitives.ts", sourceFileText: PRIMITIVES },
+        ...Object.entries(fixture.domain).map(([name, sourceFileText]) => ({
+            filePath: `fixtures/domain/${name}.ts`,
+            sourceFileText,
+        })),
+    ];
+    const model = buildZodModel(parseInMemorySpec(spec, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
     return { model, files: generateZodSchemas(model), diagnostics: model.diagnostics };
 }
 

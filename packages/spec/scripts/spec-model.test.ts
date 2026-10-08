@@ -2,17 +2,17 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseSpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseInMemorySpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
 /** Parse an in-memory spec, so no test reads the real domain. */
 function parse(files: Record<string, string>) {
-    const project = new Project({ useInMemoryFileSystem: true });
-    for (const [name, text] of Object.entries(files)) {
-        project.createSourceFile(join(SPEC_SRC_ROOT, "fixtures", name), text);
-    }
-    return parseSpec(project, { entityGlob: GLOB, aliasGlob: GLOB });
+    const spec = Object.entries(files).map(([name, sourceFileText]) => ({
+        filePath: join(SPEC_SRC_ROOT, "fixtures", name),
+        sourceFileText,
+    }));
+    return parseInMemorySpec(spec, { entityGlob: GLOB, aliasGlob: GLOB });
 }
 
 describe("parseSpec interfaces", () => {

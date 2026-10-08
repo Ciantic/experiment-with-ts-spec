@@ -9,8 +9,7 @@
  */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, parseSpec } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
 import { renderRoutes } from "./generate-rest-api.ts";
@@ -97,11 +96,11 @@ export interface Limited {
 
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
-    const project = new Project({ useInMemoryFileSystem: true });
-    for (const [name, text] of Object.entries(domain)) {
-        project.createSourceFile(join(SPEC_SRC_ROOT, "domain", `${name}.ts`), text);
-    }
-    return buildRestModel(parseSpec(project, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
+    const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
+        filePath: join(SPEC_SRC_ROOT, "domain", `${name}.ts`),
+        sourceFileText,
+    }));
+    return buildRestModel(parseInMemorySpec(spec, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
 }
 
 const model = build({ Widget: WIDGET, Marker: MARKER });

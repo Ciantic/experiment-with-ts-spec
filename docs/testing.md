@@ -28,8 +28,8 @@ values, all of which are domain decisions rather than code behaviour.
 ## How it looks here
 
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
-  `generateSchema` with self-contained fixtures. `generateSchema` takes
-  `{ specGlob, aliasGlob }` precisely so a test never has to touch the real spec.
+  `generateSchema` with self-contained fixtures, parsed by `parseInMemorySpec`
+  from the sources the test writes, so it never has to touch the real spec.
   Its trigger group also executes the generated triggers in PGlite over
   `Parent`/`ChildA`/`ChildB` fixtures, asserting which child drives which parent
   column: the SQL text cannot show a trigger attached to the wrong table, because
@@ -86,10 +86,11 @@ values, all of which are domain decisions rather than code behaviour.
 
 ## Gotchas
 
-- **Do not import the real spec into a unit test.** Use an in-memory project with
-  a fixture glob, or the test becomes a domain test by accident. The end-to-end
-  smoke test in `src/main.test.ts` is no exception: it draws its rows from
-  `spec/mockdata` and names no domain type.
+- **Do not import the real spec into a unit test.** Give the test its own sources
+  through `parseInMemorySpec(files, { entityGlob, aliasGlob })`, so the model holds
+  only what the test wrote, or the test becomes a domain test by accident. The
+  end-to-end smoke test in `src/main.test.ts` is no exception: it draws its rows
+  from `spec/mockdata` and names no domain type.
 - **Name the real file extension in imports.** `node` runs the TypeScript
   directly and resolves only `.ts` specifiers; `allowImportingTsExtensions` lets
   TypeScript accept them, and Vitest resolves them too.
