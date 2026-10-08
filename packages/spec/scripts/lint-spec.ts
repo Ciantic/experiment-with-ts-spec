@@ -793,8 +793,9 @@ export function lintSourceText(text: string, filePath = "fixture.ts"): Diagnosti
     return lintModel(parseSpecText(text, filePath), false).findings;
 }
 
-function main(): void {
-    const { findings, interfaces, properties } = lintSpec(loadSpec());
+/** Lint a parsed spec, report the findings, and return the exit code. */
+export function run(spec: SpecModel): number {
+    const { findings, interfaces, properties } = lintSpec(spec);
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
 
     for (const finding of findings) {
@@ -804,13 +805,13 @@ function main(): void {
     const summary = `${interfaces} interfaces, ${properties} fields`;
     if (findings.length === 0) {
         console.log(`spec annotations OK (${summary})`);
-        return;
+        return 0;
     }
 
     console.error(`\n${findings.length} problem(s) in ${summary}`);
-    process.exitCode = 1;
+    return 1;
 }
 
 if (import.meta.main) {
-    main();
+    process.exitCode = run(loadSpec());
 }
