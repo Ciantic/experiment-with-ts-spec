@@ -1,5 +1,5 @@
 /**
- * Generate Zod schemas and their write types from `spec/domain`, into this package's `src`.
+ * Generate Zod schemas and their write types from the spec entities, into this package's `src`.
  * See docs/validation.md.
  */
 import { mkdirSync, writeFileSync } from "node:fs";

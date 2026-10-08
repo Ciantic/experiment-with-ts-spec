@@ -15,7 +15,7 @@ import { generateRestClient, renderClientModule } from "./generate-rest-client.t
 import { renderRoutes } from "./generate-rest-api.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
 /** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
@@ -25,6 +25,7 @@ const WIDGET = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Widget {
     /** @primaryKey */
@@ -52,6 +53,7 @@ const MARKER = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Marker {
     /** @primaryKey */
@@ -67,6 +69,7 @@ const TRANSLATION = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Translation {
     /** @primaryKey */
@@ -87,6 +90,7 @@ const LIMITED = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Limited {
     /** @primaryKey */
@@ -97,10 +101,10 @@ export interface Limited {
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
-        filePath: join(SPEC_SRC_ROOT, "domain", `${name}.ts`),
+        filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
         sourceFileText,
     }));
-    return buildRestModel(parseInMemorySpec(spec, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
+    return buildRestModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
 }
 
 const model = build({ Widget: WIDGET, Marker: MARKER });
@@ -120,7 +124,7 @@ describe("renderClientModule", () => {
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
         expect(code).toContain("): Call<Selected<Widget, S>[]> {");
         expect(code).toContain('return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
-        expect(code).toContain('import type { Widget } from "spec/domain/Widget.ts";');
+        expect(code).toContain('import type { Widget } from "spec/fixtures/Widget.ts";');
         expect(code).toContain('import { call, type Call } from "../client.ts";');
         expect(code).not.toContain("HttpClient");
     });
@@ -258,6 +262,7 @@ describe("renderClientModule", () => {
  * @restRepository create
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -283,6 +288,7 @@ export interface AuditLog {
  * @repository create
  * @restRepository create
  * @queries query
+ * @entity
  */
 export interface Internal {
     /** @primaryKey */
@@ -295,7 +301,7 @@ export interface Internal {
         expect(code).toContain("export function createInternal");
         expect(code).not.toContain("export function queryInternal");
         expect(code).not.toContain("Selection");
-        expect(code).not.toContain("spec/domain/Internal.ts");
+        expect(code).not.toContain("spec/fixtures/Internal.ts");
     });
 });
 

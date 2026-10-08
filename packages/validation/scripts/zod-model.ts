@@ -4,8 +4,6 @@
  * See docs/validation.md.
  */
 import {
-    DEFAULT_SPEC_GLOB,
-    SPEC_GLOB,
     autoIncrementProperties,
     defaultedInsertProperties,
     inlinedFromInsert,
@@ -26,7 +24,7 @@ import {
 
 export type { Diagnostic };
 
-export { DEFAULT_SPEC_GLOB, SPEC_GLOB, lowerFirst };
+export { lowerFirst };
 
 /** One field of an entity schema: the name it is written under and the Zod expression that validates it. */
 export interface ZodField {

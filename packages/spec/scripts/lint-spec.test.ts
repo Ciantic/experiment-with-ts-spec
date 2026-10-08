@@ -11,7 +11,8 @@ describe("lintSourceText", () => {
 
     it("accepts a field with a valid tag set", () => {
         const findings = lintSourceText(
-            `export interface Ok {
+            `/** @entity */
+export interface Ok {
                 /**
                  * A label.
                  * @fieldName Label
@@ -26,7 +27,8 @@ describe("lintSourceText", () => {
 
     it("reports a retired tag with its replacement", () => {
         const findings = lintSourceText(
-            `export interface Legacy {
+            `/** @entity */
+export interface Legacy {
                 /**
                  * A label.
                  * @fieldName Label
@@ -44,7 +46,8 @@ describe("lintSourceText", () => {
 
     it("reports @generated as retired, since no tag marks a column system-assigned", () => {
         const findings = lintSourceText(
-            `export interface Legacy {
+            `/** @entity */
+export interface Legacy {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -61,7 +64,10 @@ describe("lintSourceText", () => {
 
     it("reports every legacy spelling of a renamed tag", () => {
         const findings = lintSourceText(
-            `/** @table legacy */
+            `/**
+ * @entity
+ * @table legacy
+ */
             export interface Legacy {
                 /**
                  * @fieldName Source
@@ -88,7 +94,8 @@ describe("lintSourceText", () => {
 
     it("points a retired @pgRollup at the trigger header", () => {
         const findings = lintSourceText(
-            `export interface Legacy {
+            `/** @entity */
+export interface Legacy {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -106,7 +113,8 @@ describe("lintSourceText", () => {
 
     it("reports an unrecognised tag", () => {
         const findings = lintSourceText(
-            `export interface Unknown {
+            `/** @entity */
+export interface Unknown {
                 /**
                  * @fieldName Label
                  * @widget text
@@ -121,7 +129,8 @@ describe("lintSourceText", () => {
 
     it("reports an unknown widget", () => {
         const findings = lintSourceText(
-            `export interface BadWidget {
+            `/** @entity */
+export interface BadWidget {
                 /**
                  * @fieldName Label
                  * @widget slider
@@ -137,7 +146,8 @@ describe("lintSourceText", () => {
 
     it("reports a missing @fieldName and @widget", () => {
         const findings = lintSourceText(
-            `export interface Bare {
+            `/** @entity */
+export interface Bare {
                 label: string;
             }`,
         );
@@ -147,7 +157,8 @@ describe("lintSourceText", () => {
 
     it("reports an empty @fieldName", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName
                  * @widget text
@@ -161,7 +172,8 @@ describe("lintSourceText", () => {
 
     it("rejects parameters on @computed", () => {
         const findings = lintSourceText(
-            `export interface Missing {
+            `/** @entity */
+export interface Missing {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -178,7 +190,8 @@ describe("lintSourceText", () => {
 
     it("requires @computed on a mechanism tag", () => {
         const findings = lintSourceText(
-            `export interface Orphan {
+            `/** @entity */
+export interface Orphan {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -193,7 +206,8 @@ describe("lintSourceText", () => {
 
     it("rejects two mechanism tags on one field", () => {
         const findings = lintSourceText(
-            `export interface Both {
+            `/** @entity */
+export interface Both {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -212,7 +226,8 @@ describe("lintSourceText", () => {
 
     it("requires an expression on a mechanism tag", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -228,7 +243,8 @@ describe("lintSourceText", () => {
 
     it("accepts a @pgTrigger header naming table, timing, and events", () => {
         const findings = lintSourceText(
-            `export interface Ok {
+            `/** @entity */
+export interface Ok {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -244,7 +260,8 @@ describe("lintSourceText", () => {
 
     it("requires a statement after a @pgTrigger header", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -260,7 +277,8 @@ describe("lintSourceText", () => {
 
     it("requires a @pgTrigger header to end its clause with a colon", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -278,7 +296,8 @@ describe("lintSourceText", () => {
 
     it("requires at least one event in a @pgTrigger header", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -296,7 +315,8 @@ describe("lintSourceText", () => {
 
     it("rejects an event that is not insert, update, or delete", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -314,7 +334,8 @@ describe("lintSourceText", () => {
 
     it("reports `instead of`, which is a trigger on a view", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -332,7 +353,8 @@ describe("lintSourceText", () => {
 
     it("requires a @pgTrigger header to start with its timing", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -350,7 +372,8 @@ describe("lintSourceText", () => {
 
     it("requires the entity after a @pgTrigger header's on", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -368,7 +391,8 @@ describe("lintSourceText", () => {
 
     it("reports a level that is not row or statement", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -386,7 +410,8 @@ describe("lintSourceText", () => {
 
     it("reports a statement-level trigger on a field, which has a column to fill", () => {
         const findings = lintSourceText(
-            `export interface Empty {
+            `/** @entity */
+export interface Empty {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -407,6 +432,7 @@ describe("lintSourceText", () => {
             `/**
              * @pgTable invoice
              * @pgTrigger after insert or update or delete: insert into "invoice_audit" ("id", "op") values (coalesce(NEW."id", OLD."id"), tg_op)
+             * @entity
              */
             export interface Invoice {
                 /**
@@ -426,6 +452,7 @@ describe("lintSourceText", () => {
             `/**
              * @pgTable invoice
              * @pgTrigger after insert for each row: insert into "invoice_audit" ("id") values (NEW."id")
+             * @entity
              */
             export interface Invoice {
                 /**
@@ -445,6 +472,7 @@ describe("lintSourceText", () => {
             `/**
              * @pgTable invoice
              * @pgTrigger before insert: NEW."total" := 1
+             * @entity
              */
             export interface Invoice {
                 /**
@@ -466,6 +494,7 @@ describe("lintSourceText", () => {
             `/**
              * @pgTable invoice
              * @pgTrigger after insert on Row: insert into "log" ("id") values (1)
+             * @entity
              */
             export interface Invoice {
                 /**
@@ -484,7 +513,8 @@ describe("lintSourceText", () => {
 
     it("accepts a complete @computed field", () => {
         const findings = lintSourceText(
-            `export interface Ok {
+            `/** @entity */
+export interface Ok {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -500,7 +530,8 @@ describe("lintSourceText", () => {
 
     it("rejects a duplicated tag", () => {
         const findings = lintSourceText(
-            `export interface Duplicate {
+            `/** @entity */
+export interface Duplicate {
                 /**
                  * @fieldName First
                  * @fieldName Second
@@ -518,7 +549,8 @@ describe("lintSourceText", () => {
 
     it("accepts a field with no ownership tag", () => {
         const findings = lintSourceText(
-            `export interface ClientSupplied {
+            `/** @entity */
+export interface ClientSupplied {
                 /**
                  * @fieldName Note
                  * @widget textarea
@@ -532,7 +564,8 @@ describe("lintSourceText", () => {
 
     it("accepts @pgDefault with an expression", () => {
         const findings = lintSourceText(
-            `export interface Defaulted {
+            `/** @entity */
+export interface Defaulted {
                 /**
                  * @fieldName Source
                  * @widget text
@@ -547,7 +580,8 @@ describe("lintSourceText", () => {
 
     it("accepts @pgDefault alongside @computed", () => {
         const findings = lintSourceText(
-            `export interface DefaultedComputed {
+            `/** @entity */
+export interface DefaultedComputed {
                 /**
                  * @fieldName Net amount
                  * @widget number
@@ -564,7 +598,8 @@ describe("lintSourceText", () => {
 
     it("accepts @createdAt on a Date field", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
@@ -579,7 +614,8 @@ describe("lintSourceText", () => {
 
     it("rejects a clock tag on a non-Date field", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget number
@@ -596,7 +632,8 @@ describe("lintSourceText", () => {
 
     it("rejects a clock tag combined with @computed", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Updated at
                  * @widget date
@@ -612,7 +649,8 @@ describe("lintSourceText", () => {
 
     it("rejects @pgDefault on a clock field", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
@@ -630,7 +668,8 @@ describe("lintSourceText", () => {
 
     it("rejects a clock tag with a value", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
@@ -645,7 +684,8 @@ describe("lintSourceText", () => {
 
     it("reports @pgDefault without an expression", () => {
         const findings = lintSourceText(
-            `export interface EmptyDefault {
+            `/** @entity */
+export interface EmptyDefault {
                 /**
                  * @fieldName Created at
                  * @widget date
@@ -660,7 +700,8 @@ describe("lintSourceText", () => {
 
     it("accepts @inlined as a bare marker", () => {
         const findings = lintSourceText(
-            `export interface Inlined {
+            `/** @entity */
+export interface Inlined {
                 /**
                  * @fieldName Customer
                  * @widget select
@@ -675,7 +716,8 @@ describe("lintSourceText", () => {
 
     it("accepts @relation and @children on the right shapes", () => {
         const findings = lintSourceText(
-            `export interface Branches {
+            `/** @entity */
+export interface Branches {
                 /**
                  * @fieldName Customer
                  * @widget select
@@ -696,7 +738,8 @@ describe("lintSourceText", () => {
 
     it("reports a value on a branch marker", () => {
         const findings = lintSourceText(
-            `export interface Valued {
+            `/** @entity */
+export interface Valued {
                 /**
                  * @fieldName Customer
                  * @widget select
@@ -713,7 +756,8 @@ describe("lintSourceText", () => {
 
     it("rejects @inlined together with @relation", () => {
         const findings = lintSourceText(
-            `export interface Both {
+            `/** @entity */
+export interface Both {
                 /**
                  * @fieldName Customer
                  * @widget select
@@ -729,7 +773,8 @@ describe("lintSourceText", () => {
 
     it("rejects @relation together with @children", () => {
         const findings = lintSourceText(
-            `export interface Both {
+            `/** @entity */
+export interface Both {
                 /**
                  * @fieldName Rows
                  * @widget table
@@ -748,7 +793,8 @@ describe("lintSourceText", () => {
 
     it("rejects @children on a single entity", () => {
         const findings = lintSourceText(
-            `export interface Bad {
+            `/** @entity */
+export interface Bad {
                 /**
                  * @fieldName Rows
                  * @widget table
@@ -765,7 +811,8 @@ describe("lintSourceText", () => {
 
     it("accepts @version on a Version field", () => {
         const findings = lintSourceText(
-            `export interface Versioned {
+            `/** @entity */
+export interface Versioned {
                 /**
                  * @fieldName Version
                  * @widget number
@@ -781,7 +828,8 @@ describe("lintSourceText", () => {
 
     it("rejects @version on a field that is not a Version", () => {
         const findings = lintSourceText(
-            `export interface BadVersion {
+            `/** @entity */
+export interface BadVersion {
                 /**
                  * @fieldName Version
                  * @widget text
@@ -796,7 +844,8 @@ describe("lintSourceText", () => {
 
     it("rejects more than one @version field in an interface", () => {
         const findings = lintSourceText(
-            `export interface Two {
+            `/** @entity */
+export interface Two {
                 /**
                  * @fieldName Version
                  * @widget number
@@ -819,7 +868,8 @@ describe("lintSourceText", () => {
 describe("not-null fields", () => {
     it("rejects @createdAt on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Created at
                  * @widget date
@@ -836,7 +886,8 @@ describe("not-null fields", () => {
 
     it("rejects @updatedAt on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Stamped {
+            `/** @entity */
+export interface Stamped {
                 /**
                  * @fieldName Updated at
                  * @widget date
@@ -853,7 +904,8 @@ describe("not-null fields", () => {
 
     it("rejects @version on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Versioned {
+            `/** @entity */
+export interface Versioned {
                 /**
                  * @fieldName Version
                  * @widget number
@@ -871,7 +923,8 @@ describe("not-null fields", () => {
 
     it("rejects @pgDefault on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Defaulted {
+            `/** @entity */
+export interface Defaulted {
                 /**
                  * @fieldName Source
                  * @widget text
@@ -888,7 +941,8 @@ describe("not-null fields", () => {
 
     it("rejects @primaryKey on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Keyed {
+            `/** @entity */
+export interface Keyed {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -905,7 +959,8 @@ describe("not-null fields", () => {
 
     it("accepts the same tags on a required field", () => {
         const findings = lintSourceText(
-            `export interface Keyed {
+            `/** @entity */
+export interface Keyed {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -926,7 +981,8 @@ describe("not-null fields", () => {
 
     it("accepts @foreignKey on an optional field, since it adds no not-null column", () => {
         const findings = lintSourceText(
-            `export interface Relating {
+            `/** @entity */
+export interface Relating {
                 /**
                  * @fieldName Owner ID
                  * @widget text
@@ -1170,7 +1226,8 @@ describe("type-level tags", () => {
 
 describe("@queryFilter", () => {
     const field = (name: string, extra: string, type = "string") =>
-        `export interface Thing {
+        `/** @entity */
+export interface Thing {
             /**
              * @fieldName Label
              * @widget text
@@ -1194,7 +1251,8 @@ describe("@queryFilter", () => {
 
     it("rejects @queryFilter on a relation field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget select
@@ -1222,7 +1280,8 @@ describe("@queryFilter", () => {
 describe("@primaryKey and @foreignKey", () => {
     it("accepts @primaryKey on a scalar field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -1237,7 +1296,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("rejects @primaryKey with a value", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -1252,7 +1312,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("accepts @primaryKey on several fields, which is a composite key", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -1273,7 +1334,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("rejects a numbered @primaryKey, since the declaration order is the key order", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget text
@@ -1297,7 +1359,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("rejects @primaryKey on a relation field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget select
@@ -1315,7 +1378,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("accepts @foreignKey with the interface it references", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget text
@@ -1330,7 +1394,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("rejects @foreignKey without the interface it references", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget text
@@ -1347,7 +1412,8 @@ describe("@primaryKey and @foreignKey", () => {
 
     it("rejects @primaryKey and @foreignKey together", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget text
@@ -1366,7 +1432,8 @@ describe("@primaryKey and @foreignKey", () => {
 
 describe("@pgAutoIncrement", () => {
     const field = (extra: string, type = "number") =>
-        `export interface Thing {
+        `/** @entity */
+export interface Thing {
             /**
              * @fieldName ID
              * @widget number
@@ -1391,7 +1458,8 @@ describe("@pgAutoIncrement", () => {
 
     it("rejects @pgAutoIncrement on a field that is not the primary key", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Key
                  * @widget text
@@ -1418,7 +1486,8 @@ describe("@pgAutoIncrement", () => {
 
     it("rejects @pgAutoIncrement on an array field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget number
@@ -1437,7 +1506,8 @@ describe("@pgAutoIncrement", () => {
 
     it("rejects @pgAutoIncrement on an optional field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName ID
                  * @widget number
@@ -1456,7 +1526,8 @@ describe("@pgAutoIncrement", () => {
 
 describe("@queryOrderBy", () => {
     const field = (name: string, extra: string, type = "string") =>
-        `export interface Thing {
+        `/** @entity */
+export interface Thing {
             /**
              * @fieldName Label
              * @widget text
@@ -1495,7 +1566,8 @@ describe("@queryOrderBy", () => {
 
     it("rejects @queryOrderBy on a relation field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @widget select
@@ -1513,7 +1585,8 @@ describe("@queryOrderBy", () => {
 
     it("rejects more than one default ordering field", () => {
         const findings = lintSourceText(
-            `export interface Two {
+            `/** @entity */
+export interface Two {
                 /**
                  * @fieldName Created
                  * @widget date
@@ -1536,7 +1609,8 @@ describe("@queryOrderBy", () => {
 describe("@queryWhere", () => {
     const field = (operators: string) => {
         const where = operators === "" ? "@queryWhere" : `@queryWhere ${operators}`;
-        return `export interface Thing {
+        return `/** @entity */
+export interface Thing {
             /**
              * @fieldName Value
              * ${where}
@@ -1569,7 +1643,8 @@ describe("@queryWhere", () => {
 
     it("rejects @queryWhere on a relation field", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Owner
                  * @queryWhere eq
@@ -1598,7 +1673,8 @@ describe("retired @formula", () => {
 
     it("reports @formula on a field with its replacement", () => {
         const findings = lintSourceText(
-            `export interface Thing {
+            `/** @entity */
+export interface Thing {
                 /**
                  * @fieldName Label
                  * @widget number
@@ -1615,18 +1691,18 @@ describe("retired @formula", () => {
 });
 
 describe("lintSpec over a project", () => {
-    const entityGlob = "/src/domain/**/*.ts";
-    const aliasGlob = "/src/**/*.ts";
+    /** Every spec source, so an entity is found wherever it sits. */
+    const sourceGlob = "/src/**/*.ts";
 
     /** Parse an in-memory spec laid out under /src, so no test reads the real domain. */
     function parse(files: Record<string, string>) {
         const spec = Object.entries(files).map(([filePath, sourceFileText]) => ({ filePath, sourceFileText }));
-        return parseInMemorySpec(spec, { entityGlob, aliasGlob });
+        return parseInMemorySpec(spec, { sourceGlob });
     }
 
-    it("lints interfaces under domain/", () => {
+    it("lints an interface tagged as an entity", () => {
         const { findings, interfaces } = lintSpec(
-            parse({ "/src/domain/Invoice.ts": "export interface Invoice { label: string; }" }),
+            parse({ "/src/domain/Invoice.ts": "/** @entity */\nexport interface Invoice { label: string; }" }),
         );
 
         expect(interfaces).toBe(1);
@@ -1638,11 +1714,19 @@ describe("lintSpec over a project", () => {
         ]);
     });
 
-    it("skips contract interfaces outside domain/", () => {
+    it("lints an entity outside domain/", () => {
+        const { interfaces } = lintSpec(
+            parse({ "/src/billing/Invoice.ts": "/** @entity */\nexport interface Invoice { label: string; }" }),
+        );
+
+        expect(interfaces).toBe(1);
+    });
+
+    it("ignores an interface that carries no @entity", () => {
         const { findings, interfaces } = lintSpec(
             parse({
                 "/src/operations/Contract.ts": "export interface Contract { list(): void; }",
-                "/src/domain/Invoice.ts": "export interface Invoice { label: string; }",
+                "/src/domain/Invoice.ts": "/** @entity */\nexport interface Invoice { label: string; }",
             }),
         );
 
@@ -1655,7 +1739,33 @@ describe("lintSpec over a project", () => {
         ]);
     });
 
-    it("still scans type aliases outside domain/", () => {
+    it("reports an entity tag on an interface missing @entity", () => {
+        const { findings, interfaces } = lintSpec(
+            parse({ "/src/billing/Invoice.ts": "/** @pgTable invoice */\nexport interface Invoice { label: string; }" }),
+        );
+
+        expect(interfaces).toBe(0);
+        expect(messages(findings)).toEqual([
+            "`Invoice`: @pgTable is an entity tag, so the interface needs @entity",
+        ]);
+    });
+
+    it("reports @entity carrying a value", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Invoice.ts": `/**
+ * @entity invoice
+ * @repository create
+ * @restRepository create
+ */
+export interface Invoice { }`,
+            }),
+        );
+
+        expect(messages(findings)).toEqual(["`Invoice`: @entity takes no value"]);
+    });
+
+    it("scans type aliases in any file", () => {
         const { findings } = lintSpec(parse({ "/src/operations/bad.ts": "/** @nonsense */ export type Thing = string;" }));
 
         expect(messages(findings)).toEqual(["`Thing`: @nonsense is not a recognised type tag"]);
@@ -1696,6 +1806,7 @@ export interface Invoice {
 
     it("accepts an entity that names the writes it generates and exposes", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create upsert update delete
  * @restRepository create upsert update delete
  * @queries query
@@ -1707,6 +1818,7 @@ export interface Invoice {
 
     it("accepts an entity with no @queries, which reads nothing", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create upsert update delete
  * @restRepository create upsert update delete
  */`);
@@ -1715,7 +1827,10 @@ export interface Invoice {
     });
 
     it("reports a missing @repository and @restRepository", () => {
-        const findings = lintEntity("/** @pgTable invoice */");
+        const findings = lintEntity(`/**
+ * @entity
+ * @pgTable invoice
+ */`);
 
         expect(findings).toEqual([
             "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
@@ -1725,6 +1840,7 @@ export interface Invoice {
 
     it("reports an operation that is not one of the four writes", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository creat
  * @restRepository creat
  */`);
@@ -1737,6 +1853,7 @@ export interface Invoice {
 
     it("reports a read that is not one of the known read operations", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create
  * @restRepository create
  * @queries read
@@ -1751,6 +1868,7 @@ export interface Invoice {
 
     it("requires a value on the read tags, since the operation is named", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create
  * @restRepository create
  * @queries
@@ -1765,6 +1883,7 @@ export interface Invoice {
 
     it("reports an operation named twice", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create create
  * @restRepository create
  */`);
@@ -1774,6 +1893,7 @@ export interface Invoice {
 
     it("requires at least one operation in each write list", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository
  * @restRepository
  */`);
@@ -1786,6 +1906,7 @@ export interface Invoice {
 
     it("reports an exposed operation the repository does not generate", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create update
  * @restRepository create upsert
  */`);
@@ -1795,6 +1916,7 @@ export interface Invoice {
 
     it("reports an exposed read the entity does not generate", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create
  * @restRepository create
  * @restQueries query
@@ -1805,6 +1927,7 @@ export interface Invoice {
 
     it("reports a tag that appears twice", () => {
         const findings = lintEntity(`/**
+ * @entity
  * @repository create
  * @repository update
  * @restRepository create

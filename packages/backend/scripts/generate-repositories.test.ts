@@ -38,7 +38,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.ts`,
+        importSpecifier: `spec/fixtures/${interfaceName}.ts`,
         columns,
         relations: new Map(),
         triggers: [],
@@ -431,7 +431,7 @@ describe("generateCreate", () => {
             'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
         );
         for (const code of [generateCreate(customer), generateDelete(customer)]) {
-            expect(code).not.toContain("spec/domain");
+            expect(code).not.toContain("spec/");
         }
         // A delete is one statement, so it takes the executor type alone; a create reads its keys back, so it takes the helpers too.
         expect(generateDelete(customer)).toContain('import type { SqlExecutor } from "../sql-executor.ts";');

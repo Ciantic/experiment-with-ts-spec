@@ -5,7 +5,7 @@ import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
 /** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
@@ -15,6 +15,7 @@ const WIDGET = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Widget {
     /** @primaryKey */
@@ -42,6 +43,7 @@ const MARKER = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Marker {
     /** @primaryKey */
@@ -57,6 +59,7 @@ const TRANSLATION = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Translation {
     /** @primaryKey */
@@ -77,6 +80,7 @@ const KEYLESS = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Keyless {
     name: string;
@@ -86,10 +90,10 @@ export interface Keyless {
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
-        filePath: join(SPEC_SRC_ROOT, "domain", `${name}.ts`),
+        filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
         sourceFileText,
     }));
-    return buildRestModel(parseInMemorySpec(spec, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
+    return buildRestModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
 }
 
 const model = build({ Widget: WIDGET, Marker: MARKER });
@@ -104,7 +108,7 @@ describe("buildRestModel", () => {
 
         expect(widget?.path).toBe("/widget");
         expect(widget?.module).toBe("widget");
-        expect(widget?.importSpecifier).toBe("spec/domain/Widget.ts");
+        expect(widget?.importSpecifier).toBe("spec/fixtures/Widget.ts");
     });
 
     it("exposes a read, a write, and a delete for every entity", () => {
@@ -195,6 +199,7 @@ describe("buildRestModel", () => {
  * @restRepository create
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -214,6 +219,7 @@ export interface AuditLog {
  * @restRepository create
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Internal {
     /** @primaryKey */
@@ -237,6 +243,7 @@ export interface Internal {
  * @restRepository delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Bad {
     /** @primaryKey */
@@ -254,6 +261,7 @@ export interface Bad {
         const unannotated = `
 /**
  * @pgTable plain
+ * @entity
  */
 export interface Plain {
     /** @primaryKey */
@@ -275,6 +283,7 @@ export interface Plain {
  * @repository create
  * @restRepository create
  * @queries query
+ * @entity
  */
 export interface Internal {
     /** @primaryKey */
@@ -294,6 +303,7 @@ export interface Internal {
  * @repository create
  * @restRepository create
  * @restQueries query
+ * @entity
  */
 export interface Bad {
     /** @primaryKey */

@@ -9,6 +9,7 @@ export type AuditLogId = AutoIncrement<"AuditLogId">;
  * Append-only: a row records what happened and is never changed, so it carries
  * no `@version` and no `@updatedAt`.
  *
+ * @entity
  * @pgTable audit_log
  * @repository create
  * @restRepository create

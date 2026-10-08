@@ -12,26 +12,26 @@ function parse(files: Record<string, string>) {
         filePath: join(SPEC_SRC_ROOT, "fixtures", name),
         sourceFileText,
     }));
-    return parseInMemorySpec(spec, { entityGlob: GLOB, aliasGlob: GLOB });
+    return parseInMemorySpec(spec, { sourceGlob: GLOB });
 }
 
 describe("parseSpec interfaces", () => {
     it("snake-cases the table name by default", () => {
-        const { interfaces } = parse({ "LineItem.ts": "export interface LineItem { id: string; }" });
+        const { interfaces } = parse({ "LineItem.ts": "/** @entity */\nexport interface LineItem { id: string; }" });
 
         expect(interfaces.get("LineItem")?.pgTableName).toBe("line_item");
     });
 
     it("lets @pgTable override the table name", () => {
         const { interfaces } = parse({
-            "Person.ts": "/** @pgTable people */\nexport interface Person { id: string; }",
+            "Person.ts": "/**\n * @entity\n * @pgTable people\n */\nexport interface Person { id: string; }",
         });
 
         expect(interfaces.get("Person")?.pgTableName).toBe("people");
     });
 
     it("maps a source file back to its package import specifier", () => {
-        const { interfaces } = parse({ "Thing.ts": "export interface Thing { id: string; }" });
+        const { interfaces } = parse({ "Thing.ts": "/** @entity */\nexport interface Thing { id: string; }" });
 
         expect(interfaces.get("Thing")?.importSpecifier).toBe("spec/fixtures/Thing.ts");
     });
@@ -39,7 +39,7 @@ describe("parseSpec interfaces", () => {
     it("decodes an interface-level @pgTrigger", () => {
         const { interfaces } = parse({
             "Thing.ts":
-                '/**\n * @pgTable thing\n * @pgTrigger after insert or update: insert into "log" ("id") values (NEW."id")\n */\nexport interface Thing { id: string; }',
+                '/**\n * @entity\n * @pgTable thing\n * @pgTrigger after insert or update: insert into "log" ("id") values (NEW."id")\n */\nexport interface Thing { id: string; }',
         });
 
         expect(interfaces.get("Thing")?.trigger).toEqual({
@@ -50,14 +50,23 @@ describe("parseSpec interfaces", () => {
     });
 
     it("leaves an interface without @pgTrigger undefined", () => {
-        const { interfaces } = parse({ "Thing.ts": "export interface Thing { id: string; }" });
+        const { interfaces } = parse({ "Thing.ts": "/** @entity */\nexport interface Thing { id: string; }" });
 
         expect(interfaces.get("Thing")?.trigger).toBeUndefined();
     });
 
+    it("ignores an interface that carries no @entity", () => {
+        const { interfaces } = parse({
+            "Contract.ts": "export interface Contract { list(): void; }",
+            "Thing.ts": "/** @entity */\nexport interface Thing { id: string; }",
+        });
+
+        expect([...interfaces.keys()]).toEqual(["Thing"]);
+    });
+
     it("collects the interface's properties with their option flags", () => {
         const { interfaces } = parse({
-            "Thing.ts": "export interface Thing { id: string; note?: string; }",
+            "Thing.ts": "/** @entity */\nexport interface Thing { id: string; note?: string; }",
         });
 
         const properties = interfaces.get("Thing")?.properties ?? [];
@@ -71,7 +80,7 @@ describe("parseSpec interfaces", () => {
 
 describe("parseSpec tags", () => {
     const thing = (doc: string, field: string) =>
-        `export interface Thing {\n${doc}\n    ${field}\n}`;
+        `/** @entity */\nexport interface Thing {\n${doc}\n    ${field}\n}`;
 
     it("decodes field tags once", () => {
         const { interfaces } = parse({
@@ -322,7 +331,7 @@ describe("parseSpec clock tags", () => {
     it("decodes @createdAt and @updatedAt as bare markers", () => {
         const { interfaces } = parse({
             "Thing.ts": [
-                "export interface Thing {",
+                "/** @entity */\nexport interface Thing {",
                 "    /**\n     * @createdAt\n     */",
                 "    madeAt?: Date;",
                 "    /**\n     * @updatedAt\n     */",
@@ -342,7 +351,7 @@ describe("parseSpec clock tags", () => {
 
 describe("patch field rules", () => {
     /** The tag block for one field, and the field itself. */
-    const field = (doc: string, declaration: string) => `export interface Thing {\n${doc}\n    ${declaration}\n}`;
+    const field = (doc: string, declaration: string) => `/** @entity */\nexport interface Thing {\n${doc}\n    ${declaration}\n}`;
     const omitted = (doc: string, declaration: string) => {
         const spec = parse({ "Thing.ts": field(doc, declaration) }).interfaces.get("Thing")!;
         return omittedFromPatch(spec).map((property) => property.name);
@@ -394,7 +403,7 @@ describe("patch field rules", () => {
 
 describe("insert field rules", () => {
     /** The tag block for one field, and the field itself. */
-    const field = (doc: string, declaration: string) => `export interface Thing {\n${doc}\n    ${declaration}\n}`;
+    const field = (doc: string, declaration: string) => `/** @entity */\nexport interface Thing {\n${doc}\n    ${declaration}\n}`;
     const spec = (doc: string, declaration: string) =>
         parse({ "Thing.ts": field(doc, declaration) }).interfaces.get("Thing")!;
     const omitted = (doc: string, declaration: string) =>
@@ -505,13 +514,13 @@ export interface Thing {
 describe("interface tags", () => {
     it("exposes the interface's own tags as written", () => {
         const { interfaces } = parse({
-            "Thing.ts": "/**\n * @pgTable things\n * @repository create\n */\nexport interface Thing { id: string; }",
+            "Thing.ts": "/**\n * @entity\n * @pgTable things\n * @repository create\n */\nexport interface Thing { id: string; }",
         });
 
         const tags = interfaces.get("Thing")?.tags;
 
         expect(tags?.pgTable).toBe("things");
-        expect(tags?.written.all.map((tag) => tag.name)).toEqual(["pgTable", "repository"]);
+        expect(tags?.written.all.map((tag) => tag.name)).toEqual(["entity", "pgTable", "repository"]);
     });
 });
 

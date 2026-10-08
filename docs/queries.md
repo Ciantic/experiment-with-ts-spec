@@ -1,7 +1,7 @@
 # Queries
 
 Reading is derived from the spec. Every entity that carries `@queries query` in
-`packages/spec/src/domain/` gets a generated `query<Entity>` read; a caller that
+`packages/spec/src/` gets a generated `query<Entity>` read; a caller that
 wants a single row takes the first result. A generator emits the typed functions
 and the physical model; one hand-written resolver turns a selection into SQL.
 See "Why the resolver is hand-written".

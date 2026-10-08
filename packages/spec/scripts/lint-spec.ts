@@ -48,6 +48,9 @@ const ALLOWED_TYPE_TAGS = new Set<string>(TYPE_TAGS);
 /** Widget hints a field may carry. */
 const ALLOWED_WIDGETS = new Set<string>(WIDGETS);
 
+/** The marker tag that identifies an interface as an entity. See docs/spec-annotations.md. */
+const ENTITY_TAG = "entity";
+
 /** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
 const PRIMITIVE_TAG = "primitive";
 
@@ -124,6 +127,42 @@ function hasVersionTag(property: SpecProperty): boolean {
     return property.tags.written.byName.has("version");
 }
 
+/** Report tags written on an interface's own doc that no interface may carry, whether retired or unknown. */
+function lintInterfaceTags(spec: SpecInterface, findings: Diagnostic[]): void {
+    for (const tag of spec.tags.written.all) {
+        if (ALLOWED_INTERFACE_TAGS.has(tag.name)) {
+            continue;
+        }
+        const retired = RETIRED_TAGS.get(tag.name);
+        findings.push({
+            filePath: spec.location.filePath,
+            line: tag.line,
+            message: retired
+                ? `\`${spec.name}\`: @${tag.name} is retired; ${retired}`
+                : `\`${spec.name}\`: @${tag.name} is not a recognised interface tag`,
+        });
+    }
+}
+
+/**
+ * Check an interface carrying no `@entity`, which the generators ignore as a contract.
+ * A tag that describes an entity on one is a forgotten marker rather than a contract, so it is
+ * reported instead of silently generating nothing.
+ */
+function lintContract(spec: SpecInterface, findings: Diagnostic[]): void {
+    lintInterfaceTags(spec, findings);
+    const entityTag = spec.tags.written.all.find(
+        (tag) => tag.name !== ENTITY_TAG && ALLOWED_INTERFACE_TAGS.has(tag.name),
+    );
+    if (entityTag) {
+        findings.push({
+            filePath: spec.location.filePath,
+            line: entityTag.line,
+            message: `\`${spec.name}\`: @${entityTag.name} is an entity tag, so the interface needs @${ENTITY_TAG}`,
+        });
+    }
+}
+
 /** Check the tags on the interface itself, and the per-entity uniqueness rules. */
 function lintEntity(
     spec: SpecInterface,
@@ -131,18 +170,13 @@ function lintEntity(
 ): void {
     const name = spec.name;
     const filePath = spec.location.filePath;
-    for (const tag of spec.tags.written.all) {
-        if (ALLOWED_INTERFACE_TAGS.has(tag.name)) {
-            continue;
+    lintInterfaceTags(spec, findings);
+
+    // @entity is a bare marker, so a value is a mistake; the tag still marks the interface either way.
+    for (const tag of spec.tags.written.byName.get(ENTITY_TAG) ?? []) {
+        if (tag.value !== undefined) {
+            findings.push({ filePath, line: tag.line, message: `\`${name}\`: @${ENTITY_TAG} takes no value` });
         }
-        const retired = RETIRED_TAGS.get(tag.name);
-        findings.push({
-            filePath,
-            line: tag.line,
-            message: retired
-                ? `\`${name}\`: @${tag.name} is retired; ${retired}`
-                : `\`${name}\`: @${tag.name} is not a recognised interface tag`,
-        });
     }
 
     // An entity has at most one optimistic-lock column.
@@ -762,12 +796,12 @@ function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[];
     const findings: Diagnostic[] = [];
     let properties = 0;
 
-    // Type aliases are scanned everywhere: primitives and formulas may sit outside domain/.
+    // Type aliases are scanned everywhere: a primitive or a formula alias may sit in any file.
     for (const alias of spec.aliases.values()) {
         lintTypeAlias(alias, findings, spec.aliases);
     }
 
-    // Interfaces are entities, and entities live only in domain/; operations/ is a contract.
+    // An interface is an entity when it carries @entity; one without the tag is a contract.
     for (const entity of spec.interfaces.values()) {
         lintEntity(entity, findings);
         if (surface) {
@@ -775,6 +809,10 @@ function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[];
         }
         lintFields(entity, findings);
         properties += entity.properties.length;
+    }
+
+    for (const contract of spec.nonEntityInterfaces) {
+        lintContract(contract, findings);
     }
 
     return { findings, properties };

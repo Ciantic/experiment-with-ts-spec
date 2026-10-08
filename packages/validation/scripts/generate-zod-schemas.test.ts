@@ -21,10 +21,10 @@ import {
     upsertModuleName,
 } from "./generate-zod-schemas.ts";
 
-const SPEC_GLOB = "fixtures/domain/**/*.ts";
+const SPEC_GLOB = "fixtures/**/*.ts";
 
 interface Fixture {
-    domain: Record<string, string>;
+    entities: Record<string, string>;
 }
 
 /** Primitive aliases a fixture field can reference, each declaring its own Zod schema. */
@@ -75,13 +75,13 @@ export type Counter = number;
 /** Generate from in-memory sources, so no fixture depends on the real spec. */
 function generate(fixture: Fixture) {
     const spec = [
-        { filePath: "fixtures/domain/primitives.ts", sourceFileText: PRIMITIVES },
-        ...Object.entries(fixture.domain).map(([name, sourceFileText]) => ({
-            filePath: `fixtures/domain/${name}.ts`,
+        { filePath: "fixtures/primitives.ts", sourceFileText: PRIMITIVES },
+        ...Object.entries(fixture.entities).map(([name, sourceFileText]) => ({
+            filePath: `fixtures/${name}.ts`,
             sourceFileText,
         })),
     ];
-    const model = buildZodModel(parseInMemorySpec(spec, { entityGlob: SPEC_GLOB, aliasGlob: SPEC_GLOB }));
+    const model = buildZodModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
     return { model, files: generateZodSchemas(model), diagnostics: model.diagnostics };
 }
 
@@ -128,6 +128,7 @@ export type ThingFormat = "short" | "long" | (string & {});
  * A thing.
  *
  * @pgTable thing
+ * @entity
  */
 export interface Thing {
     /**
@@ -175,6 +176,7 @@ export interface Thing {
  * A child of a thing.
  *
  * @pgTable child
+ * @entity
  */
 export interface Child {
     /**
@@ -193,6 +195,7 @@ export type ChildId = BrandedId<"ChildId">;
  * A parent of a thing.
  *
  * @pgTable parent
+ * @entity
  */
 export interface Parent {
     /**
@@ -222,7 +225,7 @@ function zodStub(): ZodStub {
 
 describe("generatePrimitives", () => {
     it("renders a schema per primitive, sorted by name", () => {
-        const { files } = generate({ domain: {} });
+        const { files } = generate({ entities: {} });
         const code = files.get("primitives.ts") ?? "";
 
         expect(code).toContain("export const guidSchema = z.uuid();");
@@ -230,7 +233,7 @@ describe("generatePrimitives", () => {
     });
 
     it("renders a factory for a generic primitive, carrying its type parameters", () => {
-        const { files } = generate({ domain: {} });
+        const { files } = generate({ entities: {} });
         const code = files.get("primitives.ts") ?? "";
 
         expect(code).toContain("export function brandedIdSchema<Name extends string>() {");
@@ -244,7 +247,7 @@ describe("generatePrimitives", () => {
     });
 
     it("evaluates to working schemas", () => {
-        const { files } = generate({ domain: {} });
+        const { files } = generate({ entities: {} });
         const require = createRequire(import.meta.url);
         const code = ts.transpileModule(files.get("primitives.ts") ?? "", {
             compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -260,7 +263,7 @@ describe("generatePrimitives", () => {
 
 describe("generateDomainEntity", () => {
     it("renders the entity's 1:1 schema, and nothing a write owns", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).toContain("export const thingSchema = z.object({");
@@ -269,7 +272,7 @@ describe("generateDomainEntity", () => {
     });
 
     it("references a primitive schema, calling a generic primitive as a factory", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).toContain('import * as primitives from "../primitives.ts";');
@@ -278,7 +281,7 @@ describe("generateDomainEntity", () => {
     });
 
     it("marks an optional field optional and a required one not", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).toContain("name: z.string().optional(),");
@@ -286,7 +289,7 @@ describe("generateDomainEntity", () => {
     });
 
     it("imports referenced entity schemas from the sibling modules in its own directory", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).toContain('import { childSchema } from "./childSchema.ts";');
@@ -296,14 +299,14 @@ describe("generateDomainEntity", () => {
     });
 
     it("resolves an open-union alias to an enum plus a string", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).toContain('format: z.enum(["short", "long"]).or(z.string()).optional(),');
     });
 
     it("imports no entity type, because it declares no write type", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
         expect(code).not.toContain("import type {");
@@ -312,7 +315,7 @@ describe("generateDomainEntity", () => {
 
 describe("generateRepositoryEntity", () => {
     it("derives every write schema from the 1:1 schema in the domain module", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const repo = 'import { thingSchema } from "../domain/thingSchema.ts";';
 
         expect(insertFile(files, "Thing")).toContain(repo);
@@ -322,7 +325,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("imports the spec entity type for each write type", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
 
         expect(insertFile(files, "Thing")).toContain('import type { Thing } from "spec/');
         expect(patchFile(files, "Thing")).toContain('import type { Thing } from "spec/');
@@ -330,7 +333,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("requires the key and the version in the patch schema", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Thing");
 
         expect(code).toContain("every field is optional except the key and the version");
@@ -339,7 +342,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("names the omitted fields, the locked ones, and the nullable ones a patch may clear", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Thing");
 
         expect(code).toContain(
@@ -348,7 +351,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("mirrors the insert schema's omit, nullable, and relaxed sets in the insert type", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = insertFile(files, "Thing");
 
         expect(code).toContain('export type ThingInsert = Insert<Thing, "children" | "parent", "name" | "amount" | "format", never>;');
@@ -356,7 +359,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("renders the primary key as a schema and a type over the entity, so a by-key write names only the key", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = primaryKeyFile(files, "Thing");
 
         expect(code).toContain("export const thingPrimaryKeySchema = thingSchema.pick({ id: true }).strict();");
@@ -364,7 +367,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("requires only the key when the entity has no version", () => {
-        const { files } = generate({ domain: { Marker: MARKER } });
+        const { files } = generate({ entities: { Marker: MARKER } });
         const code = patchFile(files, "Marker");
 
         expect(code).toContain('export type MarkerPatch = Patch<Marker, "total", "id", "label" | "createdAt">;');
@@ -372,7 +375,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("projects a composite key to all of its fields, and requires them all in a patch", () => {
-        const { files } = generate({ domain: { Translation: TRANSLATION } });
+        const { files } = generate({ entities: { Translation: TRANSLATION } });
 
         expect(primaryKeyFile(files, "Translation")).toContain(
             "export const translationPrimaryKeySchema = translationSchema.pick({ languageCode: true, key: true }).strict();",
@@ -386,22 +389,22 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("renders the insert over the entity when the schema omits, widens, and relaxes nothing", () => {
-        const bare = "export interface Bare {\n    /** @primaryKey */\n    id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
-        const { files } = generate({ domain: { Bare: bare } });
+        const bare = "/** @entity */\nexport interface Bare {\n    /** @primaryKey */\n    id: BareId; }\nexport type BareId = BrandedId<\"BareId\">;";
+        const { files } = generate({ entities: { Bare: bare } });
 
         expect(insertFile(files, "Bare")).toContain("export type BareInsert = Insert<Bare, never, never, never>;");
     });
 
     it("renders no primary key module when the entity declares no key", () => {
-        const keyless = "export interface Keyless {\n    label: string; }";
-        const { files } = generate({ domain: { Keyless: keyless } });
+        const keyless = "/** @entity */\nexport interface Keyless {\n    label: string; }";
+        const { files } = generate({ entities: { Keyless: keyless } });
 
         expect(files.has(join("repositories", primaryKeyModuleName("Keyless")))).toBe(false);
         expect(files.get(join("repositories", "index.ts"))).not.toContain("keylessPrimaryKeySchema");
     });
 
     it("keeps the version a create omits, and keeps the create's relaxed fields relaxed", () => {
-        const { files } = generate({ domain: { Revision: REVISION } });
+        const { files } = generate({ entities: { Revision: REVISION } });
         const insert = insertFile(files, "Revision");
         const upsert = upsertFile(files, "Revision");
 
@@ -417,7 +420,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("keeps the assigned key out of a create and claims it in an upsert", () => {
-        const { files } = generate({ domain: { Counter: COUNTER } });
+        const { files } = generate({ entities: { Counter: COUNTER } });
         const insert = insertFile(files, "Counter");
         const upsert = upsertFile(files, "Counter");
         const patch = patchFile(files, "Counter");
@@ -435,7 +438,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("accepts null for a nullable column, as a patch does, and for nothing else", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = upsertFile(files, "Thing");
 
         // The same nullable set a patch widens, from the same helper.
@@ -457,7 +460,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("widens an inlined branch where it is extended, so a snapshot can be cleared whole", () => {
-        const { files } = generate({ domain: { Thing: INLINED } });
+        const { files } = generate({ entities: { Thing: INLINED } });
         const code = upsertFile(files, "Thing");
 
         // `snapshot` is optional, so its column is nullable and the branch takes `null` as a patch does.
@@ -468,7 +471,7 @@ describe("generateRepositoryEntity", () => {
     });
 
     it("derives every write module from the same entity schema, naming its own const", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
 
         expect(upsertFile(files, "Thing")).toContain("export const thingUpsertSchema = thingSchema");
         expect(upsertFile(files, "Thing")).toContain('import type { Thing } from "spec/');
@@ -477,7 +480,7 @@ describe("generateRepositoryEntity", () => {
 
 describe("generateIndex", () => {
     it("re-exports the primitives and every generated directory", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get("index.ts") ?? "";
 
         expect(code).toContain('export * from "./primitives.ts";');
@@ -487,7 +490,7 @@ describe("generateIndex", () => {
     });
 
     it("re-exports each generated module from its own directory barrel", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
 
         expect(files.get(join("domain", "index.ts"))).toContain('export * from "./thingSchema.ts";');
         const repositoryIndex = files.get(join("repositories", "index.ts"));
@@ -500,14 +503,14 @@ describe("generateIndex", () => {
 
 describe("buildZodModel diagnostics", () => {
     it("reports a field whose type it cannot map", () => {
-        const thing = "export interface Thing {\n    /** @primaryKey */\n    id: ThingId; weird: Promise<string>; }\nexport type ThingId = BrandedId<\"ThingId\">;";
-        const { diagnostics } = generate({ domain: { Thing: thing } });
+        const thing = "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: ThingId; weird: Promise<string>; }\nexport type ThingId = BrandedId<\"ThingId\">;";
+        const { diagnostics } = generate({ entities: { Thing: thing } });
 
         expect(messages(diagnostics)).toEqual(["`weird`: unsupported type `Promise<string>`"]);
     });
 
     it("renders an entity from a fixture with no diagnostics", () => {
-        const { diagnostics } = generate({ domain: { Thing: THING } });
+        const { diagnostics } = generate({ entities: { Thing: THING } });
 
         expect(diagnostics).toEqual([]);
     });
@@ -515,7 +518,7 @@ describe("buildZodModel diagnostics", () => {
 
 describe("generateEntity standalone", () => {
     it("produces the same text as the file set, for every module", () => {
-        const { model, files } = generate({ domain: { Thing: THING } });
+        const { model, files } = generate({ entities: { Thing: THING } });
         const thing = model.entities.find((entity) => entity.name === "Thing");
         const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
 
@@ -529,21 +532,21 @@ describe("generateEntity standalone", () => {
 
 describe("buildZodModel queries", () => {
     it("builds one query per entity, named query<Entity>Schema", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const names = model.queries.map((query) => query.schemaName).sort();
 
         expect(names).toEqual(["queryChildSchema", "queryParentSchema", "queryThingSchema"]);
     });
 
     it("records the entity each query queries", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
         expect(queryThing?.schemaName).toBe("queryThingSchema");
     });
 
     it("resolves @queryFilter fields as optional sets", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
         expect(queryThing?.fields).toEqual([
@@ -553,7 +556,7 @@ describe("buildZodModel queries", () => {
     });
 
     it("makes every entity's id a filter, with no tag", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const queryChild = model.queries.find((query) => query.entity === "Child");
 
         expect(queryChild?.fields).toEqual([
@@ -562,7 +565,7 @@ describe("buildZodModel queries", () => {
     });
 
     it("records the orderable fields", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
         const queryChild = model.queries.find((query) => query.entity === "Child");
 
@@ -571,7 +574,7 @@ describe("buildZodModel queries", () => {
     });
 
     it("records the comparable fields with their operators", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
         const queryChild = model.queries.find((query) => query.entity === "Child");
 
@@ -584,7 +587,7 @@ describe("buildZodModel queries", () => {
 
 describe("generateQueryFile", () => {
     it("emits the query-specific select schema and query args schema", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain("export const queryThingSelectSchema = z.lazy(() =>");
@@ -609,7 +612,7 @@ describe("generateQueryFile", () => {
     });
 
     it("emits only the query schema", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
@@ -617,28 +620,28 @@ describe("generateQueryFile", () => {
     });
 
     it("imports the primitives module it references", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain('import * as primitives from "../primitives.ts";');
     });
 
     it("re-exports every query file from a barrel", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "index.ts")) ?? "";
 
         expect(code).toContain('export * from "./queryThing.ts";');
     });
 
     it("re-exports the queries barrel from the root index", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get("index.ts") ?? "";
 
         expect(code).toContain('export * from "./queries/index.ts";');
     });
 
     it("evaluates to a working args schema", () => {
-        const { model } = generate({ domain: { Thing: THING } });
+        const { model } = generate({ entities: { Thing: THING } });
         const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
         const queries = model.queries.filter((query) => query.entity === "Thing");
         const code = generateQueryFile("Thing", queries, byName);
@@ -696,7 +699,7 @@ describe("generateQueryFile", () => {
 describe("select schemas", () => {
     /** Transpile a query module and run it, stubbing the modules it imports. */
     function loadQuery(fileName: string): Record<string, { safeParse: (value: unknown) => { success: boolean } }> {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(fileName) ?? "";
         const require = createRequire(import.meta.url);
         const z = zodStub();
@@ -761,7 +764,7 @@ describe("select schemas", () => {
     });
 
     it("validates an entity with no branches", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryChild.ts")) ?? "";
 
         expect(code).toContain("export const queryChildSelectSchema = z.lazy(() =>");
@@ -781,6 +784,7 @@ export type RevisionId = BrandedId<"RevisionId">;
  * A revision.
  *
  * @pgTable revision
+ * @entity
  */
 export interface Revision {
     /**
@@ -811,6 +815,7 @@ const COUNTER = `
  * A counter whose key the database assigns.
  *
  * @pgTable counter
+ * @entity
  */
 export interface Counter {
     /**
@@ -837,6 +842,7 @@ export type MarkerId = BrandedId<"MarkerId">;
  * A marker.
  *
  * @pgTable marker
+ * @entity
  */
 export interface Marker {
     /**
@@ -876,6 +882,7 @@ const TRANSLATION = `
  * A translation entry.
  *
  * @pgTable translation
+ * @entity
  */
 export interface Translation {
     /**
@@ -909,6 +916,7 @@ export type ChildId = BrandedId<"ChildId">;
  * A child.
  *
  * @pgTable child
+ * @entity
  */
 export interface Child {
     /**
@@ -925,6 +933,7 @@ export interface Child {
  * A thing holding a snapshot of its child.
  *
  * @pgTable thing
+ * @entity
  */
 export interface Thing {
     /**
@@ -944,7 +953,7 @@ export interface Thing {
 
 describe("insert schemas", () => {
     it("omits the branches a create cannot write", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = insertFile(files, "Thing");
 
         expect(code).toContain("export const thingInsertSchema = thingSchema");
@@ -954,7 +963,7 @@ describe("insert schemas", () => {
     });
 
     it("omits a derivable column, keeps a required one, and leaves a defaulted one omittable", () => {
-        const { files } = generate({ domain: { Marker: MARKER } });
+        const { files } = generate({ entities: { Marker: MARKER } });
         const code = insertFile(files, "Marker");
 
         expect(code).toContain("        total: true,");
@@ -970,7 +979,7 @@ import type { BrandedId } from "./primitives.ts";
 /** The identifier of a thing. */
 export type ThingId = BrandedId<"ThingId">;
 
-/** A thing. */
+/**\n * @entity\n * A thing.\n */
 export interface Thing {
     /**
      * The identifier.
@@ -986,7 +995,7 @@ export interface Thing {
     source: string;
 }
 `.trim();
-        const { files } = generate({ domain: { Thing: entity } });
+        const { files } = generate({ entities: { Thing: entity } });
         const code = insertFile(files, "Thing");
 
         expect(code).toContain("    .partial({\n        source: true,\n    })");
@@ -994,7 +1003,7 @@ export interface Thing {
     });
 
     it("nests an `@inlined` branch as the target's insert schema", () => {
-        const { files } = generate({ domain: { Thing: INLINED } });
+        const { files } = generate({ entities: { Thing: INLINED } });
         const code = insertFile(files, "Thing");
 
         expect(code).toContain('import { childInsertSchema } from "./childInsertSchema.ts";');
@@ -1003,7 +1012,7 @@ export interface Thing {
     });
 
     it("accepts null for a nullable column, as a patch and an upsert do, and for nothing else", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = insertFile(files, "Thing");
 
         // The same nullable set a patch and an upsert widen, from the same helper.
@@ -1024,7 +1033,7 @@ export interface Thing {
 
 describe("patch schemas", () => {
     it("omits the same fields a create does, so a patch cannot send them", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Thing");
 
         expect(code).toContain("export const thingPatchSchema = thingSchema");
@@ -1034,7 +1043,7 @@ describe("patch schemas", () => {
     });
 
     it("keeps the version a create omits, since a patch must carry it", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Thing");
 
         expect(code).toContain(
@@ -1060,13 +1069,13 @@ describe("patch schemas", () => {
     });
 
     it("leaves a required field with no nullable shape to extend", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Child");
 
         expect(code).not.toContain(".extend({");
     });
     it("requires only the key when the entity has no version", () => {
-        const { files } = generate({ domain: { Thing: THING } });
+        const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Child");
 
         expect(code).toContain("    .required({\n        id: true,\n    })");
@@ -1074,7 +1083,7 @@ describe("patch schemas", () => {
     });
 
     it("rejects a field the update would never write, and keeps a defaulted one writable", () => {
-        const { files } = generate({ domain: { Marker: MARKER } });
+        const { files } = generate({ entities: { Marker: MARKER } });
         const code = patchFile(files, "Marker");
 
         expect(code).toContain("        total: true,");
@@ -1094,6 +1103,7 @@ export type NoteId = BrandedId<"NoteId">;
  * A note.
  *
  * @pgTable note
+ * @entity
  */
 export interface Note {
     /**
@@ -1122,7 +1132,7 @@ export interface Note {
 
 /** The evaluated schema from the Note fixture, built over a stub domain module the generated code would import. */
 function loadNoteSchema(moduleName: string, schemaName: string) {
-    const { files } = generate({ domain: { Note: NOTE } });
+    const { files } = generate({ entities: { Note: NOTE } });
     const code = files.get(join("repositories", moduleName)) ?? "";
     const require = createRequire(import.meta.url);
     const z = zodStub();

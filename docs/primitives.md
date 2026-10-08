@@ -1,12 +1,13 @@
 # Primitives
 
-Value types in `packages/spec/src/primitives/`. These are scalars, not entities;
-entities live in `packages/spec/src/domain/`.
+Value types carrying `@primitive`, in `packages/spec/src/`. These are scalars,
+not entities; an entity is an interface carrying `@entity`, which may sit in any
+file under `packages/spec/src/`. See "Discovery" in `docs/spec-annotations.md`.
 
 ## Annotations
 
-Every alias in this folder carries three type-level tags, described in
-`docs/spec-annotations.md`:
+Every alias in `packages/spec/src/primitives/` carries three type-level tags,
+described in `docs/spec-annotations.md`:
 
 ```typescript
 /**

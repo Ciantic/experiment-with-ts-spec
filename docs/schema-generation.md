@@ -1,7 +1,7 @@
 # Schema generation
 
-`packages/backend/scripts/generate-postgres-schema.ts` turns the domain models in
-`packages/spec/src/domain/` into Postgres DDL.
+`packages/backend/scripts/generate-postgres-schema.ts` turns the entities in
+`packages/spec/src/` into Postgres DDL.
 
 The spec is parsed by `packages/spec/scripts/spec-model.ts`; the Postgres table
 model is built by `packages/backend/scripts/postgres-model.ts`, which both this
@@ -166,7 +166,7 @@ Two test files:
 - `packages/backend/scripts/generate-postgres-schema.test.ts` — the generator's
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. The fixture's sources go through
-  `parseInMemorySpec(files, { entityGlob, aliasGlob })`, so a fixture is generated
+  `parseInMemorySpec(files, { sourceGlob })`, so a fixture is generated
   from its own files.
   Its trigger group also executes the generated triggers in PGlite, which is the
   one place the attachment is observable: a trigger on the wrong table is valid

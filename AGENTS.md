@@ -46,10 +46,14 @@
 # Testing
 
 - Tests cover the functionality of the code under test, not domain-specific
-  features. Build fixtures in memory; do not read `packages/spec/src/domain`
+  features. Build fixtures in memory; do not read `packages/spec/src`
   from a unit test. A domain change must not require rewriting a test. See
   `docs/testing.md`.
 
 # Specs
 
+- An interface is an entity when it carries `@entity`, and a type alias is a
+  primitive when it carries `@primitive`; a directory never decides what is
+  generated, so an entity may live anywhere under `packages/spec/src/`. See
+  `docs/spec-annotations.md`.
 - Specs are in the `packages/spec`, currently they are only for demonstration. This means generators should not be tightly coupled with any particular spec.

@@ -6,7 +6,7 @@ import { buildRestModel, type RestEntity, type RestModel } from "./rest-model.ts
 import { renderEntityRoutes, renderRoutes, renderRoutesIndex } from "./generate-rest-api.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const DOMAIN_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
 /** A versioned entity, so the routes cover a patch as well as a plain write. */
 const WIDGET = `
@@ -16,6 +16,7 @@ const WIDGET = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Widget {
     /** @primaryKey */
@@ -34,6 +35,7 @@ const MARKER = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface Marker {
     /** @primaryKey */
@@ -44,10 +46,10 @@ export interface Marker {
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
-        filePath: join(SPEC_SRC_ROOT, "domain", `${name}.ts`),
+        filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
         sourceFileText,
     }));
-    return buildRestModel(parseInMemorySpec(spec, { entityGlob: DOMAIN_GLOB, aliasGlob: DOMAIN_GLOB }));
+    return buildRestModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
 }
 
 function widgetEntity(): RestEntity {
@@ -159,6 +161,7 @@ describe("renderEntityRoutes", () => {
  * @restRepository create
  * @queries query
  * @restQueries query
+ * @entity
  */
 export interface AuditLog {
     /** @primaryKey */
@@ -186,6 +189,7 @@ export interface AuditLog {
  * @repository create
  * @restRepository create
  * @queries query
+ * @entity
  */
 export interface Internal {
     /** @primaryKey */

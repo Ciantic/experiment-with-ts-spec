@@ -1,7 +1,7 @@
 # Validation
 
-`packages/validation/scripts/generate-zod-schemas.ts` turns the domain models in
-`packages/spec/src/domain` into Zod schemas and the matching write types, written
+`packages/validation/scripts/generate-zod-schemas.ts` turns the entities in
+`packages/spec/src` into Zod schemas and the matching write types, written
 to `packages/validation/src`. The generator lives in the package that owns its
 artifact, so `pnpm --filter validation run generate:validation` regenerates the
 schemas without the backend. A schema is what validates a value at the boundary

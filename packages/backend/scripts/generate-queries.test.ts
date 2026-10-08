@@ -24,7 +24,7 @@ function table(
     return {
         name,
         interfaceName,
-        importSpecifier: `spec/domain/${interfaceName}.ts`,
+        importSpecifier: `spec/fixtures/${interfaceName}.ts`,
         columns,
         relations,
         triggers: [],

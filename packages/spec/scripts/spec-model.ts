@@ -18,11 +18,8 @@ export const SPEC_PACKAGE_ROOT = dirname(import.meta.dirname);
 /** The spec `src` directory; a source path under it maps back to its package export specifier. */
 export const SPEC_SRC_ROOT = join(SPEC_PACKAGE_ROOT, "src");
 
-/** Every spec source file. Used for alias discovery, and by the linter as its scan set. */
+/** Every spec source file: the scan set for the parsers, the generators, and the linter. */
 export const SPEC_GLOB = join(SPEC_SRC_ROOT, "**/*.ts");
-
-/** The domain entities the generators read. */
-export const DEFAULT_SPEC_GLOB = join(SPEC_SRC_ROOT, "domain/**/*.ts");
 
 /** Tags a field may carry. */
 export const FIELD_TAGS = [
@@ -49,6 +46,7 @@ export const FIELD_TAGS = [
 
 /** Tags an interface may carry. */
 export const INTERFACE_TAGS = [
+    "entity",
     "pgTable",
     "pgTrigger",
     "repository",
@@ -233,6 +231,8 @@ export interface Tags {
     /** The database assigns the column at insert, so no write supplies it and a create reads it back. */
     pgAutoIncrement: boolean;
     version: boolean;
+    /** The interface is an entity the generators read; an untagged interface is a contract. See docs/spec-annotations.md. */
+    entity: boolean;
     /** The Postgres table name for the interface. */
     pgTable?: string;
     /** The write operations `@repository` declares, in {@link WRITE_OPERATIONS} order. See docs/repositories.md. */
@@ -327,16 +327,17 @@ export interface SpecTypeAlias {
 
 /** The parsed spec. */
 export interface SpecModel {
+    /** The entities, keyed by interface name. */
     interfaces: Map<string, SpecInterface>;
+    /** Interfaces carrying no `@entity`, which the linter alone reads to report an entity tag on a contract. */
+    nonEntityInterfaces: SpecInterface[];
     aliases: Map<string, SpecTypeAlias>;
 }
 
 /** Inputs to {@link parseSpec}. */
 export interface ParseOptions {
-    /** Where entities (interfaces) are read from; defaults to the domain entities. */
-    entityGlob?: string;
-    /** Where type aliases (including primitives) are read from; defaults to every spec file. */
-    aliasGlob?: string;
+    /** The spec sources to scan, honoured by an in-memory parse; defaults to every file under `spec/src`. */
+    sourceGlob?: string;
 }
 
 /** InvoiceRow -> invoice_row. */
@@ -585,6 +586,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         pgAutoIncrement: false,
         version: false,
         primitive: false,
+        entity: false,
         queryFilter: false,
     };
 
@@ -631,6 +633,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "pgTable":
                     if (value !== undefined) tags.pgTable ??= value;
+                    break;
+                case "entity":
+                    tags.entity = true;
                     break;
                 case "repository":
                     if (tags.repository === undefined) tags.repository = parseWriteOperations(value);
@@ -705,10 +710,10 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     return tags;
 }
 
-/** Every type alias in the spec, decoded once so a consumer reads tags rather than walking JSDoc. */
-export function collectAliases(project: Project, aliasGlob?: string): Map<string, SpecTypeAlias> {
+/** Every type alias among the given sources, decoded once so a consumer reads tags rather than walking JSDoc. */
+export function collectAliases(project: Project, sourceGlob?: string): Map<string, SpecTypeAlias> {
     const aliases = new Map<string, SpecTypeAlias>();
-    const sourceFiles = aliasGlob ? project.getSourceFiles(aliasGlob) : project.getSourceFiles();
+    const sourceFiles = sourceGlob ? project.getSourceFiles(sourceGlob) : project.getSourceFiles();
     for (const sourceFile of sourceFiles) {
         const filePath = sourceFile.getFilePath();
         for (const declaration of sourceFile.getTypeAliases()) {
@@ -876,19 +881,24 @@ function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
     }
 }
 
-/** Parse the spec into interfaces and aliases. */
+/**
+ * Parse the spec into entities and aliases.
+ * An interface is an entity when it carries `@entity`; one without the tag is a contract, so no
+ * directory decides what is generated. Every alias is read, and `@primitive` selects the scalars.
+ */
 export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
-    const entityGlob = options.entityGlob ?? DEFAULT_SPEC_GLOB;
-    const aliasGlob = options.aliasGlob ?? SPEC_GLOB;
+    const sourceGlob = options.sourceGlob ?? SPEC_GLOB;
     const interfaces = new Map<string, SpecInterface>();
+    const entities: SpecInterface[] = [];
+    const nonEntityInterfaces: SpecInterface[] = [];
     const aliases = new Map<string, SpecTypeAlias>();
 
-    for (const [name, alias] of collectAliases(project, aliasGlob)) {
+    for (const [name, alias] of collectAliases(project, sourceGlob)) {
         aliases.set(name, alias);
     }
     fillAliasStorageTypes(aliases);
 
-    for (const sourceFile of project.getSourceFiles(entityGlob)) {
+    for (const sourceFile of project.getSourceFiles(sourceGlob)) {
         const filePath = sourceFile.getFilePath();
 
         for (const declaration of sourceFile.getInterfaces()) {
@@ -926,11 +936,21 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
             if (declarationTags.pgTrigger !== undefined) {
                 entity.trigger = declarationTags.pgTrigger;
             }
-            interfaces.set(name, entity);
+            if (declarationTags.entity) {
+                entities.push(entity);
+            } else {
+                nonEntityInterfaces.push(entity);
+            }
         }
     }
 
-    return { interfaces, aliases };
+    // Name order, so the generated output depends on what an entity is called rather than on where it sits.
+    for (const entity of entities.sort((a, b) => a.name.localeCompare(b.name))) {
+        interfaces.set(entity.name, entity);
+    }
+    nonEntityInterfaces.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { interfaces, nonEntityInterfaces, aliases };
 }
 
 /** The tsconfig the generators read, with every spec source added to it. */
@@ -964,8 +984,7 @@ export function parseInMemorySpec(files: InMemorySpecFile[], options: ParseOptio
         project.createSourceFile(file.filePath, file.sourceFileText);
     }
     return parseSpec(project, {
-        entityGlob: options.entityGlob ?? IN_MEMORY_GLOB,
-        aliasGlob: options.aliasGlob ?? IN_MEMORY_GLOB,
+        sourceGlob: options.sourceGlob ?? IN_MEMORY_GLOB,
     });
 }
 

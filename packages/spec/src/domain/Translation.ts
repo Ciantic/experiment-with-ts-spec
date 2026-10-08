@@ -1,6 +1,7 @@
 /**
  * A translation entry for an invoice.
  * 
+ * @entity
  * @pgTable translation
  * @repository create upsert update delete
  * @restRepository create upsert update delete

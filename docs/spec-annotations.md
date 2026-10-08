@@ -20,6 +20,20 @@ portable SQL concept stays unprefixed (`@primaryKey`, `@foreignKey`, `@unique`),
 and a tag that only a query read consumes carries `query` instead (`@queryFilter`,
 `@queryOrderBy`, `@queryWhere`). See "Why the expressions live in the spec".
 
+## Discovery
+
+The parse scans every source under `packages/spec/src/`, and a declaration's own
+tags decide what it is. No directory does:
+
+- An **entity** is an interface carrying `@entity`. Only entities get tables,
+  repositories, queries, routes, and schemas, so an entity may sit in any file
+  under `src/`.
+- A **primitive** is a type alias carrying `@primitive`. Every other alias is
+  read too, since a field's type resolves through it.
+- An interface carrying no `@entity` is a **contract**, such as the ones in
+  `src/operations/`; the generators ignore it. An entity tag on such an
+  interface is a lint finding, not a silent omission.
+
 ## Tags
 
 Field tags:
@@ -90,6 +104,9 @@ Field tags:
 
 Interface tags:
 
+- `@entity` — a bare marker that declares the interface an entity, which is what
+  makes the generators read it. An interface without it is a contract and is
+  ignored, wherever it sits. See "Discovery" above.
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
@@ -603,6 +620,9 @@ Neither takes a `Project`.
 Enforced:
 
 - Tags are limited to the field and interface tags listed above.
+- `@entity` is a bare marker and takes no value. An interface carrying any other
+  interface tag without it is reported, since that is a forgotten marker rather
+  than a contract.
 - Retired tags (`@generated`, `@default`, `@table`, `@readonly`, `@type`,
   `@values`, `@formula`) report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.

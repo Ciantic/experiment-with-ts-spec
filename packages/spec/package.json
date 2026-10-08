@@ -6,8 +6,7 @@
   "license": "ISC",
   "type": "module",
   "exports": {
-    "./domain/*.ts": "./src/domain/*.ts",
-    "./primitives/*.ts": "./src/primitives/*.ts",
+    "./*.ts": "./src/*.ts",
     "./mockdata/*.ts": "./mockdata/*.ts",
     "./scripts/*.ts": "./scripts/*.ts",
     "./package.json": "./package.json"

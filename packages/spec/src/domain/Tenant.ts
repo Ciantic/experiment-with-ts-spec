@@ -7,6 +7,7 @@ export type TenantId = BrandedId<"TenantId">;
 /**
  * An organisation whose data this installation holds.
  * 
+ * @entity
  * @pgTable tenant
  * @repository create upsert update delete
  * @restRepository create upsert update delete

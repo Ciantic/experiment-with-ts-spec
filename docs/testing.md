@@ -9,7 +9,7 @@ A test should assert what a unit does, using its own inputs, not what the
 domain currently happens to contain. Concretely:
 
 - Unit tests build their own fixtures in memory and do not read
-  `packages/spec/src/domain`.
+  `packages/spec/src`.
 - Tests assert on the unit's contract (mapping, ordering, diagnostics), not on
   the business meaning of a particular field.
 - A change to the domain model should not require rewriting a unit test.
@@ -87,7 +87,7 @@ values, all of which are domain decisions rather than code behaviour.
 ## Gotchas
 
 - **Do not import the real spec into a unit test.** Give the test its own sources
-  through `parseInMemorySpec(files, { entityGlob, aliasGlob })`, so the model holds
+  through `parseInMemorySpec(files, { sourceGlob })`, so the model holds
   only what the test wrote, or the test becomes a domain test by accident. The
   end-to-end smoke test in `src/main.test.ts` is no exception: it draws its rows
   from `spec/mockdata` and names no domain type.

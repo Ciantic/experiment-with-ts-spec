@@ -1,4 +1,4 @@
-/** Generate CRUD repositories from `spec/domain`. See docs/repositories.md. */
+/** Generate CRUD repositories from the spec entities. See docs/repositories.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadSpec, lowerFirst, type SpecModel, type WriteOperation } from "spec/scripts/spec-model.ts";
