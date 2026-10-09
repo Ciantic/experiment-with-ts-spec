@@ -2,7 +2,7 @@
  * Generate Zod schemas and their write types from the spec entities, into this package's `src`.
  * See docs/validation.md.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadSpec, lowerFirst, type SpecModel } from "spec/scripts/spec-model.ts";
 import {
@@ -528,6 +528,33 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     return files;
 }
 
+/**
+ * Remove the schemas the spec no longer declares, so a dropped entity leaves no module behind.
+ * The walk descends, because the output root holds `domain/`, `repositories/`, and `queries/`,
+ * and touches a file only when its first line is this generator's header — `insert.ts` and the
+ * other hand-written modules share the root.
+ */
+function pruneStale(outDir: string, keep: Set<string>): void {
+    const directories = [""];
+    while (directories.length > 0) {
+        const prefix = directories.pop() ?? "";
+        for (const entry of readdirSync(join(outDir, prefix), { withFileTypes: true })) {
+            const relative = join(prefix, entry.name);
+            if (entry.isDirectory()) {
+                directories.push(relative);
+                continue;
+            }
+            if (!entry.name.endsWith(".ts") || keep.has(relative)) {
+                continue;
+            }
+            const file = join(outDir, relative);
+            if (readFileSync(file, "utf8").split("\n", 1)[0] === HEADER) {
+                rmSync(file);
+            }
+        }
+    }
+}
+
 /** Write the Zod modules for a parsed spec and return the exit code. */
 export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
     const model = buildZodModel(spec);
@@ -553,6 +580,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
         mkdirSync(dirname(target), { recursive: true });
         writeFileSync(target, content);
     }
+    pruneStale(outDir, new Set(files.keys()));
     console.log(`wrote ${files.size} files to ${outDir}`);
     return 0;
 }

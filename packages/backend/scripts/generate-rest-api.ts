@@ -7,7 +7,7 @@
  * wiring, never request handling — the router owns parsing, validation, and
  * status mapping.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
@@ -164,6 +164,19 @@ export function renderRoutes(model: RestModel): Map<string, string> {
     return files;
 }
 
+/** Remove the generated modules the spec no longer declares, so a dropped entity leaves no routes behind. */
+function pruneStale(outDir: string, keep: Set<string>): void {
+    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+            continue;
+        }
+        const file = join(outDir, entry.name);
+        if (readFileSync(file, "utf8").split("\n", 1)[0] === HEADER) {
+            rmSync(file);
+        }
+    }
+}
+
 /** Write the route modules for a parsed spec and return the exit code. */
 export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
     const model = buildRestModel(spec);
@@ -187,6 +200,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);
     }
+    pruneStale(outDir, new Set(files.keys()));
     console.log(`wrote ${files.size} files to ${outDir}`);
     return 0;
 }

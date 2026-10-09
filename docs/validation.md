@@ -38,6 +38,12 @@ schema uses, so the backend repositories, the REST API, the generated client, an
 - `packages/validation/src/index.ts` — the barrel re-exporting the primitives and
   the three directories.
 
+A regeneration removes the modules the spec no longer declares, so a dropped entity
+leaves no schema, write, or query module behind. The walk descends into the three
+directories, and a file goes only when its first line is the generator's header —
+which is what keeps the hand-written modules that share the output root (`insert.ts`,
+`patch.ts`, `upsert.ts`, `selection.ts`) in place.
+
 A write module derives from the domain module rather than restating the entity:
 each one imports `<name>Schema` from `../domain/<entity>Schema.ts` and projects it.
 The directory is what says "write"; a `domain/` module is never a write.

@@ -21,7 +21,9 @@ See "Why the resolver is hand-written".
 - `pnpm generate:queries` — writes the generated modules.
 - `pnpm generate:queries --out <dir>` — writes elsewhere. A missing directory is created.
 
-The generated output is committed. Regenerate rather than editing it by hand.
+The generated output is committed. Regenerate rather than editing it by hand. A
+regeneration also removes a module the spec no longer declares, so an entity that
+drops `@queries query` leaves no stale file behind.
 
 ## One query per entity
 

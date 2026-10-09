@@ -24,7 +24,9 @@ halves that must not be generated: the router and the transport.
 - `pnpm generate:rest-client` — writes the client.
 - Either accepts `--out <dir>`; a missing directory is created.
 
-The generated output is committed. Regenerate rather than editing it by hand.
+The generated output is committed. Regenerate rather than editing it by hand. A
+regeneration also removes a module the spec no longer declares, so an entity dropped
+from the spec leaves no route module and no client module behind.
 
 ## The surface
 
