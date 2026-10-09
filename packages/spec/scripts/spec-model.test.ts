@@ -235,8 +235,30 @@ describe("parseSpec tags", () => {
 
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
-        expect(tags?.foreignKey).toBe("Owner");
+        expect(tags?.foreignKey).toEqual({ entity: "Owner" });
         expect(tags?.primaryKey).toBe(false);
+    });
+
+    it("decodes @foreignKey options into referential actions", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @foreignKey Owner onDelete=cascade onUpdate=setNull\n     */", "ownerId?: OwnerId;"),
+        });
+
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.foreignKey).toEqual({ entity: "Owner", onDelete: "cascade", onUpdate: "setNull" });
+    });
+
+    it("keeps the entity when @foreignKey carries no options", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @foreignKey Owner onDelete=restrict\n     */", "ownerId?: OwnerId;"),
+        });
+
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.foreignKey?.entity).toBe("Owner");
+        expect(tags?.foreignKey?.onDelete).toBe("restrict");
+        expect(tags?.foreignKey?.onUpdate).toBeUndefined();
     });
 
     it("lists a composite key's fields in declaration order", () => {

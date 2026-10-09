@@ -207,8 +207,10 @@ Gotchas found by running the DDL:
   `bigint`. No spec field uses `bigint` now, so this only matters if one is added.
 - **The fragments must be `NEW`-qualified** (see above). Running the DDL is what
   revealed this.
-- **Foreign keys have no `ON DELETE` clause,** so a referenced row cannot be
-  deleted rather than the reference being nulled or cascaded.
+- **A foreign key takes the database default unless the key declares an
+  action,** so a referenced row cannot be deleted unless the key opts into
+  nulling or cascading. `@foreignKey Customer onDelete=cascade` — or
+  `onUpdate=<action>` — appends the clause. See `docs/spec-annotations.md`.
 - **Computed columns follow the field's optionality, not the computation.** A
   required one is `not null` with no default, so an insert must supply it and the
   before trigger then overwrites it. An optional one is nullable, so the trigger

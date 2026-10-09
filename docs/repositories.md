@@ -405,9 +405,10 @@ it was handed with the planner's, so the two cannot drift.
 
 ## Gotchas
 
-- **Foreign keys have no `ON DELETE` clause**, so `deleteInvoice` fails while
-  rows still reference it. Deleting children is the caller's job; there is no
-  cascade.
+- **A foreign key has no `ON DELETE` clause unless the key declares one**, so
+  `deleteInvoice` fails while rows still reference it. Deleting children is the
+  caller's job unless the child's `@foreignKey` says `onDelete=cascade`. See
+  `docs/spec-annotations.md`.
 - **A required computed column is supplied and then overwritten.** The insert
   sends it, the before-trigger overwrites it, so passing a value has no effect.
   Whether one is required follows the field's optionality, not the computation:
@@ -473,8 +474,9 @@ it was handed with the planner's, so the two cannot drift.
 
 - **Queries.** Reads are generated from the entities in
   `packages/backend/src/db/queries/`, not in a repository; see `docs/queries.md`.
-- **Cascade delete** for `@children`. A child table's foreign key has no
-  `ON DELETE`, so a parent with children cannot be deleted.
+- **Cascade delete inferred from `@children`.** The parent's `@children` field
+  adds no `on delete cascade`; the action lives on the child's `@foreignKey`, so
+  a parent with children cannot be deleted unless the child declares it.
 - **A unit of work inside a repository.** No function opens a boundary: a
   repository runs its statement on the executor it is handed, and a caller that
   needs more than one call to be atomic opens the boundary itself

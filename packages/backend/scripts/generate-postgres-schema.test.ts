@@ -148,6 +148,55 @@ describe("generateSchema output", () => {
         expect(sql).toContain('"ownerId" int8 not null references "owner"("id")');
     });
 
+    it("appends the referential actions a @foreignKey declares", () => {
+        const { sql } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: `/** @entity */\nexport interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Owner onDelete=cascade onUpdate=setNull */
+                    ownerId?: OwnerId;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"ownerId" uuid references "owner"("id") on delete cascade on update set null');
+    });
+
+    it("emits no referential clause when @foreignKey declares no action", () => {
+        const { sql } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Owner */\n    ownerId?: OwnerId; }",
+            },
+        });
+
+        expect(sql).toContain('"ownerId" uuid references "owner"("id")');
+        expect(sql).not.toContain("on delete");
+    });
+
+    it("cascades a parent delete when the key declares onDelete=cascade", async () => {
+        const { sql, diagnostics } = generate({
+            entities: {
+                Parent: "/** @entity */\nexport interface Parent {\n    /** @primaryKey */\n    id: GUID; }",
+                Child: "/** @entity */\nexport interface Child {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Parent onDelete=cascade */\n    parentId: GUID; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
+
+        // The clause only matters if the server accepts it, which a text assertion cannot show.
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "parent" ("id") values ('${PARENT}');`);
+        await db.exec(`insert into "child" ("id", "parentId") values ('${CHILD_A}', '${PARENT}');`);
+
+        await db.exec(`delete from "parent" where "id" = '${PARENT}';`);
+        const rows = await db.query<{ count: string }>(`select count(*) as "count" from "child";`);
+
+        expect(Number(rows.rows[0]?.count)).toBe(0);
+    });
+
     it("makes an optional field nullable", () => {
         const { sql } = generate({
             entities: { Thing: "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: string; note?: string; }" },

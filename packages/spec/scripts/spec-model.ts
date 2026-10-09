@@ -121,6 +121,34 @@ export function isOrderDirection(value: string | undefined): value is OrderDirec
     return value === "asc" || value === "desc";
 }
 
+/** The `key=action` options a `@foreignKey` value may carry. */
+export const FOREIGN_KEY_OPTIONS = ["onDelete", "onUpdate"] as const;
+export type ForeignKeyOption = (typeof FOREIGN_KEY_OPTIONS)[number];
+
+/** True when the text is one of {@link FOREIGN_KEY_OPTIONS}. */
+export function isForeignKeyOption(value: string): value is ForeignKeyOption {
+    return (FOREIGN_KEY_OPTIONS as readonly string[]).includes(value);
+}
+
+/** The referential actions a `@foreignKey` option may name, as written. See docs/spec-annotations.md. */
+export const REFERENTIAL_ACTIONS = ["cascade", "restrict", "noAction", "setNull", "setDefault"] as const;
+export type ReferentialAction = (typeof REFERENTIAL_ACTIONS)[number];
+
+/** True when the text is one of {@link REFERENTIAL_ACTIONS}. */
+export function isReferentialAction(value: string | undefined): value is ReferentialAction {
+    return (REFERENTIAL_ACTIONS as readonly string[]).includes(value ?? "");
+}
+
+/** A `@foreignKey <Entity>` value: the interface the column points at and its referential actions. */
+export interface ForeignKey {
+    /** The interface the column points at, as written. */
+    entity: string;
+    /** The `on delete` action, when the field declares one. */
+    onDelete?: ReferentialAction;
+    /** The `on update` action, when the field declares one. */
+    onUpdate?: ReferentialAction;
+}
+
 /** The comparison operators a `@queryWhere` field may name. */
 export const COMPARE_OPERATORS = ["eq", "ne", "gt", "gte", "lt", "lte"] as const;
 export type CompareOperator = (typeof COMPARE_OPERATORS)[number];
@@ -223,8 +251,8 @@ export interface Tags {
     inlined: boolean;
     /** The field is part of the table's primary key; one or more per interface. */
     primaryKey: boolean;
-    /** The interface this field references, as written in `@foreignKey Customer`. */
-    foreignKey?: string;
+    /** The interface this field references and its referential actions, from `@foreignKey Customer onDelete=cascade`. */
+    foreignKey?: ForeignKey;
     unique: boolean;
     /** The database column default, written verbatim into the DDL. */
     pgDefault?: string;
@@ -571,6 +599,26 @@ function parseReadOperations(value: string | undefined): ReadOperation[] {
     return READ_OPERATIONS.filter((operation) => tokens.includes(operation));
 }
 
+/** Read a `@foreignKey` value: the first token is the entity, each later `key=action` is an option. */
+export function parseForeignKey(value: string): ForeignKey {
+    const tokens = value.split(/\s+/).filter((token) => token !== "");
+    const foreignKey: ForeignKey = { entity: tokens[0] ?? "" };
+    for (const token of tokens.slice(1)) {
+        const separator = token.indexOf("=");
+        if (separator === -1) {
+            continue;
+        }
+        const key = token.slice(0, separator);
+        const action = token.slice(separator + 1);
+        if (key === "onDelete" && isReferentialAction(action)) {
+            foreignKey.onDelete ??= action;
+        } else if (key === "onUpdate" && isReferentialAction(action)) {
+            foreignKey.onUpdate ??= action;
+        }
+    }
+    return foreignKey;
+}
+
 /** Decode the JSDoc tags on a declaration, keeping the tags as written for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
@@ -623,7 +671,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     tags.primaryKey = true;
                     break;
                 case "foreignKey":
-                    if (value !== undefined) tags.foreignKey ??= value;
+                    if (value !== undefined) tags.foreignKey ??= parseForeignKey(value);
                     break;
                 case "pgDefault":
                     if (value !== undefined) tags.pgDefault ??= value;

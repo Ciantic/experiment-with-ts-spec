@@ -10,6 +10,8 @@ import {
     isUpdatable,
     type CompareOperator,
     type Diagnostic,
+    type ForeignKey,
+    type ReferentialAction,
     type OrderDirection,
     type PgTrigger,
     type SpecInterface,
@@ -45,7 +47,14 @@ export interface Column {
     primaryKey: boolean;
     unique: boolean;
     checkValues?: string[];
-    references?: { table: string; column: string };
+    references?: {
+        table: string;
+        column: string;
+        /** The `on delete` action, absent when the constraint takes the database default. */
+        onDelete?: ReferentialAction;
+        /** The `on update` action, absent when the constraint takes the database default. */
+        onUpdate?: ReferentialAction;
+    };
     /** A database column default, written verbatim; the repository does not write the column. */
     default?: string;
     /** The column is an identity column the database assigns, so no write carries it. See docs/auto-increment.md. */
@@ -222,7 +231,8 @@ function addProperty(context: BuildContext, table: Table, property: SpecProperty
     // A primary key column and a foreign key column are told apart by their tags, not their
     // names: `@primaryKey` is the table's key, `@foreignKey Customer` points at another table.
     const isPrimaryKey = tags.primaryKey;
-    const foreignKeyTarget = isPrimaryKey ? undefined : tags.foreignKey;
+    const foreignKey = isPrimaryKey ? undefined : tags.foreignKey;
+    const foreignKeyTarget = foreignKey?.entity;
 
     // A foreign key's storage type comes from the table it points at, so its own type node
     // is documentation and may be an alias this model cannot resolve.
@@ -245,7 +255,7 @@ function addProperty(context: BuildContext, table: Table, property: SpecProperty
         return;
     }
 
-    addScalarColumn(context, table, property, resolved, isPrimaryKey, foreignKeyTarget, foreignKeyTable);
+    addScalarColumn(context, table, property, resolved, isPrimaryKey, foreignKey, foreignKeyTable);
 }
 
 /** Add the branch relation a branch tag declares; returns false for a plain column. */
@@ -336,7 +346,7 @@ function addScalarColumn(
     property: SpecProperty,
     resolved: TypeResolution | undefined,
     isPrimaryKey: boolean,
-    foreignKeyTarget: string | undefined,
+    foreignKey: ForeignKey | undefined,
     foreignKeyTable: string | undefined,
 ): void {
     const fieldName = property.name;
@@ -398,12 +408,12 @@ function addScalarColumn(
         column.version = true;
     }
 
-    if (foreignKeyTarget && foreignKeyTable) {
-        const targetKey = context.primaryKeyFields(foreignKeyTarget);
+    if (foreignKey !== undefined && foreignKeyTable !== undefined) {
+        const targetKey = context.primaryKeyFields(foreignKey.entity);
         if (targetKey.length === 0) {
             context.report(
                 property.location,
-                `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has no @primaryKey field`,
+                `\`${fieldName}\`: @foreignKey ${foreignKey.entity} has no @primaryKey field`,
             );
             return;
         }
@@ -411,13 +421,19 @@ function addScalarColumn(
         if (targetKey.length > 1) {
             context.report(
                 property.location,
-                `\`${fieldName}\`: @foreignKey ${foreignKeyTarget} has a composite @primaryKey`,
+                `\`${fieldName}\`: @foreignKey ${foreignKey.entity} has a composite @primaryKey`,
             );
             return;
         }
         // The key column takes the referenced table's key type and names its key column.
-        column.sqlType = context.primaryKeySqlType(foreignKeyTarget);
+        column.sqlType = context.primaryKeySqlType(foreignKey.entity);
         column.references = { table: foreignKeyTable, column: targetKey[0]?.name as string };
+        if (foreignKey.onDelete !== undefined) {
+            column.references.onDelete = foreignKey.onDelete;
+        }
+        if (foreignKey.onUpdate !== undefined) {
+            column.references.onUpdate = foreignKey.onUpdate;
+        }
     }
 
     table.columns.push(column);

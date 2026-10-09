@@ -1428,6 +1428,110 @@ export interface Thing {
             "`ownerId`: @primaryKey and @foreignKey are mutually exclusive",
         ]);
     });
+
+    it("accepts @foreignKey referential actions", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner onDelete=cascade onUpdate=setNull
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects an unknown @foreignKey option", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner deferrable=deferred
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey option `deferrable` is not one of: onDelete, onUpdate",
+        ]);
+    });
+
+    it("rejects an unknown @foreignKey action", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner onDelete=nuke
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey onDelete `nuke` is not one of: cascade, restrict, noAction, setNull, setDefault",
+        ]);
+    });
+
+    it("rejects a @foreignKey option without a value", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner cascade
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey option `cascade` must be written `key=value`, such as `onDelete=cascade`",
+        ]);
+    });
+
+    it("rejects a repeated @foreignKey option", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner onDelete=cascade onDelete=restrict
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual(["`ownerId`: @foreignKey onDelete appears more than once"]);
+    });
+
+    it("rejects @foreignKey options that come before the interface", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey onDelete=cascade Owner
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey needs the interface it references before its options, found `onDelete=cascade`",
+        ]);
+    });
 });
 
 describe("@pgAutoIncrement", () => {

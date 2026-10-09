@@ -13,6 +13,11 @@ Two rules decide every tag name, and both are checkable by eye.
 `@computed`, `@unique`, `@version`, `@relation`, `@children`, `@inlined`,
 `@primitive`, `@repository`, `@queries`, `@zod`.
 
+**An option inside a tag's value is camelCase, and written `key=value`.** The
+first token stays whatever the tag's value is — for `@foreignKey`, the interface
+— and each later token is an option. `@foreignKey Customer onDelete=cascade`
+names the interface `Customer` and asks Postgres to cascade the delete.
+
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
 `@pgDefault`, `@pgAutoIncrement`, `@pgVirtual`, `@pgTrigger`. The prefix and the word
 are both visible, so `pg` marks the dialect and the capital marks the word: a
@@ -78,8 +83,9 @@ Field tags:
   least one. See "`@primaryKey` and `@foreignKey`" below.
 - `@foreignKey <Entity>` — the field is the column pointing at `<Entity>`'s
   primary key. The value names the interface; the column type and the referenced
-  column come from that table, not from the field's own type. See "`@primaryKey`
-  and `@foreignKey`" below.
+  column come from that table, not from the field's own type. Optional
+  `onDelete=<action>` and `onUpdate=<action>` tokens append a referential clause
+  to the constraint. See "`@primaryKey` and `@foreignKey`" below.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through the field carrying `@foreignKey <entity>`. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
@@ -281,6 +287,13 @@ lang: string;
  */
 key: string;
 ```
+
+`@foreignKey Customer onDelete=cascade onUpdate=setNull` may append the
+referential actions Postgres runs on the constraint's `on delete` and `on
+update`. Each option is one camelCase token — `cascade`, `restrict`, `noAction`,
+`setNull`, `setDefault` — mapping to its SQL spelling (`set null`, `no action`).
+An option the model does not know is a lint finding, and an action left off
+emits no clause, so the constraint takes Postgres's default.
 
 `@foreignKey Customer` takes the column's storage type and referenced column
 from `Customer`'s own `@primaryKey` field, so the field's declared type is

@@ -3,14 +3,18 @@ import {
     COMPARE_OPERATORS,
     COMPUTED_KINDS,
     FIELD_TAGS,
+    FOREIGN_KEY_OPTIONS,
     INTERFACE_TAGS,
     READ_OPERATIONS,
+    REFERENTIAL_ACTIONS,
     RETIRED_TAGS,
     TYPE_TAGS,
     WIDGETS,
     WRITE_OPERATIONS,
     isCompareOperator,
+    isForeignKeyOption,
     isOrderDirection,
+    isReferentialAction,
     loadSpec,
     parseParameters,
     parseSpecText,
@@ -628,12 +632,7 @@ function lintKeyTags(tags: FieldTags, report: Report): void {
         }
     }
     if (tags.foreignKey) {
-        if (!(tags.foreignKey.value ?? "")) {
-            report(
-                "@foreignKey is missing the interface it references, such as `@foreignKey Customer`",
-                tags.foreignKey,
-            );
-        }
+        lintForeignKey(tags.foreignKey, report);
         reportIfBranch(tags, tags.foreignKey, report);
         if (tags.isArray) {
             report("@foreignKey must be on a single field, not an array", tags.foreignKey);
@@ -641,6 +640,48 @@ function lintKeyTags(tags: FieldTags, report: Report): void {
     }
     if (tags.primaryKey && tags.foreignKey) {
         report("@primaryKey and @foreignKey are mutually exclusive", tags.foreignKey);
+    }
+}
+
+/** `@foreignKey <Entity> [key=action]…`: the interface it references, then its referential actions. */
+function lintForeignKey(tag: SpecTag, report: Report): void {
+    const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
+    const entity = tokens[0];
+    if (entity === undefined) {
+        report(
+            "@foreignKey is missing the interface it references, such as `@foreignKey Customer`",
+            tag,
+        );
+        return;
+    }
+    if (entity.includes("=")) {
+        report(`@foreignKey needs the interface it references before its options, found \`${entity}\``, tag);
+        return;
+    }
+    const seen = new Set<string>();
+    for (const token of tokens.slice(1)) {
+        const separator = token.indexOf("=");
+        if (separator === -1) {
+            report(
+                `@foreignKey option \`${token}\` must be written \`key=value\`, such as \`onDelete=cascade\``,
+                tag,
+            );
+            continue;
+        }
+        const key = token.slice(0, separator);
+        const action = token.slice(separator + 1);
+        if (!isForeignKeyOption(key)) {
+            report(`@foreignKey option \`${key}\` is not one of: ${FOREIGN_KEY_OPTIONS.join(", ")}`, tag);
+            continue;
+        }
+        if (!isReferentialAction(action)) {
+            report(`@foreignKey ${key} \`${action}\` is not one of: ${REFERENTIAL_ACTIONS.join(", ")}`, tag);
+            continue;
+        }
+        if (seen.has(key)) {
+            report(`@foreignKey ${key} appears more than once`, tag);
+        }
+        seen.add(key);
     }
 }
 

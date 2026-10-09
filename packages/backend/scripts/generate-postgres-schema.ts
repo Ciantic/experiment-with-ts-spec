@@ -10,7 +10,16 @@ import {
     type Table,
     type Trigger,
 } from "./postgres-model.ts";
-import { SPEC_GLOB, loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
+import { SPEC_GLOB, loadSpec, type ReferentialAction, type SpecModel } from "spec/scripts/spec-model.ts";
+
+/** The SQL clause each `@foreignKey` action maps to. */
+const REFERENTIAL_ACTION_SQL: Record<ReferentialAction, string> = {
+    cascade: "cascade",
+    restrict: "restrict",
+    noAction: "no action",
+    setNull: "set null",
+    setDefault: "set default",
+};
 
 export type { Diagnostic } from "./postgres-model.ts";
 
@@ -70,6 +79,12 @@ export function renderCreateTable(table: Table): string[] {
         }
         if (column.references) {
             part += ` references ${quote(column.references.table)}(${quote(column.references.column)})`;
+            if (column.references.onDelete !== undefined) {
+                part += ` on delete ${REFERENTIAL_ACTION_SQL[column.references.onDelete]}`;
+            }
+            if (column.references.onUpdate !== undefined) {
+                part += ` on update ${REFERENTIAL_ACTION_SQL[column.references.onUpdate]}`;
+            }
         }
         if (column.unique) {
             part += " unique";
