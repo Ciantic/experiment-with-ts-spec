@@ -16,9 +16,10 @@
   need from an annotation on the spec (e.g. `@pgType`) or a generic helper in
   `packages/spec/scripts/spec-model.ts`. A new domain type must not require
   editing a generator. We should invent more annotations if need be.
-- Only `packages/spec/scripts/spec-model.ts` touches ts-morph. A generator, its
-  model, and the linter read the parsed `SpecModel` — including each field's
-  `SpecType`, `location`, and tags — and never walk a syntax tree themselves.
+- Only `packages/spec/scripts/spec-model.ts` reads the spec through ts-morph. A
+  generator, its model, and the linter read the parsed `SpecModel` — including
+  each field's `SpecType`, `location`, and tags — and never walk a syntax tree
+  themselves.
 - A generator lives in the package that owns its artifact. Most of them are in
   `packages/backend/scripts` because they share the table model;
   `packages/validation/scripts` owns the Zod generator.

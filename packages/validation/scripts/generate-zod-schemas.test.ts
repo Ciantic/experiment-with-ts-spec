@@ -2,8 +2,8 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ts } from "ts-morph";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
+import { loadGeneratedModule, stubImports } from "spec/scripts/ts-morph-helper.ts";
 import { parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import {
     domainModuleName,
@@ -22,6 +22,9 @@ import {
 } from "./generate-zod-schemas.ts";
 
 const SPEC_GLOB = "fixtures/**/*.ts";
+
+/** The one shape every assertion needs from a generated schema, whichever Zod method built it. */
+type Schema = { safeParse: (value: unknown) => { success: boolean } };
 
 interface Fixture {
     entities: Record<string, string>;
@@ -249,11 +252,7 @@ describe("generatePrimitives", () => {
     it("evaluates to working schemas", () => {
         const { files } = generate({ entities: {} });
         const require = createRequire(import.meta.url);
-        const code = ts.transpileModule(files.get("primitives.ts") ?? "", {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText;
-        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
-        new Function("exports", "require", code)(exports, require);
+        const exports = loadGeneratedModule<Record<string, Schema>>(files.get("primitives.ts") ?? "", require);
 
         expect(exports.moneySchema?.safeParse("12.50").success).toBe(true);
         expect(exports.moneySchema?.safeParse("not a number").success).toBe(false);
@@ -645,28 +644,16 @@ describe("generateQueryFile", () => {
         const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
         const queries = model.queries.filter((query) => query.entity === "Thing");
         const code = generateQueryFile("Thing", queries, byName);
-        const require = createRequire(import.meta.url);
         const z = zodStub();
-        const exportedCode = ts.transpileModule(code, {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText;
-        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
-        const stubRequire = (id: string) => {
-            if (id === "zod") {
-                return { z };
-            }
-            if (id === "../primitives.ts") {
-                return { brandedIdSchema: () => z.string(), moneySchema: z.string() };
-            }
-            if (id === "./queryChild.ts") {
-                return { queryChildSelectSchema: z.strictObject({}) };
-            }
-            if (id === "./queryParent.ts") {
-                return { queryParentSelectSchema: z.strictObject({}) };
-            }
-            return require(id);
-        };
-        new Function("exports", "require", exportedCode)(exports, stubRequire);
+        const exports = loadGeneratedModule<Record<string, Schema>>(
+            code,
+            stubImports({
+                zod: { z },
+                "../primitives.ts": { brandedIdSchema: () => z.string(), moneySchema: z.string() },
+                "./queryChild.ts": { queryChildSelectSchema: z.strictObject({}) },
+                "./queryParent.ts": { queryParentSelectSchema: z.strictObject({}) },
+            }),
+        );
 
         expect(exports.queryThingSchema?.safeParse({ select: {} }).success).toBe(true);
         expect(exports.queryThingSchema?.safeParse({ filter: { id: ["x"] }, select: {} }).success).toBe(true);
@@ -698,44 +685,26 @@ describe("generateQueryFile", () => {
 
 describe("select schemas", () => {
     /** Transpile a query module and run it, stubbing the modules it imports. */
-    function loadQuery(fileName: string): Record<string, { safeParse: (value: unknown) => { success: boolean } }> {
+    function loadQuery(fileName: string): Record<string, Schema> {
         const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(fileName) ?? "";
-        const require = createRequire(import.meta.url);
         const z = zodStub();
         const scalar = z.string();
-        const stubRequire = (id: string) => {
-            if (id === "zod") {
-                return { z };
-            }
-            if (id === "../primitives.ts") {
-                return {
-                    brandedIdSchema: () => scalar,
-                    moneySchema: scalar,
-                };
-            }
-            if (id === "./primitives.ts") {
-                return {
+        return loadGeneratedModule<Record<string, Schema>>(
+            code,
+            stubImports({
+                zod: { z },
+                "../primitives.ts": { brandedIdSchema: () => scalar, moneySchema: scalar },
+                "./primitives.ts": {
                     brandedIdSchema: () => scalar,
                     moneySchema: scalar,
                     versionSchema: z.bigint(),
                     languageSchema: scalar,
-                };
-            }
-            if (id === "./queryChild.ts" || id === "./queryParent.ts") {
-                return {
-                    queryChildSelectSchema: z.strictObject({ id: z.literal(true).optional() }),
-                    queryParentSelectSchema: z.strictObject({ id: z.literal(true).optional() }),
-                };
-            }
-            return require(id);
-        };
-        const exportedCode = ts.transpileModule(code, {
-            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-        }).outputText;
-        const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
-        new Function("exports", "require", exportedCode)(exports, stubRequire);
-        return exports;
+                },
+                "./queryChild.ts": { queryChildSelectSchema: z.strictObject({ id: z.literal(true).optional() }) },
+                "./queryParent.ts": { queryParentSelectSchema: z.strictObject({ id: z.literal(true).optional() }) },
+            }),
+        );
     }
 
     it("accepts `true` on a scalar field", () => {
@@ -1134,29 +1103,21 @@ export interface Note {
 function loadNoteSchema(moduleName: string, schemaName: string) {
     const { files } = generate({ entities: { Note: NOTE } });
     const code = files.get(join("repositories", moduleName)) ?? "";
-    const require = createRequire(import.meta.url);
     const z = zodStub();
-    const exportedCode = ts.transpileModule(code, {
-        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    }).outputText;
-    const exports: Record<string, { safeParse: (value: unknown) => { success: boolean } }> = {};
-    const stubRequire = (id: string) => {
-        if (id === "zod") {
-            return { z };
-        }
-        if (id === "../domain/noteSchema.ts") {
-            return {
+    const exports = loadGeneratedModule<Record<string, Schema>>(
+        code,
+        stubImports({
+            zod: { z },
+            "../domain/noteSchema.ts": {
                 noteSchema: z.strictObject({
                     id: z.string(),
                     text: z.string().optional(),
                     status: z.string(),
                     version: z.bigint(),
                 }),
-            };
-        }
-        return require(id);
-    };
-    new Function("exports", "require", exportedCode)(exports, stubRequire);
+            },
+        }),
+    );
     return exports[schemaName];
 }
 

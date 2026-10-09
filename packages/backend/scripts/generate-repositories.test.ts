@@ -1,6 +1,5 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ts } from "ts-morph";
 import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
@@ -20,6 +19,7 @@ import {
 } from "./generate-repositories.ts";
 import { renderCreateTable, renderVersionTrigger } from "./generate-postgres-schema.ts";
 import type { Column, Table } from "./postgres-model.ts";
+import { loadGeneratedModule, stubImports } from "spec/scripts/ts-morph-helper.ts";
 import { WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
@@ -98,20 +98,9 @@ interface GeneratedRepository {
     delete: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
 }
 
-/** Strips a generated module's type-only imports and evaluates the rest in memory. */
+/** Evaluates a generated module in memory; the port's runtime helpers are its only runtime import. */
 function loadModule(code: string): Record<string, unknown> {
-    const transpiled = ts.transpileModule(code, {
-        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    }).outputText;
-    const exports: Record<string, unknown> = {};
-    // A generated module imports the port's runtime helpers from here and nothing else at runtime.
-    new Function("exports", "require", transpiled)(exports, (specifier: string) => {
-        if (specifier === "../sql-executor.ts") {
-            return sqlExecutor;
-        }
-        throw new Error(`the generated repository imported \`${specifier}\` at runtime`);
-    });
-    return exports;
+    return loadGeneratedModule(code, stubImports({ "../sql-executor.ts": sqlExecutor }));
 }
 
 /** The create, update, and delete functions, each resolved from its own generated module. */
