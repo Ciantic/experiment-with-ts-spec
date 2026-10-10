@@ -81,7 +81,7 @@ function suppliedValue(column: Column, fallback: string): string {
 }
 
 /** One array a chunked statement binds: what a row contributes to it, and the cast it carries. */
-export interface BoundArray {
+interface BoundArray {
     /** The JS variable the array is built in. */
     variable: string;
     /** The alias column `unnest` exposes the array as. */
@@ -143,7 +143,7 @@ function bindArrays(arrays: BoundArray[]): string[] {
 }
 
 /** The fragments that build one statement, and the arrays it binds. */
-export interface ChunkStatement {
+interface ChunkStatement {
     fragments: string[];
     arrays: BoundArray[];
 }
@@ -558,7 +558,7 @@ export function generateUpsert(table: Table): string {
 }
 
 /** The delete's SQL around the `(values …)` tuple list, which the runtime builds one tuple per row. */
-export interface DeleteStatement {
+interface DeleteStatement {
     /** The SQL before the tuple list. */
     before: string;
     /** The SQL after it, naming the key columns the tuples are read as and matching each to its row. */

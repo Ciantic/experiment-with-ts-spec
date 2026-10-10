@@ -215,7 +215,7 @@ export function renderClientModule(entity: RestEntity): string {
 }
 
 /** Render the barrel re-exporting the transport, the call model, and every entity module. */
-export function renderClientIndex(model: RestModel): string {
+function renderClientIndex(model: RestModel): string {
     const lines: string[] = [HEADER];
     lines.push(`export * from "../${CLIENT_MODULE}";`);
     lines.push(`export * from "../${HTTP_MODULE}";`);

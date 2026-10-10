@@ -34,12 +34,12 @@ const REPOSITORIES_IMPORT = "../../db/repositories/index.ts";
 const VALIDATION_IMPORT = "validation/index.ts";
 
 /** Invoice -> invoiceRoutes.ts, the module holding that entity's exposed calls. */
-export function routesModuleName(entity: RestEntity): string {
+function routesModuleName(entity: RestEntity): string {
     return `${entity.module}Routes.ts`;
 }
 
 /** Invoice -> invoiceRoutes. */
-export function routesExportName(entity: RestEntity): string {
+function routesExportName(entity: RestEntity): string {
     return `${entity.module}Routes`;
 }
 

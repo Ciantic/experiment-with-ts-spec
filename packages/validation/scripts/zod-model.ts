@@ -27,7 +27,7 @@ export type { Diagnostic };
 export { lowerFirst };
 
 /** One field of an entity schema: the name it is written under and the Zod expression that validates it. */
-export interface ZodField {
+interface ZodField {
     name: string;
     expression: string;
 }
@@ -75,7 +75,7 @@ export interface ZodEntity {
 }
 
 /** One field of a `select`, mirroring `Selection` in `../src/selection.ts`. */
-export interface ZodSelectField {
+interface ZodSelectField {
     name: string;
     /** The entity a branch selects into; undefined for a scalar field. */
     target?: string;
@@ -100,7 +100,7 @@ export interface ZodModel {
 }
 
 /** One comparable field: its name, its whitelisted operators, and the schema its values validate against. */
-export interface ZodWhereField {
+interface ZodWhereField {
     name: string;
     operators: string[];
     expression: string;
@@ -150,22 +150,22 @@ function schemaName(name: string): string {
 }
 
 /** Invoice -> queryInvoiceSelectSchema. */
-export function querySelectSchemaName(name: string): string {
+function querySelectSchemaName(name: string): string {
     return `query${name}SelectSchema`;
 }
 
 /** Invoice -> invoiceInsertSchema. */
-export function insertSchemaName(name: string): string {
+function insertSchemaName(name: string): string {
     return `${lowerFirst(name)}InsertSchema`;
 }
 
 /** Invoice -> invoicePrimaryKeySchema. */
-export function primaryKeySchemaName(name: string): string {
+function primaryKeySchemaName(name: string): string {
     return `${lowerFirst(name)}PrimaryKeySchema`;
 }
 
 /** Invoice -> invoiceUpsertSchema. */
-export function upsertSchemaName(name: string): string {
+function upsertSchemaName(name: string): string {
     return `${lowerFirst(name)}UpsertSchema`;
 }
 
