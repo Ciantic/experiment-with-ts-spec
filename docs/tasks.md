@@ -77,6 +77,11 @@ the pipeline is two lines in `scripts/generate.ts`: the import and the position
 in the driver's list. The driver passes no `argv`, so a generator's flags never
 reach the whole-pipeline run.
 
+The driver is the only consumer of another package's generator, so `backend` and
+`validation` do not export `scripts/`: it imports those two by relative path.
+`spec` keeps its `scripts/` export, because the driver and the generators in both
+of those packages read `spec/scripts/spec-model.ts` through it.
+
 The linter is a step in that same list, so it shares the parse and no longer
 needs a separate entry point in `check`. It takes no argv, and the driver stops
 at its first finding.

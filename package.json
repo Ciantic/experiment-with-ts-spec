@@ -23,10 +23,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^26.6.2",
-    "backend": "workspace:*",
-    "spec": "workspace:*",
-    "validation": "workspace:*"
+    "@types/node": "^26.6.2"
   },
   "devEngines": {
     "packageManager": {

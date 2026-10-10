@@ -10,7 +10,6 @@
     "./domain/*.ts": "./src/domain/*.ts",
     "./repositories/*.ts": "./src/repositories/*.ts",
     "./queries/*.ts": "./src/queries/*.ts",
-    "./scripts/*.ts": "./scripts/*.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

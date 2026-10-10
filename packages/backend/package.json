@@ -6,7 +6,6 @@
   "license": "ISC",
   "type": "module",
   "exports": {
-    "./scripts/*.ts": "./scripts/*.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
