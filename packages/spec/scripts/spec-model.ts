@@ -612,7 +612,7 @@ function parseForeignKey(value: string): ForeignKey {
 }
 
 /** Decode the JSDoc tags on a declaration, keeping the tags as written for rules that need them. */
-export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
+function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
         written: { all: [], byName: new Map() },
         computed: false,
@@ -751,7 +751,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
 }
 
 /** Every type alias among the given sources, decoded once so a consumer reads tags rather than walking JSDoc. */
-export function collectAliases(project: Project, sourceGlob?: string): Map<string, SpecTypeAlias> {
+function collectAliases(project: Project, sourceGlob?: string): Map<string, SpecTypeAlias> {
     const aliases = new Map<string, SpecTypeAlias>();
     const sourceFiles = sourceGlob ? project.getSourceFiles(sourceGlob) : project.getSourceFiles();
     for (const sourceFile of sourceFiles) {
@@ -840,7 +840,7 @@ function readType(node: Node): SpecType {
 }
 
 /** What a type shape denotes: the storage it names, and the JavaScript type its value has at the boundary. */
-export interface TypeResolution {
+interface TypeResolution {
     /** The storage type the shape names, or undefined when it names more than one: a union, an array, an entity. */
     storage: string | undefined;
     /** The JavaScript type the value has, when the node is a scalar this mapping knows. */

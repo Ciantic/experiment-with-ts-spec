@@ -1,8 +1,7 @@
 /** Unit tests for parseSpec, driven by self-contained fixtures. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseInMemorySpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseInMemorySpec, primaryKeyProperties, resolveType } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -480,23 +479,20 @@ describe("insert field rules", () => {
 
 describe("readTags", () => {
     it("distinguishes a missing tag from an empty one", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        const sourceFile = project.createSourceFile(
-            "/Thing.ts",
-            "export interface Thing {\n    /**\n     * @fieldName\n     */\n    label: string;\n}",
-        );
+        // No `@entity`, so the parse keeps this interface as a contract; its tags are read the same way.
+        const { nonEntityInterfaces } = parse({
+            "Thing.ts": "export interface Thing {\n    /**\n     * @fieldName\n     */\n    label: string;\n}",
+        });
 
-        const tags = readTags(sourceFile.getInterfaces()[0]!.getProperties()[0]!);
+        const tags = nonEntityInterfaces[0]!.properties[0]!.tags;
 
         expect(tags.written.byName.has("fieldName")).toBe(true);
         expect(tags.fieldName).toBeUndefined();
     });
 
     it("keeps every tag in source order, which a rule reporting each occurrence needs", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        const sourceFile = project.createSourceFile(
-            "/Thing.ts",
-            `/**
+        const { nonEntityInterfaces } = parse({
+            "Thing.ts": `/**
  * @pgTable thing
  * @unknownOne
  * @unknownTwo
@@ -505,9 +501,9 @@ describe("readTags", () => {
 export interface Thing {
     id: string;
 }`,
-        );
+        });
 
-        const tags = readTags(sourceFile.getInterfaces()[0]!);
+        const tags = nonEntityInterfaces[0]!.tags;
 
         expect(tags.written.all.map((tag) => tag.name)).toEqual([
             "pgTable",
@@ -519,13 +515,11 @@ export interface Thing {
     });
 
     it("carries each tag's text trimmed, and none when it has no comment", () => {
-        const project = new Project({ useInMemoryFileSystem: true });
-        const sourceFile = project.createSourceFile(
-            "/Thing.ts",
-            "export interface Thing {\n    /**\n     * @fieldName  Label  \n     * @primaryKey\n     */\n    id: string;\n}",
-        );
+        const { nonEntityInterfaces } = parse({
+            "Thing.ts": "export interface Thing {\n    /**\n     * @fieldName  Label  \n     * @primaryKey\n     */\n    id: string;\n}",
+        });
 
-        const tags = readTags(sourceFile.getInterfaces()[0]!.getProperties()[0]!);
+        const tags = nonEntityInterfaces[0]!.properties[0]!.tags;
         const fieldName = tags.written.byName.get("fieldName")?.[0];
 
         expect(fieldName?.value).toBe("Label");
@@ -633,10 +627,8 @@ export type AutoIncrement<Name extends string> = number & $brand<Name>;`,
 
 describe("resolveType", () => {
     /** What the `Target` alias resolves to, with its siblings as the alias graph. */
-    function resolution(text: string): TypeResolution {
-        const project = new Project({ useInMemoryFileSystem: true });
-        project.createSourceFile("/spec.ts", text);
-        const aliases = collectAliases(project);
+    function resolution(text: string) {
+        const { aliases } = parse({ "Target.ts": text });
         const alias = aliases.get("Target");
         if (!alias) {
             throw new Error(`the fixture declares no Target alias: ${text}`);
