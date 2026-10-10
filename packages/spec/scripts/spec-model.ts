@@ -14,7 +14,7 @@ import {
 import { DEFAULT_PG_TYPES } from "./pg-types.ts";
 
 /** The `spec` package root, derived from this file's location rather than the cwd. */
-export const SPEC_PACKAGE_ROOT = dirname(import.meta.dirname);
+const SPEC_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 /** The spec `src` directory; a source path under it maps back to its package export specifier. */
 export const SPEC_SRC_ROOT = join(SPEC_PACKAGE_ROOT, "src");
@@ -59,14 +59,6 @@ export const INTERFACE_TAGS = [
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
 
-/** Every tag this model recognises. */
-export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
-
-export type FieldTag = (typeof FIELD_TAGS)[number];
-export type InterfaceTag = (typeof INTERFACE_TAGS)[number];
-export type TypeTag = (typeof TYPE_TAGS)[number];
-export type Tag = (typeof TAGS)[number];
-
 /** Retired or renamed tags, mapped to the advice a linter reports in their place. */
 export const RETIRED_TAGS = new Map<string, string>([
     ["readonly", "use @computed for a derived field; a system-assigned column needs no tag"],
@@ -90,14 +82,13 @@ export const RETIRED_TAGS = new Map<string, string>([
 
 /** Widget hints a field may carry. */
 export const WIDGETS = ["text", "number", "date", "select", "table", "textarea"] as const;
-export type Widget = (typeof WIDGETS)[number];
 
 /** The Postgres realization of a `@computed` field, one tag per field. See docs/spec-annotations.md. */
 export const COMPUTED_KINDS = ["pgVirtual", "pgTrigger"] as const;
 export type ComputedKind = (typeof COMPUTED_KINDS)[number];
 
 /** The timings a `@pgTrigger` header may name. */
-export const TRIGGER_TIMINGS = ["before", "after"] as const;
+const TRIGGER_TIMINGS = ["before", "after"] as const;
 export type TriggerTiming = (typeof TRIGGER_TIMINGS)[number];
 
 /** The row events a `@pgTrigger` header may name. */
@@ -105,16 +96,16 @@ export const TRIGGER_EVENTS = ["insert", "update", "delete"] as const;
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
 
 /** The levels a `@pgTrigger` runs at. Postgres runs a trigger per statement unless it says `for each row`. */
-export const TRIGGER_LEVELS = ["row", "statement"] as const;
+const TRIGGER_LEVELS = ["row", "statement"] as const;
 export type TriggerLevel = (typeof TRIGGER_LEVELS)[number];
 
 /** True when the text is one of {@link TRIGGER_LEVELS}. */
-export function isTriggerLevel(value: string | undefined): value is TriggerLevel {
+function isTriggerLevel(value: string | undefined): value is TriggerLevel {
     return (TRIGGER_LEVELS as readonly string[]).includes(value ?? "");
 }
 
 /** The sort directions an `@queryOrderBy default …` may name. */
-export const ORDER_DIRECTIONS = ["asc", "desc"] as const;
+const ORDER_DIRECTIONS = ["asc", "desc"] as const;
 export type OrderDirection = (typeof ORDER_DIRECTIONS)[number];
 
 /** True when the text is one of {@link ORDER_DIRECTIONS}. */
@@ -124,7 +115,7 @@ export function isOrderDirection(value: string | undefined): value is OrderDirec
 
 /** The `key=action` options a `@foreignKey` value may carry. */
 export const FOREIGN_KEY_OPTIONS = ["onDelete", "onUpdate"] as const;
-export type ForeignKeyOption = (typeof FOREIGN_KEY_OPTIONS)[number];
+type ForeignKeyOption = (typeof FOREIGN_KEY_OPTIONS)[number];
 
 /** True when the text is one of {@link FOREIGN_KEY_OPTIONS}. */
 export function isForeignKeyOption(value: string): value is ForeignKeyOption {
@@ -174,7 +165,7 @@ export type JsType = "string" | "number" | "bigint" | "boolean" | "Date" | "Uint
  * The JavaScript type a TypeScript type denotes by its own name rather than through an alias the spec declares:
  * a keyword (`string`, `bigint`) or a built-in the spec names (`Date`, `Record`).
  */
-export const JS_TYPES: Record<string, JsType> = {
+const JS_TYPES: Record<string, JsType> = {
     string: "string",
     number: "number",
     boolean: "boolean",
@@ -205,7 +196,7 @@ function locationOf(declaration: Node): SpecLocation {
 }
 
 /** The `key=value` parameters on a tag comment, such as `default asc`. */
-export type TagParameters = Map<string, string>;
+type TagParameters = Map<string, string>;
 
 /** A JSDoc tag as written: its name, its comment, and where it sits. */
 export interface SpecTag {
@@ -229,7 +220,7 @@ export interface WrittenTags {
  * The tags on a declaration: the decoded flags a generator maps from, and the tags as written.
  * `written` holds the declared tags alone, so a rule about a missing tag does not see a default in.
  */
-export interface Tags {
+interface Tags {
     /** For linting only; a generator reads a decoded flag instead. */
     written: WrittenTags;
     fieldName?: string;
@@ -364,13 +355,13 @@ export interface SpecModel {
 }
 
 /** Inputs to {@link parseSpec}. */
-export interface ParseOptions {
+interface ParseOptions {
     /** The spec sources to scan, honoured by an in-memory parse; defaults to every file under `spec/src`. */
     sourceGlob?: string;
 }
 
 /** InvoiceRow -> invoice_row. */
-export function snakeCase(name: string): string {
+function snakeCase(name: string): string {
     return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
 }
 
@@ -463,7 +454,7 @@ export function lowerFirst(name: string): string {
 }
 
 /** The module specifier that imports a spec source file, honouring the package's exports map. */
-export function specImportSpecifier(sourceFile: string): string {
+function specImportSpecifier(sourceFile: string): string {
     const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile);
     return `spec/${relativeToSrc}`;
 }
@@ -601,7 +592,7 @@ function parseReadOperations(value: string | undefined): ReadOperation[] {
 }
 
 /** Read a `@foreignKey` value: the first token is the entity, each later `key=action` is an option. */
-export function parseForeignKey(value: string): ForeignKey {
+function parseForeignKey(value: string): ForeignKey {
     const tokens = value.split(/\s+/).filter((token) => token !== "");
     const foreignKey: ForeignKey = { entity: tokens[0] ?? "" };
     for (const token of tokens.slice(1)) {
@@ -781,7 +772,7 @@ export function collectAliases(project: Project, sourceGlob?: string): Map<strin
 }
 
 /** Read a type node into its shape, unwrapping parentheses so a member of a union is inspected as itself. */
-export function readType(node: Node): SpecType {
+function readType(node: Node): SpecType {
     const parenthesized = node.asKind(SyntaxKind.ParenthesizedType);
     if (parenthesized) {
         return readType(parenthesized.getTypeNode());
@@ -935,7 +926,7 @@ function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
  * An interface is an entity when it carries `@entity`; one without the tag is a contract, so no
  * directory decides what is generated. Every alias is read, and `@primitive` selects the scalars.
  */
-export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
+function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
     const sourceGlob = options.sourceGlob ?? SPEC_GLOB;
     const interfaces = new Map<string, SpecInterface>();
     const entities: SpecInterface[] = [];
@@ -1003,7 +994,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
 }
 
 /** The tsconfig the generators read, with every spec source added to it. */
-export function createSpecProject(): Project {
+function createSpecProject(): Project {
     const project = new Project({ tsConfigFilePath: "tsconfig.json" });
     project.addSourceFilesAtPaths(SPEC_GLOB);
     return project;
@@ -1018,7 +1009,7 @@ export function loadSpec(): SpecModel {
 const IN_MEMORY_GLOB = "**/*.ts";
 
 /** One source of an in-memory spec, at the path its globs are matched against. */
-export interface InMemorySpecFile {
+interface InMemorySpecFile {
     filePath: string;
     sourceFileText: string;
 }
@@ -1037,15 +1028,10 @@ export function parseInMemorySpec(files: InMemorySpecFile[], options: ParseOptio
     });
 }
 
-/** Parse one in-memory source into the model. */
-export function parseSpecText(text: string, filePath = "fixture.ts"): SpecModel {
-    return parseInMemorySpec([{ filePath, sourceFileText: text }]);
-}
-
 /** Test support: run a module of generated TypeScript, so a test asserts its behaviour and not its text. */
 
 /** What a generated module's runtime import resolves to. */
-export type ImportResolver = (specifier: string) => unknown;
+type ImportResolver = (specifier: string) => unknown;
 
 /** Answers only `modules`, so a generated module that grows a runtime import fails loudly instead of loading a real one. */
 export function tsStubImports(modules: Record<string, unknown>): ImportResolver {
