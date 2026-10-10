@@ -71,7 +71,7 @@ const QUERIES_DIR = "queries";
 const QUERIES_INDEX = join(QUERIES_DIR, "index.ts");
 
 /** The file for one entity's queries, e.g. `Invoice` -> `queries/queryInvoice.ts`. */
-function queryFileName(entity: string): string {
+export function queryFileName(entity: string): string {
     return join(QUERIES_DIR, `query${entity}.ts`);
 }
 
@@ -170,7 +170,7 @@ const PAGING_FIELDS = [
 ];
 
 /** Render the barrel that re-exports every query schema module. */
-function generateQueriesIndex(queries: ZodQuery[]): string {
+export function generateQueriesIndex(queries: ZodQuery[]): string {
     const lines = [HEADER];
     const entities = [...new Set(queries.map((query) => query.entity))].sort((a, b) => a.localeCompare(b));
     for (const entity of entities) {
@@ -453,7 +453,7 @@ function unionType(names: string[]): string {
 }
 
 /** Render the barrel that re-exports every 1:1 entity schema module. */
-function generateDomainIndex(entities: ZodEntity[]): string {
+export function generateDomainIndex(entities: ZodEntity[]): string {
     const lines = [HEADER];
     for (const entity of entities) {
         lines.push(`export * from "./${domainModuleName(entity.name)}";`);
@@ -462,7 +462,7 @@ function generateDomainIndex(entities: ZodEntity[]): string {
 }
 
 /** Render the barrel that re-exports every write schema module. */
-function generateRepositoriesIndex(entities: ZodEntity[]): string {
+export function generateRepositoriesIndex(entities: ZodEntity[]): string {
     const lines = [HEADER];
     for (const entity of entities) {
         lines.push(`export * from "./${insertModuleName(entity.name)}";`);
@@ -476,7 +476,7 @@ function generateRepositoriesIndex(entities: ZodEntity[]): string {
 }
 
 /** Render the barrel that re-exports the primitives, both entity directories, and the queries. */
-function generateIndex(model: ZodModel): string {
+export function generateIndex(model: ZodModel): string {
     const lines = [HEADER, 'export * from "./primitives.ts";'];
     if (model.entities.length > 0) {
         lines.push(`export * from "./${join(DOMAIN_DIR, "index.ts")}";`);

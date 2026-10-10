@@ -104,7 +104,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
 }
 
 /** Render the metadata module the resolver is constructed with. */
-function renderQueryModelModule(model: QueryModelData): string {
+export function renderQueryModelModule(model: QueryModelData): string {
     const lines: string[] = [HEADER];
     lines.push('import type { QueryModel } from "../resolvers.ts";');
     lines.push("");

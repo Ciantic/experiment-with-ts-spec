@@ -85,7 +85,7 @@ export interface Column {
 }
 
 /** A branch field: a `@relation`, a `@children`, or an `@inlined` entity. See docs/queries.md. */
-interface Relation {
+export interface Relation {
     kind: "relation" | "children" | "inlined";
     /** The target table, for `relation` and `children`. */
     table?: string;

@@ -16,8 +16,8 @@ import {
     isOrderDirection,
     isReferentialAction,
     loadSpec,
-    parseInMemorySpec,
     parseParameters,
+    parseSpecText,
     resolveType,
     assignsColumn,
     hasTriggerHeader,
@@ -869,7 +869,7 @@ export function lintSpec(
 
 /** Lint one in-memory source string, for tests and one-off checks. */
 export function lintSourceText(text: string, filePath = "fixture.ts"): Diagnostic[] {
-    return lintModel(parseInMemorySpec([{ filePath, sourceFileText: text }]), false).findings;
+    return lintModel(parseSpecText(text, filePath), false).findings;
 }
 
 /** Lint a parsed spec, report the findings, and return the exit code. */

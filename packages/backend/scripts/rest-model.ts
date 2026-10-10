@@ -22,16 +22,16 @@ import {
 export type { Diagnostic };
 
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
-type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** One kind of call: the operations the spec declares, since the tag is what exposes one. */
 export type RestKind = ReadOperation | WriteOperation;
 
 /** Where a call carries its argument: the `q` query parameter, or the request body. */
-type RestSource = "query" | "body";
+export type RestSource = "query" | "body";
 
 /** One exposed call. */
-interface RestOperation {
+export interface RestOperation {
     kind: RestKind;
     method: RestMethod;
     path: string;
