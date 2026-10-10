@@ -1037,11 +1037,6 @@ export function parseInMemorySpec(files: InMemorySpecFile[], options: ParseOptio
     });
 }
 
-/** Parse one in-memory source into the model. */
-export function parseSpecText(text: string, filePath = "fixture.ts"): SpecModel {
-    return parseInMemorySpec([{ filePath, sourceFileText: text }]);
-}
-
 /** Test support: run a module of generated TypeScript, so a test asserts its behaviour and not its text. */
 
 /** What a generated module's runtime import resolves to. */
