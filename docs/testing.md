@@ -43,12 +43,12 @@ values, all of which are domain decisions rather than code behaviour.
   `create table` from the fixture's column metadata, and runs create/upsert/
   update/delete against PGlite. It asserts the generated SQL *executes*, not what
   the data means.
-- `packages/spec/scripts/ts-morph-helper.ts` — test support the generator
-  suites share: it transpiles a module of generated TypeScript to CommonJS and
-  runs it with the imports the test names standing in for its own, so an
-  unstubbed runtime import fails the test instead of loading a real module. The
-  compiler lives here and nowhere else in a test, which leaves every generator
-  test free of ts-morph.
+- `packages/spec/scripts/spec-model.ts` — its `tsLoadGeneratedModule` and
+  `tsStubImports` are test support the generator suites share: they transpile a
+  module of generated TypeScript to CommonJS and run it with the imports the test
+  names standing in for its own, so an unstubbed runtime import fails the test
+  instead of loading a real module. The compiler lives in this one file and
+  nowhere else, which leaves every generator test free of ts-morph.
 - `packages/backend/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
   over a real PGlite, so a driver's boundary semantics are observable: a commit,
   a rollback, and that a nested boundary is a savepoint the outer transaction

@@ -19,8 +19,7 @@ import {
 } from "./generate-repositories.ts";
 import { renderCreateTable, renderVersionTrigger } from "./generate-postgres-schema.ts";
 import type { Column, Table } from "./postgres-model.ts";
-import { loadGeneratedModule, stubImports } from "spec/scripts/ts-morph-helper.ts";
-import { WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
+import { tsLoadGeneratedModule, tsStubImports, WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
     // A defaulted column is written when the row supplies it; the version is the database's on create.
@@ -100,7 +99,7 @@ interface GeneratedRepository {
 
 /** Evaluates a generated module in memory; the port's runtime helpers are its only runtime import. */
 function loadModule(code: string): Record<string, unknown> {
-    return loadGeneratedModule(code, stubImports({ "../sql-executor.ts": sqlExecutor }));
+    return tsLoadGeneratedModule(code, tsStubImports({ "../sql-executor.ts": sqlExecutor }));
 }
 
 /** The create, update, and delete functions, each resolved from its own generated module. */

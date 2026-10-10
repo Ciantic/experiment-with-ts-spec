@@ -3,8 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
-import { loadGeneratedModule, stubImports } from "spec/scripts/ts-morph-helper.ts";
-import { parseInMemorySpec } from "spec/scripts/spec-model.ts";
+import { parseInMemorySpec, tsLoadGeneratedModule, tsStubImports } from "spec/scripts/spec-model.ts";
 import {
     domainModuleName,
     generateDomainEntity,
@@ -252,7 +251,7 @@ describe("generatePrimitives", () => {
     it("evaluates to working schemas", () => {
         const { files } = generate({ entities: {} });
         const require = createRequire(import.meta.url);
-        const exports = loadGeneratedModule<Record<string, Schema>>(files.get("primitives.ts") ?? "", require);
+        const exports = tsLoadGeneratedModule<Record<string, Schema>>(files.get("primitives.ts") ?? "", require);
 
         expect(exports.moneySchema?.safeParse("12.50").success).toBe(true);
         expect(exports.moneySchema?.safeParse("not a number").success).toBe(false);
@@ -645,9 +644,9 @@ describe("generateQueryFile", () => {
         const queries = model.queries.filter((query) => query.entity === "Thing");
         const code = generateQueryFile("Thing", queries, byName);
         const z = zodStub();
-        const exports = loadGeneratedModule<Record<string, Schema>>(
+        const exports = tsLoadGeneratedModule<Record<string, Schema>>(
             code,
-            stubImports({
+            tsStubImports({
                 zod: { z },
                 "../primitives.ts": { brandedIdSchema: () => z.string(), moneySchema: z.string() },
                 "./queryChild.ts": { queryChildSelectSchema: z.strictObject({}) },
@@ -690,9 +689,9 @@ describe("select schemas", () => {
         const code = files.get(fileName) ?? "";
         const z = zodStub();
         const scalar = z.string();
-        return loadGeneratedModule<Record<string, Schema>>(
+        return tsLoadGeneratedModule<Record<string, Schema>>(
             code,
-            stubImports({
+            tsStubImports({
                 zod: { z },
                 "../primitives.ts": { brandedIdSchema: () => scalar, moneySchema: scalar },
                 "./primitives.ts": {
@@ -1104,9 +1103,9 @@ function loadNoteSchema(moduleName: string, schemaName: string) {
     const { files } = generate({ entities: { Note: NOTE } });
     const code = files.get(join("repositories", moduleName)) ?? "";
     const z = zodStub();
-    const exports = loadGeneratedModule<Record<string, Schema>>(
+    const exports = tsLoadGeneratedModule<Record<string, Schema>>(
         code,
-        stubImports({
+        tsStubImports({
             zod: { z },
             "../domain/noteSchema.ts": {
                 noteSchema: z.strictObject({
