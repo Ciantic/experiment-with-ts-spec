@@ -27,7 +27,9 @@ function createDb() {
             statements.push(sql);
             return { rows: [] };
         },
-        transaction: async (run) => {
+        transaction: async (...args) => {
+            // This double is about which boundary was opened, not the modes, so it takes the callback either shape ends with.
+            const run = args.length === 1 ? args[0] : args[1];
             boundaries.push(depth === 0 ? "begin" : `savepoint ${depth}`);
             return await run(handle(depth + 1));
         },

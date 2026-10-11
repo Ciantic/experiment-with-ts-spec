@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { affectedRows, createTransactionalDb, resultRows, setTransaction } from "./sql-executor.ts";
+import { affectedRows, createTransactionalDb, resultRows } from "./sql-executor.ts";
 import type { SqlPool } from "./sql-pool.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
@@ -264,73 +264,72 @@ describe("the checkout a boundary runs on", () => {
     });
 });
 
-describe("setTransaction", () => {
-    /** A boundary that records the statements, so the one `set transaction` it carries is observable. */
-    async function boundary(run: (tx: SqlExecutor) => Promise<void>): Promise<string[]> {
-        const { pool, statements } = fakePool();
-        await createTransactionalDb(pool).transaction(run);
-        return statements;
-    }
+describe("the modes a boundary is opened with", () => {
+    it("appends them to the begin that opens the root boundary, in the order Postgres reads them", async () => {
+        const { pool, statements, releases } = fakePool();
 
-    it("writes the modes it was given as one statement", async () => {
-        const statements = await boundary((tx) =>
-            setTransaction(tx, { isolationLevel: "repeatable read", accessMode: "read only", deferrable: true }),
+        await createTransactionalDb(pool).transaction(
+            { deferrable: true, accessMode: "read only", isolationLevel: "repeatable read" },
+            async (tx) => {
+                await tx.query("write");
+            },
         );
 
-        expect(statements).toEqual([
-            "begin",
-            "set transaction isolation level repeatable read, read only, deferrable",
-            "commit",
-        ]);
+        expect(statements).toEqual(["begin isolation level repeatable read, read only, deferrable", "write", "commit"]);
+        expect(releases()).toBe(1);
     });
 
-    it("writes the modes in the same order whatever order they were given in", async () => {
-        const statements = await boundary((tx) => setTransaction(tx, { deferrable: false, accessMode: "read write" }));
+    it("spells a mode the call turns off as the negative the command takes", async () => {
+        const { pool, statements } = fakePool();
 
-        expect(statements).toEqual(["begin", "set transaction read write, not deferrable", "commit"]);
-    });
-
-    it("imports a snapshot on its own, as the command takes a literal for it", async () => {
-        const statements = await boundary(async (tx) => {
-            await setTransaction(tx, { isolationLevel: "repeatable read" });
-            await setTransaction(tx, { snapshot: "00000003-0000001B-1" });
+        await createTransactionalDb(pool).transaction({ deferrable: false, accessMode: "read write" }, async (tx) => {
+            await tx.query("write");
         });
 
-        expect(statements).toEqual([
-            "begin",
-            "set transaction isolation level repeatable read",
-            "set transaction snapshot '00000003-0000001B-1'",
-            "commit",
-        ]);
+        expect(statements).toEqual(["begin read write, not deferrable", "write", "commit"]);
     });
 
-    it("refuses the shapes of the command it cannot write, rather than sending a broken one", async () => {
-        const { db, close } = await fixture();
+    it("opens a plain boundary when the call names no modes", async () => {
+        const { pool, statements } = fakePool();
 
-        await expect(setTransaction(db, {})).rejects.toThrow("at least one mode");
-        await expect(setTransaction(db, { snapshot: "00000003-0000001B-1", accessMode: "read only" })).rejects.toThrow(
-            "a snapshot is the only mode",
-        );
-        await expect(setTransaction(db, { snapshot: "0'; drop table widget; --" })).rejects.toThrow(
-            "no quote and no backslash",
-        );
-        await expect(setTransaction(db, { snapshot: "0\\'" })).rejects.toThrow("no quote and no backslash");
-        await close();
+        await createTransactionalDb(pool).transaction({}, async (tx) => {
+            await tx.query("write");
+        });
+
+        expect(statements).toEqual(["begin", "write", "commit"]);
     });
 
-    it("sets the isolation level of the boundary it is given, over a real driver", async () => {
+    it("refuses them on a nested boundary, which is a savepoint and takes none", async () => {
         const { db, close } = await fixture();
 
         await db.transaction(async (tx) => {
-            await setTransaction(tx, { isolationLevel: "serializable" });
+            await expect(
+                tx.transaction({ accessMode: "read only" }, async (inner) => {
+                    await inner.query("select 1");
+                }),
+            ).rejects.toThrow("a nested boundary is a savepoint");
+            await tx.query("insert into widget (id) values ($1)", ["after"]);
+        });
+
+        expect(await ids(db)).toEqual(["after"]);
+        await close();
+    });
+
+    it("opens the boundary with the modes over a real driver, and they do not outlive it", async () => {
+        const { db, close } = await fixture();
+
+        await db.transaction({ isolationLevel: "serializable", accessMode: "read only" }, async (tx) => {
             expect(resultRows(await tx.query("show transaction_isolation"))).toEqual([
                 { transaction_isolation: "serializable" },
             ]);
+            expect(resultRows(await tx.query("show transaction_read_only"))).toEqual([
+                { transaction_read_only: "on" },
+            ]);
         });
-        // The mode belongs to the boundary, so the next statement is back at the session default.
         expect(resultRows(await db.query("show transaction_isolation"))).toEqual([
             { transaction_isolation: "read committed" },
         ]);
+        expect(resultRows(await db.query("show transaction_read_only"))).toEqual([{ transaction_read_only: "off" }]);
         await close();
     });
 
@@ -338,8 +337,7 @@ describe("setTransaction", () => {
         const { db, close } = await fixture();
 
         await expect(
-            db.transaction(async (tx) => {
-                await setTransaction(tx, { accessMode: "read only" });
+            db.transaction({ accessMode: "read only" }, async (tx) => {
                 await tx.query("insert into widget (id) values ($1)", ["a"]);
             }),
         ).rejects.toThrow("read-only transaction");

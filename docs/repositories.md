@@ -49,11 +49,13 @@ a mapping of the spec. Reads are generated separately from the entities in
 `packages/backend/src/db/queries/`; see `docs/queries.md`.
 
 `SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
-`query(sql, parameters?)` and `transaction(run)`. The generated modules never
-import a driver, so `pg` stays an optional dependency. A driver reaches the port
-as a `SqlPool` (`src/db/sql-pool.ts`): `pg`'s `Pool` satisfies it directly, and
-PGlite through `createPglitePool`. Tests assert both fits, so the structural
-types cannot drift away from the drivers.
+`query(sql, parameters?)` and `transaction(run)`, or `transaction(options, run)`
+where the caller names the modes its own boundary opens with
+(`docs/transactions.md`). The generated modules never import a driver, so `pg`
+stays an optional dependency. A driver reaches the port as a `SqlPool`
+(`src/db/sql-pool.ts`): `pg`'s `Pool` satisfies it directly, and PGlite through
+`createPglitePool`. Tests assert both fits, so the structural types cannot drift
+away from the drivers.
 
 ## What a write returns
 

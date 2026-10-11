@@ -27,9 +27,20 @@ all-or-nothing.
 caller can run statements in.
 
 ```ts
+/** The callback one boundary runs. */
+type Run<T> = (tx: SqlExecutor) => Promise<T>;
+
 export interface SqlExecutor {
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+    /** The callback, or the modes ahead of it; the port splits what it is given. */
+    transaction<T>(...args: [Run<T>] | [TransactionOptions, Run<T>]): Promise<T>;
+}
+
+/** What a boundary is opened with; each mode lands on the `begin` that opens it. */
+export interface TransactionOptions {
+    readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
+    readonly accessMode?: "read write" | "read only";
+    readonly deferrable?: boolean;
 }
 
 /** One session borrowed from a pool; `release` returns it. */
@@ -74,6 +85,9 @@ over a pool:
   checked-out session — and releases the session in a `finally`.
 - **A nested boundary is a savepoint** on the same session, so one set of
   boundary statements is what both drivers run.
+- **The modes a call names are appended to the `begin`**, so a root boundary is
+  opened at the isolation level, access mode, and deferrability the caller asked
+  for. A savepoint takes no modes, so a nested call that names any is refused.
 
 The generated repositories and queries take `SqlExecutor`, so a caller passes the
 handle it already has. A repository opens a boundary only where its own call is
@@ -89,18 +103,16 @@ the one session that boundary checked out. Session-scoped state — a temp table
 `set local`, an advisory lock, a prepared statement — is therefore only coherent
 inside a boundary, and a caller that needs it opens one.
 
-`setTransaction` (`src/db/sql-executor.ts`) is the one statement written for the
-boundary itself rather than for the data in it. It takes the handle of the
-boundary it should apply to and the modes — `isolationLevel`, `accessMode`
-(`read write` or `read only`), `deferrable`, or a `snapshot` to import — and
-issues one `set transaction`. Postgres fixes an isolation level at the first
-statement of a transaction, so it belongs at the top of the callback; through a
-root handle it borrows a session of its own and, with no transaction open, the
-command only warns and does nothing. A snapshot is the one mode the command takes
-alone, which is why importing one is a second call after the level that can carry
-it, and it is written inline because the command takes a literal rather than a
-parameter — an identifier carrying a quote or a backslash is refused rather than
-escaped.
+In a caller's own terms, the modes are named on the call: `db.transaction({
+isolationLevel: "serializable", accessMode: "read only" }, run)` opens the
+boundary as `begin isolation level serializable, read only`, in the order
+Postgres reads the modes and skipping the ones the call left out, and a call that
+names none gets a plain `begin`. Riding on the `begin` is what the command
+requires: Postgres fixes an isolation level before the boundary's first query, so
+a statement issued from inside the callback is too late. The modes are the ones a
+`begin` accepts — a boundary cannot import another boundary's snapshot — they do
+not outlive the boundary, and a nested call cannot name any, since its `savepoint`
+takes none.
 
 A statement must go through the handle it was given. The pool is not the boundary:
 a `query` made on the pool while a checkout is open waits for the one connection,
@@ -193,7 +205,7 @@ transaction.
 ```ts
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;
-    async function savepoint<T>(session: SqlSession, run: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
         await session.query(`savepoint ${name}`);
         try {
@@ -208,10 +220,11 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     }
     return {
         query: (sql, parameters) => pool.query(sql, parameters),
-        transaction: async (run) => {
+        transaction: async (...args) => {
+            const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
             const session = await pool.connect();
             try {
-                await session.query("begin");
+                await session.query(begin(opts));
                 const value = await run(handle(session));
                 await session.query("commit");
                 return value;
@@ -244,9 +257,10 @@ parameter limit — open their own boundary, which nests as a savepoint inside o
 the caller already holds.
 
 The root boundary is the port's own `begin`/`commit`, issued on the session the
-pool checked out. What makes that safe is the checkout, not the statement: a `pg`
-`PoolClient` pins one connection, and the one-connection pool holds PGlite's
-single connection until the boundary releases it. A hand-issued `begin` on a pool
+pool checked out, with any modes the call named appended to the `begin`. What
+makes that safe is the checkout, not the statement: a `pg` `PoolClient` pins one
+connection, and the one-connection pool holds PGlite's single connection until
+the boundary releases it. A hand-issued `begin` on a pool
 that did not pin its session would let another request's statement run inside the
 open boundary and be rolled back with it, which is exactly what a checkout
 prevents.
@@ -527,8 +541,9 @@ client imports nothing from the backend.
   for a sequence of writes and wrong for one with a side effect a rollback cannot
   undo — delivery is the case (`docs/invoice-sending.md`). Declaring that needs
   an operation to exist first.
-- **A retry policy.** `setTransaction` is how a caller picks the modes of its own
-  boundary; recognising a conflict and retrying is still the caller's decision.
+- **A retry policy.** The modes on `transaction` are how a caller picks the
+  characteristics of its own boundary; recognising a conflict and retrying is
+  still the caller's decision.
 - **A transaction spanning requests.** A client that needs one sends a
   `transaction` group; there is no session, no prepared transaction, and no
   two-phase commit.

@@ -1,12 +1,15 @@
 /** The `SqlExecutor` port over a pool: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
 import type { SqlPool, SqlSession } from "./sql-pool.ts";
 
+/** The callback one boundary runs, on the handle that boundary owns. */
+type Run<T> = (tx: SqlExecutor) => Promise<T>;
+
 /** One handle: statements, and the boundary a caller can run them in. */
 export interface SqlExecutor {
     /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    /** Run `run` in one boundary on one connection; nested, that boundary is a savepoint. */
-    transaction<T>(run: (tx: SqlExecutor) => Promise<T>): Promise<T>;
+    /** Run the callback in one boundary on one connection, opened with the modes the call names ahead of it; nested, that boundary is a savepoint. */
+    transaction<T>(...args: [Run<T>] | [TransactionOptions, Run<T>]): Promise<T>;
 }
 
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */
@@ -32,41 +35,25 @@ export function resultRows(result: unknown): Array<Record<string, unknown>> {
     return returned.rows as Array<Record<string, unknown>>;
 }
 
-/** The characteristics `SET TRANSACTION` puts on the boundary it runs in, none of which outlives it. */
-export interface SetTransactionOptions {
-    /** `ISOLATION LEVEL …`, which only the boundary's first statement may set. */
+/** The modes a boundary is opened with, written into the `begin` that opens it; none of them outlives it. */
+export interface TransactionOptions {
+    /** `ISOLATION LEVEL …`, which only the boundary's opening statement may set. */
     readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
     /** `READ WRITE`, the default, or `READ ONLY`. */
     readonly accessMode?: "read write" | "read only";
     /** `[NOT] DEFERRABLE`, which only matters to a boundary that is also `serializable` and `read only`. */
     readonly deferrable?: boolean;
-    /** The identifier `pg_export_snapshot` answered, which the command takes alone. */
-    readonly snapshot?: string;
 }
 
-/** Set the characteristics of the boundary `db` is in, as that boundary's first statement. */
-export async function setTransaction(db: SqlExecutor, modes: SetTransactionOptions): Promise<void> {
-    if (modes.snapshot !== undefined) {
-        if (modes.isolationLevel !== undefined || modes.accessMode !== undefined || modes.deferrable !== undefined) {
-            throw new Error("a snapshot is the only mode a set transaction may carry");
-        }
-        // The identifier is inline because the command takes a literal, not a parameter; a quote or a backslash is refused, not escaped.
-        if (/['\\]/.test(modes.snapshot)) {
-            throw new Error("a snapshot identifier carries no quote and no backslash");
-        }
-        await db.query(`set transaction snapshot '${modes.snapshot}'`);
-        return;
-    }
-
+/** The statement that opens a root boundary, carrying the modes the call named, in the order Postgres reads them. */
+function begin(options?: TransactionOptions): string {
+    const modes = options ?? {};
     const clauses = [
         modes.isolationLevel === undefined ? [] : [`isolation level ${modes.isolationLevel}`],
         modes.accessMode === undefined ? [] : [modes.accessMode],
         modes.deferrable === undefined ? [] : [modes.deferrable ? "deferrable" : "not deferrable"],
     ].flat();
-    if (clauses.length === 0) {
-        throw new Error("a set transaction needs at least one mode");
-    }
-    await db.query(`set transaction ${clauses.join(", ")}`);
+    return clauses.length === 0 ? "begin" : `begin ${clauses.join(", ")}`;
 }
 
 /** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
@@ -77,12 +64,18 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     function handle(session: SqlSession): SqlExecutor {
         return {
             query: (sql, parameters) => session.query(sql, parameters),
-            transaction: (run) => savepoint(session, run),
+            transaction: async <T>(...args: [Run<T>] | [TransactionOptions, Run<T>]) => {
+                const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
+                if (opts !== undefined) {
+                    throw new Error("a nested boundary is a savepoint, which opens with no transaction options");
+                }
+                return await savepoint(session, run);
+            },
         };
     }
 
-    /** Run `run` after a savepoint, rolling back to it when `run` throws. */
-    async function savepoint<T>(session: SqlSession, run: (tx: SqlExecutor) => Promise<T>): Promise<T> {
+    /** Run the callback after a savepoint, rolling back to it when the callback throws. */
+    async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
         await session.query(`savepoint ${name}`);
         try {
@@ -99,10 +92,11 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
 
     return {
         query: (sql, parameters) => pool.query(sql, parameters),
-        transaction: async (run) => {
+        transaction: async <T>(...args: [Run<T>] | [TransactionOptions, Run<T>]) => {
+            const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
             const session = await pool.connect();
             try {
-                await session.query("begin");
+                await session.query(begin(opts));
                 const value = await run(handle(session));
                 await session.query("commit");
                 return value;

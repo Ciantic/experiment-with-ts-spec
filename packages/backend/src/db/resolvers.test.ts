@@ -79,7 +79,7 @@ function counting(inner: SqlExecutor): SqlExecutor & { count: () => number } {
             count += 1;
             return inner.query(sql, parameters);
         },
-        transaction: (run) => inner.transaction(run),
+        transaction: (...args) => inner.transaction(...args),
     };
 }
 
