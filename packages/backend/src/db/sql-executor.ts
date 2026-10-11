@@ -32,6 +32,43 @@ export function resultRows(result: unknown): Array<Record<string, unknown>> {
     return returned.rows as Array<Record<string, unknown>>;
 }
 
+/** The characteristics `SET TRANSACTION` puts on the boundary it runs in, none of which outlives it. */
+export interface SetTransactionOptions {
+    /** `ISOLATION LEVEL …`, which only the boundary's first statement may set. */
+    readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
+    /** `READ WRITE`, the default, or `READ ONLY`. */
+    readonly accessMode?: "read write" | "read only";
+    /** `[NOT] DEFERRABLE`, which only matters to a boundary that is also `serializable` and `read only`. */
+    readonly deferrable?: boolean;
+    /** The identifier `pg_export_snapshot` answered, which the command takes alone. */
+    readonly snapshot?: string;
+}
+
+/** Set the characteristics of the boundary `db` is in, as that boundary's first statement. */
+export async function setTransaction(db: SqlExecutor, modes: SetTransactionOptions): Promise<void> {
+    if (modes.snapshot !== undefined) {
+        if (modes.isolationLevel !== undefined || modes.accessMode !== undefined || modes.deferrable !== undefined) {
+            throw new Error("a snapshot is the only mode a set transaction may carry");
+        }
+        // The identifier is inline because the command takes a literal, not a parameter; a quote or a backslash is refused, not escaped.
+        if (/['\\]/.test(modes.snapshot)) {
+            throw new Error("a snapshot identifier carries no quote and no backslash");
+        }
+        await db.query(`set transaction snapshot '${modes.snapshot}'`);
+        return;
+    }
+
+    const clauses = [
+        modes.isolationLevel === undefined ? [] : [`isolation level ${modes.isolationLevel}`],
+        modes.accessMode === undefined ? [] : [modes.accessMode],
+        modes.deferrable === undefined ? [] : [modes.deferrable ? "deferrable" : "not deferrable"],
+    ].flat();
+    if (clauses.length === 0) {
+        throw new Error("a set transaction needs at least one mode");
+    }
+    await db.query(`set transaction ${clauses.join(", ")}`);
+}
+
 /** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;

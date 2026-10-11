@@ -89,6 +89,19 @@ the one session that boundary checked out. Session-scoped state — a temp table
 `set local`, an advisory lock, a prepared statement — is therefore only coherent
 inside a boundary, and a caller that needs it opens one.
 
+`setTransaction` (`src/db/sql-executor.ts`) is the one statement written for the
+boundary itself rather than for the data in it. It takes the handle of the
+boundary it should apply to and the modes — `isolationLevel`, `accessMode`
+(`read write` or `read only`), `deferrable`, or a `snapshot` to import — and
+issues one `set transaction`. Postgres fixes an isolation level at the first
+statement of a transaction, so it belongs at the top of the callback; through a
+root handle it borrows a session of its own and, with no transaction open, the
+command only warns and does nothing. A snapshot is the one mode the command takes
+alone, which is why importing one is a second call after the level that can carry
+it, and it is written inline because the command takes a literal rather than a
+parameter — an identifier carrying a quote or a backslash is refused rather than
+escaped.
+
 A statement must go through the handle it was given. The pool is not the boundary:
 a `query` made on the pool while a checkout is open waits for the one connection,
 and on `pg` it would land on another connection and escape the transaction.
@@ -514,8 +527,8 @@ client imports nothing from the backend.
   for a sequence of writes and wrong for one with a side effect a rollback cannot
   undo — delivery is the case (`docs/invoice-sending.md`). Declaring that needs
   an operation to exist first.
-- **Choosing an isolation level or a retry policy.** A transaction runs at the
-  session default; recognising a conflict and retrying is the caller's decision.
+- **A retry policy.** `setTransaction` is how a caller picks the modes of its own
+  boundary; recognising a conflict and retrying is still the caller's decision.
 - **A transaction spanning requests.** A client that needs one sends a
   `transaction` group; there is no session, no prepared transaction, and no
   two-phase commit.
