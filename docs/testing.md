@@ -80,6 +80,12 @@ values, all of which are domain decisions rather than code behaviour.
   released. Each step's insert is in the trace too, so the order reads as the
   rows land. That log is the only place the driver's own statements are visible,
   which is why the assertions read it rather than the rows.
+- `packages/backend/src/http/group-handler.test.ts` — drives `handleGroup` with
+  fixture routes and an executor double that records the boundaries a tree opens.
+  It asserts the wire contract — every call is validated before any of them runs,
+  and a body that is not a group is a 400 naming the entry at fault — and the
+  composition: a `transaction` opens one boundary, a nested one a savepoint, and an
+  `attempt` one it may roll back without taking the outer group down.
 - `packages/backend/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
 - `packages/backend/src/main.test.ts` — the end-to-end smoke test: the generated

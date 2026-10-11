@@ -118,16 +118,17 @@ A statement must go through the handle it was given. The pool is not the boundar
 a `query` made on the pool while a checkout is open waits for the one connection,
 and on `pg` it would land on another connection and escape the transaction.
 
-The router opens one boundary per `transaction` group it meets while walking a
-request, and hands every handler the `SqlExecutor` of the boundary it is in. A nested
-group does not join the outer one — it opens a savepoint inside it, so it can
-roll back on its own while the outer boundary still commits. Two sibling
-`transaction` groups are two boundaries, atomic separately, inside one request.
+The group handler (`src/http/group-handler.ts`) opens one boundary per
+`transaction` group it meets while walking the tree, and hands every handler the
+`SqlExecutor` of the boundary it is in. A nested group does not join the outer
+one — it opens a savepoint inside it, so it can roll back on its own while the
+outer boundary still commits. Two sibling `transaction` groups are two
+boundaries, atomic separately, inside one request.
 
-The router does not decide that itself. `db/group.ts` holds the three boundary
-semantics over the port, and the router only maps a group's `kind` onto one of
-them. The names are the SDK's, so the same vocabulary names the same boundaries
-on both sides:
+The group handler does not decide that itself. `db/group.ts` holds the three
+boundary semantics over the port, and the group handler only maps a group's
+`kind` onto one of them. The names are the SDK's, so the same vocabulary names
+the same boundaries on both sides:
 
 ```ts
 export type Step = (db: SqlExecutor) => Promise<unknown>;
@@ -159,7 +160,7 @@ const [found, written] = await transaction(
 
 `attempt` reports the error unchanged rather than interpreting it, because what a
 failure means — its path, its HTTP status, whether it was even this group's to
-tolerate — is a router question.
+tolerate — is the group handler's question.
 
 That split is what makes the semantics testable without a spec.
 `src/db/group.test.ts` drives the three against a real PGlite over a `widget`
@@ -388,10 +389,10 @@ type Wire = { call: { method: HttpMethod; path: string; argument: unknown } }
           | { group: { kind: "batch" | "transaction" | "attempt"; calls: Wire[] } };
 ```
 
-The router resolves every `call` against the same route table it matches a single
-request on, and validates the entry with that route's `input`. The `source` field
-is not consulted: a single request reads `q` or the body, but an entry already
-carries its argument as a field.
+The group handler resolves every `call` against the same route table the router
+matches a single request on, and validates the entry with that route's `input`.
+The `source` field is not consulted: a single request reads `q` or the body, but
+an entry already carries its argument as a field.
 
 **The whole tree is validated before any of it executes**, so a malformed group
 is a 400 that has written nothing. Only a runtime failure can leave a partial
@@ -462,8 +463,8 @@ caller cannot know which of the earlier writes landed.
 
 The wire shape is exactly the value the SDK already holds, so nothing encodes a
 call twice: `toWire` in `sdk/src/client.ts` walks the group into the tree the
-router reads, and `devalue` carries it as the body. As with a single call, the
-client imports nothing from the backend.
+group handler reads, and `devalue` carries it as the body. As with a single call,
+the client imports nothing from the backend.
 
 ## Gotchas
 
@@ -492,8 +493,8 @@ client imports nothing from the backend.
   because a builder is not thenable. `exec` is the only function that makes a
   call, and the generated modules take no `HttpClient`.
 - **Both sides declare the group contract.** `GROUP_PATH` and the verb list are
-  written twice, in `sdk/src/client.ts` and in `src/http/router.ts`, because the
-  client may not import the backend. No generated artifact keeps them in step, so
+  written twice, in `sdk/src/client.ts` and in `src/http/group-handler.ts`, because
+  the client may not import the backend. No generated artifact keeps them in step, so
   the end-to-end test is what does: a group is the only call whose path is not
   derived from `rest-model.ts`.
 - **A void write answers `null`; a create and an upsert answer their keys.** A

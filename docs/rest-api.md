@@ -12,13 +12,15 @@ halves that must not be generated: the router and the transport.
   each a `Route[]` for that collection, plus the `index.ts` barrel concatenating
   them into the table the router matches on.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
+- `packages/backend/src/http/http-response.ts` — the response shape, and the
+  plain-JSON failures a handler answers with. Hand-written.
 - `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel.
 - `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
   combinators. Hand-written.
 - `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
-- `packages/backend/src/http/router.ts` — the group entry point. Hand-written;
-  see `docs/transactions.md`.
+- `packages/backend/src/http/group-handler.ts` — the group entry point.
+  Hand-written; see `docs/transactions.md`.
 
 - `pnpm generate:rest-api` — writes the route table.
 - `pnpm generate:rest-client` — writes the client.
@@ -48,9 +50,9 @@ carries it in the body.
 | group | `POST` | `/$group` | a tree of the calls above, in the body |
 
 The group path is the one call not derived from an entity: it takes a tree of
-calls and runs them in one request, and it is owned by the router rather than the
-generated table. `docs/transactions.md` records its body, its results, and how a
-`transaction` group differs from a `batch`.
+calls and runs them in one request, and it is owned by the hand-written group
+handler rather than the generated table. `docs/transactions.md` records its body,
+its results, and how a `transaction` group differs from a `batch`.
 
 Which side carries the argument is a field on the model (`source: "query" |
 "body"`), so the generated table and the generated client read it rather than
@@ -234,7 +236,8 @@ Two rules follow from the codec:
 
 ## Status mapping
 
-The router turns a thrown database error into a status from its `code`:
+The handler turns a thrown database error into a status from its `code`
+(`statusFor`, `src/http/http-response.ts`):
 
 | Code | Status | Meaning |
 | --- | --- | --- |

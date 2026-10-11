@@ -1,0 +1,40 @@
+/** The HTTP result shape and the plain-JSON failures both handlers answer with. See docs/rest-api.md. */
+
+/** One response. Success bodies are `devalue`; error bodies are plain JSON. */
+export interface HttpResponse {
+    status: number;
+    body: string;
+}
+
+/** PostgreSQL error codes to HTTP statuses. Anything else is a server fault. */
+const ERROR_STATUSES: Record<string, number> = {
+    "22P02": 400, // invalid_text_representation
+    "23502": 400, // not_null_violation
+    "23503": 409, // foreign_key_violation
+    "23505": 409, // unique_violation
+    "23514": 400, // check_violation: a value the row's constraints reject
+    "40001": 409, // serialization_failure: the version-conflict raise. See docs/versioning.md
+};
+
+/** The status a thrown database error maps to. */
+export function statusFor(thrown: unknown): number {
+    const code = (thrown as { code?: unknown }).code;
+    if (typeof code !== "string") {
+        return 500;
+    }
+    return ERROR_STATUSES[code] ?? 500;
+}
+
+/** A plain-JSON error body, so a failure is readable without the codec. */
+export function error(status: number, message: string): HttpResponse {
+    return { status, body: JSON.stringify({ error: message }) };
+}
+
+/** The same, for a group failure: the path names the entry that raised. */
+export function failure(status: number, message: string, path: number[], issues?: unknown): HttpResponse {
+    const body: Record<string, unknown> = { error: message, path };
+    if (issues !== undefined) {
+        body["issues"] = issues;
+    }
+    return { status, body: JSON.stringify(body) };
+}
