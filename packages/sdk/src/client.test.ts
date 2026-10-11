@@ -248,6 +248,70 @@ describe("groups", () => {
         expect(outcome).toEqual({ ok: false, error: { message: "boom", path: [0] } });
     });
 
+    it("carries the modes a transaction names, and marks the group", async () => {
+        const { http, calls } = client(stringify([null]));
+
+        await exec(
+            http,
+            transaction({ isolationLevel: "serializable", accessMode: "read only" }, call<void>("POST", "/widget", [])),
+        );
+
+        expect(sentBody(calls[0]!)).toEqual({
+            group: {
+                kind: "transaction",
+                options: { isolationLevel: "serializable", accessMode: "read only" },
+                calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+            },
+        });
+    });
+
+    it("carries them on an attempt, and leaves them off a group that names none", async () => {
+        const named = client(stringify({ ok: true, value: [null] }));
+        const plain = client(stringify([null]));
+
+        await exec(named.http, attempt({ deferrable: true }, call<void>("POST", "/widget", [])));
+        await exec(plain.http, batch(call<void>("POST", "/widget", [])));
+
+        expect(sentBody(named.calls[0]!)).toEqual({
+            group: {
+                kind: "attempt",
+                options: { deferrable: true },
+                calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+            },
+        });
+        // A group with no modes writes no `options`, so the tree stays what it was.
+        expect(sentBody(plain.calls[0]!)).toEqual({
+            group: { kind: "batch", calls: [{ call: { method: "POST", path: "/widget", argument: [] } }] },
+        });
+    });
+
+    it("carries the modes of a nested group, and keeps the outer group's own", async () => {
+        const { http, calls } = client(stringify([null]));
+
+        await exec(
+            http,
+            transaction(
+                { accessMode: "read only" },
+                transaction(call<void>("POST", "/widget", [])),
+            ),
+        );
+
+        expect(sentBody(calls[0]!)).toEqual({
+            group: {
+                kind: "transaction",
+                options: { accessMode: "read only" },
+                calls: [
+                    {
+                        group: {
+                            kind: "transaction",
+                            calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+                        },
+                    },
+                ],
+            },
+        });
+    });
+
     it("raises an HttpError naming the entry that failed", async () => {
         const { http } = client(JSON.stringify({ error: "version conflict", path: [1, 0] }), 409);
 
@@ -291,6 +355,15 @@ describe("the result type", () => {
             http,
             attempt(row, write),
         );
+        // The modes come first, and they do not shift a result: the tuple stays aligned with the calls.
+        const withModes: Promise<[{ id: string }[], void]> = exec(
+            http,
+            transaction({ isolationLevel: "serializable" }, row, write),
+        );
+        const toleratedWithModes: Promise<Attempted<[{ id: string }[], void]>> = exec(
+            http,
+            attempt({ accessMode: "read only" }, row, write),
+        );
 
         // A generated builder is generic in what it selects, so its result must still
         // narrow by position once it is inside a group.
@@ -299,7 +372,7 @@ describe("the result type", () => {
             transaction(write, selectWidget({ select: { id: true } })),
         );
 
-        void [single, allVoid, mixed, nested, tolerated, toleratedRows, selected];
+        void [single, allVoid, mixed, nested, tolerated, toleratedRows, selected, withModes, toleratedWithModes];
     }
 
     it("keeps each call's result, positionally, and collapses an all-void group", () => {

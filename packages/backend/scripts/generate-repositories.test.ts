@@ -139,7 +139,10 @@ function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlEx
             );
             return { affectedRows: rows.length, rows };
         },
-        transaction: (...args) => (args.length === 1 ? args[0] : args[1])(handle),
+        transaction: (...args) => {
+            const [, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
+            return run(handle);
+        },
     };
     return handle;
 }

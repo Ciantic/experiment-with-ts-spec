@@ -257,6 +257,11 @@ A group failure answers the same way and adds the `path` of the entry that
 failed, so a caller can name it without re-deriving it from the tree it sent.
 `docs/transactions.md` records the shape.
 
+A group that names transaction options it cannot open a boundary with — a
+`batch`, or a group nested inside another boundary — is a 400 at the `path` of
+that group, and so is a mode that is not one of the literals a `begin` accepts.
+No mode reaches the statement unvalidated.
+
 ## Gotchas
 
 - **`curl` cannot read a response.** A success body is `devalue`; without a

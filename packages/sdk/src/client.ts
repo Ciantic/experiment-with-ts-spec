@@ -7,6 +7,13 @@ export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 /** Whether a group runs its calls as one boundary, and whether it tolerates failure. */
 export type GroupKind = "batch" | "transaction" | "attempt";
 
+/** The modes a boundary-opening group is opened with. Declared here so the client imports no backend type. */
+export interface TransactionOptions {
+    readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
+    readonly accessMode?: "read write" | "read only";
+    readonly deferrable?: boolean;
+}
+
 declare const Result: unique symbol;
 
 /** One call, built by a generated function and not yet sent. */
@@ -21,6 +28,8 @@ export interface Call<R> {
 /** Several calls in one request; `kind` decides the boundary. See docs/transactions.md. */
 export interface Group<R> {
     readonly kind: GroupKind;
+    /** The modes the group opens its boundary with; a `batch` opens none. */
+    readonly options?: TransactionOptions;
     readonly calls: readonly Executable[];
     readonly [Result]?: R;
 }
@@ -37,9 +46,9 @@ export type Executable<R = unknown> = Call<R> | Group<R>;
 type WireCall = { call: { method: Method; path: string; argument: unknown } };
 
 /** A nested group of a group body. */
-type WireGroup = { group: { kind: GroupKind; calls: Wire[] } };
+type WireGroup = { group: { kind: GroupKind; options?: TransactionOptions; calls: Wire[] } };
 
-/** A group body: a tree of calls and groups, mirroring the router's shape. */
+/** A group body: a tree of calls and groups, mirroring the group handler's shape. */
 export type Wire = WireCall | WireGroup;
 
 /** The path the group entry point is mounted at. See docs/transactions.md. */
@@ -59,21 +68,42 @@ type GroupResult<T extends readonly Executable[]> = Results<T> extends readonly 
 /** The results of a keyed group. */
 type NamedResults<T extends Record<string, Executable>> = { -readonly [K in keyof T]: ResultOf<T[K]> };
 
+/** What a boundary-opening group is called with: its calls, or the modes ahead of them. */
+type Args<T extends readonly Executable[]> = [TransactionOptions, ...T] | T;
+
+/** What a grouped call's arguments hold once its first element has said which of the two shapes arrived. */
+type Split = [TransactionOptions | undefined, ...Executable[]];
+
 /** Build one call. Generated modules are the only callers. */
 export function call<R>(method: Method, path: string, argument: unknown): Call<R> {
     return { kind: "call", method, path, argument };
 }
 
-/** Group calls into one request, all-or-nothing: a boundary that fails loudly. */
-export function transaction<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>> {
-    return { kind: "transaction", calls };
+/** Group calls into one request, all-or-nothing: a boundary that fails loudly, opened with the modes the call names. */
+export function transaction<const T extends readonly Executable[]>(
+    options: TransactionOptions,
+    ...calls: T
+): Group<GroupResult<T>>;
+export function transaction<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>>;
+export function transaction<const T extends readonly Executable[]>(...args: Args<T>): Group<GroupResult<T>> {
+    // A call carries `kind` and the modes ahead of one do not, so the first argument says which shape this is.
+    const [options, ...calls] = (args[0] !== undefined && "kind" in args[0] ? [undefined, ...args] : args) as Split;
+    return { kind: "transaction", ...(options === undefined ? {} : { options }), calls };
 }
 
 /** Like `transaction`, but a failure is reported rather than raised. See docs/transactions.md. */
 export function attempt<const T extends readonly Executable[]>(
+    options: TransactionOptions,
     ...calls: T
+): Group<Attempted<GroupResult<T>>>;
+export function attempt<const T extends readonly Executable[]>(
+    ...calls: T
+): Group<Attempted<GroupResult<T>>>;
+export function attempt<const T extends readonly Executable[]>(
+    ...args: Args<T>
 ): Group<Attempted<GroupResult<T>>> {
-    return { kind: "attempt", calls };
+    const [options, ...calls] = (args[0] !== undefined && "kind" in args[0] ? [undefined, ...args] : args) as Split;
+    return { kind: "attempt", ...(options === undefined ? {} : { options }), calls };
 }
 
 /** Group calls into one request, each committing on its own. */
@@ -91,7 +121,13 @@ export function toWire(executable: Executable): Wire {
     if (executable.kind === "call") {
         return { call: { method: executable.method, path: executable.path, argument: executable.argument } };
     }
-    return { group: { kind: executable.kind, calls: executable.calls.map(toWire) } };
+    return {
+        group: {
+            kind: executable.kind,
+            ...(executable.options === undefined ? {} : { options: executable.options }),
+            calls: executable.calls.map(toWire),
+        },
+    };
 }
 
 /** Send one executable and resolve with its result. */

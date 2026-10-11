@@ -307,8 +307,16 @@ export interface Call<R> {
 
 export interface Group<R> {
     readonly kind: "batch" | "transaction" | "attempt";
+    /** The modes the group opens its boundary with; a `batch` opens none. */
+    readonly options?: TransactionOptions;
     readonly calls: readonly Executable[];
     readonly [Result]?: R;
+}
+
+export interface TransactionOptions {
+    readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
+    readonly accessMode?: "read write" | "read only";
+    readonly deferrable?: boolean;
 }
 
 export type Attempted<R> =
@@ -351,6 +359,8 @@ axes compose in either direction:
 await exec(http, transaction(createInvoice(rows), createInvoiceRow(rowInserts)));
 await exec(http, batch(queryInvoice(a), transaction(createInvoice(rows), createInvoiceRow(rowInserts))));
 await exec(http, transaction(createInvoice(rows), attempt(createInvoiceRow(bad))));
+// the modes come first, and only a group that opens a boundary takes them
+await exec(http, attempt({ accessMode: "read only" }, queryInvoice({ select: { id: true } })));
 ```
 
 A group's result is a tuple aligned with its arguments, and nesting composes:
@@ -386,7 +396,7 @@ A group is one `POST /$group` whose body is a tree:
 
 ```ts
 type Wire = { call: { method: HttpMethod; path: string; argument: unknown } }
-          | { group: { kind: "batch" | "transaction" | "attempt"; calls: Wire[] } };
+          | { group: { kind: "batch" | "transaction" | "attempt"; options?: TransactionOptions; calls: Wire[] } };
 ```
 
 The group handler resolves every `call` against the same route table the router
@@ -443,6 +453,24 @@ surface. Every call a group can make is a call that already exists, and a check
 added to a single route — validation, and later an authorization guard — runs for
 its entry too, because the entry goes through the route.
 
+### The modes a group opens with
+
+A `transaction` or an `attempt` may name the modes its boundary opens with, as
+the SDK's first argument and as an `options` field on the wire:
+
+```ts
+await exec(http, transaction({ isolationLevel: "serializable", accessMode: "read only" }, createInvoice(rows)));
+```
+
+The modes are the ones the port's `transaction` takes (`src/db/sql-executor.ts`),
+and they ride on the `begin` that opens the root boundary, so the group is opened
+at the level the caller asked for rather than switching later. A group that names
+none opens a plain `begin`, which is the session default. A `batch` opens no
+boundary, so it takes none, and a group nested inside another boundary is a
+savepoint, which takes none either — both are a 400 naming the entry. Every mode
+is validated against the literals a `begin` accepts, so an invalid level is
+refused with a 400 rather than interpolated into the statement.
+
 Where the argument travels follows from a group being a write: the calls are in a
 body, so a batched read escapes the `q` length limit that `docs/rest-api.md`
 records, and the 1 MB body cap is the only size bound besides a cap on the number
@@ -471,6 +499,10 @@ the client imports nothing from the backend.
 - **A `batch` is not a unit of work.** Two writes in a `batch` commit
   separately, so a failure on the second leaves the first committed. Wrap the
   group in `transaction` when the caller needs both or neither.
+- **The modes belong to the boundary that opens.** `transaction` and `attempt`
+  take them, and the group is opened at that level; a `batch` has no boundary to
+  put them on and a nested group is a savepoint, so both are a 400. A group that
+  names none gets the session default.
 - **A read in a `batch` is its own snapshot.** For several reads that must agree
   with each other — a parent and its children — use `transaction`, which is the
   only construct that gives a group one snapshot (`docs/queries.md` records the

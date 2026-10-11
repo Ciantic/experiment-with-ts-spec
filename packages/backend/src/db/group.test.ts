@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import { attempt, batch, transaction, type Attempted, type Step } from "./group.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb } from "./sql-executor.ts";
+import { createTransactionalDb, resultRows } from "./sql-executor.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -32,6 +32,11 @@ function refuse(id: string): Step {
         await db.query("insert into widget (id) values ($1)", [id]);
         throw new Error(`refused ${id}`);
     };
+}
+
+/** A step that answers the transaction setting `name` as the boundary sees it. */
+function setting(name: string): Step {
+    return async (db) => resultRows(await db.query(`show ${name}`))[0]?.[name];
 }
 
 /** One statement PGlite logged: the SQL, and the values it ran with. */
@@ -213,6 +218,55 @@ describe("attempt", () => {
     });
 });
 
+describe("the modes a group names", () => {
+    it("opens the boundary at them, and they do not outlive it", async () => {
+        const { db, close } = await fixture();
+
+        const inside = await transaction(
+            db,
+            { isolationLevel: "serializable", accessMode: "read only" },
+            setting("transaction_isolation"),
+            setting("transaction_read_only"),
+        );
+
+        expect(inside).toEqual(["serializable", "on"]);
+        // A mode belongs to the boundary, so the next statement is back at the session default.
+        expect(await setting("transaction_isolation")(db)).toBe("read committed");
+        expect(await setting("transaction_read_only")(db)).toBe("off");
+        await close();
+    });
+
+    it("gives an attempt the same modes, and still tolerates the write one of them refuses", async () => {
+        const { db, close } = await fixture();
+
+        const outcome = await attempt(db, { accessMode: "read only" }, setting("transaction_read_only"), insert("a"));
+
+        expect(outcome.ok === false && (outcome.error as Error).message).toMatch(/read-only/i);
+        expect(await ids(db)).toEqual([]);
+        await close();
+    });
+
+    it("leaves the boundary at the session defaults when the call names none", async () => {
+        const { db, close } = await fixture();
+
+        expect(await transaction(db, setting("transaction_isolation"))).toEqual(["read committed"]);
+        await close();
+    });
+
+    it("refuses them on a nested boundary, which is a savepoint and takes none", async () => {
+        const { db, close } = await fixture();
+
+        await db.transaction(async (tx) => {
+            await expect(transaction(tx, { accessMode: "read only" }, insert("a"))).rejects.toThrow(
+                "a nested boundary is a savepoint",
+            );
+        });
+
+        expect(await ids(db)).toEqual([]);
+        await close();
+    });
+});
+
 describe("the typed results", () => {
     it("keeps each step's result type, whichever kind groups it", async () => {
         const { db, close } = await fixture();
@@ -249,6 +303,25 @@ describe("the statements the boundaries put on the driver", () => {
         });
 
         expect(trace).toEqual(["begin", "insert a", "insert b", "commit"]);
+    });
+
+    it("writes the modes a group names into the statement that opens its boundary", async () => {
+        const trace = await boundaryTrace(async (db) => {
+            await transaction(
+                db,
+                { isolationLevel: "serializable", accessMode: "read only" },
+                setting("transaction_read_only"),
+            );
+            await attempt(db, { deferrable: false }, insert("a"));
+        });
+
+        expect(trace).toEqual([
+            "begin isolation level serializable, read only",
+            "commit",
+            "begin not deferrable",
+            "insert a",
+            "commit",
+        ]);
     });
 
     it("brackets a failed transaction with begin and rollback, never reaching a commit", async () => {

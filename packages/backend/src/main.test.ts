@@ -127,6 +127,22 @@ describe("a live server", () => {
         expect(name).toMatch(GENERATED);
         expect(thrown.status).toBe(400);
     });
+
+    it("runs a group with the modes it names, so both hand-written halves agree on them", async () => {
+        const first = buildersNamed("query")[0];
+        expect(first, "a generated query is needed to group").toBeDefined();
+        const [, builder] = first!;
+
+        const result = await api.exec(
+            http,
+            api.transaction(
+                { isolationLevel: "serializable", accessMode: "read only" },
+                builder({ select: {} }) as Executable<unknown[]>,
+            ),
+        );
+
+        expect(Array.isArray(result)).toBe(true);
+    });
 });
 
 describe("--log-sql", () => {

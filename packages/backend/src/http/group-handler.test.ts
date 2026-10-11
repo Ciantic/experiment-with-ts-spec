@@ -1,7 +1,7 @@
 /** Unit tests for the group entry point, over fixture routes. See docs/testing.md and docs/transactions.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { HttpResponse, Route, RouteInput } from "./router.ts";
 
@@ -23,19 +23,20 @@ const rejects: RouteInput = {
 function createDb() {
     const boundaries: string[] = [];
     const statements: string[] = [];
+    const modes: Array<TransactionOptions | undefined> = [];
     const handle = (depth: number): SqlExecutor => ({
         query: async (sql) => {
             statements.push(sql);
             return { rows: [] };
         },
         transaction: async (...args) => {
-            // This double is about which boundary was opened, not the modes, so it takes the callback either shape ends with.
-            const run = args.length === 1 ? args[0] : args[1];
+            const [options, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
+            modes.push(options);
             boundaries.push(depth === 0 ? "begin" : `savepoint ${depth}`);
             return await run(handle(depth + 1));
         },
     });
-    return { db: handle(0), boundaries, statements };
+    return { db: handle(0), boundaries, statements, modes };
 }
 
 let fake: ReturnType<typeof createDb>;
@@ -64,8 +65,8 @@ function callEntry(method: string, path: string, argument: unknown) {
 }
 
 /** A whole group body, as the client encodes it. */
-function groupBody(kind: "batch" | "transaction" | "attempt", calls: unknown[]): string {
-    return stringify({ group: { kind, calls } });
+function groupBody(kind: "batch" | "transaction" | "attempt", calls: unknown[], options?: unknown): string {
+    return stringify({ group: { kind, ...(options === undefined ? {} : { options }), calls } });
 }
 
 /** Handle one body against a fixture route table, resolving calls the way the router does. */
@@ -323,5 +324,96 @@ describe("handleGroup", () => {
 
         expect(response.status).toBe(409);
         expect(JSON.parse(response.body)).toEqual({ error: "version conflict", path: [1, 0] });
+    });
+
+    it("opens a transaction boundary with the modes the group named", async () => {
+        await handle(
+            [echoRoute()],
+            groupBody(
+                "transaction",
+                [callEntry("POST", "/echo", {})],
+                { isolationLevel: "serializable", accessMode: "read only" },
+            ),
+        );
+
+        expect(fake.boundaries).toEqual(["begin"]);
+        expect(fake.modes).toEqual([{ isolationLevel: "serializable", accessMode: "read only" }]);
+    });
+
+    it("opens an attempt boundary with them too", async () => {
+        await handle(
+            [echoRoute()],
+            groupBody("attempt", [callEntry("POST", "/echo", {})], { deferrable: true }),
+        );
+
+        expect(fake.modes).toEqual([{ deferrable: true }]);
+    });
+
+    it("names no modes on a boundary the group left them off", async () => {
+        await handle([echoRoute()], groupBody("transaction", [callEntry("POST", "/echo", {})]));
+
+        expect(fake.modes).toEqual([undefined]);
+    });
+
+    it("gives a transaction inside a batch the modes it named, since it opens a root boundary there", async () => {
+        await handle(
+            [echoRoute()],
+            groupBody("batch", [
+                { group: { kind: "transaction", options: { accessMode: "read only" }, calls: [callEntry("POST", "/echo", {})] } },
+            ]),
+        );
+
+        expect(fake.modes).toEqual([{ accessMode: "read only" }]);
+    });
+
+    it("refuses modes on a batch, which opens no boundary to put them on", async () => {
+        const response = await handle(
+            [echoRoute()],
+            groupBody("batch", [callEntry("POST", "/echo", {})], { accessMode: "read only" }),
+        );
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(response.body)).toEqual({
+            error: "a batch opens no boundary, so it takes no transaction options",
+            path: [],
+        });
+    });
+
+    it("refuses modes on a nested boundary, which is a savepoint and takes none", async () => {
+        const response = await handle(
+            [echoRoute()],
+            groupBody("transaction", [
+                { group: { kind: "transaction", options: { accessMode: "read only" }, calls: [] } },
+            ]),
+        );
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(response.body)).toEqual({
+            error: "a nested boundary is a savepoint, which takes no transaction options",
+            path: [0],
+        });
+    });
+
+    it("refuses a mode that is not one the boundary can be opened with", async () => {
+        const routes = [echoRoute()];
+        const badLevel = await handle(
+            routes,
+            groupBody("transaction", [], { isolationLevel: "read uncommitted; drop table widget" }),
+        );
+        const badMode = await handle(routes, groupBody("transaction", [], { accessMode: "readonly" }));
+        const badFlag = await handle(routes, groupBody("transaction", [], { deferrable: "yes" }));
+        const badKey = await handle(routes, groupBody("transaction", [], { snapshot: "00000003-0000001B-1" }));
+
+        expect(JSON.parse(badLevel.body)).toEqual({
+            error: "an isolation level must be serializable, repeatable read, read committed, or read uncommitted",
+            path: [],
+        });
+        expect(JSON.parse(badMode.body)).toEqual({ error: "an access mode must be read write, or read only", path: [] });
+        expect(JSON.parse(badFlag.body)).toEqual({ error: "deferrable must be true or false", path: [] });
+        expect(JSON.parse(badKey.body)).toEqual({
+            error: "a transaction option must be isolationLevel, accessMode, or deferrable, not snapshot",
+            path: [],
+        });
+        expect([badLevel.status, badMode.status, badFlag.status, badKey.status]).toEqual([400, 400, 400, 400]);
     });
 });

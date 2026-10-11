@@ -1,7 +1,12 @@
 /** The group entry point: check a tree of calls, run it on the boundary its kind names, and encode the results. See docs/transactions.md. */
 import { parse as decode, stringify as encode } from "devalue";
 import { attempt, batch, transaction } from "../db/group.ts";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import {
+    ACCESS_MODES,
+    ISOLATION_LEVELS,
+    type SqlExecutor,
+    type TransactionOptions,
+} from "../db/sql-executor.ts";
 import { error, failure, statusFor, type HttpResponse } from "./http-response.ts";
 import type { HttpMethod, Route } from "./router.ts";
 
@@ -24,6 +29,8 @@ interface PlannedCall {
 /** A checked group, with every call in it resolved and validated. */
 interface PlannedGroup {
     kind: GroupKind;
+    /** The modes the group opens its boundary with, or `undefined` for the session defaults. */
+    options: TransactionOptions | undefined;
     calls: Planned[];
 }
 
@@ -66,8 +73,73 @@ function isMethod(value: unknown): value is HttpMethod {
     return typeof value === "string" && (METHODS as string[]).includes(value);
 }
 
+/** Whether a decoded value is one of the literals `values` names. */
+function isOneOf<T extends string>(values: readonly T[], value: unknown): boolean {
+    return typeof value === "string" && (values as readonly string[]).includes(value);
+}
+
+/** The literals one mode accepts, spelled for a refusal. */
+function spell(values: readonly string[]): string {
+    const last = values.at(-1) ?? "";
+    return values.length <= 1 ? last : `${values.slice(0, -1).join(", ")}, or ${last}`;
+}
+
+/** One mode of a group's options, refused unless it is a literal the port writes into its `begin`. */
+function literal<T extends string>(values: readonly T[], value: unknown, what: string, path: number[]): T {
+    if (!isOneOf(values, value)) {
+        throw new BadGroup(`${what} must be ${spell(values)}`, path);
+    }
+    return value as T;
+}
+
+/** Whether the value is the boolean a mode takes. */
+function flag(value: unknown, what: string, path: number[]): boolean {
+    if (typeof value !== "boolean") {
+        throw new BadGroup(`${what} must be true or false`, path);
+    }
+    return value;
+}
+
+/** Check the modes a group names; only a group that opens a root boundary takes any. */
+function planOptions(
+    wire: unknown,
+    kind: GroupKind,
+    inBoundary: boolean,
+    path: number[],
+): TransactionOptions | undefined {
+    if (wire === undefined) {
+        return undefined;
+    }
+    if (kind === "batch") {
+        throw new BadGroup("a batch opens no boundary, so it takes no transaction options", path);
+    }
+    if (inBoundary) {
+        throw new BadGroup("a nested boundary is a savepoint, which takes no transaction options", path);
+    }
+    if (!isRecord(wire)) {
+        throw new BadGroup("transaction options must be an object", path);
+    }
+    for (const key of Object.keys(wire)) {
+        if (key !== "isolationLevel" && key !== "accessMode" && key !== "deferrable") {
+            throw new BadGroup(`a transaction option must be isolationLevel, accessMode, or deferrable, not ${key}`, path);
+        }
+    }
+
+    // Each mode is written into the `begin`, so a value is one of the literals the port accepts rather than free text.
+    const isolationLevel = wire["isolationLevel"];
+    const accessMode = wire["accessMode"];
+    const deferrable = wire["deferrable"];
+    return {
+        ...(isolationLevel === undefined
+            ? {}
+            : { isolationLevel: literal(ISOLATION_LEVELS, isolationLevel, "an isolation level", path) }),
+        ...(accessMode === undefined ? {} : { accessMode: literal(ACCESS_MODES, accessMode, "an access mode", path) }),
+        ...(deferrable === undefined ? {} : { deferrable: flag(deferrable, "deferrable", path) }),
+    };
+}
+
 /** Check one node of a group body: its shape, then the route it names, then that route's `input`. */
-function planNode(wire: unknown, resolve: ResolveRoute, path: number[]): Planned {
+function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBoundary: boolean): Planned {
     if (!isRecord(wire)) {
         throw new BadGroup("a group entry must be an object", path);
     }
@@ -89,7 +161,14 @@ function planNode(wire: unknown, resolve: ResolveRoute, path: number[]): Planned
         if (!Array.isArray(calls)) {
             throw new BadGroup("a group must carry calls", path);
         }
-        return { kind, calls: calls.map((child, index) => planNode(child, resolve, [...path, index])) };
+        const options = planOptions(group["options"], kind, inBoundary, path);
+        // A transaction or an attempt opens a boundary, so its own calls are inside one.
+        const enclosing = inBoundary || kind !== "batch";
+        return {
+            kind,
+            options,
+            calls: calls.map((child, index) => planNode(child, resolve, [...path, index], enclosing)),
+        };
     }
 
     throw new BadGroup("a group entry must be a call or a group", path);
@@ -124,7 +203,7 @@ function planCall(value: unknown, resolve: ResolveRoute, path: number[]): Planne
 
 /** Check a whole group body. The top level must be a group, not a lone call. */
 function planGroup(value: unknown, resolve: ResolveRoute): PlannedGroup {
-    const node = planNode(value, resolve, []);
+    const node = planNode(value, resolve, [], false);
     if (node.kind === "call") {
         throw new BadGroup("the body must be a group", []);
     }
@@ -162,11 +241,15 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
         return await batch(db, ...steps);
     }
 
+    // The modes a group named ride on the `begin` that opens it; a nested boundary is a savepoint and names none.
     if (node.kind === "transaction") {
-        return await transaction(db, ...steps);
+        return node.options === undefined
+            ? await transaction(db, ...steps)
+            : await transaction(db, node.options, ...steps);
     }
 
-    const outcome = await attempt(db, ...steps);
+    const outcome =
+        node.options === undefined ? await attempt(db, ...steps) : await attempt(db, node.options, ...steps);
     if (outcome.ok) {
         return { ok: true, value: outcome.value };
     }

@@ -35,12 +35,18 @@ export function resultRows(result: unknown): Array<Record<string, unknown>> {
     return returned.rows as Array<Record<string, unknown>>;
 }
 
+/** The isolation levels a boundary may open at, the literals `ISOLATION LEVEL` takes; a caller that validates untrusted input checks against these. */
+export const ISOLATION_LEVELS = ["serializable", "repeatable read", "read committed", "read uncommitted"] as const;
+
+/** The access modes a boundary may open in. */
+export const ACCESS_MODES = ["read write", "read only"] as const;
+
 /** The modes a boundary is opened with, written into the `begin` that opens it; none of them outlives it. */
 export interface TransactionOptions {
     /** `ISOLATION LEVEL …`, which only the boundary's opening statement may set. */
-    readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
+    readonly isolationLevel?: (typeof ISOLATION_LEVELS)[number];
     /** `READ WRITE`, the default, or `READ ONLY`. */
-    readonly accessMode?: "read write" | "read only";
+    readonly accessMode?: (typeof ACCESS_MODES)[number];
     /** `[NOT] DEFERRABLE`, which only matters to a boundary that is also `serializable` and `read only`. */
     readonly deferrable?: boolean;
 }
