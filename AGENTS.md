@@ -10,10 +10,10 @@
 - `packages/sdk/` — generated type-safe REST client, plus the hand-written
   transport and package entry.
 
-# Scripts
+## Scripts
 
 - `scripts/*` must never be tightly coupled to spec domain names. Read what you
-  need from an annotation on the spec (e.g. `@pgType`) or a generic helper in
+  need from an annotation on the spec (e.g. `@pgType`) via a generic helper in
   `packages/spec/scripts/spec-model.ts`. A new domain type must not require
   editing a generator. We should invent more annotations if need be.
 - Only `packages/spec/scripts/spec-model.ts` reads the spec through ts-morph. A
@@ -28,13 +28,13 @@
   owns no artifact and holds no domain knowledge; it lints first, then orders
   the generators.
 
-# Code style
+## Code style
 
 - Only single-line comments in code. If you need more than one line of
   explanation, put it in `docs/` instead and leave a one-line pointer where the
   code needs it.
 
-# Docs
+## Docs
 
 - One topic per file in `docs/`, named for the concept (`queries.md`,
   `versioning.md`), each with a single `# Title`. There is no index;
@@ -44,17 +44,18 @@
   it came to: no "this replaced X", no "previously", no record of an approach
   that was rejected. Git history is where change is recorded.
 
-# Testing
+## Testing
 
 - Tests cover the functionality of the code under test, not domain-specific
   features. Build fixtures in memory; do not read `packages/spec/src`
   from a unit test. A domain change must not require rewriting a test. See
   `docs/testing.md`.
 
-# Specs
+## Specs
 
 - An interface is an entity when it carries `@entity`, and a type alias is a
   primitive when it carries `@primitive`; a directory never decides what is
   generated, so an entity may live anywhere under `packages/spec/src/`. See
   `docs/spec-annotations.md`.
-- Specs are in the `packages/spec`, currently they are only for demonstration. This means generators should not be tightly coupled with any particular spec.
+- Specs are in the `packages/spec`, currently they are only for demonstration.
+  This means generators should not be tightly coupled with any particular spec.
