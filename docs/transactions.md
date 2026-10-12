@@ -327,7 +327,7 @@ export type Executable<R = unknown> = Call<R> | Group<R>;
 ```
 
 The generator emits the builders, one per exposed call. Everything above, plus
-`exec`, `transaction`, `attempt`, `batch`, and `bundle`, is hand-written in
+`exec`, `transaction`, `attempt`, and `batch`, is hand-written in
 `sdk/src/client.ts` next to the transport in `sdk/src/http.ts` — the same split as
 the server, where the router is hand-written and the route table is generated.
 The SDK declares its own `Method` union rather than importing the router's, so
@@ -375,16 +375,6 @@ A group's result is a tuple aligned with its arguments, and nesting composes:
 
 An all-void group collapses to `void`, which is why the rejected branch of an
 `attempt` over writes is `Attempted<void>` rather than a tuple of nothings.
-
-A named form maps the same values onto keys, for a group long enough that
-positions stop being readable:
-
-```ts
-const { found, written } = await exec(http, bundle({
-    found: queryInvoice({ select: { number: true } }),
-    written: createInvoice(rows),
-}));
-```
 
 A builder is immutable data, so one may be passed to two groups. It is not
 thenable, so `await createInvoice(rows)` compiles and does nothing; `exec` is the

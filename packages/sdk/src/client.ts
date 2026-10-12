@@ -65,9 +65,6 @@ type GroupResult<T extends readonly Executable[]> = Results<T> extends readonly 
     ? void
     : Results<T>;
 
-/** The results of a keyed group. */
-type NamedResults<T extends Record<string, Executable>> = { -readonly [K in keyof T]: ResultOf<T[K]> };
-
 /** What a boundary-opening group is called with: its calls, or the modes ahead of them. */
 type Args<T extends readonly Executable[]> = [TransactionOptions, ...T] | T;
 
@@ -111,13 +108,8 @@ export function batch<const T extends readonly Executable[]>(...calls: T): Group
     return { kind: "batch", calls };
 }
 
-/** Group calls under keys, for a group long enough that positions stop reading well. */
-export function bundle<const T extends Record<string, Executable>>(calls: T): Group<NamedResults<T>> {
-    return { kind: "batch", calls: Object.values(calls) };
-}
-
 /** Render one executable as the tree the group route reads. */
-export function toWire(executable: Executable): Wire {
+function toWire(executable: Executable): Wire {
     if (executable.kind === "call") {
         return { call: { method: executable.method, path: executable.path, argument: executable.argument } };
     }

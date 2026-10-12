@@ -1,7 +1,7 @@
 /** Unit tests for the hand-written call model, over a stub `fetch`. See docs/transactions.md. */
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import { batch, bundle, attempt, call, exec, GROUP_PATH, transaction, type Attempted, type Call } from "./client.ts";
+import { batch, attempt, call, exec, GROUP_PATH, transaction, type Attempted, type Call } from "./client.ts";
 import { createHttpClient, HttpError, type HttpClient } from "./http.ts";
 
 interface Recorded {
@@ -200,28 +200,6 @@ describe("groups", () => {
 
         expect(inner).toEqual(["inner"]);
         expect(outer).toBe("outer");
-    });
-
-    it("carries a bundle under its keys, in order", async () => {
-        const { http, calls } = client(stringify([null, null]));
-
-        await exec(
-            http,
-            bundle({
-                first: call<void>("POST", "/widget", [1]),
-                second: call<void>("POST", "/other", [2]),
-            }),
-        );
-
-        expect(sentBody(calls[0]!)).toEqual({
-            group: {
-                kind: "batch",
-                calls: [
-                    { call: { method: "POST", path: "/widget", argument: [1] } },
-                    { call: { method: "POST", path: "/other", argument: [2] } },
-                ],
-            },
-        });
     });
 
     it("marks an attempt group, and keeps its recovery shape", async () => {
