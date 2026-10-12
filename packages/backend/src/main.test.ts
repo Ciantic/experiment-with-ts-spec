@@ -1,7 +1,8 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
-import type { Call, Executable, HttpClient } from "sdk/api/index.ts";
+import { createHttpClient, exec, transactionWith } from "sdk/index.ts";
+import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes/index.ts";
 import { createDatabase, parseArgs, startServer, type StartedServer } from "./main.ts";
@@ -46,7 +47,7 @@ let http!: HttpClient;
 
 beforeAll(async () => {
     started = await startServer({ port: 0, seed: true });
-    http = api.createHttpClient(`http://127.0.0.1:${started.port}`);
+    http = createHttpClient(`http://127.0.0.1:${started.port}`);
 });
 
 afterAll(async () => {
@@ -84,7 +85,7 @@ describe("seeded server", () => {
             const query = calls[`query${entity}`];
             expect(query, `query${entity} is generated`).toBeTypeOf("function");
 
-            const result = await api.exec(http, query!({ select: {} }) as Executable<unknown[]>);
+            const result = await exec(http, query!({ select: {} }) as Executable<unknown[]>);
 
             expect(result, entity).toHaveLength(rows.length);
         }
@@ -94,7 +95,7 @@ describe("seeded server", () => {
 describe("a live server", () => {
     it("answers every generated query with an array", async () => {
         for (const [name, builder] of buildersNamed("query")) {
-            const result = await api.exec(http, builder({ select: {} }) as Executable<unknown[]>);
+            const result = await exec(http, builder({ select: {} }) as Executable<unknown[]>);
 
             expect(Array.isArray(result), name).toBe(true);
         }
@@ -102,7 +103,7 @@ describe("a live server", () => {
 
     it("claims a route for every write, so a malformed one is a 400 and not a 404", async () => {
         for (const [name, builder] of builders().filter(([name]) => !name.startsWith("query"))) {
-            const thrown = (await api.exec(http, builder("not a write") as Executable<never>).catch(
+            const thrown = (await exec(http, builder("not a write") as Executable<never>).catch(
                 (error: unknown) => error,
             )) as { status?: number };
 
@@ -128,7 +129,7 @@ describe("a live server", () => {
         // A write is refused for its shape rather than for its encoding, so a Date survives the body.
         const [name, builder] = builders().find(([name]) => name.startsWith("create"))!;
 
-        const thrown = (await api.exec(http, builder([{ at: new Date(0) }]) as Executable<never>).catch(
+        const thrown = (await exec(http, builder([{ at: new Date(0) }]) as Executable<never>).catch(
             (error: unknown) => error,
         )) as { status?: number };
 
@@ -141,9 +142,9 @@ describe("a live server", () => {
         expect(first, "a generated query is needed to group").toBeDefined();
         const [, builder] = first!;
 
-        const result = await api.exec(
+        const result = await exec(
             http,
-            api.transactionWith(
+            transactionWith(
                 { isolationLevel: "serializable", accessMode: "read only" },
                 builder({ select: {} }),
             ),

@@ -8,7 +8,7 @@
 - `packages/backend/` — Postgres schema, generated repositories, and result
   mapping for the spec.
 - `packages/sdk/` — generated type-safe REST client, plus the hand-written
-  transport.
+  transport and package entry.
 
 # Scripts
 

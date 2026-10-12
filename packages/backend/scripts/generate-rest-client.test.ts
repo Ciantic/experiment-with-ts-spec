@@ -306,12 +306,11 @@ export interface Internal {
 });
 
 describe("generateRestClient", () => {
-    it("re-exports the call model, the transport, and every entity from the barrel", () => {
+    it("re-exports every entity from the barrel, and nothing outside the directory", () => {
         const files = generateRestClient(model);
 
-        expect(files.get("index.ts")).toContain('export * from "../client.ts";');
-        expect(files.get("index.ts")).toContain('export * from "../http.ts";');
         expect(files.get("index.ts")).toContain('export * from "./widget.ts";');
+        expect(files.get("index.ts")).not.toContain('"../');
         expect(files.has("widget.ts")).toBe(true);
     });
 

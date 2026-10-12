@@ -1,8 +1,9 @@
 # REST API
 
 The database layer is exposed over HTTP, and a type-safe client is generated from
-the same spec. Nothing about the surface is written by hand except the two
-halves that must not be generated: the router and the transport.
+the same spec. Nothing about the surface is written by hand except the three files
+that must not be generated: the router, the transport, and the entry re-exporting
+the transport.
 
 - `packages/backend/scripts/rest-model.ts` — the shared model. Paths, methods,
   filters, and the operations each entity exposes. Hand-written.
@@ -15,7 +16,10 @@ halves that must not be generated: the router and the transport.
 - `packages/backend/src/http/http-response.ts` — the response shape, and the
   plain-JSON failures a handler answers with. Hand-written.
 - `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
-- `packages/sdk/src/api/` — generated: one module per entity plus a barrel.
+- `packages/sdk/src/api/` — generated: one module per entity plus a barrel
+  re-exporting them. Imported by name, not re-exported by the entry.
+- `packages/sdk/src/index.ts` — the package entry: the call model and the
+  transport, and nothing generated. Hand-written.
 - `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
   combinators. Hand-written.
 - `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
