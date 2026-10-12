@@ -1,7 +1,18 @@
 /** Unit tests for the hand-written call model, over a stub `fetch`. See docs/transactions.md. */
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import { batch, attempt, call, exec, GROUP_PATH, transaction, type Attempted, type Call } from "./client.ts";
+import {
+    attempt,
+    attemptWith,
+    batch,
+    call,
+    exec,
+    GROUP_PATH,
+    transaction,
+    transactionWith,
+    type Attempted,
+    type Call,
+} from "./client.ts";
 import { createHttpClient, HttpError, type HttpClient } from "./http.ts";
 
 interface Recorded {
@@ -231,7 +242,10 @@ describe("groups", () => {
 
         await exec(
             http,
-            transaction({ isolationLevel: "serializable", accessMode: "read only" }, call<void>("POST", "/widget", [])),
+            transactionWith(
+                { isolationLevel: "serializable", accessMode: "read only" },
+                call<void>("POST", "/widget", []),
+            ),
         );
 
         expect(sentBody(calls[0]!)).toEqual({
@@ -247,7 +261,7 @@ describe("groups", () => {
         const named = client(stringify({ ok: true, value: [null] }));
         const plain = client(stringify([null]));
 
-        await exec(named.http, attempt({ deferrable: true }, call<void>("POST", "/widget", [])));
+        await exec(named.http, attemptWith({ deferrable: true }, call<void>("POST", "/widget", [])));
         await exec(plain.http, batch(call<void>("POST", "/widget", [])));
 
         expect(sentBody(named.calls[0]!)).toEqual({
@@ -268,7 +282,7 @@ describe("groups", () => {
 
         await exec(
             http,
-            transaction(
+            transactionWith(
                 { accessMode: "read only" },
                 transaction(call<void>("POST", "/widget", [])),
             ),
@@ -333,14 +347,14 @@ describe("the result type", () => {
             http,
             attempt(row, write),
         );
-        // The modes come first, and they do not shift a result: the tuple stays aligned with the calls.
+        // The modes ride on the group alone, so they shift no result: the tuple stays aligned with the calls.
         const withModes: Promise<[{ id: string }[], void]> = exec(
             http,
-            transaction({ isolationLevel: "serializable" }, row, write),
+            transactionWith({ isolationLevel: "serializable" }, row, write),
         );
         const toleratedWithModes: Promise<Attempted<[{ id: string }[], void]>> = exec(
             http,
-            attempt({ accessMode: "read only" }, row, write),
+            attemptWith({ accessMode: "read only" }, row, write),
         );
 
         // A generated builder is generic in what it selects, so its result must still

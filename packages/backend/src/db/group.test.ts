@@ -1,7 +1,7 @@
 /** Unit tests for the group boundary semantics, against a real PGlite. See docs/transactions.md. */
 import { describe, expect, it, vi } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
-import { attempt, batch, transaction, type Attempted, type Step } from "./group.ts";
+import { attempt, attemptWith, batch, transaction, transactionWith, type Attempted, type Step } from "./group.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb, resultRows } from "./sql-executor.ts";
 
@@ -222,7 +222,7 @@ describe("the modes a group names", () => {
     it("opens the boundary at them, and they do not outlive it", async () => {
         const { db, close } = await fixture();
 
-        const inside = await transaction(
+        const inside = await transactionWith(
             db,
             { isolationLevel: "serializable", accessMode: "read only" },
             setting("transaction_isolation"),
@@ -239,7 +239,12 @@ describe("the modes a group names", () => {
     it("gives an attempt the same modes, and still tolerates the write one of them refuses", async () => {
         const { db, close } = await fixture();
 
-        const outcome = await attempt(db, { accessMode: "read only" }, setting("transaction_read_only"), insert("a"));
+        const outcome = await attemptWith(
+            db,
+            { accessMode: "read only" },
+            setting("transaction_read_only"),
+            insert("a"),
+        );
 
         expect(outcome.ok === false && (outcome.error as Error).message).toMatch(/read-only/i);
         expect(await ids(db)).toEqual([]);
@@ -257,7 +262,7 @@ describe("the modes a group names", () => {
         const { db, close } = await fixture();
 
         await db.transaction(async (tx) => {
-            await expect(transaction(tx, { accessMode: "read only" }, insert("a"))).rejects.toThrow(
+            await expect(transactionWith(tx, { accessMode: "read only" }, insert("a"))).rejects.toThrow(
                 "a nested boundary is a savepoint",
             );
         });
@@ -307,12 +312,12 @@ describe("the statements the boundaries put on the driver", () => {
 
     it("writes the modes a group names into the statement that opens its boundary", async () => {
         const trace = await boundaryTrace(async (db) => {
-            await transaction(
+            await transactionWith(
                 db,
                 { isolationLevel: "serializable", accessMode: "read only" },
                 setting("transaction_read_only"),
             );
-            await attempt(db, { deferrable: false }, insert("a"));
+            await attemptWith(db, { deferrable: false }, insert("a"));
         });
 
         expect(trace).toEqual([

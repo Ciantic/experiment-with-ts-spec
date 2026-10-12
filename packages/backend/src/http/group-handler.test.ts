@@ -29,13 +29,14 @@ function createDb() {
             statements.push(sql);
             return { rows: [] };
         },
-        transaction: async (...args) => {
-            const [options, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
-            modes.push(options);
-            boundaries.push(depth === 0 ? "begin" : `savepoint ${depth}`);
-            return await run(handle(depth + 1));
-        },
+        transaction: (run) => open(depth, undefined, run),
+        transactionWith: (options, run) => open(depth, options, run),
     });
+    const open = <T>(depth: number, options: TransactionOptions | undefined, run: (db: SqlExecutor) => Promise<T>) => {
+        modes.push(options);
+        boundaries.push(depth === 0 ? "begin" : `savepoint ${depth}`);
+        return run(handle(depth + 1));
+    };
     return { db: handle(0), boundaries, statements, modes };
 }
 

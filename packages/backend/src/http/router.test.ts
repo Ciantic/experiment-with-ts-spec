@@ -23,11 +23,12 @@ function createDb() {
     const boundaries: string[] = [];
     const handle = (): SqlExecutor => ({
         query: async () => ({ rows: [] }),
-        transaction: async (...args) => {
-            // This double is about whether a boundary was opened, not its modes, so it takes the callback either shape ends with.
-            const [, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
+        transaction: async (run) => {
             boundaries.push("begin");
             return await run(handle());
+        },
+        transactionWith: async () => {
+            throw new Error("no boundary here opens with modes");
         },
     });
     return { db: handle(), boundaries };

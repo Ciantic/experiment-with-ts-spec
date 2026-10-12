@@ -65,42 +65,35 @@ type GroupResult<T extends readonly Executable[]> = Results<T> extends readonly 
     ? void
     : Results<T>;
 
-/** What a boundary-opening group is called with: its calls, or the modes ahead of them. */
-type Args<T extends readonly Executable[]> = [TransactionOptions, ...T] | T;
-
-/** What a grouped call's arguments hold once its first element has said which of the two shapes arrived. */
-type Split = [TransactionOptions | undefined, ...Executable[]];
-
 /** Build one call. Generated modules are the only callers. */
 export function call<R>(method: Method, path: string, argument: unknown): Call<R> {
     return { kind: "call", method, path, argument };
 }
 
-/** Group calls into one request, all-or-nothing: a boundary that fails loudly, opened with the modes the call names. */
-export function transaction<const T extends readonly Executable[]>(
+/** Group calls into one request, all-or-nothing: a boundary that fails loudly, opened with no modes. */
+export function transaction<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>> {
+    return { kind: "transaction", calls };
+}
+
+/** {@link transaction}, opened with the modes the call names. */
+export function transactionWith<const T extends readonly Executable[]>(
     options: TransactionOptions,
     ...calls: T
-): Group<GroupResult<T>>;
-export function transaction<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>>;
-export function transaction<const T extends readonly Executable[]>(...args: Args<T>): Group<GroupResult<T>> {
-    // A call carries `kind` and the modes ahead of one do not, so the first argument says which shape this is.
-    const [options, ...calls] = (args[0] !== undefined && "kind" in args[0] ? [undefined, ...args] : args) as Split;
-    return { kind: "transaction", ...(options === undefined ? {} : { options }), calls };
+): Group<GroupResult<T>> {
+    return { kind: "transaction", options, calls };
 }
 
 /** Like `transaction`, but a failure is reported rather than raised. See docs/transactions.md. */
-export function attempt<const T extends readonly Executable[]>(
+export function attempt<const T extends readonly Executable[]>(...calls: T): Group<Attempted<GroupResult<T>>> {
+    return { kind: "attempt", calls };
+}
+
+/** {@link attempt}, opened with the modes the call names. */
+export function attemptWith<const T extends readonly Executable[]>(
     options: TransactionOptions,
     ...calls: T
-): Group<Attempted<GroupResult<T>>>;
-export function attempt<const T extends readonly Executable[]>(
-    ...calls: T
-): Group<Attempted<GroupResult<T>>>;
-export function attempt<const T extends readonly Executable[]>(
-    ...args: Args<T>
 ): Group<Attempted<GroupResult<T>>> {
-    const [options, ...calls] = (args[0] !== undefined && "kind" in args[0] ? [undefined, ...args] : args) as Split;
-    return { kind: "attempt", ...(options === undefined ? {} : { options }), calls };
+    return { kind: "attempt", options, calls };
 }
 
 /** Group calls into one request, each committing on its own. */

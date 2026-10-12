@@ -8,8 +8,10 @@ type Run<T> = (tx: SqlExecutor) => Promise<T>;
 export interface SqlExecutor {
     /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    /** Run the callback in one boundary on one connection, opened with the modes the call names ahead of it; nested, that boundary is a savepoint. */
-    transaction<T>(...args: [Run<T>] | [TransactionOptions, Run<T>]): Promise<T>;
+    /** Run the callback in one boundary on one connection; nested, that boundary is a savepoint. */
+    transaction<T>(run: Run<T>): Promise<T>;
+    /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */
+    transactionWith<T>(options: TransactionOptions, run: Run<T>): Promise<T>;
 }
 
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */
@@ -70,12 +72,9 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     function handle(session: SqlSession): SqlExecutor {
         return {
             query: (sql, parameters) => session.query(sql, parameters),
-            transaction: async <T>(...args: [Run<T>] | [TransactionOptions, Run<T>]) => {
-                const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
-                if (opts !== undefined) {
-                    throw new Error("a nested boundary is a savepoint, which opens with no transaction options");
-                }
-                return await savepoint(session, run);
+            transaction: (run) => savepoint(session, run),
+            transactionWith: async () => {
+                throw new Error("a nested boundary is a savepoint, which opens with no transaction options");
             },
         };
     }
@@ -96,22 +95,25 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
         }
     }
 
+    /** Open a root boundary on one checked-out session, carrying the modes the call named, and roll it back when the callback throws. */
+    async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
+        const session = await pool.connect();
+        try {
+            await session.query(begin(options));
+            const value = await run(handle(session));
+            await session.query("commit");
+            return value;
+        } catch (thrown) {
+            await session.query("rollback");
+            throw thrown;
+        } finally {
+            session.release();
+        }
+    }
+
     return {
         query: (sql, parameters) => pool.query(sql, parameters),
-        transaction: async <T>(...args: [Run<T>] | [TransactionOptions, Run<T>]) => {
-            const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
-            const session = await pool.connect();
-            try {
-                await session.query(begin(opts));
-                const value = await run(handle(session));
-                await session.query("commit");
-                return value;
-            } catch (thrown) {
-                await session.query("rollback");
-                throw thrown;
-            } finally {
-                session.release();
-            }
-        },
+        transaction: (run) => boundary(undefined, run),
+        transactionWith: (options, run) => boundary(options, run),
     };
 }

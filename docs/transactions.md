@@ -32,8 +32,10 @@ type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
 export interface SqlExecutor {
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
-    /** The callback, or the modes ahead of it; the port splits what it is given. */
-    transaction<T>(...args: [Run<T>] | [TransactionOptions, Run<T>]): Promise<T>;
+    /** The boundary, opened with no modes. */
+    transaction<T>(run: Run<T>): Promise<T>;
+    /** The boundary, opened with the modes the call names. */
+    transactionWith<T>(options: TransactionOptions, run: Run<T>): Promise<T>;
 }
 
 /** What a boundary is opened with; each mode lands on the `begin` that opens it. */
@@ -103,16 +105,16 @@ the one session that boundary checked out. Session-scoped state — a temp table
 `set local`, an advisory lock, a prepared statement — is therefore only coherent
 inside a boundary, and a caller that needs it opens one.
 
-In a caller's own terms, the modes are named on the call: `db.transaction({
-isolationLevel: "serializable", accessMode: "read only" }, run)` opens the
-boundary as `begin isolation level serializable, read only`, in the order
-Postgres reads the modes and skipping the ones the call left out, and a call that
-names none gets a plain `begin`. Riding on the `begin` is what the command
-requires: Postgres fixes an isolation level before the boundary's first query, so
-a statement issued from inside the callback is too late. The modes are the ones a
-`begin` accepts — a boundary cannot import another boundary's snapshot — they do
-not outlive the boundary, and a nested call cannot name any, since its `savepoint`
-takes none.
+In a caller's own terms, the modes are named on the call that takes them:
+`db.transactionWith({ isolationLevel: "serializable", accessMode: "read only" },
+run)` opens the boundary as `begin isolation level serializable, read only`, in
+the order Postgres reads the modes and skipping the ones the call left out, while
+`transaction(run)` opens a plain `begin`. Riding on the `begin` is what the
+command requires: Postgres fixes an isolation level before the boundary's first
+query, so a statement issued from inside the callback is too late. The modes are
+the ones a `begin` accepts — a boundary cannot import another boundary's snapshot
+— they do not outlive the boundary, and a nested call cannot name any, since its
+`savepoint` takes none.
 
 A statement must go through the handle it was given. The pool is not the boundary:
 a `query` made on the pool while a checkout is open waits for the one connection,
@@ -138,14 +140,27 @@ export type Attempted<T> =
 
 export function batch<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
 export function transaction<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
+export function transactionWith<const T extends readonly Step[]>(
+    db: SqlExecutor,
+    options: TransactionOptions,
+    ...steps: T
+): Promise<Results<T>>;
 export function attempt<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Attempted<Results<T>>>;
+export function attemptWith<const T extends readonly Step[]>(
+    db: SqlExecutor,
+    options: TransactionOptions,
+    ...steps: T
+): Promise<Attempted<Results<T>>>;
 ```
 
-A step is one unit of work that is handed the `SqlExecutor` it must run on, so the three
-differ in exactly two ways: whether the steps share a boundary, and whether a
-step's failure is raised or reported. Unlike a call tree, which is heterogeneous
-by construction and reaches `devalue` as `unknown[]`, a hand-written group is a
-variadic tuple, so `Results<T>` keeps each step's own result:
+A step is one unit of work that is handed the `SqlExecutor` it must run on, so
+the three kinds differ in exactly two ways: whether the steps share a boundary,
+and whether a step's failure is raised or reported. The two that open a boundary
+also come in a `With` form that names the modes it opens with — `transactionWith`
+and `attemptWith` — because a boundary's modes belong to the call that opens it.
+Unlike a call tree, which is heterogeneous by construction and reaches `devalue`
+as `unknown[]`, a hand-written group is a variadic tuple, so `Results<T>` keeps
+each step's own result:
 
 ```ts
 const [found, written] = await transaction(
@@ -201,7 +216,7 @@ to the scope, not the route.
 
 Nesting is real: the handle a `transaction` callback receives is a `SqlExecutor`
 as well, and its `transaction` opens a savepoint rather than a second
-transaction.
+transaction. Its `transactionWith` is refused — a savepoint opens with no modes.
 
 ```ts
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
@@ -219,23 +234,24 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
             throw thrown;
         }
     }
+    async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
+        const session = await pool.connect();
+        try {
+            await session.query(begin(options));
+            const value = await run(handle(session));
+            await session.query("commit");
+            return value;
+        } catch (thrown) {
+            await session.query("rollback");
+            throw thrown;
+        } finally {
+            session.release();
+        }
+    }
     return {
         query: (sql, parameters) => pool.query(sql, parameters),
-        transaction: async (...args) => {
-            const [opts, run] = args.length === 1 ? [undefined, args[0]] : [args[0], args[1]];
-            const session = await pool.connect();
-            try {
-                await session.query(begin(opts));
-                const value = await run(handle(session));
-                await session.query("commit");
-                return value;
-            } catch (thrown) {
-                await session.query("rollback");
-                throw thrown;
-            } finally {
-                session.release();
-            }
-        },
+        transaction: (run) => boundary(undefined, run),
+        transactionWith: (options, run) => boundary(options, run),
     };
 }
 ```
@@ -327,9 +343,10 @@ export type Executable<R = unknown> = Call<R> | Group<R>;
 ```
 
 The generator emits the builders, one per exposed call. Everything above, plus
-`exec`, `transaction`, `attempt`, and `batch`, is hand-written in
-`sdk/src/client.ts` next to the transport in `sdk/src/http.ts` — the same split as
-the server, where the router is hand-written and the route table is generated.
+`exec`, `transaction`, `transactionWith`, `attempt`, `attemptWith`, and `batch`,
+is hand-written in `sdk/src/client.ts` next to the transport in `sdk/src/http.ts`
+— the same split as the server, where the router is hand-written and the route
+table is generated.
 The SDK declares its own `Method` union rather than importing the router's, so
 the client still imports nothing from the backend.
 
@@ -352,15 +369,15 @@ call composable: a builder with a client already bound could not be handed to
 `transaction` or `batch`. It also keeps the `Selected<E, S>` narrowing, because
 `S` is fixed when the builder is called rather than when it is sent.
 
-`transaction`, `attempt`, and `batch` take builders and return a group, so the
-axes compose in either direction:
+`transaction`, `transactionWith`, `attempt`, `attemptWith`, and `batch` take
+builders and return a group, so the axes compose in either direction:
 
 ```ts
 await exec(http, transaction(createInvoice(rows), createInvoiceRow(rowInserts)));
 await exec(http, batch(queryInvoice(a), transaction(createInvoice(rows), createInvoiceRow(rowInserts))));
 await exec(http, transaction(createInvoice(rows), attempt(createInvoiceRow(bad))));
-// the modes come first, and only a group that opens a boundary takes them
-await exec(http, attempt({ accessMode: "read only" }, queryInvoice({ select: { id: true } })));
+// only a group that opens a boundary has a `With` form, and there the modes come first
+await exec(http, attemptWith({ accessMode: "read only" }, queryInvoice({ select: { id: true } })));
 ```
 
 A group's result is a tuple aligned with its arguments, and nesting composes:
@@ -445,21 +462,26 @@ its entry too, because the entry goes through the route.
 
 ### The modes a group opens with
 
-A `transaction` or an `attempt` may name the modes its boundary opens with, as
-the SDK's first argument and as an `options` field on the wire:
+A group that opens a boundary takes the modes through its `With` form —
+`transactionWith` or `attemptWith` — as that call's first argument and as an
+`options` field on the wire:
 
 ```ts
-await exec(http, transaction({ isolationLevel: "serializable", accessMode: "read only" }, createInvoice(rows)));
+await exec(
+    http,
+    transactionWith({ isolationLevel: "serializable", accessMode: "read only" }, createInvoice(rows)),
+);
 ```
 
-The modes are the ones the port's `transaction` takes (`src/db/sql-executor.ts`),
-and they ride on the `begin` that opens the root boundary, so the group is opened
-at the level the caller asked for rather than switching later. A group that names
-none opens a plain `begin`, which is the session default. A `batch` opens no
-boundary, so it takes none, and a group nested inside another boundary is a
-savepoint, which takes none either — both are a 400 naming the entry. Every mode
-is validated against the literals a `begin` accepts, so an invalid level is
-refused with a 400 rather than interpolated into the statement.
+The modes are the ones the port's `transactionWith` takes
+(`src/db/sql-executor.ts`), and they ride on the `begin` that opens the root
+boundary, so the group is opened at the level the caller asked for rather than
+switching later. A group that names none opens a plain `begin`, which is the
+session default. A `batch` opens no boundary, so it takes none, and a group
+nested inside another boundary is a savepoint, which takes none either — both are
+a 400 naming the entry. Every mode is validated against the literals a `begin`
+accepts, so an invalid level is refused with a 400 rather than interpolated into
+the statement.
 
 Where the argument travels follows from a group being a write: the calls are in a
 body, so a batched read escapes the `q` length limit that `docs/rest-api.md`
@@ -489,10 +511,11 @@ the client imports nothing from the backend.
 - **A `batch` is not a unit of work.** Two writes in a `batch` commit
   separately, so a failure on the second leaves the first committed. Wrap the
   group in `transaction` when the caller needs both or neither.
-- **The modes belong to the boundary that opens.** `transaction` and `attempt`
-  take them, and the group is opened at that level; a `batch` has no boundary to
-  put them on and a nested group is a savepoint, so both are a 400. A group that
-  names none gets the session default.
+- **The modes belong to the boundary that opens.** `transactionWith` and
+  `attemptWith` take them, and the group is opened at that level; `transaction`
+  and `attempt` are the same boundary opened at the session default. A `batch` has
+  no boundary to put them on and a nested group is a savepoint, so naming them on
+  either is a 400.
 - **A read in a `batch` is its own snapshot.** For several reads that must agree
   with each other — a parent and its children — use `transaction`, which is the
   only construct that gives a group one snapshot (`docs/queries.md` records the

@@ -268,7 +268,7 @@ describe("the modes a boundary is opened with", () => {
     it("appends them to the begin that opens the root boundary, in the order Postgres reads them", async () => {
         const { pool, statements, releases } = fakePool();
 
-        await createTransactionalDb(pool).transaction(
+        await createTransactionalDb(pool).transactionWith(
             { deferrable: true, accessMode: "read only", isolationLevel: "repeatable read" },
             async (tx) => {
                 await tx.query("write");
@@ -282,9 +282,12 @@ describe("the modes a boundary is opened with", () => {
     it("spells a mode the call turns off as the negative the command takes", async () => {
         const { pool, statements } = fakePool();
 
-        await createTransactionalDb(pool).transaction({ deferrable: false, accessMode: "read write" }, async (tx) => {
-            await tx.query("write");
-        });
+        await createTransactionalDb(pool).transactionWith(
+            { deferrable: false, accessMode: "read write" },
+            async (tx) => {
+                await tx.query("write");
+            },
+        );
 
         expect(statements).toEqual(["begin read write, not deferrable", "write", "commit"]);
     });
@@ -292,7 +295,7 @@ describe("the modes a boundary is opened with", () => {
     it("opens a plain boundary when the call names no modes", async () => {
         const { pool, statements } = fakePool();
 
-        await createTransactionalDb(pool).transaction({}, async (tx) => {
+        await createTransactionalDb(pool).transactionWith({}, async (tx) => {
             await tx.query("write");
         });
 
@@ -304,7 +307,7 @@ describe("the modes a boundary is opened with", () => {
 
         await db.transaction(async (tx) => {
             await expect(
-                tx.transaction({ accessMode: "read only" }, async (inner) => {
+                tx.transactionWith({ accessMode: "read only" }, async (inner) => {
                     await inner.query("select 1");
                 }),
             ).rejects.toThrow("a nested boundary is a savepoint");
@@ -318,7 +321,7 @@ describe("the modes a boundary is opened with", () => {
     it("opens the boundary with the modes over a real driver, and they do not outlive it", async () => {
         const { db, close } = await fixture();
 
-        await db.transaction({ isolationLevel: "serializable", accessMode: "read only" }, async (tx) => {
+        await db.transactionWith({ isolationLevel: "serializable", accessMode: "read only" }, async (tx) => {
             expect(resultRows(await tx.query("show transaction_isolation"))).toEqual([
                 { transaction_isolation: "serializable" },
             ]);
@@ -337,7 +340,7 @@ describe("the modes a boundary is opened with", () => {
         const { db, close } = await fixture();
 
         await expect(
-            db.transaction({ accessMode: "read only" }, async (tx) => {
+            db.transactionWith({ accessMode: "read only" }, async (tx) => {
                 await tx.query("insert into widget (id) values ($1)", ["a"]);
             }),
         ).rejects.toThrow("read-only transaction");

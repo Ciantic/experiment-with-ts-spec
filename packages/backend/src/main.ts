@@ -36,7 +36,8 @@ export async function createDatabase(options: DatabaseOptions = {}): Promise<Ser
     const db = createTransactionalDb(createPglitePool(driver));
     return {
         query: (sql, parameters) => db.query(sql, parameters),
-        transaction: (...args) => db.transaction(...args),
+        transaction: (run) => db.transaction(run),
+        transactionWith: (options, run) => db.transactionWith(options, run),
         close: () => driver.close(),
     };
 }

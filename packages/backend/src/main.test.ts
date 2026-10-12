@@ -13,7 +13,15 @@ type Builder = (argument: unknown) => Call<unknown>;
 const GENERATED = /^(?:query|create|upsert|update|delete)[A-Z]/;
 
 /** The hand-written exports; probing `createHttpClient` would call it, as it shares the `create` prefix. */
-const HAND_WRITTEN = new Set(["createHttpClient", "exec", "transaction", "attempt", "batch"]);
+const HAND_WRITTEN = new Set([
+    "createHttpClient",
+    "exec",
+    "transaction",
+    "transactionWith",
+    "attempt",
+    "attemptWith",
+    "batch",
+]);
 
 /** Every generated builder in the barrel, picked by name and confirmed by shape. */
 function builders(): [string, Builder][] {
@@ -135,9 +143,9 @@ describe("a live server", () => {
 
         const result = await api.exec(
             http,
-            api.transaction(
+            api.transactionWith(
                 { isolationLevel: "serializable", accessMode: "read only" },
-                builder({ select: {} }) as Executable<unknown[]>,
+                builder({ select: {} }),
             ),
         );
 

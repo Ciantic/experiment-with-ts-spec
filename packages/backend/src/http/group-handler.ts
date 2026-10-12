@@ -1,6 +1,6 @@
 /** The group entry point: check a tree of calls, run it on the boundary its kind names, and encode the results. See docs/transactions.md. */
 import { parse as decode, stringify as encode } from "devalue";
-import { attempt, batch, transaction } from "../db/group.ts";
+import { attempt, attemptWith, batch, transaction, transactionWith } from "../db/group.ts";
 import {
     ACCESS_MODES,
     ISOLATION_LEVELS,
@@ -245,11 +245,11 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
     if (node.kind === "transaction") {
         return node.options === undefined
             ? await transaction(db, ...steps)
-            : await transaction(db, node.options, ...steps);
+            : await transactionWith(db, node.options, ...steps);
     }
 
     const outcome =
-        node.options === undefined ? await attempt(db, ...steps) : await attempt(db, node.options, ...steps);
+        node.options === undefined ? await attempt(db, ...steps) : await attemptWith(db, node.options, ...steps);
     if (outcome.ok) {
         return { ok: true, value: outcome.value };
     }
