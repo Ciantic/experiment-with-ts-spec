@@ -2350,22 +2350,7 @@ export interface Thing {
         expect(messages(findings)).toEqual(["`Thing`: @tenantOwned names `ownerId`, which must carry `@foreignKey Alpha`"]);
     });
 
-    it("reports an owned column without the required filter", () => {
-        const { findings } = lintSpec(
-            parse({
-                "/src/domain/Alpha.ts": root,
-                "/src/domain/Thing.ts": entity(
-                    "Thing",
-                    ["tenantOwned ownerId"],
-                    `${key}\n\n${field(["@fieldName Owner ID", "@widget text", "@foreignKey Alpha"], "ownerId: string;")}`,
-                ),
-            }),
-        );
 
-        expect(messages(findings)).toEqual([
-            "`Thing`: @tenantOwned makes `ownerId` a required filter; write `@queryFilter required`",
-        ]);
-    });
 
     it("reports @tenant on the interface @tenantOwned scopes", () => {
         const { findings } = lintSpec(

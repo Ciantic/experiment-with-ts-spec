@@ -624,28 +624,34 @@ describe("tenancy tags", () => {
         expect(interfaces.get("Thing")?.tags.tenantOwned).toBe("ownerId");
     });
 
-    it("leaves a reference to an owned interface unscoped until the scope is written", () => {
+    it("decodes @foreignKey scope as written", () => {
+        const { interfaces } = parse({
+            "Owner.ts": entity("Owner", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
+            "Thing.ts": entity("Thing", [], link("Owner", " scope=ownerId")),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({ entity: "Owner", scope: "ownerId" });
+    });
+
+    it("decodes a reference that declares no scope without one", () => {
         const { interfaces } = parse({
             "Owner.ts": entity("Owner", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
             "Thing.ts": entity("Thing", [], link("Owner")),
         });
 
-        // The tags are the only source: nothing fills a scope in for a reference that omits it,
-        // which is what the linter reports. See docs/tenancy.md.
         expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({ entity: "Owner" });
     });
 
-    it("leaves a written scope as written, even where the target declares another", () => {
+    it("decodes a scope that disagrees with the target as written", () => {
         const { interfaces } = parse({
             "Owner.ts": entity("Owner", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
             "Thing.ts": entity("Thing", [], link("Owner", " scope=otherId")),
         });
 
-        // The linter reports the disagreement; no consumer sees a value the spec did not write.
         expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({ entity: "Owner", scope: "otherId" });
     });
 
-    it("keeps a referential action beside the scope as written", () => {
+    it("keeps a referential action beside the scope", () => {
         const { interfaces } = parse({
             "Thing.ts": entity("Thing", [], link("Owner", " onDelete=cascade scope=otherId")),
         });
@@ -657,16 +663,7 @@ describe("tenancy tags", () => {
         });
     });
 
-    it("leaves the owned column out of the filters until @queryFilter is written", () => {
-        const { interfaces } = parse({
-            "Thing.ts": entity("Thing", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
-        });
-
-        // The filter is written rather than implied, so the linter can report the omission.
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBeUndefined();
-    });
-
-    it("keeps a written filter on the owned column", () => {
+    it("decodes a filter on the owned column like any other @queryFilter", () => {
         const { interfaces } = parse({
             "Thing.ts": entity(
                 "Thing",

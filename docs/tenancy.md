@@ -1,9 +1,9 @@
 # Tenancy
 
 `Tenant` is the root of the data graph: every other entity declares a `tenantId`
-pointing at it, except `Translation` and `AuditLog`, which are global. Four
-annotations carry that: two on the interface say what it is, and two on fields
-say what they must agree with. The linter holds all four together.
+pointing at it, except `Translation` and `AuditLog`, which are global. Three
+annotations carry that: two on the interface say what it is, and one on a
+reference says what it must agree with. The linter holds all three together.
 
 ```ts
 /**
@@ -42,11 +42,10 @@ reference to it is never scoped.
 
 `@tenantOwned` names the column that scopes the interface. The linter requires
 that field to exist, to be required, to be a scalar column rather than a branch,
-to link to the root with `@foreignKey Tenant`, and to carry
-`@queryFilter required`: the link is what makes the column a tenant column rather
-than a bare id, and the filter is what stops a read from leaving the tenant out.
-An interface that declares neither the tag nor a `tenantId` is global, which is
-what `Translation` and `AuditLog` are.
+and to link to the root with `@foreignKey Tenant`: the link is what makes the
+column a tenant column rather than a bare id. An interface that declares neither
+the tag nor a `tenantId` is global, which is what `Translation` and `AuditLog`
+are.
 
 ## Reads: `@queryFilter required`
 
@@ -106,13 +105,11 @@ so there is no second column to agree with.
 
 Nothing fills a tag in. A reference that omits `scope=<column>` generates an
 unscoped constraint — the single-column link the annotation exists to prevent —
-and an owned column without `@queryFilter required` is not a filter at all, so a
-read of it need not name the tenant. Both are therefore **checked rather than
-defaulted**: the linter reports each one, and because it runs before the
-generators (`docs/tasks.md`), a spec that forgets one writes no artifact at all.
-`pnpm run generate` and `pnpm run check` both go through it; a standalone
-`pnpm generate:<artifact>` runs the generator alone, as it does for every other
-annotation.
+so the omission is **checked rather than defaulted**: the linter reports it, and
+because it runs before the generators (`docs/tasks.md`), a spec that forgets one
+writes no artifact at all. `pnpm run generate` and `pnpm run check` both go
+through it; a standalone `pnpm generate:<artifact>` runs the generator alone, as
+it does for every other annotation.
 
 ## Rules
 

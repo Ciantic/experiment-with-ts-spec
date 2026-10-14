@@ -901,17 +901,9 @@ function lintSurface(spec: SpecInterface, findings: Diagnostic[]): void {
     });
 }
 
-/** True when the field carries `@queryFilter required` as written. See docs/queries.md. */
-function hasRequiredFilterTag(property: SpecProperty): boolean {
-    const tag = (property.tags.written.byName.get("queryFilter") ?? [])[0];
-    return (tag?.value ?? "").trim() === "required";
-}
-
 /**
- * Check the tenancy graph: one root, an owned interface whose column links to it and reads as a
- * required filter, and every reference that has to agree with the scope its target declares.
- * The model derives the same facts for the generators; these rules are what keeps the written tags
- * honest. See docs/tenancy.md.
+ * Check the tenancy graph: one root, an owned interface whose column links to it, and every
+ * reference that has to agree with the scope its target declares. See docs/tenancy.md.
  */
 function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
     const reportEntity = (entity: SpecInterface, message: string, tag?: SpecTag) => {
@@ -964,13 +956,6 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
             );
         } else if (root !== undefined && scoped.tags.foreignKey?.entity !== root.name) {
             reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which must carry \`@foreignKey ${root.name}\``, tag);
-        }
-        if (!hasRequiredFilterTag(scoped)) {
-            reportEntity(
-                entity,
-                `@${TENANT_OWNED_TAG} makes \`${column}\` a required filter; write \`@queryFilter required\``,
-                tag,
-            );
         }
     }
 

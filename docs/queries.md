@@ -122,8 +122,7 @@ through its `@foreignKey` field, which is a scalar like any other.
 
 `@queryFilter required` makes the filter **mandatory**: every read of the entity
 has to name it. Each tenant-owned entity marks its `tenantId` that way, because a
-read that forgets it would cross tenants; `@tenantOwned` makes the tag required
-rather than optional, so leaving it off is a finding. See `docs/tenancy.md`.
+read that forgets it would cross tenants. See `docs/tenancy.md`.
 
 ```ts
 /**

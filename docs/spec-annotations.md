@@ -105,8 +105,7 @@ Field tags:
   set matched with `in (…)`; several are combined with `and`. Scalar fields only; a
   branch field may not carry it, and it is redundant on the `@primaryKey` field,
   which is an optional filter by default — `required` is the one thing it can add.
-  On the column named by `@tenantOwned`, `required` is mandatory rather than
-  optional, and leaving it off is a finding. See `docs/queries.md`.
+  See `docs/queries.md`.
 - `@queryOrderBy` — makes the field an ordering key of the entity's generated
   reads. A bare marker whitelists the field; `@queryOrderBy default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
@@ -700,9 +699,8 @@ Enforced:
 - `@tenant` is a bare marker on one interface, which the linter enforces, and is
   mutually exclusive with `@tenantOwned`. `@tenantOwned` requires a column name:
   it must name a required scalar field of the interface, that field must carry
-  `@foreignKey` at the `@tenant` interface, it must carry
-  `@queryFilter required`, and it is the only field of the interface linking to
-  the root. Every reference to an owned interface must state
+  `@foreignKey` at the `@tenant` interface, and it is the only field of the
+  interface linking to the root. Every reference to an owned interface must state
   `scope=<that column>` and must come from an interface owned by the same column;
   a scope anywhere else is a finding. See `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`; a branch field
