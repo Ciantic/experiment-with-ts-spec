@@ -25,8 +25,8 @@ export const queryInvoiceRowSelectSchema = z.lazy(() =>
 export const queryInvoiceRowSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
-    }),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
+    }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     select: queryInvoiceRowSelectSchema,

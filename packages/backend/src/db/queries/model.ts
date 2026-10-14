@@ -30,10 +30,7 @@ export const queryModel: QueryModel = {
                 "updatedAt": "updatedAt",
                 "version": "version"
             },
-            "relations": {},
-            "requiredFilters": [
-                "tenantId"
-            ]
+            "relations": {}
         },
         "email": {
             "name": "email",
@@ -55,9 +52,6 @@ export const queryModel: QueryModel = {
                 "version": "version"
             },
             "relations": {},
-            "requiredFilters": [
-                "tenantId"
-            ],
             "order": [
                 "createdAt",
                 "updatedAt"
@@ -104,9 +98,6 @@ export const queryModel: QueryModel = {
                     "column": "invoiceId"
                 }
             },
-            "requiredFilters": [
-                "tenantId"
-            ],
             "order": [
                 "createdAt",
                 "updatedAt"
@@ -141,10 +132,7 @@ export const queryModel: QueryModel = {
                 "updatedAt": "updatedAt",
                 "version": "version"
             },
-            "relations": {},
-            "requiredFilters": [
-                "tenantId"
-            ]
+            "relations": {}
         },
         "invoice_sent": {
             "name": "invoice_sent",
@@ -203,10 +191,7 @@ export const queryModel: QueryModel = {
                     "table": "invoice_sent_row",
                     "column": "invoiceSentId"
                 }
-            },
-            "requiredFilters": [
-                "tenantId"
-            ]
+            }
         },
         "invoice_sent_row": {
             "name": "invoice_sent_row",
@@ -224,10 +209,7 @@ export const queryModel: QueryModel = {
                 "taxAmount": "taxAmount",
                 "totalAmount": "totalAmount"
             },
-            "relations": {},
-            "requiredFilters": [
-                "tenantId"
-            ]
+            "relations": {}
         },
         "seller": {
             "name": "seller",
@@ -244,10 +226,7 @@ export const queryModel: QueryModel = {
                 "updatedAt": "updatedAt",
                 "version": "version"
             },
-            "relations": {},
-            "requiredFilters": [
-                "tenantId"
-            ]
+            "relations": {}
         },
         "tenant": {
             "name": "tenant",

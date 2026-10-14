@@ -37,7 +37,7 @@ export interface InvoiceSent {
      * The identifier of the tenant this sent invoice belongs to.
      * 
      * @fieldName Tenant ID
-     * @queryFilter required
+     * @queryFilter
      * @foreignKey Tenant
      * @widget text
      */

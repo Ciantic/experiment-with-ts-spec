@@ -33,7 +33,7 @@ export interface Seller {
      * The identifier of the tenant this seller belongs to.
      * 
      * @fieldName Tenant ID
-     * @queryFilter required
+     * @queryFilter
      * @foreignKey Tenant
      * @widget text
      */
