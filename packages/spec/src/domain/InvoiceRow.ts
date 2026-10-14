@@ -44,7 +44,7 @@ export interface InvoiceRow {
      * The identifier of the invoice this row belongs to.
      * 
      * @fieldName Invoice
-     * @foreignKey Invoice
+     * @foreignKey Invoice scope=tenantId
      * @widget text
      */
     invoiceId: InvoiceId;

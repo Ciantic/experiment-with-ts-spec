@@ -176,6 +176,158 @@ describe("generateSchema output", () => {
         expect(sql).not.toContain("on delete");
     });
 
+    it("makes a scoped reference composite, and covers the target pair with a unique constraint", () => {
+        const { sql, diagnostics } = generate({
+            entities: {
+                Owner: `/** @entity */export interface Owner {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId: TenantId;
+                }`,
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId: TenantId;
+                    /** @foreignKey Owner scope=tenantId */
+                    ownerId?: OwnerId;
+                }`,
+                Tenant: "/** @entity */\nexport interface Tenant {\n    /** @primaryKey */\n    id: GUID; }",
+            },
+        });
+
+        expect(messages(diagnostics)).toEqual([]);
+        // The pair is the constraint, so the reference is a table constraint rather than an inline one.
+        expect(sql).toContain(
+            'constraint "thing_tenantId_ownerId_fkey" foreign key ("tenantId", "ownerId") references "owner" ("tenantId", "id")',
+        );
+        // Postgres refuses the reference unless the pair it matches on is unique.
+        expect(sql).toContain('constraint "owner_tenantId_id_key" unique ("tenantId", "id")');
+        // The scoped constraint subsumes the single-column one, which is not emitted twice.
+        expect(sql).not.toContain('"ownerId" uuid references "owner"("id")');
+    });
+
+    it("refuses a link that crosses the scope, and accepts one that keeps it", async () => {
+        const { sql, diagnostics } = generate({
+            entities: {
+                Owner: `/** @entity */export interface Owner {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId: TenantId;
+                }`,
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId: TenantId;
+                    /** @foreignKey Owner scope=tenantId */
+                    ownerId?: OwnerId;
+                }`,
+                Tenant: "/** @entity */\nexport interface Tenant {\n    /** @primaryKey */\n    id: GUID; }",
+            },
+        });
+        expect(messages(diagnostics)).toEqual([]);
+
+        // Only the server can show that the constraint bites, which text assertions cannot.
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "tenant" ("id") values ('${PARENT}'), ('${PARENT_B}');`);
+        await db.exec(`insert into "owner" ("id", "tenantId") values ('${CHILD_A}', '${PARENT}');`);
+
+        // The owner belongs to another tenant, so the pair does not exist there.
+        await expect(
+            db.exec(`insert into "thing" ("id", "tenantId", "ownerId") values ('${CHILD_B}', '${PARENT_B}', '${CHILD_A}');`),
+        ).rejects.toThrow(/violates foreign key constraint/);
+
+        await expect(
+            db.exec(`insert into "thing" ("id", "tenantId", "ownerId") values ('${CHILD_B}', '${PARENT}', '${CHILD_A}');`),
+        ).resolves.toBeDefined();
+
+        // Moving the owner to another tenant would orphan the link, so it is refused too.
+        await expect(
+            db.exec(`update "owner" set "tenantId" = '${PARENT_B}' where "id" = '${CHILD_A}';`),
+        ).rejects.toThrow(/violates foreign key constraint/);
+    });
+
+    it("reports a scope that is not a required field of the interface", () => {
+        const { diagnostics } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Tenant */\n    tenantId: TenantId; }",
+                Tenant: "/** @entity */\nexport interface Tenant {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Owner scope=tenantId */
+                    ownerId?: OwnerId;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain(
+            "`ownerId`: @foreignKey scope=`tenantId` is not a scalar field of `Thing`",
+        );
+    });
+
+    it("reports a nullable scope, which would skip the check", () => {
+        const { diagnostics } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; \n    /** @foreignKey Tenant */\n    tenantId: TenantId; }",
+                Tenant: "/** @entity */\nexport interface Tenant {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId?: TenantId;
+                    /** @foreignKey Owner scope=tenantId */
+                    ownerId?: OwnerId;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain(
+            "`ownerId`: @foreignKey scope=`tenantId` must be a required field, because a nullable scope skips the check",
+        );
+    });
+
+    it("reports a scope the target does not declare", () => {
+        const { diagnostics } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; }",
+                Tenant: "/** @entity */\nexport interface Tenant {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Tenant */
+                    tenantId: TenantId;
+                    /** @foreignKey Owner scope=tenantId */
+                    ownerId?: OwnerId;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain(
+            "`ownerId`: @foreignKey scope=`tenantId` names a field `owner` does not declare",
+        );
+    });
+
+    it("reports a scope that is the referencing field itself", () => {
+        const { diagnostics } = generate({
+            entities: {
+                Owner: "/** @entity */\nexport interface Owner {\n    /** @primaryKey */\n    id: GUID; }",
+                Thing: `/** @entity */export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @foreignKey Owner scope=ownerId */
+                    ownerId?: OwnerId;
+                }`,
+            },
+        });
+
+        expect(messages(diagnostics)).toContain("`ownerId`: @foreignKey scope is the field itself");
+    });
+
     it("cascades a parent delete when the key declares onDelete=cascade", async () => {
         const { sql, diagnostics } = generate({
             entities: {

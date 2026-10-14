@@ -54,7 +54,7 @@ export interface Invoice {
      * 
      * @fieldName Customer ID
      * @queryFilter
-     * @foreignKey Customer
+     * @foreignKey Customer scope=tenantId
      * @widget text
      */
     customerId?: CustomerId;
@@ -73,7 +73,7 @@ export interface Invoice {
      * 
      * @fieldName Seller ID
      * @queryFilter
-     * @foreignKey Seller
+     * @foreignKey Seller scope=tenantId
      * @widget text
      */
     sellerId?: SellerId;

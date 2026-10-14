@@ -16,6 +16,7 @@ import {
     isOrderDirection,
     isReferentialAction,
     loadSpec,
+    parseForeignKey,
     parseInMemorySpec,
     parseParameters,
     resolveType,
@@ -225,6 +226,31 @@ function lintEntity(
             line: property.location.line,
             message: `\`${name}\`: @queryOrderBy default may appear on at most one field`,
         });
+    }
+
+    // A scoped reference names a required field of this interface. The target's half is checked when
+    // the tables are built, since that needs the other interface. See docs/tenancy.md.
+    for (const property of spec.properties) {
+        const scope = property.tags.foreignKey?.scope;
+        if (scope === undefined) {
+            continue;
+        }
+        const scoped = spec.properties.find((candidate) => candidate.name === scope);
+        const tag = (property.tags.written.byName.get("foreignKey") ?? [])[0];
+        const line = tag?.line ?? property.location.line;
+        if (scoped === undefined) {
+            findings.push({
+                filePath,
+                line,
+                message: `\`${property.name}\`: @foreignKey scope=\`${scope}\` is not a field of this interface`,
+            });
+        } else if (scoped.optional && scoped.name !== property.name) {
+            findings.push({
+                filePath,
+                line,
+                message: `\`${property.name}\`: @foreignKey scope=\`${scope}\` must be a required field, because a nullable scope skips the check`,
+            });
+        }
     }
 }
 
@@ -643,7 +669,7 @@ function lintKeyTags(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@foreignKey <Entity> [key=action]…`: the interface it references, then its referential actions. */
+/** `@foreignKey <Entity> [key=value]…`: the interface it references, then its referential actions and scope. */
 function lintForeignKey(tag: SpecTag, report: Report): void {
     const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
     const entity = tokens[0];
@@ -659,6 +685,7 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
         return;
     }
     const seen = new Set<string>();
+    const actions = new Map<string, string>();
     for (const token of tokens.slice(1)) {
         const separator = token.indexOf("=");
         if (separator === -1) {
@@ -674,14 +701,29 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
             report(`@foreignKey option \`${key}\` is not one of: ${FOREIGN_KEY_OPTIONS.join(", ")}`, tag);
             continue;
         }
-        if (!isReferentialAction(action)) {
-            report(`@foreignKey ${key} \`${action}\` is not one of: ${REFERENTIAL_ACTIONS.join(", ")}`, tag);
-            continue;
-        }
         if (seen.has(key)) {
             report(`@foreignKey ${key} appears more than once`, tag);
         }
         seen.add(key);
+        // `scope` names a field rather than a referential action, so it is checked by its own rule.
+        if (key === "scope") {
+            if (action === "") {
+                report("@foreignKey scope must name a field, such as `scope=tenantId`", tag);
+            }
+            continue;
+        }
+        if (!isReferentialAction(action)) {
+            report(`@foreignKey ${key} \`${action}\` is not one of: ${REFERENTIAL_ACTIONS.join(", ")}`, tag);
+            continue;
+        }
+        actions.set(key, action);
+    }
+
+    // A scoped reference matches on the scope column too, so `set null` would have to null a required
+    // column; the delete could never succeed. See docs/tenancy.md.
+    const scope = parseForeignKey(tag.value ?? "").scope;
+    if (scope !== undefined && actions.get("onDelete") === "setNull") {
+        report("@foreignKey scope cannot combine with onDelete=setNull, which would null the scope column", tag);
     }
 }
 

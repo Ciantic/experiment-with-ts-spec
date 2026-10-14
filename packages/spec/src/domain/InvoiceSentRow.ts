@@ -43,7 +43,7 @@ export interface InvoiceSentRow {
      * The identifier of the sent invoice this row belongs to.
      * 
      * @fieldName Invoice
-     * @foreignKey InvoiceSent
+     * @foreignKey InvoiceSent scope=tenantId
      * @widget text
      */
     invoiceSentId: InvoiceSentId;

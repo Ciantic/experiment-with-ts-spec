@@ -36,7 +36,8 @@ create table "customer" (
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
     "version" int8 not null default 0,
-    constraint "customer_pkey" primary key ("id")
+    constraint "customer_pkey" primary key ("id"),
+    constraint "customer_tenantId_id_key" unique ("tenantId", "id")
 );
 
 create table "email" (
@@ -69,15 +70,16 @@ create table "seller" (
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
     "version" int8 not null default 0,
-    constraint "seller_pkey" primary key ("id")
+    constraint "seller_pkey" primary key ("id"),
+    constraint "seller_tenantId_id_key" unique ("tenantId", "id")
 );
 
 create table "invoice" (
     "id" uuid not null,
     "tenantId" uuid not null references "tenant"("id"),
     "number" text unique,
-    "customerId" uuid references "customer"("id"),
-    "sellerId" uuid references "seller"("id"),
+    "customerId" uuid,
+    "sellerId" uuid,
     "language" text,
     "issueDate" timestamptz,
     "dueDate" timestamptz,
@@ -88,13 +90,16 @@ create table "invoice" (
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
     "version" int8 not null default 0,
-    constraint "invoice_pkey" primary key ("id")
+    constraint "invoice_pkey" primary key ("id"),
+    constraint "invoice_tenantId_customerId_fkey" foreign key ("tenantId", "customerId") references "customer" ("tenantId", "id"),
+    constraint "invoice_tenantId_sellerId_fkey" foreign key ("tenantId", "sellerId") references "seller" ("tenantId", "id"),
+    constraint "invoice_tenantId_id_key" unique ("tenantId", "id")
 );
 
 create table "invoice_row" (
     "id" uuid not null,
     "tenantId" uuid not null references "tenant"("id"),
-    "invoiceId" uuid not null references "invoice"("id"),
+    "invoiceId" uuid not null,
     "description" text,
     "quantity" decimal,
     "unit" text,
@@ -106,13 +111,14 @@ create table "invoice_row" (
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
     "version" int8 not null default 0,
-    constraint "invoice_row_pkey" primary key ("id")
+    constraint "invoice_row_pkey" primary key ("id"),
+    constraint "invoice_row_tenantId_invoiceId_fkey" foreign key ("tenantId", "invoiceId") references "invoice" ("tenantId", "id")
 );
 
 create table "invoice_sent" (
     "id" uuid not null,
     "tenantId" uuid not null references "tenant"("id"),
-    "invoiceId" uuid not null references "invoice"("id"),
+    "invoiceId" uuid not null,
     "sentAt" timestamptz not null,
     "number" text not null unique,
     "customerId" uuid,
@@ -144,13 +150,15 @@ create table "invoice_sent" (
     "netAmount" decimal not null,
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
-    constraint "invoice_sent_pkey" primary key ("id")
+    constraint "invoice_sent_pkey" primary key ("id"),
+    constraint "invoice_sent_tenantId_invoiceId_fkey" foreign key ("tenantId", "invoiceId") references "invoice" ("tenantId", "id"),
+    constraint "invoice_sent_tenantId_id_key" unique ("tenantId", "id")
 );
 
 create table "invoice_sent_row" (
     "id" uuid not null,
     "tenantId" uuid not null references "tenant"("id"),
-    "invoiceSentId" uuid not null references "invoice_sent"("id"),
+    "invoiceSentId" uuid not null,
     "description" text not null,
     "quantity" decimal not null,
     "unit" text not null,
@@ -159,7 +167,8 @@ create table "invoice_sent_row" (
     "netAmount" decimal not null,
     "taxAmount" decimal not null,
     "totalAmount" decimal not null,
-    constraint "invoice_sent_row_pkey" primary key ("id")
+    constraint "invoice_sent_row_pkey" primary key ("id"),
+    constraint "invoice_sent_row_tenantId_invoiceSentId_fkey" foreign key ("tenantId", "invoiceSentId") references "invoice_sent" ("tenantId", "id")
 );
 
 create function "tenant_compute"() returns trigger as $$

@@ -46,7 +46,7 @@ export interface InvoiceSent {
      * The draft this sent invoice was issued from.
      * 
      * @fieldName Invoice
-     * @foreignKey Invoice
+     * @foreignKey Invoice scope=tenantId
      * @widget text
      */
     invoiceId: InvoiceId;

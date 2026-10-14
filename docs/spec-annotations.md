@@ -16,7 +16,9 @@ Two rules decide every tag name, and both are checkable by eye.
 **An option inside a tag's value is camelCase, and written `key=value`.** The
 first token stays whatever the tag's value is — for `@foreignKey`, the interface
 — and each later token is an option. `@foreignKey Customer onDelete=cascade`
-names the interface `Customer` and asks Postgres to cascade the delete.
+names the interface `Customer` and asks Postgres to cascade the delete;
+`@foreignKey Invoice scope=tenantId` adds a second column to match on, so the
+reference is composite.
 
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
 `@pgDefault`, `@pgAutoIncrement`, `@pgVirtual`, `@pgTrigger`. The prefix and the word
@@ -85,7 +87,9 @@ Field tags:
   primary key. The value names the interface; the column type and the referenced
   column come from that table, not from the field's own type. Optional
   `onDelete=<action>` and `onUpdate=<action>` tokens append a referential clause
-  to the constraint. See "`@primaryKey` and `@foreignKey`" below.
+  to the constraint, and `scope=<field>` makes the reference composite over a
+  second column, so the two must agree. See "`@primaryKey` and `@foreignKey`"
+  below, and `docs/tenancy.md`.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through the field carrying `@foreignKey <entity>`. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
@@ -296,6 +300,12 @@ update`. Each option is one camelCase token — `cascade`, `restrict`, `noAction
 `setNull`, `setDefault` — mapping to its SQL spelling (`set null`, `no action`).
 An option the model does not know is a lint finding, and an action left off
 emits no clause, so the constraint takes Postgres's default.
+
+`@foreignKey Invoice scope=tenantId` makes the reference **composite**: `scope`
+names a field of the same interface, which the target must also declare, and the
+constraint matches on the pair rather than on the key alone. That is how a link
+cannot cross tenants, and the generator adds the unique constraint the pair
+needs on the target. See `docs/tenancy.md`.
 
 `@foreignKey Customer` takes the column's storage type and referenced column
 from `Customer`'s own `@primaryKey` field, so the field's declared type is
@@ -673,6 +683,11 @@ Enforced:
   fields of one interface to form a composite key; `@foreignKey` requires the
   interface it references and sits on a single scalar field. The two are
   mutually exclusive. See "`@primaryKey` and `@foreignKey`".
+- `@foreignKey` options are `onDelete=`, `onUpdate=`, and `scope=`. An action
+  must be one of the referential actions; `scope` names a required field of the
+  same interface, whose counterpart the target must declare, and may not combine
+  with `onDelete=setNull`. The linter checks the referencing interface; the
+  target's half is checked when the tables are built. See `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`; a branch field
   may not carry it, and on the `@primaryKey` field, which is an optional filter
   already, only `required` is accepted. See `docs/queries.md`.
@@ -721,5 +736,6 @@ Gotchas:
 - **`@relation` and its `@foreignKey` field are paired by the generator, not the
   linter.** The linter checks tags; the cross-field rule is enforced when the
   table model is built, so the diagnostic comes from `pnpm generate` with a file
-  and line, the same way `@children` without a foreign key does. See
+  and line, the same way `@children` without a foreign key does, and the same way
+  a `@foreignKey scope`'s target half does. See
   `docs/schema-generation.md`.

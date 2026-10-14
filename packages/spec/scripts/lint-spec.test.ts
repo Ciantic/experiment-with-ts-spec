@@ -1470,6 +1470,130 @@ export interface Thing {
         expect(findings).toEqual([]);
     });
 
+    it("accepts @foreignKey scope on a required field of the interface", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Tenant ID
+                 * @widget text
+                 * @foreignKey Tenant
+                 */
+                tenantId: TenantId;
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=tenantId
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @foreignKey scope without a field name", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey scope must name a field, such as `scope=tenantId`",
+        ]);
+    });
+
+    it("rejects @foreignKey scope naming a field the interface does not declare", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=tenantId
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey scope=`tenantId` is not a field of this interface",
+        ]);
+    });
+
+    it("rejects @foreignKey scope on an optional field, which would skip the check", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Tenant ID
+                 * @widget text
+                 * @foreignKey Tenant
+                 */
+                tenantId?: TenantId;
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=tenantId
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey scope=`tenantId` must be a required field, because a nullable scope skips the check",
+        ]);
+    });
+
+    it("rejects @foreignKey scope with onDelete=setNull, which would null the scope column", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Tenant ID
+                 * @widget text
+                 * @foreignKey Tenant
+                 */
+                tenantId: TenantId;
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=tenantId onDelete=setNull
+                 */
+                ownerId?: OwnerId;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey scope cannot combine with onDelete=setNull, which would null the scope column",
+        ]);
+    });
+
+    it("leaves the self-scope check to the table model, which resolves the target", () => {
+        // The field is required, so the rule the linter owns is satisfied; that a scope cannot name
+        // the referencing field itself is reported when the tables are built.
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget text
+                 * @foreignKey Owner scope=ownerId
+                 */
+                ownerId: OwnerId;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
     it("rejects an unknown @foreignKey option", () => {
         const findings = lintSourceText(
             `/** @entity */
@@ -1484,7 +1608,7 @@ export interface Thing {
         );
 
         expect(messages(findings)).toEqual([
-            "`ownerId`: @foreignKey option `deferrable` is not one of: onDelete, onUpdate",
+            "`ownerId`: @foreignKey option `deferrable` is not one of: onDelete, onUpdate, scope",
         ]);
     });
 

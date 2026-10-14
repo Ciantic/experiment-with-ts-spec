@@ -50,6 +50,11 @@ export interface Column {
     references?: {
         table: string;
         column: string;
+        /**
+         * A column of this table that the reference also matches, making the constraint composite:
+         * the pair `(scope, column)` must exist on the target. See docs/tenancy.md.
+         */
+        scope?: string;
         /** The `on delete` action, absent when the constraint takes the database default. */
         onDelete?: ReferentialAction;
         /** The `on update` action, absent when the constraint takes the database default. */
@@ -112,6 +117,8 @@ export interface Table {
     columns: Column[];
     /** Branch fields, keyed by the interface field name. See docs/queries.md. */
     relations: Map<string, Relation>;
+    /** Column lists a scoped reference needs covered by a unique constraint, so the composite reference is legal. See docs/tenancy.md. */
+    uniqueConstraints?: string[][];
     /** Row triggers, one per timing and event set, in the order they were first contributed to. */
     triggers: Trigger[];
     /** The write operations `@repository` declares, which the repository generator renders. */
@@ -187,6 +194,7 @@ export function buildSpecTables(spec: SpecModel): { tables: Map<string, Table>; 
 
     attachTriggers(tables, interfaces, context);
     resolveBranchColumns(tables, context);
+    attachScopedKeys(tables, context);
 
     return { tables, diagnostics };
 }
@@ -436,6 +444,9 @@ function addScalarColumn(
         if (foreignKey.onUpdate !== undefined) {
             column.references.onUpdate = foreignKey.onUpdate;
         }
+        if (foreignKey.scope !== undefined) {
+            column.references.scope = foreignKey.scope;
+        }
     }
 
     table.columns.push(column);
@@ -663,6 +674,64 @@ function validateAttachment(
 /** True when the statement names the table outright. */
 function statementReadsTable(statement: string, table: Table): boolean {
     return statement.includes(quote(table.name));
+}
+
+/**
+ * Check each scoped reference and record the unique constraint it needs on its target: the pair a
+ * composite constraint matches must be unique there, or the reference cannot be created at all.
+ * See docs/tenancy.md.
+ */
+function attachScopedKeys(tables: Map<string, Table>, context: BuildContext): void {
+    const byTableName = new Map<string, Table>();
+    for (const table of tables.values()) {
+        byTableName.set(table.name, table);
+    }
+    for (const table of tables.values()) {
+        for (const column of table.columns) {
+            const reference = column.references;
+            const scope = reference?.scope;
+            if (reference === undefined || scope === undefined) {
+                continue;
+            }
+            if (scope === column.name) {
+                context.reportField(table, column.name, "@foreignKey scope is the field itself");
+                continue;
+            }
+            // A nullable scope would let the row skip the check entirely, since a composite reference
+            // with a null in it is not matched at all. See docs/tenancy.md.
+            const own = table.columns.find((candidate) => candidate.name === scope);
+            if (own === undefined) {
+                context.reportField(
+                    table,
+                    column.name,
+                    `@foreignKey scope=\`${scope}\` is not a scalar field of \`${table.interfaceName}\``,
+                );
+                continue;
+            }
+            if (!own.notNull) {
+                context.reportField(
+                    table,
+                    column.name,
+                    `@foreignKey scope=\`${scope}\` must be a required field, because a nullable scope skips the check`,
+                );
+                continue;
+            }
+            const target = byTableName.get(reference.table);
+            if (target?.columns.some((candidate) => candidate.name === scope) !== true) {
+                context.reportField(
+                    table,
+                    column.name,
+                    `@foreignKey scope=\`${scope}\` names a field \`${reference.table}\` does not declare`,
+                );
+                continue;
+            }
+            const key = [scope, reference.column];
+            const constraints = (target.uniqueConstraints ??= []);
+            if (!constraints.some((existing) => existing.join("\u0000") === key.join("\u0000"))) {
+                constraints.push(key);
+            }
+        }
+    }
 }
 
 /** Point each branch at the column it navigates through, once every table's columns exist. */

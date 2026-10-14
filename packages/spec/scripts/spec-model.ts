@@ -122,8 +122,8 @@ export function isOrderDirection(value: string | undefined): value is OrderDirec
     return value === "asc" || value === "desc";
 }
 
-/** The `key=action` options a `@foreignKey` value may carry. */
-export const FOREIGN_KEY_OPTIONS = ["onDelete", "onUpdate"] as const;
+/** The `key=value` options a `@foreignKey` value may carry: referential actions, and the scope column. */
+export const FOREIGN_KEY_OPTIONS = ["onDelete", "onUpdate", "scope"] as const;
 export type ForeignKeyOption = (typeof FOREIGN_KEY_OPTIONS)[number];
 
 /** True when the text is one of {@link FOREIGN_KEY_OPTIONS}. */
@@ -148,6 +148,11 @@ export interface ForeignKey {
     onDelete?: ReferentialAction;
     /** The `on update` action, when the field declares one. */
     onUpdate?: ReferentialAction;
+    /**
+     * A field of this interface that the target also declares, making the reference composite so the
+     * two must agree; `scope=tenantId` is how a link cannot cross tenants. See docs/tenancy.md.
+     */
+    scope?: string;
 }
 
 /** The comparison operators a `@queryWhere` field may name. */
@@ -615,6 +620,8 @@ export function parseForeignKey(value: string): ForeignKey {
             foreignKey.onDelete ??= action;
         } else if (key === "onUpdate" && isReferentialAction(action)) {
             foreignKey.onUpdate ??= action;
+        } else if (key === "scope" && action !== "") {
+            foreignKey.scope ??= action;
         }
     }
     return foreignKey;

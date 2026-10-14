@@ -77,7 +77,8 @@ export function renderCreateTable(table: Table): string[] {
         if (column.default) {
             part += ` default ${column.default}`;
         }
-        if (column.references) {
+        // A scoped reference is composite, so it is a table constraint rather than an inline one.
+        if (column.references && column.references.scope === undefined) {
             part += ` references ${quote(column.references.table)}(${quote(column.references.column)})`;
             if (column.references.onDelete !== undefined) {
                 part += ` on delete ${REFERENTIAL_ACTION_SQL[column.references.onDelete]}`;
@@ -96,6 +97,31 @@ export function renderCreateTable(table: Table): string[] {
     const primaryKeys = table.columns.filter((column) => column.primaryKey).map((column) => quote(column.name));
     if (primaryKeys.length > 0) {
         parts.push(`    constraint ${quote(`${table.name}_pkey`)} primary key (${primaryKeys.join(", ")})`);
+    }
+
+    // A scoped reference constrains the pair `(scope, key)`, so it names both columns on both sides.
+    for (const column of table.columns) {
+        const reference = column.references;
+        if (reference?.scope === undefined) {
+            continue;
+        }
+        const columns = [reference.scope, column.name].map(quote).join(", ");
+        const target = [reference.scope, reference.column].map(quote).join(", ");
+        let clause = `    constraint ${quote(`${table.name}_${reference.scope}_${column.name}_fkey`)} foreign key (${columns}) references ${quote(reference.table)} (${target})`;
+        if (reference.onDelete !== undefined) {
+            clause += ` on delete ${REFERENTIAL_ACTION_SQL[reference.onDelete]}`;
+        }
+        if (reference.onUpdate !== undefined) {
+            clause += ` on update ${REFERENTIAL_ACTION_SQL[reference.onUpdate]}`;
+        }
+        parts.push(clause);
+    }
+
+    // The pair a scoped reference matches has to be unique on the target, or the constraint cannot exist.
+    for (const unique of table.uniqueConstraints ?? []) {
+        parts.push(
+            `    constraint ${quote(`${table.name}_${unique.join("_")}_key`)} unique (${unique.map(quote).join(", ")})`,
+        );
     }
 
     for (const column of table.columns) {

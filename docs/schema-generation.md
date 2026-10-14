@@ -69,6 +69,11 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   field, so the field's declared type is documentation and may be an alias this
   model cannot resolve. A single column cannot carry a composite key, so a
   `@foreignKey` naming an entity with one is a diagnostic.
+- `@foreignKey <Entity> scope=<field>` makes the reference composite, emitted as a
+  table constraint over `(scope, column)` rather than an inline `references`: the
+  pair must exist on the target, so the two cannot disagree. The reference needs a
+  unique constraint on that pair, which the generator adds to the target as
+  `(<field>, <key>)`. See `docs/tenancy.md`.
 - `@relation` on an entity-typed field adds no column of its own. It navigates
   through the `@foreignKey` field pointing at its table; that field's optionality
   sets the nullability. A `@relation` with no such field, or more than one
@@ -211,6 +216,11 @@ Gotchas found by running the DDL:
   action,** so a referenced row cannot be deleted unless the key opts into
   nulling or cascading. `@foreignKey Customer onDelete=cascade` — or
   `onUpdate=<action>` — appends the clause. See `docs/spec-annotations.md`.
+- **A scoped reference replaces the single-column one.** The composite constraint
+  already requires the key to exist on the target, so emitting both would be a
+  second check of the same fact. A `scope` with `onDelete=setNull` is a lint
+  finding, because nulling the pair would null a required column. See
+  `docs/tenancy.md`.
 - **Computed columns follow the field's optionality, not the computation.** A
   required one is `not null` with no default, so an insert must supply it and the
   before trigger then overwrites it. An optional one is nullable, so the trigger

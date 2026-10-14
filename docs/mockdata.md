@@ -26,7 +26,10 @@ generated repository whose name is `create<Entity>`, looked up on the
 
 Because the rows are typed as the spec's own interfaces, a domain change breaks
 the mock data at compile time instead of seeding a database the server disagrees
-with. Computed values — the invoice aggregates and the row amounts — are left
+with. A row must also satisfy the constraints it is inserted under: its
+`tenantId` has to match the tenant of every row it points at, since a scoped
+foreign key refuses a pair that does not exist (`docs/tenancy.md`). Computed
+values — the invoice aggregates and the row amounts — are left
 out, because their fields are optional and the triggers fill them. The
 database-managed `createdAt`, `updatedAt`, and `version` are declared, since the
 entity requires them, but the repository omits those columns on insert and the

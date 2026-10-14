@@ -155,6 +155,11 @@ mandatory, so a read over HTTP that omits it is a **400**, and the resolver thro
 for a caller that reaches it with an untyped object, the same guard it puts on an
 unknown filter field. See "The resolver reads one query per branch".
 
+A required filter scopes what a read may **see**. What a write may **link** is a
+separate annotation: `@foreignKey Invoice scope=tenantId` makes the reference
+composite, so a row cannot point at another tenant's invoice. See
+`docs/tenancy.md`.
+
 ### Filters are sets, combined with `and`
 
 Every filter is an array and every clause is `in (…)`, so a single value is
@@ -494,7 +499,8 @@ stays stable and is never truncated or filtered.
   required` narrows nothing by itself; it makes the caller name the field. Every
   tenant-scoped entity marks its `tenantId` that way, so a read cannot quietly
   span tenants, while `Tenant`, `Translation`, and `AuditLog` — the entities
-  without a tenant — stay unscoped.
+  without a tenant — stay unscoped. A scoped foreign key is what keeps a *write*
+  from linking two tenants; see `docs/tenancy.md`.
 - **A composite key has no single row key for branch attachment.** The resolver
   identifies a row by one column, so an entity whose `@primaryKey` is several
   fields cannot be the target of a `@foreignKey` — and so cannot be reached by a

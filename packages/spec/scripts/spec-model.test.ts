@@ -265,6 +265,27 @@ describe("parseSpec tags", () => {
         expect(tags?.foreignKey).toEqual({ entity: "Owner", onDelete: "cascade", onUpdate: "setNull" });
     });
 
+    it("decodes @foreignKey scope as a field name beside the actions", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @foreignKey Owner onDelete=cascade scope=tenantId\n     */",
+                "ownerId?: OwnerId;",
+            ),
+        });
+
+        const tags = interfaces.get("Thing")?.properties[0]?.tags;
+
+        expect(tags?.foreignKey).toEqual({ entity: "Owner", onDelete: "cascade", scope: "tenantId" });
+    });
+
+    it("leaves an empty @foreignKey scope as no scope", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @foreignKey Owner scope=\n     */", "ownerId?: OwnerId;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey?.scope).toBeUndefined();
+    });
+
     it("keeps the entity when @foreignKey carries no options", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @foreignKey Owner onDelete=restrict\n     */", "ownerId?: OwnerId;"),
