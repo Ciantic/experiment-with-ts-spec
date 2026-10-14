@@ -12,6 +12,7 @@ export type SellerId = BrandedId<"SellerId">;
  * The company that issues invoices.
  * 
  * @entity
+ * @tenantOwned tenantId
  * @pgTable seller
  * @repository create upsert update delete
  * @restRepository create upsert update delete

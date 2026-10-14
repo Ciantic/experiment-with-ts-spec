@@ -13,6 +13,7 @@ export type EmailStatus = "pending" | "sending" | "sent" | "failed";
  * An outbound email waiting for a delivery service to pick it up.
  *
  * @entity
+ * @tenantOwned tenantId
  * @pgTable email
  * @repository create upsert update delete
  * @restRepository create upsert update delete

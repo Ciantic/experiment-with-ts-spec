@@ -8,10 +8,10 @@ consumes. This note records what each tag means and how it lands in Postgres.
 Two rules decide every tag name, and both are checkable by eye.
 
 **A multi-word tag is camelCase.** `@fieldName`, `@createdAt`, `@updatedAt`,
-`@primaryKey`, `@foreignKey`, `@queryFilter`, `@queryOrderBy`, `@queryWhere`,
-`@restRepository`, `@restQueries`. A one-word tag is lowercase: `@widget`,
-`@computed`, `@unique`, `@version`, `@relation`, `@children`, `@inlined`,
-`@primitive`, `@repository`, `@queries`, `@zod`.
+`@primaryKey`, `@foreignKey`, `@tenantOwned`, `@queryFilter`, `@queryOrderBy`,
+`@queryWhere`, `@restRepository`, `@restQueries`. A one-word tag is lowercase:
+`@widget`, `@computed`, `@unique`, `@version`, `@relation`, `@children`,
+`@inlined`, `@primitive`, `@tenant`, `@repository`, `@queries`, `@zod`.
 
 **An option inside a tag's value is camelCase, and written `key=value`.** The
 first token stays whatever the tag's value is — for `@foreignKey`, the interface
@@ -87,9 +87,10 @@ Field tags:
   primary key. The value names the interface; the column type and the referenced
   column come from that table, not from the field's own type. Optional
   `onDelete=<action>` and `onUpdate=<action>` tokens append a referential clause
-  to the constraint, and `scope=<field>` makes the reference composite over a
-  second column, so the two must agree. See "`@primaryKey` and `@foreignKey`"
-  below, and `docs/tenancy.md`.
+  to the constraint, and `scope=<column>` makes the reference composite over a
+  second column, so the two must agree. A reference to an interface that declares
+  `@tenantOwned` must carry the scope, naming that interface's column. See
+  "`@primaryKey` and `@foreignKey`" below, and `docs/tenancy.md`.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through the field carrying `@foreignKey <entity>`. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
@@ -104,7 +105,8 @@ Field tags:
   set matched with `in (…)`; several are combined with `and`. Scalar fields only; a
   branch field may not carry it, and it is redundant on the `@primaryKey` field,
   which is an optional filter by default — `required` is the one thing it can add.
-  See `docs/queries.md`.
+  On the column named by `@tenantOwned`, `required` is mandatory rather than
+  optional, and leaving it off is a finding. See `docs/queries.md`.
 - `@queryOrderBy` — makes the field an ordering key of the entity's generated
   reads. A bare marker whitelists the field; `@queryOrderBy default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
@@ -119,6 +121,13 @@ Interface tags:
 - `@entity` — a bare marker that declares the interface an entity, which is what
   makes the generators read it. An interface without it is a contract and is
   ignored, wherever it sits. See "Discovery" above.
+- `@tenant` — a bare marker on the interface that owns the data graph, which the
+  linter allows on one interface only. The root is never `@tenantOwned`, and a
+  reference to it is never scoped. See `docs/tenancy.md`.
+- `@tenantOwned <column>` — the interface is owned by the root, and the value
+  names the required scalar column that scopes it. The linter requires that column
+  to link to the root and to carry `@queryFilter required`, and every reference to
+  the interface is scoped on it. See `docs/tenancy.md`.
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
@@ -302,10 +311,10 @@ An option the model does not know is a lint finding, and an action left off
 emits no clause, so the constraint takes Postgres's default.
 
 `@foreignKey Invoice scope=tenantId` makes the reference **composite**: `scope`
-names a field of the same interface, which the target must also declare, and the
-constraint matches on the pair rather than on the key alone. That is how a link
-cannot cross tenants, and the generator adds the unique constraint the pair
-needs on the target. See `docs/tenancy.md`.
+names a column of the same interface, the target declares it too as the column its
+`@tenantOwned` names, and the constraint matches on the pair rather than on the
+key alone. That is how a link cannot cross tenants, and the generator adds the
+unique constraint the pair needs on the target. See `docs/tenancy.md`.
 
 `@foreignKey Customer` takes the column's storage type and referenced column
 from `Customer`'s own `@primaryKey` field, so the field's declared type is
@@ -688,6 +697,14 @@ Enforced:
   same interface, whose counterpart the target must declare, and may not combine
   with `onDelete=setNull`. The linter checks the referencing interface; the
   target's half is checked when the tables are built. See `docs/tenancy.md`.
+- `@tenant` is a bare marker on one interface, which the linter enforces, and is
+  mutually exclusive with `@tenantOwned`. `@tenantOwned` requires a column name:
+  it must name a required scalar field of the interface, that field must carry
+  `@foreignKey` at the `@tenant` interface, it must carry
+  `@queryFilter required`, and it is the only field of the interface linking to
+  the root. Every reference to an owned interface must state
+  `scope=<that column>` and must come from an interface owned by the same column;
+  a scope anywhere else is a finding. See `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`; a branch field
   may not carry it, and on the `@primaryKey` field, which is an optional filter
   already, only `required` is accepted. See `docs/queries.md`.

@@ -48,6 +48,8 @@ export const FIELD_TAGS = [
 /** Tags an interface may carry. */
 export const INTERFACE_TAGS = [
     "entity",
+    "tenant",
+    "tenantOwned",
     "pgTable",
     "pgTrigger",
     "repository",
@@ -267,6 +269,10 @@ export interface Tags {
     version: boolean;
     /** The interface is an entity the generators read; an untagged interface is a contract. See docs/spec-annotations.md. */
     entity: boolean;
+    /** The interface is the tenancy root, which owns the entities that link to it. See docs/tenancy.md. */
+    tenant: boolean;
+    /** The field that scopes this interface, from `@tenantOwned tenantId`. See docs/tenancy.md. */
+    tenantOwned?: string;
     /** The Postgres table name for the interface. */
     pgTable?: string;
     /** The write operations `@repository` declares, in {@link WRITE_OPERATIONS} order. See docs/repositories.md. */
@@ -643,6 +649,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         version: false,
         primitive: false,
         entity: false,
+        tenant: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -691,6 +698,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "entity":
                     tags.entity = true;
+                    break;
+                case "tenant":
+                    tags.tenant = true;
+                    break;
+                case "tenantOwned":
+                    if (value !== undefined) tags.tenantOwned ??= value.trim();
                     break;
                 case "repository":
                     if (tags.repository === undefined) tags.repository = parseWriteOperations(value);

@@ -121,8 +121,9 @@ through its `@foreignKey` field, which is a scalar like any other.
 ### A required filter
 
 `@queryFilter required` makes the filter **mandatory**: every read of the entity
-has to name it. Each tenant-scoped entity marks its `tenantId` that way, because a
-read that forgets it would cross tenants:
+has to name it. Each tenant-owned entity marks its `tenantId` that way, because a
+read that forgets it would cross tenants; `@tenantOwned` makes the tag required
+rather than optional, so leaving it off is a finding. See `docs/tenancy.md`.
 
 ```ts
 /**
@@ -157,8 +158,8 @@ unknown filter field. See "The resolver reads one query per branch".
 
 A required filter scopes what a read may **see**. What a write may **link** is a
 separate annotation: `@foreignKey Invoice scope=tenantId` makes the reference
-composite, so a row cannot point at another tenant's invoice. See
-`docs/tenancy.md`.
+composite, so a row cannot point at another tenant's invoice, and the interface it
+points at declares that column with `@tenantOwned`. See `docs/tenancy.md`.
 
 ### Filters are sets, combined with `and`
 
@@ -497,10 +498,10 @@ stays stable and is never truncated or filtered.
   implemented.
 - **A required filter is a precondition, not a filter value.** `@queryFilter
   required` narrows nothing by itself; it makes the caller name the field. Every
-  tenant-scoped entity marks its `tenantId` that way, so a read cannot quietly
-  span tenants, while `Tenant`, `Translation`, and `AuditLog` — the entities
-  without a tenant — stay unscoped. A scoped foreign key is what keeps a *write*
-  from linking two tenants; see `docs/tenancy.md`.
+  tenant-owned entity marks its `tenantId` that way, so a read cannot quietly span
+  tenants, while `Tenant`, `Translation`, and `AuditLog` — the entities without a
+  tenant — stay unscoped. A scoped foreign key is what keeps a *write* from
+  linking two tenants; see `docs/tenancy.md`.
 - **A composite key has no single row key for branch attachment.** The resolver
   identifies a row by one column, so an entity whose `@primaryKey` is several
   fields cannot be the target of a `@foreignKey` — and so cannot be reached by a

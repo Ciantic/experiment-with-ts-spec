@@ -16,6 +16,7 @@ export type InvoiceSentId = BrandedId<"InvoiceSentId">;
  * See docs/invoice-snapshotting.md.
  *
  * @entity
+ * @tenantOwned tenantId
  * @pgTable invoice_sent
  * @repository create upsert update delete
  * @restRepository create upsert update delete

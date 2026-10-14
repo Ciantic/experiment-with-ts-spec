@@ -2190,6 +2190,321 @@ export interface Invoice {
     });
 });
 
+describe("tenancy tags", () => {
+    /** Every spec source, so an entity is found wherever it sits. */
+    const sourceGlob = "/src/**/*.ts";
+
+    /** Parse an in-memory spec laid out under /src, so no test reads the real domain. */
+    function parse(files: Record<string, string>) {
+        const spec = Object.entries(files).map(([filePath, sourceFileText]) => ({ filePath, sourceFileText }));
+        return parseInMemorySpec(spec, { sourceGlob });
+    }
+
+    /** An entity carrying the tags lint needs beyond the case under test. */
+    function entity(name: string, tags: string[], fields: string): string {
+        const doc = ["entity", ...tags, "repository create", "restRepository create"].map((tag) => ` * @${tag}`);
+        return `/**\n${doc.join("\n")}\n */\nexport interface ${name} {\n${fields}\n}`;
+    }
+
+    /** A field with the given doc lines and declaration, indented the way a spec writes it. */
+    function field(doc: string[], declaration: string): string {
+        return `    /**\n${doc.map((line) => `     * ${line}`).join("\n")}\n     */\n    ${declaration}`;
+    }
+
+    /** The key every entity declares, tagged as lint requires. */
+    const key = field(["@fieldName ID", "@widget text", "@primaryKey"], "id: string;");
+
+    /** The owned column: a required filter over the link to `target`, which @tenantOwned makes mandatory. */
+    const ownedLink = (target: string, options = ""): string =>
+        field(
+            ["@fieldName Owner ID", "@widget text", "@queryFilter required", `@foreignKey ${target}${options}`],
+            "ownerId: string;",
+        );
+
+    /** A field referencing `target`, with `name` as both the field and its label. */
+    const reference = (name: string, target: string, options = ""): string =>
+        field([`@fieldName ${name}`, "@widget text", `@foreignKey ${target}${options}`], `${name}: string;`);
+
+    /** The root entity, which owns the interfaces that link to it. */
+    const root = entity("Alpha", ["tenant"], key);
+
+    it("accepts a root and the interfaces it owns", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts a reference to an owned interface, which states the same scope", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${reference("thingId", "Thing", " scope=ownerId")}`,
+                ),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a second @tenant", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Beta.ts": entity("Beta", ["tenant"], key),
+            }),
+        );
+
+        expect(messages(findings)).toEqual(["`Beta`: @tenant is already declared on `Alpha`; the root is unique"]);
+    });
+
+    it("reports @tenant carrying a value", () => {
+        const { findings } = lintSpec(parse({ "/src/domain/Alpha.ts": entity("Alpha", ["tenant yes"], key) }));
+
+        expect(messages(findings)).toEqual(["`Alpha`: @tenant takes no value"]);
+    });
+
+    it("leaves the graph rules to a whole model, since a snippet holds one interface", () => {
+        const findings = lintSourceText(
+            `/**
+ * @entity
+ * @tenantOwned ownerId
+ */
+export interface Thing {
+    /**
+     * @fieldName Owner ID
+     * @widget text
+     * @queryFilter required
+     * @foreignKey Alpha
+     */
+    ownerId: string;
+}`,
+        );
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("reports @tenantOwned without a column name", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned"], `${key}\n\n${ownedLink("Alpha")}`),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned names the column that scopes the interface, such as `@tenantOwned tenantId`",
+        ]);
+    });
+
+    it("reports @tenantOwned naming a field the interface does not declare", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], key),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned names `ownerId`, which is not a field of this interface",
+        ]);
+    });
+
+    it("reports @tenantOwned naming an optional field, which would skip the check", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${field(["@fieldName Owner ID", "@widget text", "@queryFilter required", "@foreignKey Alpha"], "ownerId?: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned names `ownerId`, which must be a required field, because a nullable scope skips the check",
+        ]);
+    });
+
+    it("reports @tenantOwned naming a field that does not link to the root", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${field(["@fieldName Owner ID", "@widget text", "@queryFilter required"], "ownerId: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual(["`Thing`: @tenantOwned names `ownerId`, which must carry `@foreignKey Alpha`"]);
+    });
+
+    it("reports an owned column without the required filter", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${field(["@fieldName Owner ID", "@widget text", "@foreignKey Alpha"], "ownerId: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned makes `ownerId` a required filter; write `@queryFilter required`",
+        ]);
+    });
+
+    it("reports @tenant on the interface @tenantOwned scopes", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": entity(
+                    "Alpha",
+                    ["tenant", "tenantOwned ownerId"],
+                    `${key}\n\n${ownedLink("Alpha")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Alpha`: @tenant and @tenantOwned are mutually exclusive: the root is not owned",
+            // The interface is owned too, so its own link to itself is a reference to an owned target.
+            "`ownerId`: @foreignKey Alpha must carry `scope=ownerId`, because `Alpha` is @tenantOwned",
+        ]);
+    });
+
+    it("reports @tenantOwned when the spec declares no root", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${field(["@fieldName Owner ID", "@widget text", "@queryFilter required"], "ownerId: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned links to the @tenant interface, which the spec does not declare",
+        ]);
+    });
+
+    it("reports a reference to an owned interface without a scope", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${reference("thingId", "Thing")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey Thing must carry `scope=ownerId`, because `Thing` is @tenantOwned",
+        ]);
+    });
+
+    it("reports a scope that disagrees with the scope its target declares", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId"],
+                    // `otherId` is a field of the interface, so the only thing wrong is which column it names.
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${field(["@fieldName Other ID", "@widget text"], "otherId: string;")}\n\n${reference("thingId", "Thing", " scope=otherId")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey Thing must carry `scope=ownerId`, to agree with the scope `Thing` declares",
+        ]);
+    });
+
+    it("reports a scope on a reference to an interface that owns nothing", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha", " scope=ownerId")}`),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`ownerId`: @foreignKey Alpha takes no scope, because `Alpha` is not @tenantOwned",
+        ]);
+    });
+
+    it("reports a reference to an owned interface from one that is not owned", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    [],
+                    `${key}\n\n${reference("thingId", "Thing", " scope=ownerId")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey scope=`ownerId` is not a field of this interface",
+            "`thingId`: @foreignKey Thing is scoped on `ownerId`, so `Gadget` must declare @tenantOwned `ownerId`",
+        ]);
+    });
+
+    it("reports a link to the root on an interface that does not declare @tenantOwned", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    [],
+                    `${key}\n\n${field(["@fieldName Alpha ID", "@widget text", "@queryFilter required", "@foreignKey Alpha"], "alphaId: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`alphaId`: @foreignKey Alpha is the tenant link, so `Gadget` must declare @tenantOwned `alphaId`",
+        ]);
+    });
+
+    it("reports a second link to the root on an owned interface", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${field(["@fieldName Billing ID", "@widget text", "@foreignKey Alpha"], "billingId: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`billingId`: @foreignKey Alpha is a second link to the root; a @tenantOwned interface links to it once",
+        ]);
+    });
+});
+
 describe("the committed spec", () => {
     it("passes lint", () => {
         const { findings, interfaces, properties } = lintSpec(loadSpec());

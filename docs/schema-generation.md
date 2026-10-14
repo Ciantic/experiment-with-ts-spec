@@ -69,11 +69,12 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   field, so the field's declared type is documentation and may be an alias this
   model cannot resolve. A single column cannot carry a composite key, so a
   `@foreignKey` naming an entity with one is a diagnostic.
-- `@foreignKey <Entity> scope=<field>` makes the reference composite, emitted as a
-  table constraint over `(scope, column)` rather than an inline `references`: the
-  pair must exist on the target, so the two cannot disagree. The reference needs a
-  unique constraint on that pair, which the generator adds to the target as
-  `(<field>, <key>)`. See `docs/tenancy.md`.
+- `@foreignKey <Entity> scope=<column>` makes the reference composite, emitted as
+  a table constraint over `(scope, column)` rather than an inline `references`:
+  the pair must exist on the target, so the two cannot disagree. `<column>` is the
+  one `<Entity>` declares with `@tenantOwned`, and the generator adds the unique
+  constraint the pair needs on the target as `(<column>, <key>)`. See
+  `docs/tenancy.md`.
 - `@relation` on an entity-typed field adds no column of its own. It navigates
   through the `@foreignKey` field pointing at its table; that field's optionality
   sets the nullability. A `@relation` with no such field, or more than one

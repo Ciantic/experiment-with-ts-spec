@@ -1,19 +1,52 @@
 # Tenancy
 
 `Tenant` is the root of the data graph: every other entity declares a `tenantId`
-pointing at it, except `Translation` and `AuditLog`, which are global. Two
-annotations carry that, and they are independent: one scopes the **reads** of a
-tenanted entity, the other scopes its **links** to other tenanted entities.
+pointing at it, except `Translation` and `AuditLog`, which are global. Four
+annotations carry that: two on the interface say what it is, and two on fields
+say what they must agree with. The linter holds all four together.
 
 ```ts
 /**
- * @fieldName Tenant ID
- * @queryFilter required
- * @foreignKey Tenant
- * @widget text
+ * @entity
+ * @tenant
+ * @pgTable tenant
  */
-tenantId: TenantId;
+export interface Tenant { … }
+
+/**
+ * @entity
+ * @tenantOwned tenantId
+ * @pgTable invoice
+ */
+export interface Invoice {
+    /**
+     * @fieldName Tenant ID
+     * @queryFilter required
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
+}
 ```
+
+## The root: `@tenant`
+
+`@tenant` is a bare marker on the interface that owns the graph, and the linter
+reports a second one: one root keeps every scope unambiguous. The root is never
+`@tenantOwned`, since there is no higher scope for it to agree with, and a
+reference to it is never scoped.
+
+`Tenant` is the only interface the tag sits on today.
+
+## Ownership: `@tenantOwned <column>`
+
+`@tenantOwned` names the column that scopes the interface. The linter requires
+that field to exist, to be required, to be a scalar column rather than a branch,
+to link to the root with `@foreignKey Tenant`, and to carry
+`@queryFilter required`: the link is what makes the column a tenant column rather
+than a bare id, and the filter is what stops a read from leaving the tenant out.
+An interface that declares neither the tag nor a `tenantId` is global, which is
+what `Translation` and `AuditLog` are.
 
 ## Reads: `@queryFilter required`
 
@@ -25,7 +58,7 @@ so nothing to require; a read of them is unscoped.
 
 That alone is not enough: it scopes what is *read*, not what is *written*.
 
-## Links: `@foreignKey <Entity> scope=<field>`
+## Links: `@foreignKey <Entity> scope=<column>`
 
 A foreign key names one column, so `@foreignKey Invoice` on `invoiceId` says the
 row points at an invoice and says nothing about the tenant. Writes go through the
@@ -33,8 +66,9 @@ generated repositories, but nothing stops `tenantId` and `invoiceId` from
 disagreeing, which would produce a row that one tenant can read and no tenant
 owns.
 
-`scope=<field>` makes the reference **composite**: the pair must exist on the
-target.
+`scope=<column>` makes the reference **composite**: the pair must exist on the
+target, and the column it names is the one the target declares with
+`@tenantOwned`.
 
 ```ts
 /**
@@ -50,9 +84,9 @@ constraint "invoice_row_tenantId_invoiceId_fkey"
     foreign key ("tenantId", "invoiceId") references "invoice" ("tenantId", "id")
 ```
 
-The scope names a field of the referencing interface, and the target must
-declare a field of the same name; the generator covers the pair with the unique
-constraint a composite reference needs
+The referencing interface declares a column of that name too — its own owned
+column, so a child links to a parent inside one tenant or not at all. The
+generator covers the pair with the unique constraint a composite reference needs
 (`constraint "invoice_tenantId_id_key" unique ("tenantId", "id")`). Nothing else
 changes: the repository generators write the same columns, and a `@relation`
 still joins through the target's key, because the key alone identifies the row.
@@ -68,6 +102,18 @@ Five relations carry a scope: `InvoiceRow` → `Invoice`, `InvoiceSentRow` →
 `Seller`. The `tenantId` keys into `Tenant` are not scoped: `Tenant` is the root,
 so there is no second column to agree with.
 
+## The tags are the only source
+
+Nothing fills a tag in. A reference that omits `scope=<column>` generates an
+unscoped constraint — the single-column link the annotation exists to prevent —
+and an owned column without `@queryFilter required` is not a filter at all, so a
+read of it need not name the tenant. Both are therefore **checked rather than
+defaulted**: the linter reports each one, and because it runs before the
+generators (`docs/tasks.md`), a spec that forgets one writes no artifact at all.
+`pnpm run generate` and `pnpm run check` both go through it; a standalone
+`pnpm generate:<artifact>` runs the generator alone, as it does for every other
+annotation.
+
 ## Rules
 
 - The scope field is **required**. `MATCH SIMPLE`, the Postgres default for a
@@ -78,6 +124,9 @@ so there is no second column to agree with.
 - The target must declare a field of the same name, so the pair can be matched.
   The linter checks the referencing interface; the table model checks the target,
   since that needs the other interface's fields (`docs/spec-annotations.md`).
+- The scope is **written at the reference** and checked against the target's
+  `@tenantOwned`: the same fact in two places, so a reader sees it where the
+  reference is, and the linter reports either half left out or disagreeing.
 - `onDelete=setNull` **may not** accompany a scope. Postgres nulls every column of
   a composite key on delete, and the scope is required, so the delete could never
   succeed. A partial `set null (column)` list is not generated.
@@ -89,6 +138,10 @@ so there is no second column to agree with.
 - **A scope that is not a key lookup.** `invoice_sent."customerId"` carries no
   foreign key at all: the customer is copied into the row as a snapshot
   (`docs/invoice-snapshotting.md`), so there is no reference to constrain.
+- **An interface that is meant to be tenanted but says nothing.** `Translation`
+  and `AuditLog` are global because they carry neither `@tenantOwned` nor a
+  `tenantId`, and nothing tells that apart from an entity whose tenancy someone
+  forgot. Intent is checkable once one of the two is written.
 - **Authorization.** Nothing reads a principal. A constraint stops two tenants
   from being linked; it does not stop a caller from naming one tenant and reading
   another's rows in a filter. Postgres RLS with a per-request executor is the

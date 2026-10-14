@@ -594,6 +594,99 @@ describe("interface tags", () => {
     });
 });
 
+describe("tenancy tags", () => {
+    /** An entity whose own tags are `tags`, with the given field declarations. */
+    function entity(name: string, tags: string[], fields: string): string {
+        const doc = ["entity", ...tags].map((tag) => ` * @${tag}`).join("\n");
+        return `/**\n${doc}\n */\nexport interface ${name} {\n${fields}\n}`;
+    }
+
+    /** A field referencing `target`, with the options as written after it. */
+    function link(target: string, options = ""): string {
+        return `    /**\n     * @foreignKey ${target}${options}\n     */\n    ownerId: OwnerId;`;
+    }
+
+    it("decodes @tenant as a bare marker, off by default", () => {
+        const { interfaces } = parse({
+            "Root.ts": entity("Root", ["tenant"], "    id: RootId;"),
+            "Plain.ts": entity("Plain", [], "    id: PlainId;"),
+        });
+
+        expect(interfaces.get("Root")?.tags.tenant).toBe(true);
+        expect(interfaces.get("Plain")?.tags.tenant).toBe(false);
+    });
+
+    it("decodes @tenantOwned as the column that scopes the interface", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toBe("ownerId");
+    });
+
+    it("leaves a reference to an owned interface unscoped until the scope is written", () => {
+        const { interfaces } = parse({
+            "Owner.ts": entity("Owner", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
+            "Thing.ts": entity("Thing", [], link("Owner")),
+        });
+
+        // The tags are the only source: nothing fills a scope in for a reference that omits it,
+        // which is what the linter reports. See docs/tenancy.md.
+        expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({ entity: "Owner" });
+    });
+
+    it("leaves a written scope as written, even where the target declares another", () => {
+        const { interfaces } = parse({
+            "Owner.ts": entity("Owner", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
+            "Thing.ts": entity("Thing", [], link("Owner", " scope=otherId")),
+        });
+
+        // The linter reports the disagreement; no consumer sees a value the spec did not write.
+        expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({ entity: "Owner", scope: "otherId" });
+    });
+
+    it("keeps a referential action beside the scope as written", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", [], link("Owner", " onDelete=cascade scope=otherId")),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.foreignKey).toEqual({
+            entity: "Owner",
+            onDelete: "cascade",
+            scope: "otherId",
+        });
+    });
+
+    it("leaves the owned column out of the filters until @queryFilter is written", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
+        });
+
+        // The filter is written rather than implied, so the linter can report the omission.
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBeUndefined();
+    });
+
+    it("keeps a written filter on the owned column", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity(
+                "Thing",
+                ["tenantOwned ownerId"],
+                "    /**\n     * @queryFilter required\n     */\n    ownerId: OwnerId;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: true });
+    });
+
+    it("ignores a bare @tenantOwned, which names nothing", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", ["tenantOwned"], "    ownerId: OwnerId;"),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toBeUndefined();
+    });
+});
+
 describe("alias storage types", () => {
     /** The `pgType` each alias in the fixture resolves to. */
     function storage(files: Record<string, string>): Record<string, string | undefined> {

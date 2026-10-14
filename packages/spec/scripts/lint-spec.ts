@@ -56,6 +56,12 @@ const ALLOWED_WIDGETS = new Set<string>(WIDGETS);
 /** The marker tag that identifies an interface as an entity. See docs/spec-annotations.md. */
 const ENTITY_TAG = "entity";
 
+/** The marker tag that identifies the tenancy root. See docs/tenancy.md. */
+const TENANT_TAG = "tenant";
+
+/** The tag that names the column scoping an interface, such as `@tenantOwned tenantId`. See docs/tenancy.md. */
+const TENANT_OWNED_TAG = "tenantOwned";
+
 /** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
 const PRIMITIVE_TAG = "primitive";
 
@@ -168,6 +174,28 @@ function lintContract(spec: SpecInterface, findings: Diagnostic[]): void {
     }
 }
 
+/** `@tenant` marks the root; `@tenantOwned <field>` names the column scoping an interface. See docs/tenancy.md. */
+function lintTenancyTags(spec: SpecInterface, report: Report): void {
+    for (const tag of spec.tags.written.byName.get(TENANT_TAG) ?? []) {
+        if (tag.value !== undefined) {
+            report(`@${TENANT_TAG} takes no value`, tag);
+        }
+    }
+
+    // The column is named rather than left to a convention, so a bare marker says nothing.
+    const ownedTags = spec.tags.written.byName.get(TENANT_OWNED_TAG) ?? [];
+    for (const tag of ownedTags) {
+        if (!(tag.value ?? "").trim()) {
+            report(`@${TENANT_OWNED_TAG} names the column that scopes the interface, such as \`@${TENANT_OWNED_TAG} tenantId\``, tag);
+        }
+    }
+
+    // The root is what everything else is scoped by, so it cannot be scoped itself.
+    if (spec.tags.tenant && ownedTags[0]) {
+        report(`@${TENANT_TAG} and @${TENANT_OWNED_TAG} are mutually exclusive: the root is not owned`, ownedTags[0]);
+    }
+}
+
 /** Check the tags on the interface itself, and the per-entity uniqueness rules. */
 function lintEntity(
     spec: SpecInterface,
@@ -203,6 +231,7 @@ function lintEntity(
         });
     };
     lintEntityTrigger(spec.tags.written, interfaceReport);
+    lintTenancyTags(spec, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.
     for (const clock of ["createdAt", "updatedAt"] as const) {
@@ -872,11 +901,174 @@ function lintSurface(spec: SpecInterface, findings: Diagnostic[]): void {
     });
 }
 
+/** True when the field carries `@queryFilter required` as written. See docs/queries.md. */
+function hasRequiredFilterTag(property: SpecProperty): boolean {
+    const tag = (property.tags.written.byName.get("queryFilter") ?? [])[0];
+    return (tag?.value ?? "").trim() === "required";
+}
+
 /**
- * Lint a model's aliases and entities. A snippet has no surface, since the `@repository` rules
- * are about an entity the spec declares rather than about a rule that stands alone.
+ * Check the tenancy graph: one root, an owned interface whose column links to it and reads as a
+ * required filter, and every reference that has to agree with the scope its target declares.
+ * The model derives the same facts for the generators; these rules are what keeps the written tags
+ * honest. See docs/tenancy.md.
  */
-function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[]; properties: number } {
+function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
+    const reportEntity = (entity: SpecInterface, message: string, tag?: SpecTag) => {
+        findings.push({
+            filePath: entity.location.filePath,
+            line: tag?.line ?? entity.location.line,
+            message: `\`${entity.name}\`: ${message}`,
+        });
+    };
+    const reportField = (property: SpecProperty, message: string, tag?: SpecTag) => {
+        findings.push({
+            filePath: property.location.filePath,
+            line: tag?.line ?? property.location.line,
+            message: `\`${property.name}\`: ${message}`,
+        });
+    };
+    const ownedTagOf = (entity: SpecInterface) => (entity.tags.written.byName.get(TENANT_OWNED_TAG) ?? [])[0];
+    const linkTagOf = (property: SpecProperty) => (property.tags.written.byName.get("foreignKey") ?? [])[0];
+    const scopeWrittenOn = (property: SpecProperty) => parseForeignKey(linkTagOf(property)?.value ?? "").scope;
+
+    // The root is the one interface every scope column agrees with, so a second one is ambiguous.
+    const roots = [...spec.interfaces.values()].filter((entity) => entity.tags.tenant);
+    const root = roots[0];
+    for (const duplicate of roots.slice(1)) {
+        const tag = (duplicate.tags.written.byName.get(TENANT_TAG) ?? [])[0];
+        reportEntity(duplicate, `@${TENANT_TAG} is already declared on \`${root?.name}\`; the root is unique`, tag);
+    }
+
+    // An owned interface declares one required scalar column, links to the root, and requires the filter.
+    for (const entity of spec.interfaces.values()) {
+        const column = entity.tags.tenantOwned;
+        if (column === undefined) {
+            continue;
+        }
+        const tag = ownedTagOf(entity);
+        const scoped = entity.properties.find((property) => property.name === column);
+        if (scoped === undefined) {
+            reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which is not a field of this interface`, tag);
+            continue;
+        }
+        if (scoped.tags.relation || scoped.tags.children || scoped.tags.inlined) {
+            reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which must be a scalar field`, tag);
+            continue;
+        }
+        if (scoped.optional) {
+            reportEntity(
+                entity,
+                `@${TENANT_OWNED_TAG} names \`${column}\`, which must be a required field, because a nullable scope skips the check`,
+                tag,
+            );
+        } else if (root !== undefined && scoped.tags.foreignKey?.entity !== root.name) {
+            reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which must carry \`@foreignKey ${root.name}\``, tag);
+        }
+        if (!hasRequiredFilterTag(scoped)) {
+            reportEntity(
+                entity,
+                `@${TENANT_OWNED_TAG} makes \`${column}\` a required filter; write \`@queryFilter required\``,
+                tag,
+            );
+        }
+    }
+
+    // An owned interface without a root has nothing to scope against, which is worth saying once.
+    if (root === undefined) {
+        const first = [...spec.interfaces.values()].find((entity) => entity.tags.tenantOwned !== undefined);
+        if (first) {
+            reportEntity(
+                first,
+                `@${TENANT_OWNED_TAG} links to the @${TENANT_TAG} interface, which the spec does not declare`,
+                ownedTagOf(first),
+            );
+        }
+    }
+
+    // A reference to an owned target says the scope, and the referencing interface is owned by it.
+    for (const entity of spec.interfaces.values()) {
+        for (const property of entity.properties) {
+            const foreignKey = property.tags.foreignKey;
+            if (foreignKey === undefined) {
+                continue;
+            }
+            const target = spec.interfaces.get(foreignKey.entity);
+            const column = target?.tags.tenantOwned;
+            const scope = scopeWrittenOn(property);
+            if (target === undefined) {
+                continue;
+            }
+            if (column !== undefined) {
+                if (scope === undefined) {
+                    reportField(
+                        property,
+                        `@foreignKey ${target.name} must carry \`scope=${column}\`, because \`${target.name}\` is @${TENANT_OWNED_TAG}`,
+                        linkTagOf(property),
+                    );
+                } else if (scope !== column) {
+                    reportField(
+                        property,
+                        `@foreignKey ${target.name} must carry \`scope=${column}\`, to agree with the scope \`${target.name}\` declares`,
+                        linkTagOf(property),
+                    );
+                }
+                if (entity.tags.tenantOwned !== column) {
+                    reportField(
+                        property,
+                        `@foreignKey ${target.name} is scoped on \`${column}\`, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${column}\``,
+                        linkTagOf(property),
+                    );
+                }
+            } else if (scope !== undefined) {
+                reportField(
+                    property,
+                    `@foreignKey ${target.name} takes no scope, because \`${target.name}\` is not @${TENANT_OWNED_TAG}`,
+                    linkTagOf(property),
+                );
+            }
+        }
+    }
+
+    // A link to the root is the tenant link, so the interface it sits on is tenant-owned.
+    if (root !== undefined) {
+        for (const entity of spec.interfaces.values()) {
+            if (entity.tags.tenant) {
+                continue;
+            }
+            for (const property of entity.properties) {
+                const tenantLink = property.tags.foreignKey?.entity === root.name;
+                if (!tenantLink || entity.tags.tenantOwned === property.name) {
+                    continue;
+                }
+                if (entity.tags.tenantOwned === undefined) {
+                    // A bare @tenantOwned is reported on the interface itself, so this rule need not repeat it.
+                    if (entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
+                        continue;
+                    }
+                    reportField(
+                        property,
+                        `@foreignKey ${root.name} is the tenant link, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${property.name}\``,
+                        linkTagOf(property),
+                    );
+                } else {
+                    reportField(
+                        property,
+                        `@foreignKey ${root.name} is a second link to the root; a @${TENANT_OWNED_TAG} interface links to it once`,
+                        linkTagOf(property),
+                    );
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Lint a model's aliases and entities. A snippet is not a whole model: it has no surface, since the
+ * `@repository` rules are about an entity the spec declares, and no second interface for the rules
+ * that read one, so those find nothing to judge.
+ */
+function lintModel(spec: SpecModel, whole: boolean): { findings: Diagnostic[]; properties: number } {
     const findings: Diagnostic[] = [];
     let properties = 0;
 
@@ -888,7 +1080,7 @@ function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[];
     // An interface is an entity when it carries @entity; one without the tag is a contract.
     for (const entity of spec.interfaces.values()) {
         lintEntity(entity, findings);
-        if (surface) {
+        if (whole) {
             lintSurface(entity, findings);
         }
         lintFields(entity, findings);
@@ -897,6 +1089,11 @@ function lintModel(spec: SpecModel, surface: boolean): { findings: Diagnostic[];
 
     for (const contract of spec.nonEntityInterfaces) {
         lintContract(contract, findings);
+    }
+
+    // The tenancy graph is spread over several interfaces, so only a whole model can be judged by it.
+    if (whole) {
+        lintTenancy(spec, findings);
     }
 
     return { findings, properties };
@@ -910,7 +1107,7 @@ export function lintSpec(
     return { findings, interfaces: spec.interfaces.size, properties };
 }
 
-/** Lint one in-memory source string, for tests and one-off checks. */
+/** Lint one in-memory source string, for tests and one-off checks. The rules that read another declaration are skipped. */
 export function lintSourceText(text: string, filePath = "fixture.ts"): Diagnostic[] {
     return lintModel(parseInMemorySpec([{ filePath, sourceFileText: text }]), false).findings;
 }
