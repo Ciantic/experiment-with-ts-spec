@@ -5,9 +5,10 @@ import { createAuditLog } from "../../db/repositories/index.ts";
 import { queryAuditLog } from "../../db/queries/index.ts";
 import { auditLogInsertSchema, queryAuditLogSchema } from "validation/index.ts";
 
-/** The calls `/audit_log` exposes, matched by method and path. */
+/** The calls `/audit_log` exposes: each under its id, its verb, and its path. */
 export const auditLogRoutes: Route[] = [
     {
+        id: "queryAuditLog",
         method: "GET",
         path: "/audit_log/query",
         source: "query",
@@ -15,6 +16,7 @@ export const auditLogRoutes: Route[] = [
         handler: (db, body) => queryAuditLog(db, body as never),
     },
     {
+        id: "createAuditLog",
         method: "POST",
         path: "/audit_log",
         source: "body",

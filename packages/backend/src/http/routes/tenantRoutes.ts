@@ -5,9 +5,10 @@ import { createTenant, deleteTenant, updateTenant, upsertTenant } from "../../db
 import { queryTenant } from "../../db/queries/index.ts";
 import { queryTenantSchema, tenantInsertSchema, tenantPatchSchema, tenantPrimaryKeySchema, tenantUpsertSchema } from "validation/index.ts";
 
-/** The calls `/tenant` exposes, matched by method and path. */
+/** The calls `/tenant` exposes: each under its id, its verb, and its path. */
 export const tenantRoutes: Route[] = [
     {
+        id: "queryTenant",
         method: "GET",
         path: "/tenant/query",
         source: "query",
@@ -15,6 +16,7 @@ export const tenantRoutes: Route[] = [
         handler: (db, body) => queryTenant(db, body as never),
     },
     {
+        id: "createTenant",
         method: "POST",
         path: "/tenant",
         source: "body",
@@ -22,6 +24,7 @@ export const tenantRoutes: Route[] = [
         handler: (db, body) => createTenant(db, body as never),
     },
     {
+        id: "upsertTenant",
         method: "PUT",
         path: "/tenant",
         source: "body",
@@ -29,6 +32,7 @@ export const tenantRoutes: Route[] = [
         handler: (db, body) => upsertTenant(db, body as never),
     },
     {
+        id: "updateTenant",
         method: "PATCH",
         path: "/tenant",
         source: "body",
@@ -36,6 +40,7 @@ export const tenantRoutes: Route[] = [
         handler: (db, body) => updateTenant(db, body as never),
     },
     {
+        id: "deleteTenant",
         method: "DELETE",
         path: "/tenant",
         source: "query",

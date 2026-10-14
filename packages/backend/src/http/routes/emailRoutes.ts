@@ -5,9 +5,10 @@ import { createEmail, deleteEmail, updateEmail, upsertEmail } from "../../db/rep
 import { queryEmail } from "../../db/queries/index.ts";
 import { emailInsertSchema, emailPatchSchema, emailPrimaryKeySchema, emailUpsertSchema, queryEmailSchema } from "validation/index.ts";
 
-/** The calls `/email` exposes, matched by method and path. */
+/** The calls `/email` exposes: each under its id, its verb, and its path. */
 export const emailRoutes: Route[] = [
     {
+        id: "queryEmail",
         method: "GET",
         path: "/email/query",
         source: "query",
@@ -15,6 +16,7 @@ export const emailRoutes: Route[] = [
         handler: (db, body) => queryEmail(db, body as never),
     },
     {
+        id: "createEmail",
         method: "POST",
         path: "/email",
         source: "body",
@@ -22,6 +24,7 @@ export const emailRoutes: Route[] = [
         handler: (db, body) => createEmail(db, body as never),
     },
     {
+        id: "upsertEmail",
         method: "PUT",
         path: "/email",
         source: "body",
@@ -29,6 +32,7 @@ export const emailRoutes: Route[] = [
         handler: (db, body) => upsertEmail(db, body as never),
     },
     {
+        id: "updateEmail",
         method: "PATCH",
         path: "/email",
         source: "body",
@@ -36,6 +40,7 @@ export const emailRoutes: Route[] = [
         handler: (db, body) => updateEmail(db, body as never),
     },
     {
+        id: "deleteEmail",
         method: "DELETE",
         path: "/email",
         source: "query",

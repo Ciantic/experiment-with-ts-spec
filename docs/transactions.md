@@ -193,6 +193,7 @@ opens a unit of work when it needs one:
 
 ```ts
 export interface Route {
+    id: string;
     method: HttpMethod;
     path: string;
     source: "query" | "body";
@@ -315,6 +316,8 @@ data, and `exec` is the only thing that reaches the network:
 ```ts
 export interface Call<R> {
     readonly kind: "call";
+    /** The operation the server calls it by; a group entry names this. */
+    readonly operation: string;
     readonly method: Method;
     readonly path: string;
     readonly argument: unknown;
@@ -405,17 +408,20 @@ only way a call is made.
 A group is one `POST /$group` whose body is a tree:
 
 ```ts
-type Wire = { call: { method: HttpMethod; path: string; argument: unknown } }
+type Wire = { call: { operation: string; argument: unknown } }
           | { group: { kind: "batch" | "transaction" | "attempt"; options?: TransactionOptions; calls: Wire[] } };
 ```
 
-The group handler resolves every `call` against the same route table the router
-matches a single request on, and validates the entry with that route's `input`.
-The `source` field is not consulted: a single request reads `q` or the body, but
-an entry already carries its argument as a field.
+The group handler resolves every `call` by the operation id it names, against the
+same route table the router matches a single request on, and validates the entry
+with that route's `input`. Neither the method nor the path travels: an entry is a
+name and an argument, so a group is not tied to the URL layout, and the `source`
+field is not consulted either — a single request reads `q` or the body, but an
+entry already carries its argument as a field.
 
-**The whole tree is validated before any of it executes**, so a malformed group
-is a 400 that has written nothing. Only a runtime failure can leave a partial
+**The whole tree is validated before any of it executes**, so a malformed group —
+including an entry naming an operation the table does not serve — is a 400 that
+has written nothing. Only a runtime failure can leave a partial
 trace, and that is the case `transaction` exists for.
 
 The `kind` decides the database boundary, and nothing else does:
@@ -461,7 +467,7 @@ else propagates, so an outer failure is never mistaken for a tolerated one.
 Resolution through the route table is what keeps this from becoming a second
 surface. Every call a group can make is a call that already exists, and a check
 added to a single route — validation, and later an authorization guard — runs for
-its entry too, because the entry goes through the route.
+its entry too, because the entry goes through the same route the id names.
 
 ### The modes a group opens with
 

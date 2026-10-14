@@ -8,13 +8,13 @@ import {
     type TransactionOptions,
 } from "../db/sql-executor.ts";
 import { error, failure, statusFor, type HttpResponse } from "./http-response.ts";
-import type { HttpMethod, Route } from "./router.ts";
+import type { Route } from "./router.ts";
 
 /** The path the group entry point is mounted at. See docs/rest-api.md. */
 export const GROUP_PATH = "/$group";
 
-/** How one `call` of a group body is resolved: the route that serves it, or `undefined`. */
-export type ResolveRoute = (method: string, path: string) => Route | undefined;
+/** How one `call` of a group body is resolved: the route that serves its id, or `undefined`. */
+export type ResolveRoute = (id: string) => Route | undefined;
 
 /** Whether a group runs its calls as one boundary. */
 type GroupKind = "batch" | "transaction" | "attempt";
@@ -60,17 +60,9 @@ class GroupFailure extends Error {
     }
 }
 
-/** Every verb a group entry may name. */
-const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-
 /** Whether a decoded value is an object with keys. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
-}
-
-/** Whether a decoded value is one of the verbs. */
-function isMethod(value: unknown): value is HttpMethod {
-    return typeof value === "string" && (METHODS as string[]).includes(value);
 }
 
 /** Whether a decoded value is one of the literals `values` names. */
@@ -138,7 +130,7 @@ function planOptions(
     };
 }
 
-/** Check one node of a group body: its shape, then the route it names, then that route's `input`. */
+/** Check one node of a group body: its shape, then the call it names, then that call's `input`. */
 function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBoundary: boolean): Planned {
     if (!isRecord(wire)) {
         throw new BadGroup("a group entry must be an object", path);
@@ -174,23 +166,19 @@ function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBounda
     throw new BadGroup("a group entry must be a call or a group", path);
 }
 
-/** Resolve one call against the route table and validate its argument. */
+/** Resolve one call against the route table by the id it names, and validate its argument. */
 function planCall(value: unknown, resolve: ResolveRoute, path: number[]): PlannedCall {
     if (!isRecord(value)) {
         throw new BadGroup("a call must be an object", path);
     }
-    const method = value["method"];
-    const routePath = value["path"];
-    if (!isMethod(method)) {
-        throw new BadGroup("a call names an unknown method", path);
-    }
-    if (typeof routePath !== "string") {
-        throw new BadGroup("a call must name a path", path);
+    const id = value["operation"];
+    if (typeof id !== "string") {
+        throw new BadGroup("a call must name an operation", path);
     }
 
-    const route = resolve(method, routePath);
+    const route = resolve(id);
     if (!route) {
-        throw new BadGroup("no route", path);
+        throw new BadGroup(`no operation \`${id}\``, path);
     }
 
     const parsed = route.input.safeParse(value["argument"]);

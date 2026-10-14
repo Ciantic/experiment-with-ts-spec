@@ -5,9 +5,10 @@ import { createCustomer, deleteCustomer, updateCustomer, upsertCustomer } from "
 import { queryCustomer } from "../../db/queries/index.ts";
 import { customerInsertSchema, customerPatchSchema, customerPrimaryKeySchema, customerUpsertSchema, queryCustomerSchema } from "validation/index.ts";
 
-/** The calls `/customer` exposes, matched by method and path. */
+/** The calls `/customer` exposes: each under its id, its verb, and its path. */
 export const customerRoutes: Route[] = [
     {
+        id: "queryCustomer",
         method: "GET",
         path: "/customer/query",
         source: "query",
@@ -15,6 +16,7 @@ export const customerRoutes: Route[] = [
         handler: (db, body) => queryCustomer(db, body as never),
     },
     {
+        id: "createCustomer",
         method: "POST",
         path: "/customer",
         source: "body",
@@ -22,6 +24,7 @@ export const customerRoutes: Route[] = [
         handler: (db, body) => createCustomer(db, body as never),
     },
     {
+        id: "upsertCustomer",
         method: "PUT",
         path: "/customer",
         source: "body",
@@ -29,6 +32,7 @@ export const customerRoutes: Route[] = [
         handler: (db, body) => upsertCustomer(db, body as never),
     },
     {
+        id: "updateCustomer",
         method: "PATCH",
         path: "/customer",
         source: "body",
@@ -36,6 +40,7 @@ export const customerRoutes: Route[] = [
         handler: (db, body) => updateCustomer(db, body as never),
     },
     {
+        id: "deleteCustomer",
         method: "DELETE",
         path: "/customer",
         source: "query",

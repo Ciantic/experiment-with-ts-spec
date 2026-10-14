@@ -6,12 +6,13 @@ that must not be generated: the router, the transport, and the entry re-exportin
 the transport.
 
 - `packages/backend/scripts/rest-model.ts` — the shared model. Paths, methods,
-  filters, and the operations each entity exposes. Hand-written.
+  operation ids, filters, and the operations each entity exposes. Hand-written.
 - `packages/backend/scripts/generate-rest-api.ts` — the server generator.
 - `packages/backend/scripts/generate-rest-client.ts` — the client generator.
 - `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
   each a `Route[]` for that collection, plus the `index.ts` barrel concatenating
-  them into the table the router matches on.
+  them into the table the router matches a request on and the group handler
+  resolves an id in.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
 - `packages/backend/src/http/http-response.ts` — the response shape, and the
   plain-JSON failures a handler answers with. Hand-written.
@@ -44,19 +45,25 @@ no `@restQueries query` has no read route. See `docs/spec-annotations.md`. A rea
 and a delete carry their argument in a single `q` query parameter; a write
 carries it in the body.
 
-| Call | Method | Path | Argument |
-| --- | --- | --- | --- |
-| query | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
-| create | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
-| upsert | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
-| update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
-| delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
-| group | `POST` | `/$group` | a tree of the calls above, in the body |
+| Call | Id | Method | Path | Argument |
+| --- | --- | --- | --- | --- |
+| query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
+| create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
+| upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
+| update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
+| delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
+| group | — | `POST` | `/$group` | a tree of the calls above, in the body |
+
+The id is the call's name: the generated client function is it, and a group entry
+names it instead of a verb and a path. A single request never carries one — the
+URL is the address.
 
 The group path is the one call not derived from an entity: it takes a tree of
 calls and runs them in one request, and it is owned by the hand-written group
-handler rather than the generated table. `docs/transactions.md` records its body,
-its results, and how a `transaction` group differs from a `batch`.
+handler rather than the generated table. The handler resolves each entry's id out
+of the same table the router matches a request on, so the two entry points cannot
+disagree about what a call is. `docs/transactions.md` records its body, its
+results, and how a `transaction` group differs from a `batch`.
 
 Which side carries the argument is a field on the model (`source: "query" |
 "body"`), so the generated table and the generated client read it rather than
@@ -326,7 +333,8 @@ No mode reaches the statement unvalidated.
 - **An operations route.** `InvoiceOperations` is a contract with no
   implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
   entity set, so the generator does not see it. `POST /invoice/send` is
-  hand-wired when the operation exists.
+  hand-wired when the operation exists, and it takes an id of its own so a group
+  can name it.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
   (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.

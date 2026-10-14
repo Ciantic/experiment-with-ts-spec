@@ -13,25 +13,25 @@ export type { EmailInsert, EmailPatch, EmailPrimaryKey, EmailUpsert };
 export function queryEmail<S extends Selection<Email>>(
     opts: { filter?: Filters<Email, "id" | "tenantId" | "status">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S },
 ): Call<Selected<Email, S>[]> {
-    return call<Selected<Email, S>[]>("GET", "/email/query", opts);
+    return call<Selected<Email, S>[]>("queryEmail", "GET", "/email/query", opts);
 }
 
 /** Create `Email` rows. */
 export function createEmail(rows: EmailInsert[]): Call<EmailPrimaryKey[]> {
-    return call<EmailPrimaryKey[]>("POST", "/email", rows);
+    return call<EmailPrimaryKey[]>("createEmail", "POST", "/email", rows);
 }
 
 /** Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
 export function upsertEmail(rows: EmailUpsert[]): Call<EmailPrimaryKey[]> {
-    return call<EmailPrimaryKey[]>("PUT", "/email", rows);
+    return call<EmailPrimaryKey[]>("upsertEmail", "PUT", "/email", rows);
 }
 
 /** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateEmail(rows: EmailPatch[]): Call<void> {
-    return call<void>("PATCH", "/email", rows);
+    return call<void>("updateEmail", "PATCH", "/email", rows);
 }
 
 /** Delete `Email` rows, keyed on `id`. */
 export function deleteEmail(rows: EmailPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/email", rows);
+    return call<void>("deleteEmail", "DELETE", "/email", rows);
 }

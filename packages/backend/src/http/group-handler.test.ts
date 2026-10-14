@@ -1,9 +1,10 @@
-/** Unit tests for the group entry point, over fixture routes. See docs/testing.md and docs/transactions.md. */
+/** Unit tests for the group entry point, over fixture routes it resolves by operation id. See docs/testing.md and docs/transactions.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
 import { handleGroup } from "./group-handler.ts";
-import type { HttpResponse, Route, RouteInput } from "./router.ts";
+import type { HttpResponse } from "./http-response.ts";
+import type { Route, RouteInput } from "./router.ts";
 
 /** A schema stand-in that accepts any argument; the group test is not about Zod. */
 const accepts: RouteInput = {
@@ -51,6 +52,7 @@ beforeEach(() => {
 /** A route that echoes its argument back, so the results of a group are observable. */
 function echoRoute(overrides: Partial<Route> = {}): Route {
     return {
+        id: "echo",
         method: "POST",
         path: "/echo",
         source: "body",
@@ -61,8 +63,8 @@ function echoRoute(overrides: Partial<Route> = {}): Route {
 }
 
 /** One call entry of a group body, as the client encodes it. */
-function callEntry(method: string, path: string, argument: unknown) {
-    return { call: { method, path, argument } };
+function callEntry(operation: string, argument: unknown) {
+    return { call: { operation, argument } };
 }
 
 /** A whole group body, as the client encodes it. */
@@ -72,15 +74,15 @@ function groupBody(kind: "batch" | "transaction" | "attempt", calls: unknown[], 
 
 /** Handle one body against a fixture route table, resolving calls the way the router does. */
 async function handle(routes: Route[], body: string): Promise<HttpResponse> {
-    const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
-    return await handleGroup(db, (method, path) => byKey.get(`${method} ${path}`), body);
+    const byId = new Map(routes.map((route) => [route.id, route]));
+    return await handleGroup(db, (id) => byId.get(id), body);
 }
 
 describe("handleGroup", () => {
     it("runs the calls of a group in order and answers their results", async () => {
         const response = await handle(
-            [echoRoute(), echoRoute({ path: "/other" })],
-            groupBody("batch", [callEntry("POST", "/echo", { n: 1 }), callEntry("POST", "/other", { n: 2 })]),
+            [echoRoute(), echoRoute({ id: "other" })],
+            groupBody("batch", [callEntry("echo", { n: 1 }), callEntry("other", { n: 2 })]),
         );
 
         expect(response.status).toBe(200);
@@ -90,7 +92,7 @@ describe("handleGroup", () => {
     it("carries a write's result as null, as a single call does", async () => {
         const response = await handle(
             [echoRoute({ handler: async () => undefined })],
-            groupBody("batch", [callEntry("POST", "/echo", {})]),
+            groupBody("batch", [callEntry("echo", {})]),
         );
 
         expect(decode(response.body)).toEqual([null]);
@@ -99,18 +101,18 @@ describe("handleGroup", () => {
     it("runs a PUT entry, which a group names for an upsert", async () => {
         const response = await handle(
             [echoRoute({ method: "PUT" })],
-            groupBody("transaction", [callEntry("PUT", "/echo", { n: 1 })]),
+            groupBody("transaction", [callEntry("echo", { n: 1 })]),
         );
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual([{ n: 1 }]);
     });
 
-    it("refuses a group whose call names no route, without running any of it", async () => {
-        const response = await handle([echoRoute()], groupBody("batch", [callEntry("POST", "/missing", {})]));
+    it("refuses a group whose call names an operation the table does not serve", async () => {
+        const response = await handle([echoRoute()], groupBody("batch", [callEntry("missing", {})]));
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "no route", path: [0] });
+        expect(JSON.parse(response.body)).toEqual({ error: "no operation `missing`", path: [0] });
     });
 
     it("validates every call before running any of them", async () => {
@@ -122,12 +124,12 @@ describe("handleGroup", () => {
                     return argument;
                 },
             }),
-            echoRoute({ path: "/strict", input: rejects }),
+            echoRoute({ id: "strict", input: rejects }),
         ];
 
         const response = await handle(
             routes,
-            groupBody("batch", [callEntry("POST", "/echo", { first: true }), callEntry("POST", "/strict", { second: true })]),
+            groupBody("batch", [callEntry("echo", { first: true }), callEntry("strict", { second: true })]),
         );
 
         expect(response.status).toBe(400);
@@ -136,7 +138,7 @@ describe("handleGroup", () => {
     });
 
     it("refuses a body that is a lone call rather than a group", async () => {
-        const response = await handle([echoRoute()], stringify(callEntry("POST", "/echo", {})));
+        const response = await handle([echoRoute()], stringify(callEntry("echo", {})));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "the body must be a group", path: [] });
@@ -157,7 +159,7 @@ describe("handleGroup", () => {
     });
 
     it("opens no boundary for a batch", async () => {
-        await handle([echoRoute()], groupBody("batch", [callEntry("POST", "/echo", {}), callEntry("POST", "/echo", {})]));
+        await handle([echoRoute()], groupBody("batch", [callEntry("echo", {}), callEntry("echo", {})]));
 
         expect(fake.boundaries).toEqual([]);
     });
@@ -172,7 +174,7 @@ describe("handleGroup", () => {
                     },
                 }),
             ],
-            groupBody("transaction", [callEntry("POST", "/echo", {})]),
+            groupBody("transaction", [callEntry("echo", {})]),
         );
 
         expect(fake.boundaries).toEqual(["begin"]);
@@ -181,15 +183,15 @@ describe("handleGroup", () => {
 
     it("nests a transaction in a transaction as a savepoint, and the results nest", async () => {
         const response = await handle(
-            [echoRoute(), echoRoute({ path: "/other" })],
+            [echoRoute(), echoRoute({ id: "other" })],
             groupBody("transaction", [
                 {
                     group: {
                         kind: "transaction",
-                        calls: [callEntry("POST", "/echo", { n: 1 }), callEntry("POST", "/other", { n: 2 })],
+                        calls: [callEntry("echo", { n: 1 }), callEntry("other", { n: 2 })],
                     },
                 },
-                callEntry("POST", "/echo", { n: 3 }),
+                callEntry("echo", { n: 3 }),
             ]),
         );
 
@@ -201,8 +203,8 @@ describe("handleGroup", () => {
         await handle(
             [echoRoute()],
             groupBody("batch", [
-                { group: { kind: "transaction", calls: [callEntry("POST", "/echo", {})] } },
-                { group: { kind: "transaction", calls: [callEntry("POST", "/echo", {})] } },
+                { group: { kind: "transaction", calls: [callEntry("echo", {})] } },
+                { group: { kind: "transaction", calls: [callEntry("echo", {})] } },
             ]),
         );
 
@@ -213,8 +215,8 @@ describe("handleGroup", () => {
         await handle(
             [echoRoute()],
             groupBody("batch", [
-                callEntry("POST", "/echo", {}),
-                { group: { kind: "transaction", calls: [callEntry("POST", "/echo", {})] } },
+                callEntry("echo", {}),
+                { group: { kind: "transaction", calls: [callEntry("echo", {})] } },
             ]),
         );
 
@@ -224,7 +226,7 @@ describe("handleGroup", () => {
     it("gives a handler that asks inside a transaction group a savepoint of its own", async () => {
         await handle(
             [echoRoute({ handler: async (executor) => await executor.transaction(async () => null) })],
-            groupBody("transaction", [callEntry("POST", "/echo", {})]),
+            groupBody("transaction", [callEntry("echo", {})]),
         );
 
         expect(fake.boundaries).toEqual(["begin", "savepoint 1"]);
@@ -233,7 +235,7 @@ describe("handleGroup", () => {
     it("opens the handler's own boundary inside a batch, which has none", async () => {
         await handle(
             [echoRoute({ handler: async (executor) => await executor.transaction(async () => null) })],
-            groupBody("batch", [callEntry("POST", "/echo", {})]),
+            groupBody("batch", [callEntry("echo", {})]),
         );
 
         expect(fake.boundaries).toEqual(["begin"]);
@@ -243,13 +245,13 @@ describe("handleGroup", () => {
         const response = await handle(
             [
                 echoRoute({
-                    path: "/inner",
+                    id: "inner",
                     handler: async () => {
                         throw Object.assign(new Error("version conflict"), { code: "40001" });
                     },
                 }),
             ],
-            groupBody("batch", [{ group: { kind: "attempt", calls: [callEntry("POST", "/inner", {})] } }]),
+            groupBody("batch", [{ group: { kind: "attempt", calls: [callEntry("inner", {})] } }]),
         );
 
         expect(response.status).toBe(200);
@@ -257,7 +259,7 @@ describe("handleGroup", () => {
     });
 
     it("answers an attempt's success with its results", async () => {
-        const response = await handle([echoRoute()], groupBody("attempt", [callEntry("POST", "/echo", { n: 1 })]));
+        const response = await handle([echoRoute()], groupBody("attempt", [callEntry("echo", { n: 1 })]));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual({ ok: true, value: [{ n: 1 }] });
@@ -268,16 +270,16 @@ describe("handleGroup", () => {
             [
                 echoRoute(),
                 echoRoute({
-                    path: "/inner",
+                    id: "inner",
                     handler: async () => {
                         throw new Error("boom");
                     },
                 }),
             ],
             groupBody("transaction", [
-                callEntry("POST", "/echo", { first: true }),
-                { group: { kind: "attempt", calls: [callEntry("POST", "/inner", {})] } },
-                callEntry("POST", "/echo", { last: true }),
+                callEntry("echo", { first: true }),
+                { group: { kind: "attempt", calls: [callEntry("inner", {})] } },
+                callEntry("echo", { last: true }),
             ]),
         );
 
@@ -298,7 +300,7 @@ describe("handleGroup", () => {
                     },
                 }),
             ],
-            groupBody("transaction", [{ group: { kind: "attempt", calls: [callEntry("POST", "/echo", {})] } }]),
+            groupBody("transaction", [{ group: { kind: "attempt", calls: [callEntry("echo", {})] } }]),
         );
 
         // The attempt caught it, so the request answers its marker rather than a failure.
@@ -311,15 +313,15 @@ describe("handleGroup", () => {
             [
                 echoRoute(),
                 echoRoute({
-                    path: "/inner",
+                    id: "inner",
                     handler: async () => {
                         throw Object.assign(new Error("version conflict"), { code: "40001" });
                     },
                 }),
             ],
             groupBody("transaction", [
-                callEntry("POST", "/echo", {}),
-                { group: { kind: "batch", calls: [callEntry("POST", "/inner", {})] } },
+                callEntry("echo", {}),
+                { group: { kind: "batch", calls: [callEntry("inner", {})] } },
             ]),
         );
 
@@ -332,7 +334,7 @@ describe("handleGroup", () => {
             [echoRoute()],
             groupBody(
                 "transaction",
-                [callEntry("POST", "/echo", {})],
+                [callEntry("echo", {})],
                 { isolationLevel: "serializable", accessMode: "read only" },
             ),
         );
@@ -344,14 +346,14 @@ describe("handleGroup", () => {
     it("opens an attempt boundary with them too", async () => {
         await handle(
             [echoRoute()],
-            groupBody("attempt", [callEntry("POST", "/echo", {})], { deferrable: true }),
+            groupBody("attempt", [callEntry("echo", {})], { deferrable: true }),
         );
 
         expect(fake.modes).toEqual([{ deferrable: true }]);
     });
 
     it("names no modes on a boundary the group left them off", async () => {
-        await handle([echoRoute()], groupBody("transaction", [callEntry("POST", "/echo", {})]));
+        await handle([echoRoute()], groupBody("transaction", [callEntry("echo", {})]));
 
         expect(fake.modes).toEqual([undefined]);
     });
@@ -360,7 +362,7 @@ describe("handleGroup", () => {
         await handle(
             [echoRoute()],
             groupBody("batch", [
-                { group: { kind: "transaction", options: { accessMode: "read only" }, calls: [callEntry("POST", "/echo", {})] } },
+                { group: { kind: "transaction", options: { accessMode: "read only" }, calls: [callEntry("echo", {})] } },
             ]),
         );
 
@@ -370,7 +372,7 @@ describe("handleGroup", () => {
     it("refuses modes on a batch, which opens no boundary to put them on", async () => {
         const response = await handle(
             [echoRoute()],
-            groupBody("batch", [callEntry("POST", "/echo", {})], { accessMode: "read only" }),
+            groupBody("batch", [callEntry("echo", {})], { accessMode: "read only" }),
         );
 
         expect(response.status).toBe(400);

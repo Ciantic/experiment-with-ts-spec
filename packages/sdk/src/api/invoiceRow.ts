@@ -13,25 +13,25 @@ export type { InvoiceRowInsert, InvoiceRowPatch, InvoiceRowPrimaryKey, InvoiceRo
 export function queryInvoiceRow<S extends Selection<InvoiceRow>>(
     opts: { filter?: Filters<InvoiceRow, "id" | "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<InvoiceRow, S>[]> {
-    return call<Selected<InvoiceRow, S>[]>("GET", "/invoice_row/query", opts);
+    return call<Selected<InvoiceRow, S>[]>("queryInvoiceRow", "GET", "/invoice_row/query", opts);
 }
 
 /** Create `InvoiceRow` rows. */
 export function createInvoiceRow(rows: InvoiceRowInsert[]): Call<InvoiceRowPrimaryKey[]> {
-    return call<InvoiceRowPrimaryKey[]>("POST", "/invoice_row", rows);
+    return call<InvoiceRowPrimaryKey[]>("createInvoiceRow", "POST", "/invoice_row", rows);
 }
 
 /** Upsert `InvoiceRow` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
 export function upsertInvoiceRow(rows: InvoiceRowUpsert[]): Call<InvoiceRowPrimaryKey[]> {
-    return call<InvoiceRowPrimaryKey[]>("PUT", "/invoice_row", rows);
+    return call<InvoiceRowPrimaryKey[]>("upsertInvoiceRow", "PUT", "/invoice_row", rows);
 }
 
 /** Patch `InvoiceRow` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateInvoiceRow(rows: InvoiceRowPatch[]): Call<void> {
-    return call<void>("PATCH", "/invoice_row", rows);
+    return call<void>("updateInvoiceRow", "PATCH", "/invoice_row", rows);
 }
 
 /** Delete `InvoiceRow` rows, keyed on `id`. */
 export function deleteInvoiceRow(rows: InvoiceRowPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/invoice_row", rows);
+    return call<void>("deleteInvoiceRow", "DELETE", "/invoice_row", rows);
 }

@@ -58,7 +58,7 @@ type SelectedOf<E, S> = Pick<E, Extract<keyof S, keyof E>>;
  * select, and that is the shape the group result has to preserve.
  */
 function selectWidget<S extends SelectionOf<Widget>>(opts: { select: S }): Call<SelectedOf<Widget, S>[]> {
-    return call<SelectedOf<Widget, S>[]>("GET", "/widget/query", opts);
+    return call<SelectedOf<Widget, S>[]>("queryWidget", "GET", "/widget/query", opts);
 }
 
 /** A value with both of the types a JSON encoding would lose. */
@@ -68,7 +68,7 @@ describe("exec", () => {
     it("sends a GET call's argument as the query parameter", async () => {
         const { http, calls } = client(stringify(null));
 
-        await exec(http, call("GET", "/widget/query", payload));
+        await exec(http, call("queryWidget", "GET", "/widget/query", payload));
 
         const url = new URL(calls[0]!.url);
         expect(url.origin + url.pathname).toBe("http://api.example/widget/query");
@@ -79,7 +79,7 @@ describe("exec", () => {
     it("sends a DELETE call's argument as the query parameter", async () => {
         const { http, calls } = client(stringify(null));
 
-        await exec(http, call("DELETE", "/widget", [{ id: "a" }]));
+        await exec(http, call("deleteWidget", "DELETE", "/widget", [{ id: "a" }]));
 
         expect(new URL(calls[0]!.url).searchParams.get("q")).toBe(stringify([{ id: "a" }]));
     });
@@ -87,7 +87,7 @@ describe("exec", () => {
     it("sends a POST call's argument as the body", async () => {
         const { http, calls } = client(stringify(null));
 
-        await exec(http, call("POST", "/widget", [payload]));
+        await exec(http, call("createWidget", "POST", "/widget", [payload]));
 
         expect(calls[0]?.url).toBe("http://api.example/widget");
         expect(calls[0]?.init?.method).toBe("POST");
@@ -97,7 +97,7 @@ describe("exec", () => {
     it("sends a PATCH call's argument as the body", async () => {
         const { http, calls } = client(stringify(null));
 
-        await exec(http, call("PATCH", "/widget", []));
+        await exec(http, call("updateWidget", "PATCH", "/widget", []));
 
         expect(calls[0]?.init?.method).toBe("PATCH");
     });
@@ -105,7 +105,7 @@ describe("exec", () => {
     it("sends a PUT call's argument as the body, as an upsert does", async () => {
         const { http, calls } = client(stringify(null));
 
-        await exec(http, call("PUT", "/widget", [payload]));
+        await exec(http, call("upsertWidget", "PUT", "/widget", [payload]));
 
         expect(calls[0]?.init?.method).toBe("PUT");
         expect(calls[0]?.init?.body).toBe(stringify([payload]));
@@ -114,7 +114,7 @@ describe("exec", () => {
     it("decodes the result, restoring a Date and a bigint", async () => {
         const { http } = client(stringify([payload]));
 
-        const rows = await exec(http, call<(typeof payload)[]>("GET", "/widget/query", {}));
+        const rows = await exec(http, call<(typeof payload)[]>("queryWidget", "GET", "/widget/query", {}));
 
         expect(rows).toEqual([payload]);
     });
@@ -124,7 +124,7 @@ describe("groups", () => {
     it("posts a batch to the group path as a tree of calls", async () => {
         const { http, calls } = client(stringify([null, null]));
 
-        await exec(http, batch(call<void>("POST", "/widget", [1]), call<void>("POST", "/other", [2])));
+        await exec(http, batch(call<void>("createWidget", "POST", "/widget", [1]), call<void>("createOther", "POST", "/other", [2])));
 
         expect(calls[0]?.url).toBe(`http://api.example${GROUP_PATH}`);
         expect(calls[0]?.init?.method).toBe("POST");
@@ -132,8 +132,8 @@ describe("groups", () => {
             group: {
                 kind: "batch",
                 calls: [
-                    { call: { method: "POST", path: "/widget", argument: [1] } },
-                    { call: { method: "POST", path: "/other", argument: [2] } },
+                    { call: { operation: "createWidget", argument: [1] } },
+                    { call: { operation: "createOther", argument: [2] } },
                 ],
             },
         });
@@ -145,8 +145,8 @@ describe("groups", () => {
         await exec(
             http,
             batch(
-                transaction(call<void>("POST", "/widget", [])),
-                call<void>("POST", "/other", []),
+                transaction(call<void>("createWidget", "POST", "/widget", [])),
+                call<void>("createOther", "POST", "/other", []),
             ),
         );
 
@@ -157,10 +157,10 @@ describe("groups", () => {
                     {
                         group: {
                             kind: "transaction",
-                            calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+                            calls: [{ call: { operation: "createWidget", argument: [] } }],
                         },
                     },
-                    { call: { method: "POST", path: "/other", argument: [] } },
+                    { call: { operation: "createOther", argument: [] } },
                 ],
             },
         });
@@ -172,8 +172,8 @@ describe("groups", () => {
         const [writes, rows] = await exec(
             http,
             transaction(
-                transaction(call<void>("POST", "/widget", []), call<void>("POST", "/other", [])),
-                call<{ id: string }[]>("GET", "/widget/query", {}),
+                transaction(call<void>("createWidget", "POST", "/widget", []), call<void>("createOther", "POST", "/other", [])),
+                call<{ id: string }[]>("queryWidget", "GET", "/widget/query", {}),
             ),
         );
 
@@ -185,12 +185,12 @@ describe("groups", () => {
                         group: {
                             kind: "transaction",
                             calls: [
-                                { call: { method: "POST", path: "/widget", argument: [] } },
-                                { call: { method: "POST", path: "/other", argument: [] } },
+                                { call: { operation: "createWidget", argument: [] } },
+                                { call: { operation: "createOther", argument: [] } },
                             ],
                         },
                     },
-                    { call: { method: "GET", path: "/widget/query", argument: {} } },
+                    { call: { operation: "queryWidget", argument: {} } },
                 ],
             },
         });
@@ -204,8 +204,8 @@ describe("groups", () => {
         const [inner, outer] = await exec(
             http,
             batch(
-                transaction(call<string[]>("POST", "/widget", [])),
-                call<string>("POST", "/other", []),
+                transaction(call<string[]>("createWidget", "POST", "/widget", [])),
+                call<string>("createOther", "POST", "/other", []),
             ),
         );
 
@@ -218,7 +218,7 @@ describe("groups", () => {
 
         const [outcome] = await exec(
             http,
-            batch(attempt(call<void>("POST", "/widget", [1]))),
+            batch(attempt(call<void>("createWidget", "POST", "/widget", [1]))),
         );
 
         expect(sentBody(calls[0]!)).toEqual({
@@ -228,7 +228,7 @@ describe("groups", () => {
                     {
                         group: {
                             kind: "attempt",
-                            calls: [{ call: { method: "POST", path: "/widget", argument: [1] } }],
+                            calls: [{ call: { operation: "createWidget", argument: [1] } }],
                         },
                     },
                 ],
@@ -244,7 +244,7 @@ describe("groups", () => {
             http,
             transactionWith(
                 { isolationLevel: "serializable", accessMode: "read only" },
-                call<void>("POST", "/widget", []),
+                call<void>("createWidget", "POST", "/widget", []),
             ),
         );
 
@@ -252,7 +252,7 @@ describe("groups", () => {
             group: {
                 kind: "transaction",
                 options: { isolationLevel: "serializable", accessMode: "read only" },
-                calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+                calls: [{ call: { operation: "createWidget", argument: [] } }],
             },
         });
     });
@@ -261,19 +261,19 @@ describe("groups", () => {
         const named = client(stringify({ ok: true, value: [null] }));
         const plain = client(stringify([null]));
 
-        await exec(named.http, attemptWith({ deferrable: true }, call<void>("POST", "/widget", [])));
-        await exec(plain.http, batch(call<void>("POST", "/widget", [])));
+        await exec(named.http, attemptWith({ deferrable: true }, call<void>("createWidget", "POST", "/widget", [])));
+        await exec(plain.http, batch(call<void>("createWidget", "POST", "/widget", [])));
 
         expect(sentBody(named.calls[0]!)).toEqual({
             group: {
                 kind: "attempt",
                 options: { deferrable: true },
-                calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+                calls: [{ call: { operation: "createWidget", argument: [] } }],
             },
         });
         // A group with no modes writes no `options`, so the tree stays what it was.
         expect(sentBody(plain.calls[0]!)).toEqual({
-            group: { kind: "batch", calls: [{ call: { method: "POST", path: "/widget", argument: [] } }] },
+            group: { kind: "batch", calls: [{ call: { operation: "createWidget", argument: [] } }] },
         });
     });
 
@@ -284,7 +284,7 @@ describe("groups", () => {
             http,
             transactionWith(
                 { accessMode: "read only" },
-                transaction(call<void>("POST", "/widget", [])),
+                transaction(call<void>("createWidget", "POST", "/widget", [])),
             ),
         );
 
@@ -296,7 +296,7 @@ describe("groups", () => {
                     {
                         group: {
                             kind: "transaction",
-                            calls: [{ call: { method: "POST", path: "/widget", argument: [] } }],
+                            calls: [{ call: { operation: "createWidget", argument: [] } }],
                         },
                     },
                 ],
@@ -307,7 +307,7 @@ describe("groups", () => {
     it("raises an HttpError naming the entry that failed", async () => {
         const { http } = client(JSON.stringify({ error: "version conflict", path: [1, 0] }), 409);
 
-        const failure = await exec(http, transaction(call<void>("POST", "/widget", []))).catch(
+        const failure = await exec(http, transaction(call<void>("createWidget", "POST", "/widget", []))).catch(
             (thrown: unknown) => thrown,
         );
 
@@ -319,7 +319,7 @@ describe("groups", () => {
     it("reports no path for a failure that is not a group's", async () => {
         const { http } = client(JSON.stringify({ error: "version conflict" }), 409);
 
-        const failure = await exec(http, call<void>("PATCH", "/widget", [])).catch(
+        const failure = await exec(http, call<void>("updateWidget", "PATCH", "/widget", [])).catch(
             (thrown: unknown) => thrown,
         );
 
@@ -331,8 +331,8 @@ describe("the result type", () => {
     /** Never called: each annotation below is the assertion, checked by `tsc --noEmit`. */
     function assertTypes(): void {
         const http = undefined as unknown as HttpClient;
-        const row = call<{ id: string }[]>("GET", "/widget/query", {});
-        const write = call<void>("POST", "/widget", []);
+        const row = call<{ id: string }[]>("queryWidget", "GET", "/widget/query", {});
+        const write = call<void>("createWidget", "POST", "/widget", []);
 
         const single: Promise<{ id: string }[]> = exec(http, row);
         const allVoid: Promise<void> = exec(http, transaction(write, write));

@@ -45,6 +45,7 @@ beforeEach(() => {
 /** A route that echoes its argument back, so the codec round-trip is observable. */
 function echoRoute(overrides: Partial<Route> = {}): Route {
     return {
+        id: "echo",
         method: "POST",
         path: "/echo",
         source: "body",
@@ -266,12 +267,24 @@ describe("createRouter", () => {
     it("serves the group path, handing the body to the group handler", async () => {
         const router = createRouter(db, [echoRoute()]);
         const body = stringify({
-            group: { kind: "batch", calls: [{ call: { method: "POST", path: "/echo", argument: { n: 1 } } }] },
+            group: { kind: "batch", calls: [{ call: { operation: "echo", argument: { n: 1 } } }] },
         });
 
         const response = await router.handle({ method: "POST", url: GROUP_PATH, body });
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual([{ n: 1 }]);
+    });
+
+    it("resolves a group entry by its operation id, not its path", async () => {
+        const router = createRouter(db, [echoRoute()]);
+        const body = stringify({
+            group: { kind: "batch", calls: [{ call: { operation: "/echo", argument: { n: 1 } } }] },
+        });
+
+        const response = await router.handle({ method: "POST", url: GROUP_PATH, body });
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(response.body)).toEqual({ error: "no operation `/echo`", path: [0] });
     });
 });

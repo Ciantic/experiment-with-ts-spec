@@ -5,9 +5,10 @@ import { createSeller, deleteSeller, updateSeller, upsertSeller } from "../../db
 import { querySeller } from "../../db/queries/index.ts";
 import { querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerPrimaryKeySchema, sellerUpsertSchema } from "validation/index.ts";
 
-/** The calls `/seller` exposes, matched by method and path. */
+/** The calls `/seller` exposes: each under its id, its verb, and its path. */
 export const sellerRoutes: Route[] = [
     {
+        id: "querySeller",
         method: "GET",
         path: "/seller/query",
         source: "query",
@@ -15,6 +16,7 @@ export const sellerRoutes: Route[] = [
         handler: (db, body) => querySeller(db, body as never),
     },
     {
+        id: "createSeller",
         method: "POST",
         path: "/seller",
         source: "body",
@@ -22,6 +24,7 @@ export const sellerRoutes: Route[] = [
         handler: (db, body) => createSeller(db, body as never),
     },
     {
+        id: "upsertSeller",
         method: "PUT",
         path: "/seller",
         source: "body",
@@ -29,6 +32,7 @@ export const sellerRoutes: Route[] = [
         handler: (db, body) => upsertSeller(db, body as never),
     },
     {
+        id: "updateSeller",
         method: "PATCH",
         path: "/seller",
         source: "body",
@@ -36,6 +40,7 @@ export const sellerRoutes: Route[] = [
         handler: (db, body) => updateSeller(db, body as never),
     },
     {
+        id: "deleteSeller",
         method: "DELETE",
         path: "/seller",
         source: "query",

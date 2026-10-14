@@ -5,9 +5,10 @@ import { createTranslation, deleteTranslation, updateTranslation, upsertTranslat
 import { queryTranslation } from "../../db/queries/index.ts";
 import { queryTranslationSchema, translationInsertSchema, translationPatchSchema, translationPrimaryKeySchema, translationUpsertSchema } from "validation/index.ts";
 
-/** The calls `/translation` exposes, matched by method and path. */
+/** The calls `/translation` exposes: each under its id, its verb, and its path. */
 export const translationRoutes: Route[] = [
     {
+        id: "queryTranslation",
         method: "GET",
         path: "/translation/query",
         source: "query",
@@ -15,6 +16,7 @@ export const translationRoutes: Route[] = [
         handler: (db, body) => queryTranslation(db, body as never),
     },
     {
+        id: "createTranslation",
         method: "POST",
         path: "/translation",
         source: "body",
@@ -22,6 +24,7 @@ export const translationRoutes: Route[] = [
         handler: (db, body) => createTranslation(db, body as never),
     },
     {
+        id: "upsertTranslation",
         method: "PUT",
         path: "/translation",
         source: "body",
@@ -29,6 +32,7 @@ export const translationRoutes: Route[] = [
         handler: (db, body) => upsertTranslation(db, body as never),
     },
     {
+        id: "updateTranslation",
         method: "PATCH",
         path: "/translation",
         source: "body",
@@ -36,6 +40,7 @@ export const translationRoutes: Route[] = [
         handler: (db, body) => updateTranslation(db, body as never),
     },
     {
+        id: "deleteTranslation",
         method: "DELETE",
         path: "/translation",
         source: "query",

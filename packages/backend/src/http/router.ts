@@ -16,8 +16,10 @@ export interface RouteInput {
     ): { success: true; data: unknown } | { success: false; error: { issues: unknown } };
 }
 
-/** One exposed call. `routes.ts` is generated against this shape. */
+/** One exposed call: an HTTP route a single request matches, and an id a group entry names. */
 export interface Route {
+    /** The operation's name, e.g. `queryInvoice`. The generated builder and a group entry both use it. */
+    id: string;
     method: HttpMethod;
     path: string;
     /** Whether the call carries its argument in `q` or in the request body. */
@@ -39,7 +41,8 @@ export interface HttpRequest {
 /** A router over a route table, reusing one `db` for every call. */
 export function createRouter(db: SqlExecutor, routes: Route[]) {
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
-    /** Resolve a single request and a group entry the same way, so the two cannot disagree. */
+    const byId = new Map(routes.map((route) => [route.id, route]));
+    /** Resolve a single request and a group entry out of one table, so the two cannot disagree. */
     const resolve = (method: string, path: string) => byKey.get(`${method} ${path}`);
 
     return {
@@ -47,7 +50,8 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
         async handle(request: HttpRequest): Promise<HttpResponse> {
             const url = new URL(request.url, "http://localhost");
             if (request.method === "POST" && url.pathname === GROUP_PATH) {
-                return await handleGroup(db, resolve, request.body);
+                // A group entry names an operation rather than a verb and a path, so it resolves by id.
+                return await handleGroup(db, (id) => byId.get(id), request.body);
             }
 
             const route = resolve(request.method, url.pathname);

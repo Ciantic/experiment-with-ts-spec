@@ -11,10 +11,10 @@ export type { AuditLogInsert, AuditLogPrimaryKey };
 export function queryAuditLog<S extends Selection<AuditLog>>(
     opts: { filter?: Filters<AuditLog, "id">; limit?: number; offset?: number; select: S },
 ): Call<Selected<AuditLog, S>[]> {
-    return call<Selected<AuditLog, S>[]>("GET", "/audit_log/query", opts);
+    return call<Selected<AuditLog, S>[]>("queryAuditLog", "GET", "/audit_log/query", opts);
 }
 
 /** Create `AuditLog` rows. */
 export function createAuditLog(rows: AuditLogInsert[]): Call<AuditLogPrimaryKey[]> {
-    return call<AuditLogPrimaryKey[]>("POST", "/audit_log", rows);
+    return call<AuditLogPrimaryKey[]>("createAuditLog", "POST", "/audit_log", rows);
 }

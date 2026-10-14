@@ -69,14 +69,15 @@ afterAll(async () => {
 });
 
 describe("the generated client and the generated route table", () => {
-    it("agree on every call, so no builder can reach a path the server does not serve", () => {
-        const served = new Set(routes.map((route) => `${route.method} ${route.path}`));
+    it("agree on every call, so no builder can reach a route or name an id the server does not serve", () => {
+        const served = new Map(routes.map((route) => [`${route.method} ${route.path}`, route.id]));
 
-        // A builder is inert, so this needs no server: the call carries its own method and path.
+        // A builder is inert, so this needs no server: the call carries its own verb, path, and operation.
         for (const [name, builder] of builders()) {
-            const { method, path } = builder(undefined);
+            const { operation, method, path } = builder(undefined);
 
             expect(served.has(`${method} ${path}`), `${name} reaches ${method} ${path}`).toBe(true);
+            expect(served.get(`${method} ${path}`), `${name} names ${operation}`).toBe(operation);
         }
     });
 

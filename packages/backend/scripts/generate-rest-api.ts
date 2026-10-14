@@ -3,9 +3,9 @@
  *
  * Emits `packages/backend/src/http/routes`: one module per entity holding that
  * collection's `Route[]`, plus a barrel concatenating them into the table the
- * hand-written router matches on. The generator emits the contract and the
- * wiring, never request handling — the router owns parsing, validation, and
- * status mapping.
+ * hand-written router matches a request on and the group handler resolves an
+ * operation id in. The generator emits the contract and the wiring, never
+ * request handling — the router owns parsing, validation, and status mapping.
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,11 +43,6 @@ export function routesExportName(entity: RestEntity): string {
     return `${entity.module}Routes`;
 }
 
-/** `invoice` + `query` -> `queryInvoice`. The generated function that serves the call. */
-function functionName(entity: RestEntity, kind: RestKind): string {
-    return `${kind}${entity.entity}`;
-}
-
 /** The generated schema that validates the request body, before the `delete` projection. */
 function schemaName(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
@@ -75,7 +70,7 @@ function repositoryFunctions(entity: RestEntity): string[] {
     // Every write kind names a repository function of its own; a read is served by the query module.
     return entity.operations
         .filter((operation) => operation.kind !== "query")
-        .map((operation) => functionName(entity, operation.kind))
+        .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
 
@@ -83,7 +78,7 @@ function repositoryFunctions(entity: RestEntity): string[] {
 function queryFunctions(entity: RestEntity): string[] {
     return entity.operations
         .filter((operation) => operation.kind === "query")
-        .map((operation) => functionName(entity, operation.kind))
+        .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
 
@@ -116,16 +111,17 @@ export function renderEntityRoutes(entity: RestEntity): string {
     }
 
     lines.push("");
-    lines.push(`/** The calls \`${entity.path}\` exposes, matched by method and path. */`);
+    lines.push(`/** The calls \`${entity.path}\` exposes: each under its id, its verb, and its path. */`);
     lines.push(`export const ${routesExportName(entity)}: Route[] = [`);
     for (const operation of entity.operations) {
         lines.push("    {");
+        lines.push(`        id: "${operation.id}",`);
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
         lines.push(`        source: "${operation.source}",`);
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
         // The body is validated against the schema above, so the handler may trust its shape.
-        lines.push(`        handler: (db, body) => ${functionName(entity, operation.kind)}(db, body as never),`);
+        lines.push(`        handler: (db, body) => ${operation.id}(db, body as never),`);
         lines.push("    },");
     }
     lines.push("];");
@@ -144,7 +140,7 @@ export function renderRoutesIndex(model: RestModel): string {
     }
 
     lines.push("");
-    lines.push("/** Every exposed call, matched by method and path. */");
+    lines.push("/** Every exposed call: id, verb, and path, as the router and the group resolve them. */");
     lines.push("export const routes: Route[] = [");
     for (const entity of model.entities) {
         lines.push(`    ...${routesExportName(entity)},`);

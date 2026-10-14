@@ -5,9 +5,10 @@ import { createInvoiceSentRow, deleteInvoiceSentRow, updateInvoiceSentRow, upser
 import { queryInvoiceSentRow } from "../../db/queries/index.ts";
 import { invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowPrimaryKeySchema, invoiceSentRowUpsertSchema, queryInvoiceSentRowSchema } from "validation/index.ts";
 
-/** The calls `/invoice_sent_row` exposes, matched by method and path. */
+/** The calls `/invoice_sent_row` exposes: each under its id, its verb, and its path. */
 export const invoiceSentRowRoutes: Route[] = [
     {
+        id: "queryInvoiceSentRow",
         method: "GET",
         path: "/invoice_sent_row/query",
         source: "query",
@@ -15,6 +16,7 @@ export const invoiceSentRowRoutes: Route[] = [
         handler: (db, body) => queryInvoiceSentRow(db, body as never),
     },
     {
+        id: "createInvoiceSentRow",
         method: "POST",
         path: "/invoice_sent_row",
         source: "body",
@@ -22,6 +24,7 @@ export const invoiceSentRowRoutes: Route[] = [
         handler: (db, body) => createInvoiceSentRow(db, body as never),
     },
     {
+        id: "upsertInvoiceSentRow",
         method: "PUT",
         path: "/invoice_sent_row",
         source: "body",
@@ -29,6 +32,7 @@ export const invoiceSentRowRoutes: Route[] = [
         handler: (db, body) => upsertInvoiceSentRow(db, body as never),
     },
     {
+        id: "updateInvoiceSentRow",
         method: "PATCH",
         path: "/invoice_sent_row",
         source: "body",
@@ -36,6 +40,7 @@ export const invoiceSentRowRoutes: Route[] = [
         handler: (db, body) => updateInvoiceSentRow(db, body as never),
     },
     {
+        id: "deleteInvoiceSentRow",
         method: "DELETE",
         path: "/invoice_sent_row",
         source: "query",

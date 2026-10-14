@@ -11,7 +11,7 @@ import { sellerRoutes } from "./sellerRoutes.ts";
 import { tenantRoutes } from "./tenantRoutes.ts";
 import { translationRoutes } from "./translationRoutes.ts";
 
-/** Every exposed call, matched by method and path. */
+/** Every exposed call: id, verb, and path, as the router and the group resolve them. */
 export const routes: Route[] = [
     ...auditLogRoutes,
     ...customerRoutes,
