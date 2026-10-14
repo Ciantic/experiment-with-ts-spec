@@ -157,7 +157,7 @@ compared with the chunk it was given, and a short count is a rejected call. That
 is what makes a silent loss loud: a `before insert` trigger returning `null`
 skips its row without raising, and a driver that quietly declines a statement
 answers nothing at all. Neither is a caller's mistake, so the thrown error
-carries no SQLSTATE and the router serves it as a server fault. The rows the
+carries no SQLSTATE and the app serves it as a server fault. The rows the
 statement returns are the keys the call answers with, so the check and the return
 value are the same read.
 
@@ -227,7 +227,7 @@ own guard fire. See `docs/versioning.md`.
 A statement that writes fewer rows than its chunk carried is a rejected call
 rather than a no-op: the statement returns the keys it wrote, and the generated
 code throws `code: "40001"` naming the rows it did not, which is the `409` the
-router already serves for a version conflict. That covers both a stale version
+app already serves for a version conflict. That covers both a stale version
 and an id that is not there.
 
 A call carrying more than one row opens a boundary, and its chunks commit
@@ -317,7 +317,7 @@ distinguish them from. `null` is accepted because a caller holding a row from a
 form or another JSON surface carries `null` where the spec carries an absent
 field, and the value array takes it unchanged. The key and the version stay
 locked, so neither can be cleared, and a column that cannot hold a null is not
-widened: sending one is the database's `23502`, which the router serves as a 400.
+widened: sending one is the database's `23502`, which the app serves as a 400.
 The set the schema widens is the patch's, from `nullablePatchProperties`, so the
 two agree on which columns are nullable.
 

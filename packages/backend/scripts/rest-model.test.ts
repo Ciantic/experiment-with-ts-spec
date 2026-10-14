@@ -126,34 +126,39 @@ describe("buildRestModel", () => {
         ]);
     });
 
-    it("reads with GET and writes with the method each call means", () => {
+    it("reads with GET and writes with the method each call means, under the id a group names", () => {
         const widget = model.entities.find((entity) => entity.entity === "Widget");
 
         expect(widget?.operations).toContainEqual({
+            id: "queryWidget",
             kind: "query",
             method: "GET",
             path: "/widget/query",
             source: "query",
         });
         expect(widget?.operations).toContainEqual({
+            id: "createWidget",
             kind: "create",
             method: "POST",
             path: "/widget",
             source: "body",
         });
         expect(widget?.operations).toContainEqual({
+            id: "upsertWidget",
             kind: "upsert",
             method: "PUT",
             path: "/widget",
             source: "body",
         });
         expect(widget?.operations).toContainEqual({
+            id: "updateWidget",
             kind: "update",
             method: "PATCH",
             path: "/widget",
             source: "body",
         });
         expect(widget?.operations).toContainEqual({
+            id: "deleteWidget",
             kind: "delete",
             method: "DELETE",
             path: "/widget",

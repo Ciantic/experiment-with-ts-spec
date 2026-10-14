@@ -144,7 +144,7 @@ conflict.
 
 A statement carries a chunk of rows, so a short write names the rows it left out
 by their keys. `code: "40001"` is the same SQLSTATE the trigger raises, so the
-router maps both to a `409` (`docs/rest-api.md`) and a client keeps one
+app maps both to a `409` (`docs/rest-api.md`) and a client keeps one
 conflict path. The thrown error aborts the surrounding transaction, so a
 multi-row call whose second row is stale writes nothing at all.
 
@@ -230,7 +230,7 @@ gives an upsert three outcomes per row:
   missing row is inserted rather than rejected.
 - **The conflict target is the primary key.** An upsert of a row whose unique
   *other* column is taken raises the database's `23505` rather than replacing,
-  and the router serves it as a `409` like any other unique violation.
+  and the app serves it as a `409` like any other unique violation.
 
 Because the claim is written, an upsert of several rows opens a boundary where a
 create does not: a chunk whose claim is stale has already written the rows that

@@ -1,21 +1,25 @@
 # REST API
 
 The database layer is exposed over HTTP, and a type-safe client is generated from
-the same spec. Nothing about the surface is written by hand except the three files
-that must not be generated: the router, the transport, and the entry re-exporting
-the transport.
+the same spec. Nothing about the surface is written by hand except the files
+that must not be generated: the shape of a call, the app, the transport, and the
+entry re-exporting the transport.
 
 - `packages/backend/scripts/rest-model.ts` — the shared model. Paths, methods,
-  filters, and the operations each entity exposes. Hand-written.
+  operation ids, filters, and the operations each entity exposes. Hand-written.
 - `packages/backend/scripts/generate-rest-api.ts` — the server generator.
 - `packages/backend/scripts/generate-rest-client.ts` — the client generator.
 - `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
   each a `Route[]` for that collection, plus the `index.ts` barrel concatenating
-  them into the table the router matches on.
-- `packages/backend/src/http/router.ts` — the request handler. Hand-written.
+  them into the table the app registers and the group handler resolves by id.
+- `packages/backend/src/http/route.ts` — the shape of one exposed call.
+  Hand-written.
+- `packages/backend/src/http/app.ts` — the Hono app: one call registered per
+  operation, and the adapter that handles one request. Hand-written.
 - `packages/backend/src/http/http-response.ts` — the response shape, and the
   plain-JSON failures a handler answers with. Hand-written.
-- `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
+- `packages/backend/src/http/server.ts` — the `node:http` server: the app's
+  `fetch` bound to a listener. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
   re-exporting them. Imported by name, not re-exported by the entry.
 - `packages/sdk/src/index.ts` — the package entry: the call model and the
@@ -44,14 +48,18 @@ no `@restQueries query` has no read route. See `docs/spec-annotations.md`. A rea
 and a delete carry their argument in a single `q` query parameter; a write
 carries it in the body.
 
-| Call | Method | Path | Argument |
-| --- | --- | --- | --- |
-| query | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
-| create | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
-| upsert | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
-| update | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
-| delete | `DELETE` | `/<table>?q=…` | `[{ id }]` |
-| group | `POST` | `/$group` | a tree of the calls above, in the body |
+| Call | Id | Method | Path | Argument |
+| --- | --- | --- | --- | --- |
+| query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
+| create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
+| upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
+| update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
+| delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
+| group | — | `POST` | `/$group` | a tree of the calls above, in the body |
+
+The id is the call's name: the generated client function is it, and a group entry
+names it instead of a verb and a path. A single request never carries one — the
+URL is the address.
 
 The group path is the one call not derived from an entity: it takes a tree of
 calls and runs them in one request, and it is owned by the hand-written group
@@ -60,7 +68,7 @@ its results, and how a `transaction` group differs from a `batch`.
 
 Which side carries the argument is a field on the model (`source: "query" |
 "body"`), so the generated table and the generated client read it rather than
-each applying a rule. The router obeys the table: it decodes `q` for a `query`
+each applying a rule. The app obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other. A group entry carries
 its argument as a field of the tree, so it is the one place `source` does not
 apply.
@@ -88,6 +96,22 @@ rows were carried — the rows the repository returned, unchanged
 `update` and `delete` answer `200` with `null`, the codec's spelling of a void
 write. The key type is the one validation declares, so the client's read of a
 write's answer and the key a delete sends are one definition.
+
+## The app is Hono
+
+`app.ts` registers each call the table names on the verb and path it names, so
+matching is Hono's and nothing re-implements it. The hand-written handling is the
+adapter around one call: read the argument from where the table says it travels,
+decode it with `devalue`, validate it against the table's `input`, call the
+handler with the request's `SqlExecutor`, and encode the result. A failure maps
+through `http-response.ts` to the status its SQLSTATE names, `body-limit`
+middleware refuses a body over the cap, and `notFound` answers a path the table
+does not name.
+
+`POST /$group` is the one entry that is not a route: it carries a tree of calls
+that each name an operation id, and the group handler resolves them out of the
+same table the app registers. So the two entry points cannot disagree about what
+a call is, and a group body survives a change to the URL layout.
 
 ## Why a read is a `GET` with `q`
 
@@ -135,7 +159,7 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `../client.ts` |
+| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./route.ts` | `spec/*`, type-only `validation/*`, and its own `../client.ts` |
 | Emits | `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
@@ -275,7 +299,7 @@ No mode reaches the statement unvalidated.
   request needs an encoder too. The error bodies are the exception, deliberately.
 - **A read URL has a length limit.** The argument is in the URL, so a filter
   naming thousands of ids fails where a body would have worked. Node answers a
-  too-large request itself (`maxHeaderSize`, 16 kB by default) before the router
+  too-large request itself (`maxHeaderSize`, 16 kB by default) before the app
   sees it, and a proxy's limit may be lower.
 - **The wire format is JavaScript-specific.** `devalue` has no cross-language
   spec, so there is no OpenAPI artifact and no non-JS client. See "Deliberately
@@ -326,7 +350,8 @@ No mode reaches the statement unvalidated.
 - **An operations route.** `InvoiceOperations` is a contract with no
   implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
   entity set, so the generator does not see it. `POST /invoice/send` is
-  hand-wired when the operation exists.
+  hand-wired when the operation exists, and it takes an id of its own so a group
+  can name it.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
   (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.

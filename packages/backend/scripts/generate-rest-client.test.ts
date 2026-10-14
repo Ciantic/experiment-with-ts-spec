@@ -126,19 +126,19 @@ describe("renderClientModule", () => {
 
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
         expect(code).toContain("): Call<Selected<Widget, S>[]> {");
-        expect(code).toContain('return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);');
+        expect(code).toContain('return call<Selected<Widget, S>[]>("queryWidget", "GET", "/widget/query", opts);');
         expect(code).toContain('import type { Widget } from "spec/fixtures/Widget.ts";');
         expect(code).toContain('import { call, type Call } from "../client.ts";');
         expect(code).not.toContain("HttpClient");
     });
 
-    it("names the verb and the path of each call, leaving the carrier to exec", () => {
+    it("names the operation and the verb and path of each call, leaving the carrier to exec", () => {
         const code = widgetModule();
 
-        expect(code).toContain('call<WidgetPrimaryKey[]>("POST", "/widget", rows)');
-        expect(code).toContain('call<WidgetPrimaryKey[]>("PUT", "/widget", rows)');
-        expect(code).toContain('call<void>("PATCH", "/widget", rows)');
-        expect(code).toContain('call<void>("DELETE", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[]>("createWidget", "POST", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[]>("upsertWidget", "PUT", "/widget", rows)');
+        expect(code).toContain('call<void>("updateWidget", "PATCH", "/widget", rows)');
+        expect(code).toContain('call<void>("deleteWidget", "DELETE", "/widget", rows)');
     });
 
     it("narrows the filters to the filterable fields, requiring the required ones", () => {
@@ -211,7 +211,7 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain("rows: WidgetPrimaryKey[]");
-        expect(code).toContain('call<void>("DELETE", "/widget", rows)');
+        expect(code).toContain('call<void>("deleteWidget", "DELETE", "/widget", rows)');
     });
 
     it("deletes by every field of a composite key", () => {
@@ -358,16 +358,12 @@ describe("generateRestClient", () => {
     });
 
     it("exposes exactly the calls the server exposes", () => {
-        // Every route module, barrel included; the barrel names no method or path, so it adds nothing.
+        // Every route module, barrel included; the barrel names no id, so it adds nothing.
         const exposed = [...renderRoutes(model).values()].flatMap((content) =>
-            [...content.matchAll(/method: "(\w+)",\s*\n\s*path: "([^"]+)"/g)].map(
-                (match) => `${match[1]} ${match[2]}`,
-            ),
+            [...content.matchAll(/id: "(\w+)",/g)].map((match) => match[1]),
         );
         const called = [...generateRestClient(model).values()].flatMap((content) =>
-            [...content.matchAll(/call<.*?>\("([A-Z]+)", "([^"]+)"/g)].map(
-                (match) => `${match[1]} ${match[2]}`,
-            ),
+            [...content.matchAll(/call<.*?>\("(\w+)",/g)].map((match) => match[1]),
         );
 
         expect(exposed.length).toBeGreaterThan(0);

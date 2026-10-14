@@ -1,10 +1,11 @@
 /**
  * Map the parsed spec to the REST surface both generators render: the paths, the
- * methods, the filter fields, and the operations each entity exposes.
+ * methods, the operation ids, the filter fields, and the operations each entity
+ * exposes.
  *
  * The model is the shared half. `generate-rest-api.ts` renders it into the
  * server's route table and `generate-rest-client.ts` into the SDK, so neither
- * generator may re-derive a path. See docs/rest-api.md.
+ * generator may re-derive a path or an id. See docs/rest-api.md.
  */
 import {
     READ_OPERATIONS,
@@ -32,6 +33,11 @@ export type RestSource = "query" | "body";
 
 /** One exposed call. */
 export interface RestOperation {
+    /**
+     * The name the call goes by: the generated builder's name, and what a group
+     * entry names instead of a method and a path. See docs/transactions.md.
+     */
+    id: string;
     kind: RestKind;
     method: RestMethod;
     path: string;
@@ -75,34 +81,45 @@ function queryPath(path: string): string {
     return `${path}/query`;
 }
 
+/** The name a call goes by: the kind it names and the entity it belongs to, e.g. `queryInvoice`. */
+function callId(entity: string, kind: RestKind): string {
+    return `${kind}${entity}`;
+}
+
 /** The method, carrier, and path of one exposed write. */
-function writeOperation(path: string, kind: WriteOperation): RestOperation {
+function writeOperation(entity: string, path: string, kind: WriteOperation): RestOperation {
+    const id = callId(entity, kind);
     switch (kind) {
         case "create":
-            return { kind, method: "POST", path, source: "body" };
+            return { id, kind, method: "POST", path, source: "body" };
         // An upsert declares a row's whole state and the version it claims, so it replaces: `PUT` is idempotent.
         case "upsert":
-            return { kind, method: "PUT", path, source: "body" };
+            return { id, kind, method: "PUT", path, source: "body" };
         case "update":
-            return { kind, method: "PATCH", path, source: "body" };
+            return { id, kind, method: "PATCH", path, source: "body" };
         // A delete carries keys, not row data, and a `DELETE` body is not universally relayed.
         case "delete":
-            return { kind, method: "DELETE", path, source: "query" };
+            return { id, kind, method: "DELETE", path, source: "query" };
     }
 }
 
 /** The calls one entity exposes, in a stable order: the reads `@restQueries` names, then the writes. */
-function operationsFor(path: string, reads: ReadOperation[], writes: WriteOperation[]): RestOperation[] {
+function operationsFor(
+    entity: string,
+    path: string,
+    reads: ReadOperation[],
+    writes: WriteOperation[],
+): RestOperation[] {
     const operations: RestOperation[] = [];
     for (const kind of READ_OPERATIONS) {
         // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
         if (reads.includes(kind)) {
-            operations.push({ kind, method: "GET", path: queryPath(path), source: "query" });
+            operations.push({ id: callId(entity, kind), kind, method: "GET", path: queryPath(path), source: "query" });
         }
     }
     for (const kind of WRITE_OPERATIONS) {
         if (writes.includes(kind)) {
-            operations.push(writeOperation(path, kind));
+            operations.push(writeOperation(entity, path, kind));
         }
     }
     return operations;
@@ -137,7 +154,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        operations: operationsFor(path, spec.restQueries, spec.restRepositoryOperations),
+        operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations),
     };
 }
 

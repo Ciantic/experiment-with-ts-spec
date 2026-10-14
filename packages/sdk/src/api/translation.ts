@@ -13,25 +13,25 @@ export type { TranslationInsert, TranslationPatch, TranslationPrimaryKey, Transl
 export function queryTranslation<S extends Selection<Translation>>(
     opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Translation, S>[]> {
-    return call<Selected<Translation, S>[]>("GET", "/translation/query", opts);
+    return call<Selected<Translation, S>[]>("queryTranslation", "GET", "/translation/query", opts);
 }
 
 /** Create `Translation` rows. */
 export function createTranslation(rows: TranslationInsert[]): Call<TranslationPrimaryKey[]> {
-    return call<TranslationPrimaryKey[]>("POST", "/translation", rows);
+    return call<TranslationPrimaryKey[]>("createTranslation", "POST", "/translation", rows);
 }
 
 /** Upsert `Translation` rows: each row is created, or replaces the row it keys on. */
 export function upsertTranslation(rows: TranslationUpsert[]): Call<TranslationPrimaryKey[]> {
-    return call<TranslationPrimaryKey[]>("PUT", "/translation", rows);
+    return call<TranslationPrimaryKey[]>("upsertTranslation", "PUT", "/translation", rows);
 }
 
 /** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */
 export function updateTranslation(rows: TranslationPatch[]): Call<void> {
-    return call<void>("PATCH", "/translation", rows);
+    return call<void>("updateTranslation", "PATCH", "/translation", rows);
 }
 
 /** Delete `Translation` rows, keyed on `lang`, `key`. */
 export function deleteTranslation(rows: TranslationPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/translation", rows);
+    return call<void>("deleteTranslation", "DELETE", "/translation", rows);
 }

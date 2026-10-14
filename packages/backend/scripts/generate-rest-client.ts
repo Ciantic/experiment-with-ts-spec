@@ -10,7 +10,9 @@
  * A generated function builds a call and returns it; it does not send one. So the
  * signature is the generated read without `db` and without a client, the caller
  * passes the result to `exec`, and the narrowing is unchanged because the
- * selection is fixed when the builder is called. See docs/transactions.md.
+ * selection is fixed when the builder is called. The call carries its operation
+ * id as well as its verb and path: a single request uses the route, and a group
+ * entry names the id. See docs/transactions.md.
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -172,11 +174,11 @@ export function renderClientModule(entity: RestEntity): string {
     if (query) {
         lines.push("");
         lines.push(comment(entity, "query"));
-        lines.push(`export function query${name}<S extends Selection<${name}>>(`);
+        lines.push(`export function ${query.id}<S extends Selection<${name}>>(`);
         lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields)},`);
         lines.push(`): Call<Selected<${name}, S>[]> {`);
         lines.push(
-            `    return call<Selected<${name}, S>[]>("${query.method}", "${query.path}", opts);`,
+            `    return call<Selected<${name}, S>[]>("${query.id}", "${query.method}", "${query.path}", opts);`,
         );
         lines.push("}");
     }
@@ -184,31 +186,31 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         lines.push("");
         lines.push(comment(entity, "create"));
-        lines.push(`export function create${name}(rows: ${name}Insert[]): Call<${keyType(entity)}[]> {`);
-        lines.push(`    return call<${keyType(entity)}[]>("${create.method}", "${create.path}", rows);`);
+        lines.push(`export function ${create.id}(rows: ${name}Insert[]): Call<${keyType(entity)}[]> {`);
+        lines.push(`    return call<${keyType(entity)}[]>("${create.id}", "${create.method}", "${create.path}", rows);`);
         lines.push("}");
     }
 
     if (upsert) {
         lines.push("");
         lines.push(comment(entity, "upsert"));
-        lines.push(`export function upsert${name}(rows: ${name}Upsert[]): Call<${keyType(entity)}[]> {`);
-        lines.push(`    return call<${keyType(entity)}[]>("${upsert.method}", "${upsert.path}", rows);`);
+        lines.push(`export function ${upsert.id}(rows: ${name}Upsert[]): Call<${keyType(entity)}[]> {`);
+        lines.push(`    return call<${keyType(entity)}[]>("${upsert.id}", "${upsert.method}", "${upsert.path}", rows);`);
         lines.push("}");
     }
 
     if (update) {
         lines.push("");
         lines.push(comment(entity, "update"));
-        lines.push(`export function update${name}(rows: ${name}Patch[]): Call<void> {`);
-        lines.push(`    return call<void>("${update.method}", "${update.path}", rows);`);
+        lines.push(`export function ${update.id}(rows: ${name}Patch[]): Call<void> {`);
+        lines.push(`    return call<void>("${update.id}", "${update.method}", "${update.path}", rows);`);
         lines.push("}");
     }
     if (remove) {
         lines.push("");
         lines.push(comment(entity, "delete"));
-        lines.push(`export function delete${name}(rows: ${keyType(entity)}[]): Call<void> {`);
-        lines.push(`    return call<void>("${remove.method}", "${remove.path}", rows);`);
+        lines.push(`export function ${remove.id}(rows: ${keyType(entity)}[]): Call<void> {`);
+        lines.push(`    return call<void>("${remove.id}", "${remove.method}", "${remove.path}", rows);`);
         lines.push("}");
     }
 

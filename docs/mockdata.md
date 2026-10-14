@@ -63,5 +63,5 @@ the number of rows that were seeded.
 
 The test is deliberately generic: it reads `mockTables` and the client barrel
 rather than naming an entity, so a domain change does not rewrite it. It covers
-the wire, not business meaning — that the router, the codec, the resolver, and
+the wire, not business meaning — that the app, the codec, the resolver, and
 the generated client agree end to end.

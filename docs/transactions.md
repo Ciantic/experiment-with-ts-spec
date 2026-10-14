@@ -193,6 +193,7 @@ opens a unit of work when it needs one:
 
 ```ts
 export interface Route {
+    id: string;
     method: HttpMethod;
     path: string;
     source: "query" | "body";
@@ -297,7 +298,7 @@ call. `sendInvoice` is the case: it reads the draft, writes `invoice_sent` and
 Nothing marks it as such. The implementation is hand-written, takes `SqlExecutor`, and
 opens the boundary itself — `transaction(db, …)` where it wants a unit of work,
 `attempt(db, …)` where a step may fail without taking the rest down — which is
-what makes it callable outside the router too: a seed script or a test passes any
+what makes it callable outside the app too: a seed script or a test passes any
 `SqlExecutor` and the same function works. No route is a named operation yet, because
 `InvoiceOperations` is still a contract with no implementation
 (`docs/invoice-sending.md`); `Route.handler` taking `SqlExecutor` is the seam it lands on.
@@ -315,6 +316,8 @@ data, and `exec` is the only thing that reaches the network:
 ```ts
 export interface Call<R> {
     readonly kind: "call";
+    /** The operation the server calls it by; a group entry names this. */
+    readonly operation: string;
     readonly method: Method;
     readonly path: string;
     readonly argument: unknown;
@@ -345,10 +348,10 @@ export type Executable<R = unknown> = Call<R> | Group<R>;
 The generator emits the builders, one per exposed call. Everything above, plus
 `exec`, `transaction`, `transactionWith`, `attempt`, `attemptWith`, and `batch`,
 is hand-written in `sdk/src/client.ts` next to the transport in `sdk/src/http.ts`
-— the same split as the server, where the router is hand-written and the route
+— the same split as the server, where the app is hand-written and the route
 table is generated.
-The SDK declares its own `Method` union rather than importing the router's, so
-the client still imports nothing from the backend.
+The SDK declares its own `Method` union rather than importing `HttpMethod` from
+the route table, so the client still imports nothing from the backend.
 
 Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
@@ -405,14 +408,16 @@ only way a call is made.
 A group is one `POST /$group` whose body is a tree:
 
 ```ts
-type Wire = { call: { method: HttpMethod; path: string; argument: unknown } }
+type Wire = { call: { operation: string; argument: unknown } }
           | { group: { kind: "batch" | "transaction" | "attempt"; options?: TransactionOptions; calls: Wire[] } };
 ```
 
-The group handler resolves every `call` against the same route table the router
-matches a single request on, and validates the entry with that route's `input`.
-The `source` field is not consulted: a single request reads `q` or the body, but
-an entry already carries its argument as a field.
+The group handler resolves every `call` by the operation id it names, against the
+same route table the app registers on a single request's verb and path, and
+validates the entry with that route's `input`. Neither the method nor the path
+travels: an entry is a name and an argument, so a group is not tied to the URL
+layout, and the `source` field is not consulted either — a single request reads
+`q` or the body, but an entry already carries its argument as a field.
 
 **The whole tree is validated before any of it executes**, so a malformed group
 is a 400 that has written nothing. Only a runtime failure can leave a partial
@@ -461,7 +466,7 @@ else propagates, so an outer failure is never mistaken for a tolerated one.
 Resolution through the route table is what keeps this from becoming a second
 surface. Every call a group can make is a call that already exists, and a check
 added to a single route — validation, and later an authorization guard — runs for
-its entry too, because the entry goes through the route.
+its entry too, because the entry goes through the same route the id names.
 
 ### The modes a group opens with
 

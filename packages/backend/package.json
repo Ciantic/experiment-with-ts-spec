@@ -21,7 +21,9 @@
     "example:server": "node src/main.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.5",
     "devalue": "^5.3.2",
+    "hono": "^4.13.13",
     "spec": "workspace:*",
     "validation": "workspace:*",
     "zod": "^4.6.5"

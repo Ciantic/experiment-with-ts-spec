@@ -19,6 +19,8 @@ declare const Result: unique symbol;
 /** One call, built by a generated function and not yet sent. */
 export interface Call<R> {
     readonly kind: "call";
+    /** The operation the server calls it by, e.g. `queryInvoice`: a group entry names this. */
+    readonly operation: string;
     readonly method: Method;
     readonly path: string;
     readonly argument: unknown;
@@ -42,8 +44,8 @@ export type Attempted<R> =
 /** What `exec` accepts: a call, or a group of them. */
 export type Executable<R = unknown> = Call<R> | Group<R>;
 
-/** One call of a group body, as it travels on the wire. */
-type WireCall = { call: { method: Method; path: string; argument: unknown } };
+/** One call of a group body, as it travels on the wire. A group names the operation, not its route. */
+type WireCall = { call: { operation: string; argument: unknown } };
 
 /** A nested group of a group body. */
 type WireGroup = { group: { kind: GroupKind; options?: TransactionOptions; calls: Wire[] } };
@@ -66,8 +68,8 @@ type GroupResult<T extends readonly Executable[]> = Results<T> extends readonly 
     : Results<T>;
 
 /** Build one call. Generated modules are the only callers. */
-export function call<R>(method: Method, path: string, argument: unknown): Call<R> {
-    return { kind: "call", method, path, argument };
+export function call<R>(operation: string, method: Method, path: string, argument: unknown): Call<R> {
+    return { kind: "call", operation, method, path, argument };
 }
 
 /** Group calls into one request, all-or-nothing: a boundary that fails loudly, opened with no modes. */
@@ -104,7 +106,7 @@ export function batch<const T extends readonly Executable[]>(...calls: T): Group
 /** Render one executable as the tree the group route reads. */
 function toWire(executable: Executable): Wire {
     if (executable.kind === "call") {
-        return { call: { method: executable.method, path: executable.path, argument: executable.argument } };
+        return { call: { operation: executable.operation, argument: executable.argument } };
     }
     return {
         group: {

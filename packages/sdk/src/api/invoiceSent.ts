@@ -13,25 +13,25 @@ export type { InvoiceSentInsert, InvoiceSentPatch, InvoiceSentPrimaryKey, Invoic
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
     opts: { filter?: Filters<InvoiceSent, "id" | "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<InvoiceSent, S>[]> {
-    return call<Selected<InvoiceSent, S>[]>("GET", "/invoice_sent/query", opts);
+    return call<Selected<InvoiceSent, S>[]>("queryInvoiceSent", "GET", "/invoice_sent/query", opts);
 }
 
 /** Create `InvoiceSent` rows. */
 export function createInvoiceSent(rows: InvoiceSentInsert[]): Call<InvoiceSentPrimaryKey[]> {
-    return call<InvoiceSentPrimaryKey[]>("POST", "/invoice_sent", rows);
+    return call<InvoiceSentPrimaryKey[]>("createInvoiceSent", "POST", "/invoice_sent", rows);
 }
 
 /** Upsert `InvoiceSent` rows: each row is created, or replaces the row it keys on. */
 export function upsertInvoiceSent(rows: InvoiceSentUpsert[]): Call<InvoiceSentPrimaryKey[]> {
-    return call<InvoiceSentPrimaryKey[]>("PUT", "/invoice_sent", rows);
+    return call<InvoiceSentPrimaryKey[]>("upsertInvoiceSent", "PUT", "/invoice_sent", rows);
 }
 
 /** Patch `InvoiceSent` rows; a row that is not there rejects the call. See docs/versioning.md. */
 export function updateInvoiceSent(rows: InvoiceSentPatch[]): Call<void> {
-    return call<void>("PATCH", "/invoice_sent", rows);
+    return call<void>("updateInvoiceSent", "PATCH", "/invoice_sent", rows);
 }
 
 /** Delete `InvoiceSent` rows, keyed on `id`. */
 export function deleteInvoiceSent(rows: InvoiceSentPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/invoice_sent", rows);
+    return call<void>("deleteInvoiceSent", "DELETE", "/invoice_sent", rows);
 }

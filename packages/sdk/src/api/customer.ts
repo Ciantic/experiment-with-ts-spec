@@ -13,25 +13,25 @@ export type { CustomerInsert, CustomerPatch, CustomerPrimaryKey, CustomerUpsert 
 export function queryCustomer<S extends Selection<Customer>>(
     opts: { filter?: Filters<Customer, "id" | "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Customer, S>[]> {
-    return call<Selected<Customer, S>[]>("GET", "/customer/query", opts);
+    return call<Selected<Customer, S>[]>("queryCustomer", "GET", "/customer/query", opts);
 }
 
 /** Create `Customer` rows. */
 export function createCustomer(rows: CustomerInsert[]): Call<CustomerPrimaryKey[]> {
-    return call<CustomerPrimaryKey[]>("POST", "/customer", rows);
+    return call<CustomerPrimaryKey[]>("createCustomer", "POST", "/customer", rows);
 }
 
 /** Upsert `Customer` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
 export function upsertCustomer(rows: CustomerUpsert[]): Call<CustomerPrimaryKey[]> {
-    return call<CustomerPrimaryKey[]>("PUT", "/customer", rows);
+    return call<CustomerPrimaryKey[]>("upsertCustomer", "PUT", "/customer", rows);
 }
 
 /** Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateCustomer(rows: CustomerPatch[]): Call<void> {
-    return call<void>("PATCH", "/customer", rows);
+    return call<void>("updateCustomer", "PATCH", "/customer", rows);
 }
 
 /** Delete `Customer` rows, keyed on `id`. */
 export function deleteCustomer(rows: CustomerPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/customer", rows);
+    return call<void>("deleteCustomer", "DELETE", "/customer", rows);
 }

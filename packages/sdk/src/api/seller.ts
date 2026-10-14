@@ -13,25 +13,25 @@ export type { SellerInsert, SellerPatch, SellerPrimaryKey, SellerUpsert };
 export function querySeller<S extends Selection<Seller>>(
     opts: { filter?: Filters<Seller, "id" | "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Seller, S>[]> {
-    return call<Selected<Seller, S>[]>("GET", "/seller/query", opts);
+    return call<Selected<Seller, S>[]>("querySeller", "GET", "/seller/query", opts);
 }
 
 /** Create `Seller` rows. */
 export function createSeller(rows: SellerInsert[]): Call<SellerPrimaryKey[]> {
-    return call<SellerPrimaryKey[]>("POST", "/seller", rows);
+    return call<SellerPrimaryKey[]>("createSeller", "POST", "/seller", rows);
 }
 
 /** Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
 export function upsertSeller(rows: SellerUpsert[]): Call<SellerPrimaryKey[]> {
-    return call<SellerPrimaryKey[]>("PUT", "/seller", rows);
+    return call<SellerPrimaryKey[]>("upsertSeller", "PUT", "/seller", rows);
 }
 
 /** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateSeller(rows: SellerPatch[]): Call<void> {
-    return call<void>("PATCH", "/seller", rows);
+    return call<void>("updateSeller", "PATCH", "/seller", rows);
 }
 
 /** Delete `Seller` rows, keyed on `id`. */
 export function deleteSeller(rows: SellerPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/seller", rows);
+    return call<void>("deleteSeller", "DELETE", "/seller", rows);
 }

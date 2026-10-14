@@ -68,13 +68,18 @@ describe("renderEntityRoutes", () => {
     it("emits a typed route table for one collection", () => {
         const code = render();
 
-        expect(code).toContain('import type { Route } from "../router.ts";');
+        expect(code).toContain('import type { Route } from "../route.ts";');
         expect(code).toContain("export const widgetRoutes: Route[] = [");
     });
 
-    it("names the path, the method, and the schema of each call", () => {
+    it("names the operation, the path, the method, and the schema of each call", () => {
         const code = render();
 
+        expect(code).toContain('id: "queryWidget"');
+        expect(code).toContain('id: "createWidget"');
+        expect(code).toContain('id: "upsertWidget"');
+        expect(code).toContain('id: "updateWidget"');
+        expect(code).toContain('id: "deleteWidget"');
         expect(code).toContain('path: "/widget/query"');
         expect(code).toContain("input: queryWidgetSchema");
         expect(code).toContain("input: z.array(widgetInsertSchema)");

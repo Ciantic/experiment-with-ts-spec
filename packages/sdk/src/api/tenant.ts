@@ -13,25 +13,25 @@ export type { TenantInsert, TenantPatch, TenantPrimaryKey, TenantUpsert };
 export function queryTenant<S extends Selection<Tenant>>(
     opts: { filter?: Filters<Tenant, "id">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Tenant, S>[]> {
-    return call<Selected<Tenant, S>[]>("GET", "/tenant/query", opts);
+    return call<Selected<Tenant, S>[]>("queryTenant", "GET", "/tenant/query", opts);
 }
 
 /** Create `Tenant` rows. */
 export function createTenant(rows: TenantInsert[]): Call<TenantPrimaryKey[]> {
-    return call<TenantPrimaryKey[]>("POST", "/tenant", rows);
+    return call<TenantPrimaryKey[]>("createTenant", "POST", "/tenant", rows);
 }
 
 /** Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
 export function upsertTenant(rows: TenantUpsert[]): Call<TenantPrimaryKey[]> {
-    return call<TenantPrimaryKey[]>("PUT", "/tenant", rows);
+    return call<TenantPrimaryKey[]>("upsertTenant", "PUT", "/tenant", rows);
 }
 
 /** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
 export function updateTenant(rows: TenantPatch[]): Call<void> {
-    return call<void>("PATCH", "/tenant", rows);
+    return call<void>("updateTenant", "PATCH", "/tenant", rows);
 }
 
 /** Delete `Tenant` rows, keyed on `id`. */
 export function deleteTenant(rows: TenantPrimaryKey[]): Call<void> {
-    return call<void>("DELETE", "/tenant", rows);
+    return call<void>("deleteTenant", "DELETE", "/tenant", rows);
 }
