@@ -32,10 +32,10 @@ export const queryInvoiceSelectSchema = z.lazy(() =>
 export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
         customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
         sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
-    }).optional(),
+    }),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),

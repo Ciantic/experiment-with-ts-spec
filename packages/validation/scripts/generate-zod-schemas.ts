@@ -129,12 +129,14 @@ export function generateQueryFile(
         lines.push("");
         lines.push(`export const ${query.schemaName} = z.strictObject({`);
         // The filter is its own object so a data field can never collide with `select`.
-        if (query.fields.length > 0) {
+        if (query.filterFields.length > 0) {
+            // A required filter makes the object mandatory: a read may not leave out what it must name.
+            const optional = query.requiredFilterFields.length === 0 ? ".optional()" : "";
             lines.push("    filter: z.strictObject({");
-            for (const field of query.fields) {
+            for (const field of query.filterFields) {
                 lines.push(`        ${field.name}: ${field.expression},`);
             }
-            lines.push("    }).optional(),");
+            lines.push(`    })${optional},`);
         }
         // Ordering is whitelisted by `@queryOrderBy`, so an unknown field fails rather than reaching SQL.
         if (query.orderFields.length > 0) {

@@ -32,6 +32,7 @@ interface QueryTableData {
     key: string;
     fields: Record<string, string>;
     relations: Record<string, Record<string, unknown>>;
+    requiredFilters?: string[];
     order?: string[];
     defaultOrder?: { field: string; direction: string };
     where?: Record<string, string[]>;
@@ -81,6 +82,12 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
         const key = primaryKeyColumns(table)[0]?.name as string;
         const data: QueryTableData = { name: table.name, key, fields, relations };
 
+        // A required filter is an invariant rather than a typing nicety, so the resolver reads it too.
+        const requiredFilters = requiredFilterFields(table);
+        if (requiredFilters.length > 0) {
+            data.requiredFilters = requiredFilters;
+        }
+
         // Orderable fields come from `@queryOrderBy`; one may declare the entity default ordering.
         const orderColumns = table.columns.filter((column) => column.queryOrder !== undefined);
         if (orderColumns.length > 0) {
@@ -114,7 +121,12 @@ export function renderQueryModelModule(model: QueryModelData): string {
 
 /** The field names an entity exposes as filters: its `@queryFilter` scalar columns. */
 function filterFields(table: Table): string[] {
-    return table.columns.filter((column) => column.queryFilter).map((column) => column.name);
+    return table.columns.filter((column) => column.queryFilter !== undefined).map((column) => column.name);
+}
+
+/** The filter fields every read must name: its `@queryFilter required` columns. */
+function requiredFilterFields(table: Table): string[] {
+    return table.columns.filter((column) => column.queryFilter?.required).map((column) => column.name);
 }
 
 /** The field names an entity exposes as ordering keys: its `@queryOrderBy` scalar columns. */
@@ -143,6 +155,7 @@ function whereType(entity: string, fields: { name: string; operators: string[] }
 /** Render one entity's query function. */
 export function renderQueryModule(entity: string, table: Table): string {
     const filters = filterFields(table);
+    const required = requiredFilterFields(table);
     const order = orderFields(table);
     const where = whereFields(table);
     const lines: string[] = [HEADER];
@@ -167,7 +180,7 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push("");
     lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`);
     lines.push(
-        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, order, where)}): Promise<Selected<${entity}, S>[]> {`,
+        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, required, order, where)}): Promise<Selected<${entity}, S>[]> {`,
     );
     const resolverOpts =
         (order.length > 0 ? "order: opts.order, " : "") +
@@ -180,16 +193,19 @@ export function renderQueryModule(entity: string, table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** The `query` options: an optional filter, ordering, comparisons, and paging, plus the selection. */
+/** The `query` options: a filter, ordering, comparisons, and paging, plus the selection. */
 function queryOptsType(
     entity: string,
     filters: string[],
+    required: string[],
     order: string[],
     where: { name: string; operators: string[] }[],
 ): string {
     const parts: string[] = [];
     if (filters.length > 0) {
-        parts.push(`filter?: Filters<${entity}, ${filterKeys(filters)}>`);
+        // A required filter makes the whole object mandatory: `filter` may not be left out when it holds one.
+        const keys = required.length > 0 ? `${filterKeys(filters)}, ${filterKeys(required)}` : filterKeys(filters);
+        parts.push(`${required.length > 0 ? "filter" : "filter?"}: Filters<${entity}, ${keys}>`);
     }
     if (order.length > 0) {
         parts.push(`order?: Order<${filterKeys(order)}>[]`);

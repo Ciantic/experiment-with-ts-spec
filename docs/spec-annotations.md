@@ -96,9 +96,11 @@ Field tags:
   is required, at most one per interface, the field type must be `Version`, and
   it is exclusive with `@computed`. See `docs/versioning.md`.
 - `@queryFilter` — a bare marker that makes the field a filter of the entity's
-  generated reads. A filter is a set matched with `in (…)`; several are combined
-  with `and`. Scalar fields only; a branch field may not carry it, and it is
-  redundant on the `@primaryKey` field, which is a filter by default. See `docs/queries.md`.
+  generated reads; `@queryFilter required` makes every read name it. A filter is a
+  set matched with `in (…)`; several are combined with `and`. Scalar fields only; a
+  branch field may not carry it, and it is redundant on the `@primaryKey` field,
+  which is an optional filter by default — `required` is the one thing it can add.
+  See `docs/queries.md`.
 - `@queryOrderBy` — makes the field an ordering key of the entity's generated
   reads. A bare marker whitelists the field; `@queryOrderBy default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
@@ -671,9 +673,9 @@ Enforced:
   fields of one interface to form a composite key; `@foreignKey` requires the
   interface it references and sits on a single scalar field. The two are
   mutually exclusive. See "`@primaryKey` and `@foreignKey`".
-- `@queryFilter` is a bare marker on a scalar field; a branch field may not
-  carry it, and it must not be written on the `@primaryKey` field, which is a
-  filter already. See `docs/queries.md`.
+- `@queryFilter` is a bare marker on a scalar field, or `required`; a branch field
+  may not carry it, and on the `@primaryKey` field, which is an optional filter
+  already, only `required` is accepted. See `docs/queries.md`.
 - `@queryOrderBy` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
@@ -707,15 +709,15 @@ Gotchas:
   syntactically valid. `pnpm test` executes the generated `schema.sql` in PGlite,
   which is what catches a malformed expression.
 - **Every primary key column is a filter without a tag.** `spec-model.ts` marks
-  each `@primaryKey` field as `queryfilter` when it parses an entity, so a
-  composite key contributes one filter per column. Writing `@queryFilter` on a
-  key field is therefore a lint finding, not a second way to say the same thing:
-  the default has one spelling.
+  each `@primaryKey` field as a `queryFilter` when it parses an entity, so a
+  composite key contributes one filter per column. Writing a bare `@queryFilter`
+  on a key field is therefore a lint finding, not a second way to say the same
+  thing: the default has one spelling, and `required` is the one it cannot express.
 - **`@queryFilter` is checked structurally, not by type.** The linter rejects it
-  on a branch field (a `@relation`/`@children`/`@inlined` marker), on the
-  primary key, and on a value, but it does not resolve the field's type: the
-  generated read types the filter from the field's own type, so a non-scalar
-  would surface there.
+  on a branch field (a `@relation`/`@children`/`@inlined` marker), on a value that
+  is not `required`, and on a bare tag over the primary key, but it does not
+  resolve the field's type: the generated read types the filter from the field's
+  own type, so a non-scalar would surface there.
 - **`@relation` and its `@foreignKey` field are paired by the generator, not the
   linter.** The linter checks tags; the cross-field rule is enforced when the
   table model is built, so the diagnostic comes from `pnpm generate` with a file

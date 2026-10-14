@@ -34,7 +34,7 @@ export interface Email {
      * The identifier of the tenant this email belongs to.
      * 
      * @fieldName Tenant ID
-     * @queryFilter
+     * @queryFilter required
      * @foreignKey Tenant
      * @widget text
      */

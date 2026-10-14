@@ -63,8 +63,8 @@ export interface Column {
     generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
-    /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
-    queryFilter?: boolean;
+    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it. See docs/queries.md. */
+    queryFilter?: { required: boolean };
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
     queryOrder?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with. See docs/queries.md. */
@@ -364,7 +364,6 @@ function addScalarColumn(
         notNull: !nullable,
         primaryKey: isPrimaryKey,
         unique: tags.unique,
-        queryFilter: tags.queryFilter,
         insertable: isInsertable(property),
         updatable,
         read: fieldName,
@@ -372,6 +371,9 @@ function addScalarColumn(
     // A patch writes a column only when its row supplies it; the key selects the row and the version is always written.
     if (updatable && !isPrimaryKey && !tags.version) {
         column.supplied = `row.${fieldName} !== undefined`;
+    }
+    if (tags.queryFilter !== undefined) {
+        column.queryFilter = tags.queryFilter;
     }
     if (tags.queryOrderBy !== undefined) {
         column.queryOrder = tags.queryOrderBy;

@@ -165,7 +165,7 @@ each step's own result:
 ```ts
 const [found, written] = await transaction(
     db,
-    (tx) => queryInvoice(tx, { select: { id: true } }),
+    (tx) => queryInvoice(tx, { filter: { tenantId: [tenantId] }, select: { id: true } }),
     async (tx) => {
         await createInvoice(tx, [invoice]);
     },
@@ -361,7 +361,10 @@ export function queryInvoice<S extends Selection<Invoice>>(opts: { …; select: 
 ```ts
 // answers the keys the rows were given, in the order they were carried
 const keys = await exec(http, createInvoice(rows));
-const [invoice] = await exec(http, queryInvoice({ filter: { id: [id] }, select: { number: true } }));
+const [invoice] = await exec(
+    http,
+    queryInvoice({ filter: { tenantId: [tenantId], id: [id] }, select: { number: true } }),
+);
 ```
 
 The `http` argument moves from every call to `exec`, and that is what makes a
@@ -377,7 +380,7 @@ await exec(http, transaction(createInvoice(rows), createInvoiceRow(rowInserts)))
 await exec(http, batch(queryInvoice(a), transaction(createInvoice(rows), createInvoiceRow(rowInserts))));
 await exec(http, transaction(createInvoice(rows), attempt(createInvoiceRow(bad))));
 // only a group that opens a boundary has a `With` form, and there the modes come first
-await exec(http, attemptWith({ accessMode: "read only" }, queryInvoice({ select: { id: true } })));
+await exec(http, attemptWith({ accessMode: "read only" }, queryInvoice({ filter: { tenantId: [tenantId] }, select: { id: true } })));
 ```
 
 A group's result is a tuple aligned with its arguments, and nesting composes:

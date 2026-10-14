@@ -276,8 +276,8 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
     pgType?: string;
-    /** The field may be an equality filter of its entity's generated `query` read. See docs/queries.md. */
-    queryFilter: boolean;
+    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it. See docs/queries.md. */
+    queryFilter?: { required: boolean };
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
@@ -636,7 +636,6 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         version: false,
         primitive: false,
         entity: false,
-        queryFilter: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -705,7 +704,10 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (value !== undefined) tags.pgType ??= value;
                     break;
                 case "queryFilter":
-                    tags.queryFilter = true;
+                    // Bare marks the field filterable; `required` also makes every read name it.
+                    if (tags.queryFilter === undefined) {
+                        tags.queryFilter = { required: value?.trim() === "required" };
+                    }
                     break;
                 case "queryOrderBy": {
                     // Bare marks the field orderable; `default asc|desc` also names the entity default.
@@ -963,10 +965,10 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
                     const typeNode = property.getTypeNode();
-                    // The primary key is a filter every entity has, so writing the tag on it is
-                    // redundant. The linter reports that rather than ignoring it.
-                    if (tags.primaryKey) {
-                        tags.queryFilter = true;
+                    // The primary key is an optional filter every entity has. `required` is the one
+                    // thing the default cannot say, so a bare tag on a key is lint's to report.
+                    if (tags.primaryKey && tags.queryFilter === undefined) {
+                        tags.queryFilter = { required: false };
                     }
                     return {
                         name: property.getName(),

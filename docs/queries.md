@@ -41,8 +41,9 @@ There is no query alias to write. The generator walks the tables and emits
 export function queryInvoice<S extends Selection<Invoice>>(
     db: SqlExecutor,
     opts: {
-        filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
+        filter: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId", "tenantId">;
         order?: Order<"createdAt" | "updatedAt">[];
+        where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
         limit?: number;
         offset?: number;
         select: S;
@@ -51,6 +52,7 @@ export function queryInvoice<S extends Selection<Invoice>>(
     return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, {
         select: opts.select,
         order: opts.order,
+        where: opts.where,
         limit: opts.limit,
         offset: opts.offset,
     });
@@ -74,21 +76,22 @@ default), at most `limit` of them, in pages of `offset`.
 
 ```
 @queryFilter
+@queryFilter required
 ```
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
 entity's reads. `id` is a filter **without the tag**, because every entity has
-one, so `queryInvoice` accepts `filter: { id }` out of the box:
+one, so `queryInvoiceRow` accepts `filter: { id }` out of the box:
 
 ```ts
-const invoices = await queryInvoice(db, {
-    filter: { id: [firstId, secondId] },
-    select: { number: true, totalAmount: true },
+const rows = await queryInvoiceRow(db, {
+    filter: { tenantId: [tenantId], id: [firstId, secondId] },
+    select: { description: true, totalAmount: true },
 });
 
-const [invoice] = await queryInvoice(db, {
-    filter: { id: [id] },
-    select: { number: true, totalAmount: true },
+const [row] = await queryInvoiceRow(db, {
+    filter: { tenantId: [tenantId], id: [rowId] },
+    select: { description: true, totalAmount: true },
 });
 ```
 
@@ -106,14 +109,51 @@ number?: string;
 ```
 
 The default lives in `spec-model.ts`, which sets the tag when it parses a field
-carrying `@primaryKey`; a generator reads the tag and never the name. Because the
-default is the only spelling, writing `@queryFilter` on a `@primaryKey` field is
-a lint finding. A composite key contributes one filter per key column, so each
-part of the key filters on its own.
+carrying `@primaryKey`; a generator reads the tag and never the name. `required`
+is the one thing that default cannot say, so writing `@queryFilter` on a
+`@primaryKey` field is a lint finding unless it writes `required`. A composite key
+contributes one filter per key column, so each part of the key filters on its own.
 
 A field without `@queryFilter` is not filterable. Branch fields
 (`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
 through its `@foreignKey` field, which is a scalar like any other.
+
+### A required filter
+
+`@queryFilter required` makes the filter **mandatory**: every read of the entity
+has to name it. Each tenant-scoped entity marks its `tenantId` that way, because a
+read that forgets it would cross tenants:
+
+```ts
+/**
+ * @fieldName Tenant ID
+ * @queryFilter required
+ * @foreignKey Tenant
+ * @widget text
+ */
+tenantId: TenantId;
+```
+
+The generated args type then requires the filter object itself, and the field
+inside it:
+
+```ts
+export function queryInvoiceRow<S extends Selection<InvoiceRow>>(db: SqlExecutor, opts: {
+    filter: Filters<InvoiceRow, "id" | "tenantId", "tenantId">;
+    limit?: number;
+    offset?: number;
+    select: S;
+}): Promise<Selected<InvoiceRow, S>[]>;
+```
+
+`Filters<E, K, R>` takes the possible keys and the required ones separately, so
+`filter` is mandatory with `filter.tenantId`, and `filter.id` stays optional — a
+read that leaves the tenant out does not compile.
+
+The requirement holds at run time too: the generated args schema makes the field
+mandatory, so a read over HTTP that omits it is a **400**, and the resolver throws
+for a caller that reaches it with an untyped object, the same guard it puts on an
+unknown filter field. See "The resolver reads one query per branch".
 
 ### Filters are sets, combined with `and`
 
@@ -121,17 +161,22 @@ Every filter is an array and every clause is `in (…)`, so a single value is
 written as a one-element array. An array matches any of its values, and an empty
 array matches nothing.
 
-Several filters are combined with **`and`**: `{ id: […], customerId: […] }`
-requires both. A filter left `undefined` is dropped, so `queryInvoice(db, { select })`
-lists every row.
+Several filters are combined with **`and`**: `{ tenantId: […], customerId: […] }`
+requires both. A filter left `undefined` is dropped, so a read that names only the
+tenant returns every row of that tenant — and an entity with no required filter,
+such as `Tenant`, lists everything when `filter` is left out.
 
-The generated type makes every filter optional:
+The generated type makes every filter optional except the ones the tag marks
+required:
 
 ```ts
-type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
+type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: NonNullable<E[P]>[] } & Partial<{
+    [P in Exclude<K, R>]: NonNullable<E[P]>[];
+}>;
 ```
 
-So `queryInvoice(db, { select })` lists every row, and a one-element array names a
+The third parameter is `never` for an entity whose filters are all optional, so
+`queryTenant(db, { select })` lists every row, and a one-element array names a
 single value.
 
 ## `@queryOrderBy`
@@ -146,7 +191,7 @@ A bare marker on a **scalar** field whitelists it as an ordering key. The
 
 ```ts
 const invoices = await queryInvoice(db, {
-    filter: { customerId: [customerId] },
+    filter: { tenantId: [tenantId], customerId: [customerId] },
     order: [["createdAt", "desc"]],
     select: { number: true },
 });
@@ -202,6 +247,7 @@ them.
 
 ```ts
 const invoices = await queryInvoice(db, {
+    filter: { tenantId: [tenantId] },
     where: { issueDate: { gte: from, lte: to } },
     select: { number: true },
 });
@@ -248,7 +294,7 @@ cut, so a parent's children come back whole.
 
 ```ts
 const page = await queryInvoice(db, {
-    filter: { customerId: [customerId] },
+    filter: { tenantId: [tenantId], customerId: [customerId] },
     order: [["createdAt", "desc"]],
     limit: 25,
     offset: 50,
@@ -318,7 +364,7 @@ A call site narrows exactly:
 
 ```ts
 const [invoice] = await queryInvoice(db, {
-    filter: { id: [id] },
+    filter: { tenantId: [tenantId], id: [id] },
     select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
 });
 // invoice.rows![0].totalAmount  ✓
@@ -327,7 +373,8 @@ const [invoice] = await queryInvoice(db, {
 ```
 
 The compiler rejects a field that is not on the entity, a nested selection on a
-scalar, a field not named in the selection, and a non-array filter.
+scalar, a field not named in the selection, a non-array filter, and a read that
+leaves out a required filter.
 
 The generator emits the **contract and the wiring**, never SQL. It reads only
 annotations: `@queryFilter` for the filters, the existing table model for the
@@ -403,7 +450,8 @@ branch per level. The resolver holds no domain knowledge — it only reads
 Arguments filter by set membership: the generated filters are the scalar fields
 that carry `@queryFilter` (plus every `@primaryKey` field), and a relation's
 `@foreignKey` field is one of them. An unknown filter field throws rather than
-silently dropping a clause, as does a non-array value. `String`, `Date`, and
+silently dropping a clause, as does a non-array value, and a filter the spec marks
+`required` throws when the read does not name it. `String`, `Date`, and
 `decimal` values pass through unchanged.
 
 A filter value is always an array, so a lookup names a one-element set and an
@@ -442,6 +490,11 @@ stays stable and is never truncated or filtered.
   without the tag is not filterable, each `@primaryKey` field is a filter without
   it, and a branch field may not carry it; filtering by a relation is not
   implemented.
+- **A required filter is a precondition, not a filter value.** `@queryFilter
+  required` narrows nothing by itself; it makes the caller name the field. Every
+  tenant-scoped entity marks its `tenantId` that way, so a read cannot quietly
+  span tenants, while `Tenant`, `Translation`, and `AuditLog` — the entities
+  without a tenant — stay unscoped.
 - **A composite key has no single row key for branch attachment.** The resolver
   identifies a row by one column, so an entity whose `@primaryKey` is several
   fields cannot be the target of a `@foreignKey` — and so cannot be reached by a

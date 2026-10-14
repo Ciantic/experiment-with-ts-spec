@@ -25,9 +25,9 @@ export const queryEmailSelectSchema = z.lazy(() =>
 export const queryEmailSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"EmailId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
         status: z.array(z.enum(["pending", "sending", "sent", "failed"])).optional(),
-    }).optional(),
+    }),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),

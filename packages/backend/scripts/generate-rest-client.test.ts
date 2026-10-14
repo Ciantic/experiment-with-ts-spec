@@ -17,7 +17,7 @@ import { renderRoutes } from "./generate-rest-api.ts";
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
-/** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
+/** A filterable entity: a key, an optional filter, a required filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
 /**
  * @pgTable widget
@@ -33,6 +33,9 @@ export interface Widget {
 
     /** @queryFilter */
     size: string;
+
+    /** @queryFilter required */
+    tenantId: string;
 
     /** @queryOrderBy default asc */
     createdAt: Date;
@@ -138,8 +141,14 @@ describe("renderClientModule", () => {
         expect(code).toContain('call<void>("DELETE", "/widget", rows)');
     });
 
-    it("narrows the filters to the filterable fields", () => {
-        expect(widgetModule()).toContain('filter?: Filters<Widget, "id" | "size">');
+    it("narrows the filters to the filterable fields, requiring the required ones", () => {
+        expect(widgetModule()).toContain('filter: Filters<Widget, "id" | "size" | "tenantId", "tenantId">');
+    });
+
+    it("leaves the filter optional when the entity requires none", () => {
+        const marker = model.entities.find((entity) => entity.entity === "Marker");
+
+        expect(renderClientModule(marker!)).toContain('filter?: Filters<Marker, "id">');
     });
 
     it("narrows the ordering to the orderable fields", () => {

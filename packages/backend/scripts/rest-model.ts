@@ -52,6 +52,8 @@ export interface RestEntity {
     keys: string[];
     /** The `@queryFilter` fields: `query` accepts them all. */
     filters: string[];
+    /** The `@queryFilter required` fields: `query` must name them. */
+    requiredFilters: string[];
     /** The `@queryOrderBy` fields: `query` accepts them as `order` keys. */
     orderFields: string[];
     /** The `@queryWhere` fields with their allowed operators: `query` accepts them as `where` keys. */
@@ -127,6 +129,9 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         // The parser defaults `@queryFilter` on a primary key, so a key is always a filter.
         keys: properties.filter((property) => property.tags.primaryKey).map((property) => property.name),
         filters: properties.filter((property) => property.tags.queryFilter).map((property) => property.name),
+        requiredFilters: properties
+            .filter((property) => property.tags.queryFilter?.required)
+            .map((property) => property.name),
         orderFields: properties
             .filter((property) => property.tags.queryOrderBy !== undefined)
             .map((property) => property.name),

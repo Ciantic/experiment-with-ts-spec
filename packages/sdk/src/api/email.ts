@@ -11,7 +11,7 @@ export type { EmailInsert, EmailPatch, EmailPrimaryKey, EmailUpsert };
 
 /** Query `Email` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryEmail<S extends Selection<Email>>(
-    opts: { filter?: Filters<Email, "id" | "tenantId" | "status">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S },
+    opts: { filter: Filters<Email, "id" | "tenantId" | "status", "tenantId">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S },
 ): Call<Selected<Email, S>[]> {
     return call<Selected<Email, S>[]>("GET", "/email/query", opts);
 }

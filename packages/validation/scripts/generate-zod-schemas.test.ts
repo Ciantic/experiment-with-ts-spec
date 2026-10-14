@@ -211,6 +211,38 @@ export interface Parent {
 export type ParentId = BrandedId<"ParentId">;
 `.trim();
 
+/** A tenanted entity: a key and a filter every read must name. */
+const SCOPED = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a scoped row. */
+export type ScopedId = BrandedId<"ScopedId">;
+
+/** The identifier of the tenant a scoped row belongs to. */
+export type ScopedTenantId = BrandedId<"ScopedTenantId">;
+
+/**
+ * A scoped row.
+ *
+ * @pgTable scoped
+ * @entity
+ */
+export interface Scoped {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: ScopedId;
+    /**
+     * The tenant every read must name.
+     *
+     * @queryFilter required
+     */
+    tenantId: ScopedTenantId;
+}
+`.trim();
+
 /** The Zod surface the stub needs, so the functional tests stay typed. */
 interface ZodStub {
     string: () => { optional: () => unknown };
@@ -547,7 +579,7 @@ describe("buildZodModel queries", () => {
         const { model } = generate({ entities: { Thing: THING } });
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
-        expect(queryThing?.fields).toEqual([
+        expect(queryThing?.filterFields).toEqual([
             { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).optional()' },
         ]);
         expect(queryThing?.usesPrimitives).toBe(true);
@@ -557,9 +589,27 @@ describe("buildZodModel queries", () => {
         const { model } = generate({ entities: { Thing: THING } });
         const queryChild = model.queries.find((query) => query.entity === "Child");
 
-        expect(queryChild?.fields).toEqual([
+        expect(queryChild?.filterFields).toEqual([
             { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ChildId">()).optional()' },
         ]);
+    });
+
+    it("leaves a required filter's set required, and names it on the query", () => {
+        const { model } = generate({ entities: { Thing: THING, Scoped: SCOPED } });
+        const queryScoped = model.queries.find((query) => query.entity === "Scoped");
+
+        expect(queryScoped?.filterFields).toEqual([
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ScopedId">()).optional()' },
+            { name: "tenantId", expression: 'z.array(primitives.brandedIdSchema<"ScopedTenantId">())' },
+        ]);
+        expect(queryScoped?.requiredFilterFields).toEqual(["tenantId"]);
+    });
+
+    it("records no required filter when every filter is optional", () => {
+        const { model } = generate({ entities: { Thing: THING } });
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
+
+        expect(queryThing?.requiredFilterFields).toEqual([]);
     });
 
     it("records the orderable fields", () => {
@@ -615,6 +665,46 @@ describe("generateQueryFile", () => {
 
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).not.toContain("getThingSchema");
+    });
+
+    it("requires the filter object when the entity requires a filter", () => {
+        const { model } = generate({ entities: { Thing: THING, Scoped: SCOPED } });
+        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
+        const queries = model.queries.filter((query) => query.entity === "Scoped");
+        const code = generateQueryFile("Scoped", queries, byName);
+
+        expect(code).toContain('        tenantId: z.array(primitives.brandedIdSchema<"ScopedTenantId">()),');
+        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ScopedId">()).optional(),');
+        expect(code).not.toContain("}).optional(),");
+    });
+
+    it("rejects a read that leaves out a required filter", () => {
+        const { model } = generate({ entities: { Thing: THING, Scoped: SCOPED } });
+        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
+        const queries = model.queries.filter((query) => query.entity === "Scoped");
+        const code = generateQueryFile("Scoped", queries, byName);
+        const z = zodStub();
+        const exports = tsLoadGeneratedModule<Record<string, Schema>>(
+            code,
+            tsStubImports({
+                zod: { z },
+                "../primitives.ts": { brandedIdSchema: () => z.string() },
+            }),
+        );
+
+        expect(exports.queryScopedSchema?.safeParse({ filter: { tenantId: ["t1"] }, select: {} }).success).toBe(
+            true,
+        );
+        expect(
+            exports.queryScopedSchema?.safeParse({ filter: { id: ["x"], tenantId: ["t1"] }, select: {} }).success,
+        ).toBe(true);
+        // The filter object, the required set, and the set shape are all mandatory.
+        expect(exports.queryScopedSchema?.safeParse({ select: {} }).success).toBe(false);
+        expect(exports.queryScopedSchema?.safeParse({ filter: {}, select: {} }).success).toBe(false);
+        expect(exports.queryScopedSchema?.safeParse({ filter: { id: ["x"] }, select: {} }).success).toBe(false);
+        expect(exports.queryScopedSchema?.safeParse({ filter: { tenantId: "t1" }, select: {} }).success).toBe(
+            false,
+        );
     });
 
     it("imports the primitives module it references", () => {

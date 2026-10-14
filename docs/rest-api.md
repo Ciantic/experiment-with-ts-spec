@@ -67,8 +67,10 @@ apply.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by
-`where`. A caller that wants a single row takes the first result
-(`docs/queries.md`).
+`filter` sets and `where` comparisons. A filter the entity marks `@queryFilter
+required` has to be named, so a read of a tenant-scoped entity that omits its
+`tenantId` is a 400 rather than the whole table. A caller that wants a single row
+takes the first result (`docs/queries.md`).
 
 A create takes `<entity>InsertSchema`, the columns the database does not own, and
 a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly
@@ -158,7 +160,7 @@ is the one function that talks to the network:
 ```typescript
 export function queryInvoice<S extends Selection<Invoice>>(
     opts: {
-        filter?: Filters<Invoice, "id" | "customerId" | "sellerId">;
+        filter: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId", "tenantId">;
         order?: Order<"createdAt" | "updatedAt">[];
         where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
         limit?: number;
@@ -172,7 +174,7 @@ export function queryInvoice<S extends Selection<Invoice>>(
 
 ```typescript
 const [invoice] = await exec(http, queryInvoice({
-    filter: { id: [id] },
+    filter: { tenantId: [tenantId], id: [id] },
     select: { number: true, totalAmount: true, rows: { description: true } },
 }));
 // invoice.rows![0].description  ✓
@@ -297,9 +299,10 @@ No mode reaches the statement unvalidated.
   writes nulls over the snapshot. The version it carries is the revision a new
   row is born at and the revision a stored row must hold; a stored row at another
   version answers `409` (`docs/versioning.md`).
-- **A `query` with no filters scans the table, up to `limit`.**
-  `queryInvoice(http, { select })` is legal by design and returns the first 1000
-  rows. There is no authorization.
+- **A `query` with no filters scans the table, up to `limit`.** `queryTenant(http,
+  { select })` is legal by design and returns the first 1000 rows; a read of a
+  tenant-scoped entity must name its tenant, and nothing else narrows it. There is
+  no authorization.
 - **The version precondition is the client's to send.** `update` requires the
   version the client read; the statement matches on it, so a stale one is a 409
   rather than a silent skip. An id that is not there answers the same way.

@@ -11,7 +11,7 @@ export type { InvoiceSentRowInsert, InvoiceSentRowPatch, InvoiceSentRowPrimaryKe
 
 /** Query `InvoiceSentRow` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoiceSentRow<S extends Selection<InvoiceSentRow>>(
-    opts: { filter?: Filters<InvoiceSentRow, "id" | "tenantId">; limit?: number; offset?: number; select: S },
+    opts: { filter: Filters<InvoiceSentRow, "id" | "tenantId", "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<InvoiceSentRow, S>[]> {
     return call<Selected<InvoiceSentRow, S>[]>("GET", "/invoice_sent_row/query", opts);
 }

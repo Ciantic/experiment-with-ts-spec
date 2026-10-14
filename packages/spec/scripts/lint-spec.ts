@@ -685,19 +685,20 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
     }
 }
 
-/** `@queryFilter` makes a scalar column a filter of the entity's generated reads. */
+/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it. */
 function lintQueryFilter(tags: FieldTags, report: Report): void {
     const tag = tags.queryFilter;
     if (!tag) {
         return;
     }
-    if ((tag.value ?? "")) {
-        report("@queryFilter takes no value", tag);
+    const text = (tag.value ?? "").trim();
+    if (text !== "" && text !== "required") {
+        report(`@queryFilter takes no value or \`required\`, found \`${text}\``, tag);
     }
     reportIfBranch(tags, tag, report);
-    // The primary key is a filter already (spec-model defaults it), so the tag is noise.
-    if (tags.primaryKey) {
-        report("the primary key is a filter by default; drop @queryFilter", tag);
+    // The primary key is an optional filter already (spec-model defaults it), so only `required` adds anything.
+    if (tags.primaryKey && text !== "required") {
+        report("the primary key is a filter by default; drop @queryFilter, or write `required`", tag);
     }
 }
 

@@ -11,7 +11,7 @@ export type { SellerInsert, SellerPatch, SellerPrimaryKey, SellerUpsert };
 
 /** Query `Seller` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function querySeller<S extends Selection<Seller>>(
-    opts: { filter?: Filters<Seller, "id" | "tenantId">; limit?: number; offset?: number; select: S },
+    opts: { filter: Filters<Seller, "id" | "tenantId", "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Seller, S>[]> {
     return call<Selected<Seller, S>[]>("GET", "/seller/query", opts);
 }

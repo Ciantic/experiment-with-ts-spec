@@ -7,7 +7,7 @@ import { buildRestModel, type RestModel } from "./rest-model.ts";
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
-/** A filterable entity: a key, a size filter, an ordering key, a comparable, and a version. */
+/** A filterable entity: a key, an optional filter, a required filter, an ordering key, a comparable, and a version. */
 const WIDGET = `
 /**
  * @pgTable widget
@@ -23,6 +23,9 @@ export interface Widget {
 
     /** @queryFilter */
     size: string;
+
+    /** @queryFilter required */
+    tenantId: string;
 
     /** @queryOrderBy default asc */
     createdAt: Date;
@@ -172,7 +175,8 @@ describe("buildRestModel", () => {
     it("records the filter fields, the keys, and the version fields", () => {
         const widget = model.entities.find((entity) => entity.entity === "Widget");
 
-        expect(widget?.filters).toEqual(["id", "size"]);
+        expect(widget?.filters).toEqual(["id", "size", "tenantId"]);
+        expect(widget?.requiredFilters).toEqual(["tenantId"]);
         expect(widget?.keys).toEqual(["id"]);
         expect(widget?.versionFields).toEqual(["version"]);
     });

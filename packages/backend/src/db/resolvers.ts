@@ -29,6 +29,8 @@ export interface QueryTable {
     fields: Record<string, string>;
     /** Branch fields, mapped to how they are joined or flattened. */
     relations: Record<string, QueryRelation>;
+    /** Filter fields a root read must name, from `@queryFilter required`; absent when the entity marks none. See docs/queries.md. */
+    requiredFilters?: string[];
     /** Orderable field names; absent when the entity marks none. See docs/queries.md. */
     order?: string[];
     /** The entity's default ordering, applied to a root read that names none. See docs/queries.md. */
@@ -339,6 +341,13 @@ function buildFilter(
         }
         clauses.push(`${TABLE_ALIAS}.${quote(filter.column)} in (${placeholders(params, filter.values)})`);
     } else {
+        // A required filter is an invariant rather than a typing convention: a caller that omits one
+        // throws here instead of scanning the table unscoped. A branch fetch never carries filters.
+        for (const name of meta.requiredFilters ?? []) {
+            if (filter.args[name] === undefined) {
+                throw new Error(`filter \`${name}\` is required on \`${table}\``);
+            }
+        }
         for (const [name, value] of Object.entries(filter.args)) {
             if (value === undefined) {
                 continue;

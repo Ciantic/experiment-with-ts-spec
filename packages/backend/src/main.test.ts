@@ -42,6 +42,17 @@ function buildersNamed(prefix: string): [string, Builder][] {
     return builders().filter(([name]) => name.startsWith(prefix));
 }
 
+/**
+ * The filter a read of `entity` names: every mock row's identity, plus the tenant a tenant-scoped
+ * entity requires. Derived from the rows so a new table needs no edit here.
+ */
+function readFilter(entity: string): Record<string, unknown> {
+    const rows = (mockTables.find((table) => table.entity === entity)?.rows ?? []) as Record<string, unknown>[];
+    const fields = ["id", "tenantId"].filter((field) => rows[0]?.[field] !== undefined);
+
+    return Object.fromEntries(fields.map((field) => [field, rows.map((row) => row[field])]));
+}
+
 let started!: StartedServer;
 let http!: HttpClient;
 
@@ -85,7 +96,10 @@ describe("seeded server", () => {
             const query = calls[`query${entity}`];
             expect(query, `query${entity} is generated`).toBeTypeOf("function");
 
-            const result = await exec(http, query!({ select: {} }) as Executable<unknown[]>);
+            const result = await exec(
+                http,
+                query!({ filter: readFilter(entity), select: {} }) as Executable<unknown[]>,
+            );
 
             expect(result, entity).toHaveLength(rows.length);
         }
@@ -95,7 +109,8 @@ describe("seeded server", () => {
 describe("a live server", () => {
     it("answers every generated query with an array", async () => {
         for (const [name, builder] of buildersNamed("query")) {
-            const result = await exec(http, builder({ select: {} }) as Executable<unknown[]>);
+            const filter = readFilter(name.slice("query".length));
+            const result = await exec(http, builder({ filter, select: {} }) as Executable<unknown[]>);
 
             expect(Array.isArray(result), name).toBe(true);
         }

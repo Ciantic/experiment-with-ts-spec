@@ -111,8 +111,10 @@ export interface ZodQuery {
     /** The entity the read queries, which groups the generated file and supplies `select`. */
     entity: string;
     schemaName: string;
-    /** The filter fields, all optional sets; the renderer adds the entity's select schema. */
-    fields: ZodField[];
+    /** The filter fields: an optional set each, unless `@queryFilter required` made it mandatory. */
+    filterFields: ZodField[];
+    /** The filter fields a read must name, from `@queryFilter required`; the renderer requires them and the filter object. */
+    requiredFilterFields: string[];
     /** The orderable field names, from `@queryOrderBy`; the renderer validates `order` against them. */
     orderFields: string[];
     /** The comparable fields, from `@queryWhere`; the renderer validates `where` against them. */
@@ -449,7 +451,8 @@ function buildQueries(
     const queries: ZodQuery[] = [];
     for (const spec of interfaces.values()) {
         const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
-        const fields: ZodField[] = [];
+        const filterFields: ZodField[] = [];
+        const requiredFilterFields: string[] = [];
         for (const property of spec.properties) {
             if (!property.tags.queryFilter) {
                 continue;
@@ -466,7 +469,14 @@ function buildQueries(
                 );
                 continue;
             }
-            fields.push({ name: property.name, expression: `z.array(${resolved}).optional()` });
+            filterFields.push({
+                name: property.name,
+                // A required filter is a plain set; an optional one may be left out.
+                expression: `z.array(${resolved})${property.tags.queryFilter.required ? "" : ".optional()"}`,
+            });
+            if (property.tags.queryFilter.required) {
+                requiredFilterFields.push(property.name);
+            }
         }
         context.dependencies.delete(spec.name);
         const orderFields = spec.properties
@@ -495,7 +505,8 @@ function buildQueries(
         queries.push({
             entity: spec.name,
             schemaName: `query${spec.name}Schema`,
-            fields,
+            filterFields,
+            requiredFilterFields,
             orderFields,
             whereFields,
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),

@@ -26,8 +26,10 @@ export type Selected<E, S> = {
             : Selected<ElementOf<E[K]>, NonNullable<S[K]>>;
 };
 
-/** The filter arguments of a read: each named field, as a set matched with `in (…)`. See docs/queries.md. */
-export type Filters<E, K extends keyof E> = Partial<{ [P in K]: NonNullable<E[P]>[] }>;
+/** The filter arguments of a read: each named field, as a set matched with `in (…)`. `R` names the filters a read must carry. See docs/queries.md. */
+export type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: NonNullable<E[P]>[] } & Partial<{
+    [P in Exclude<K, R>]: NonNullable<E[P]>[];
+}>;
 
 /** A sort direction. See docs/queries.md. */
 export type Direction = "asc" | "desc";

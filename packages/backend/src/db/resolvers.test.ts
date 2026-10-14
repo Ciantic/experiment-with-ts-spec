@@ -255,6 +255,67 @@ describe("resolveMany", () => {
     });
 });
 
+/** A resolver whose invoice table requires a tenant filter on every root read, branch included. */
+const scoped = createResolver({
+    tables: {
+        invoice: {
+            name: "invoice",
+            key: "id",
+            fields: { id: "id", number: "number", customerId: "customerId" },
+            relations: { rows: { kind: "children", table: "invoice_row", column: "invoiceId" } },
+            requiredFilters: ["customerId"],
+        },
+        invoice_row: {
+            name: "invoice_row",
+            key: "id",
+            fields: { id: "id", invoiceId: "invoiceId", description: "description", amount: "amount" },
+            relations: {},
+        },
+    },
+});
+
+describe("resolveMany required filters", () => {
+    it("rejects a root read that leaves out a required filter", async () => {
+        const select = { id: true } as const;
+
+        await expect(scoped.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select })).rejects.toThrow(
+            "filter `customerId` is required on `invoice`",
+        );
+    });
+
+    it("rejects a required filter that is named but undefined", async () => {
+        const select = { id: true } as const;
+
+        await expect(
+            scoped.resolveMany<Invoice, typeof select>(db, "invoice", { customerId: undefined }, { select }),
+        ).rejects.toThrow("filter `customerId` is required on `invoice`");
+    });
+
+    it("reads when the required filter is named", async () => {
+        const select = { id: true } as const;
+        const rows = await scoped.resolveMany<Invoice, typeof select>(
+            db,
+            "invoice",
+            { customerId: ["c1"] },
+            { select },
+        );
+
+        expect(rows.map((row) => row.id)).toEqual(["i1", "i3"]);
+    });
+
+    it("leaves a branch fetch alone, because only a root read carries filters", async () => {
+        const select = { id: true, rows: { description: true } } as const;
+        const rows = await scoped.resolveMany<Invoice, typeof select>(
+            db,
+            "invoice",
+            { customerId: ["c1"] },
+            { select },
+        );
+
+        expect(rows[0]?.rows).toEqual([{ description: "Widget" }, { description: "Gadget" }]);
+    });
+});
+
 /** A resolver whose invoice table whitelists ordering fields, with `number asc` as the default. */
 const ordered = createResolver({
     tables: {

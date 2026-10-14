@@ -32,7 +32,7 @@ export interface Customer {
      * The identifier of the tenant this customer belongs to.
      * 
      * @fieldName Tenant ID
-     * @queryFilter
+     * @queryFilter required
      * @foreignKey Tenant
      * @widget text
      */

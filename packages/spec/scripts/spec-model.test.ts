@@ -195,12 +195,28 @@ describe("parseSpec tags", () => {
         expect(byName?.get("unique")).toHaveLength(2);
     });
 
-    it("decodes @queryFilter as a bare marker", () => {
+    it("decodes @queryFilter as an optional filter", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @queryFilter\n     */", "code: string;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(true);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
+    });
+
+    it("decodes @queryFilter required", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter required\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: true });
+    });
+
+    it("leaves an @queryFilter value the linter rejects as optional", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter yes\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
     });
 
     it("decodes @primaryKey as a bare marker", () => {
@@ -273,12 +289,23 @@ describe("parseSpec tags", () => {
         expect(primaryKeyProperties(spec!).map((property) => property.name)).toEqual(["code", "languageCode"]);
     });
 
-    it("makes the @primaryKey field a filter without the tag", () => {
+    it("makes the @primaryKey field an optional filter without the tag", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @fieldName ID\n     * @primaryKey\n     */", "id: ThingId;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(true);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
+    });
+
+    it("keeps a primary key that declares its filter required", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing(
+                "    /**\n     * @fieldName ID\n     * @primaryKey\n     * @queryFilter required\n     */",
+                "id: ThingId;",
+            ),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: true });
     });
 
     it("does not treat a field named id as the primary key", () => {
@@ -289,7 +316,7 @@ describe("parseSpec tags", () => {
         const tags = interfaces.get("Thing")?.properties[0]?.tags;
 
         expect(tags?.primaryKey).toBe(false);
-        expect(tags?.queryFilter).toBe(false);
+        expect(tags?.queryFilter).toBeUndefined();
     });
 
     it("does not make another field a filter by default", () => {
@@ -297,7 +324,7 @@ describe("parseSpec tags", () => {
             "Thing.ts": thing("    /**\n     * @fieldName Label\n     */", "label: string;"),
         });
 
-        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBe(false);
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toBeUndefined();
     });
 
     it("decodes a bare @queryOrderBy", () => {

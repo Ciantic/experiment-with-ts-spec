@@ -23,8 +23,8 @@ export const queryCustomerSelectSchema = z.lazy(() =>
 export const queryCustomerSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-    }).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
+    }),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     select: queryCustomerSelectSchema,

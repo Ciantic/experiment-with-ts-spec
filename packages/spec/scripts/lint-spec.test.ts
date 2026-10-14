@@ -1243,10 +1243,18 @@ export interface Thing {
         expect(findings).toEqual([]);
     });
 
-    it("rejects @queryFilter with a value", () => {
+    it("accepts @queryFilter required", () => {
+        const findings = lintSourceText(field("tenantId", "required"));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a value that is not `required`", () => {
         const findings = lintSourceText(field("value", "yes"));
 
-        expect(messages(findings)).toEqual(["`value`: @queryFilter takes no value"]);
+        expect(messages(findings)).toEqual([
+            "`value`: @queryFilter takes no value or `required`, found `yes`",
+        ]);
     });
 
     it("rejects @queryFilter on a relation field", () => {
@@ -1268,12 +1276,29 @@ export interface Thing {
         ]);
     });
 
-    it("rejects @queryFilter on the primary key, which is a filter by default", () => {
+    it("rejects @queryFilter on the primary key, whose filter is optional by default", () => {
         const findings = lintSourceText(field("id", "@primaryKey"));
 
         expect(messages(findings)).toEqual([
-            "`id`: the primary key is a filter by default; drop @queryFilter",
+            "`id`: the primary key is a filter by default; drop @queryFilter, or write `required`",
         ]);
+    });
+
+    it("accepts @queryFilter required on the primary key, which the default cannot say", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 * @queryFilter required
+                 */
+                id: string;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
     });
 });
 

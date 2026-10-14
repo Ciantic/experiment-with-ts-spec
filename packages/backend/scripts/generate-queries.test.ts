@@ -37,7 +37,7 @@ const invoice = table(
     "invoice",
     "Invoice",
     [
-        column("id", { primaryKey: true, queryFilter: true }),
+        column("id", { primaryKey: true, queryFilter: { required: false } }),
         column("number"),
         column("customerId", { references: { table: "customer", column: "id" } }),
         column("customerName"),
@@ -54,15 +54,21 @@ const seller = table("seller", "Seller", [column("id", { primaryKey: true })]);
 
 /** An entity whose `createdAt` is the default ordering and `updatedAt` is merely orderable. */
 const stamped = table("stamped", "Stamped", [
-    column("id", { primaryKey: true, queryFilter: true }),
+    column("id", { primaryKey: true, queryFilter: { required: false } }),
     column("createdAt", { queryOrder: { default: "asc" } }),
     column("updatedAt", { queryOrder: {} }),
 ]);
 
 /** An entity whose `amount` may be compared with a whitelist of operators. */
 const sized = table("sized", "Sized", [
-    column("id", { primaryKey: true, queryFilter: true }),
+    column("id", { primaryKey: true, queryFilter: { required: false } }),
     column("amount", { where: ["gte", "lte"] }),
+]);
+
+/** An entity whose `tenantId` every read must name. */
+const scoped = table("scoped", "Scoped", [
+    column("id", { primaryKey: true, queryFilter: { required: false } }),
+    column("tenantId", { queryFilter: { required: true } }),
 ]);
 
 const tables = new Map([
@@ -94,6 +100,18 @@ describe("buildQueryModel", () => {
             table: "customer",
             columns: { name: "customerName" },
         });
+    });
+
+    it("records the required filters", () => {
+        const model = buildQueryModel(new Map([["Scoped", scoped]]));
+
+        expect(model.tables.scoped?.requiredFilters).toEqual(["tenantId"]);
+    });
+
+    it("omits the required metadata when every filter is optional", () => {
+        const model = buildQueryModel(tables).tables.invoice;
+
+        expect(model?.requiredFilters).toBeUndefined();
     });
 
     it("records the orderable fields and the entity default ordering", () => {
@@ -199,6 +217,19 @@ describe("renderQueryModule", () => {
         const code = renderQueryModule("Seller", seller);
 
         expect(code).toContain("limit?: number; offset?: number; select: S");
+    });
+
+    it("requires the filter object when a field is a required filter", () => {
+        const code = renderQueryModule("Scoped", scoped);
+
+        expect(code).toContain('filter: Filters<Scoped, "id" | "tenantId", "tenantId">');
+        expect(code).not.toContain("filter?");
+    });
+
+    it("names no required key when every filter is optional", () => {
+        const code = renderQueryModule("Invoice", invoice);
+
+        expect(code).toContain('filter?: Filters<Invoice, "id">');
     });
 
     it("takes comparisons for the whitelisted operators", () => {

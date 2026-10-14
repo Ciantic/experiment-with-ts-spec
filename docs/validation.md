@@ -337,7 +337,10 @@ fields and their operators from `@queryWhere`. The schema is named after the rea
 export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
-    }).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
+        customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
+        sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
+    }),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
@@ -353,8 +356,10 @@ export const queryInvoiceSchema = z.strictObject({
 });
 ```
 
-Every filter is optional, which mirrors the generated `Filters<…>` type and lets
-`queryInvoiceSchema` validate a `query` that names none. The filter is its own
+Every filter is optional — mirroring the generated `Filters<…>` type — except the
+one `@queryFilter required` marks, which drops the `.optional()` on the field and
+on the `filter` object that holds it, so `queryInvoiceSchema` rejects a read that
+names no tenant. The filter is its own
 `z.strictObject`, so a flat filter field or an unknown filter key fails rather
 than being stripped, and a data field named `select` cannot collide with the
 projection. Each `order` clause is a `[field, direction]` tuple whose field is
@@ -410,7 +415,8 @@ a read validates its selection too.
 ## Annotations
 
 The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
-`@queryFilter` (which `spec-model.ts` defaults on every `@primaryKey` field). It never names a domain type. The parsing and tag
+`@queryFilter` (which `spec-model.ts` defaults on every `@primaryKey` field, with
+`required` as the one option). It never names a domain type. The parsing and tag
 vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.
