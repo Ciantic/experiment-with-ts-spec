@@ -6,7 +6,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: InvoiceSentPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 61;
+const PARAMETERS_PER_ROW = 67;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -19,6 +19,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
+            const tenantIdPresent: boolean[] = [];
             const invoiceIdValues: Array<unknown> = [];
             const invoiceIdPresent: boolean[] = [];
             const sentAtValues: Array<unknown> = [];
@@ -27,6 +29,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
             const numberPresent: boolean[] = [];
             const customerIdValues: Array<unknown> = [];
             const customerIdPresent: boolean[] = [];
+            const customerTenantIdValues: Array<unknown> = [];
+            const customerTenantIdPresent: boolean[] = [];
             const customerNameValues: Array<unknown> = [];
             const customerNamePresent: boolean[] = [];
             const customerEmailValues: Array<unknown> = [];
@@ -49,6 +53,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
             const customerVersionPresent: boolean[] = [];
             const sellerIdValues: Array<unknown> = [];
             const sellerIdPresent: boolean[] = [];
+            const sellerTenantIdValues: Array<unknown> = [];
+            const sellerTenantIdPresent: boolean[] = [];
             const sellerNameValues: Array<unknown> = [];
             const sellerNamePresent: boolean[] = [];
             const sellerBusinessIdValues: Array<unknown> = [];
@@ -81,6 +87,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
             const totalAmountPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
+                tenantIdPresent.push(row.tenantId !== undefined);
                 invoiceIdValues.push(row.invoiceId ?? null);
                 invoiceIdPresent.push(row.invoiceId !== undefined);
                 sentAtValues.push(row.sentAt ?? null);
@@ -89,6 +97,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
                 numberPresent.push(row.number !== undefined);
                 customerIdValues.push(row.customer?.id ?? null);
                 customerIdPresent.push(row.customer !== undefined);
+                customerTenantIdValues.push(row.customer?.tenantId ?? null);
+                customerTenantIdPresent.push(row.customer !== undefined);
                 customerNameValues.push(row.customer?.name ?? null);
                 customerNamePresent.push(row.customer !== undefined);
                 customerEmailValues.push(row.customer?.email ?? null);
@@ -111,6 +121,8 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
                 customerVersionPresent.push(row.customer !== undefined);
                 sellerIdValues.push(row.seller?.id ?? null);
                 sellerIdPresent.push(row.seller !== undefined);
+                sellerTenantIdValues.push(row.seller?.tenantId ?? null);
+                sellerTenantIdPresent.push(row.seller !== undefined);
                 sellerNameValues.push(row.seller?.name ?? null);
                 sellerNamePresent.push(row.seller !== undefined);
                 sellerBusinessIdValues.push(row.seller?.businessId ?? null);
@@ -144,10 +156,12 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
             }
             const result = await tx.query(
                 'update "invoice_sent" as u set ' +
+                    '"tenantId" = case when v."tenantId#present" then v."tenantId" else u."tenantId" end, ' +
                     '"invoiceId" = case when v."invoiceId#present" then v."invoiceId" else u."invoiceId" end, ' +
                     '"sentAt" = case when v."sentAt#present" then v."sentAt" else u."sentAt" end, ' +
                     '"number" = case when v."number#present" then v."number" else u."number" end, ' +
                     '"customerId" = case when v."customerId#present" then v."customerId" else u."customerId" end, ' +
+                    '"customerTenantId" = case when v."customerTenantId#present" then v."customerTenantId" else u."customerTenantId" end, ' +
                     '"customerName" = case when v."customerName#present" then v."customerName" else u."customerName" end, ' +
                     '"customerEmail" = case when v."customerEmail#present" then v."customerEmail" else u."customerEmail" end, ' +
                     '"customerAddress" = case when v."customerAddress#present" then v."customerAddress" else u."customerAddress" end, ' +
@@ -159,6 +173,7 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
                     '"customerUpdatedAt" = case when v."customerUpdatedAt#present" then v."customerUpdatedAt" else u."customerUpdatedAt" end, ' +
                     '"customerVersion" = case when v."customerVersion#present" then v."customerVersion" else u."customerVersion" end, ' +
                     '"sellerId" = case when v."sellerId#present" then v."sellerId" else u."sellerId" end, ' +
+                    '"sellerTenantId" = case when v."sellerTenantId#present" then v."sellerTenantId" else u."sellerTenantId" end, ' +
                     '"sellerName" = case when v."sellerName#present" then v."sellerName" else u."sellerName" end, ' +
                     '"sellerBusinessId" = case when v."sellerBusinessId#present" then v."sellerBusinessId" else u."sellerBusinessId" end, ' +
                     '"sellerEInvoiceAddress" = case when v."sellerEInvoiceAddress#present" then v."sellerEInvoiceAddress" else u."sellerEInvoiceAddress" end, ' +
@@ -174,11 +189,11 @@ export async function updateInvoiceSent(db: SqlExecutor, rows: InvoiceSentPatch[
                     '"netAmount" = case when v."netAmount#present" then v."netAmount" else u."netAmount" end, ' +
                     '"taxAmount" = case when v."taxAmount#present" then v."taxAmount" else u."taxAmount" end, ' +
                     '"totalAmount" = case when v."totalAmount#present" then v."totalAmount" else u."totalAmount" end ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::bool[], $4::timestamptz[], $5::bool[], $6::text[], $7::bool[], $8::uuid[], $9::bool[], $10::text[], $11::bool[], $12::text[], $13::bool[], $14::text[], $15::bool[], $16::text[], $17::bool[], $18::text[], $19::bool[], $20::text[], $21::bool[], $22::text[], $23::bool[], $24::timestamptz[], $25::bool[], $26::timestamptz[], $27::bool[], $28::int8[], $29::bool[], $30::uuid[], $31::bool[], $32::text[], $33::bool[], $34::text[], $35::bool[], $36::text[], $37::bool[], $38::text[], $39::bool[], $40::text[], $41::bool[], $42::timestamptz[], $43::bool[], $44::timestamptz[], $45::bool[], $46::int8[], $47::bool[], $48::text[], $49::bool[], $50::timestamptz[], $51::bool[], $52::timestamptz[], $53::bool[], $54::text[], $55::bool[], $56::decimal[], $57::bool[], $58::decimal[], $59::bool[], $60::decimal[], $61::bool[]) as v(' +
-                    '"id", "invoiceId", "invoiceId#present", "sentAt", "sentAt#present", "number", "number#present", "customerId", "customerId#present", "customerName", "customerName#present", "customerEmail", "customerEmail#present", "customerAddress", "customerAddress#present", "customerBusinessId", "customerBusinessId#present", "customerEInvoiceAddress", "customerEInvoiceAddress#present", "customerEInvoiceOperator", "customerEInvoiceOperator#present", "customerLanguage", "customerLanguage#present", "customerCreatedAt", "customerCreatedAt#present", "customerUpdatedAt", "customerUpdatedAt#present", "customerVersion", "customerVersion#present", "sellerId", "sellerId#present", "sellerName", "sellerName#present", "sellerBusinessId", "sellerBusinessId#present", "sellerEInvoiceAddress", "sellerEInvoiceAddress#present", "sellerEInvoiceOperator", "sellerEInvoiceOperator#present", "sellerLanguage", "sellerLanguage#present", "sellerCreatedAt", "sellerCreatedAt#present", "sellerUpdatedAt", "sellerUpdatedAt#present", "sellerVersion", "sellerVersion#present", "language", "language#present", "issueDate", "issueDate#present", "dueDate", "dueDate#present", "notes", "notes#present", "netAmount", "netAmount#present", "taxAmount", "taxAmount#present", "totalAmount", "totalAmount#present") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::bool[], $4::uuid[], $5::bool[], $6::timestamptz[], $7::bool[], $8::text[], $9::bool[], $10::uuid[], $11::bool[], $12::uuid[], $13::bool[], $14::text[], $15::bool[], $16::text[], $17::bool[], $18::text[], $19::bool[], $20::text[], $21::bool[], $22::text[], $23::bool[], $24::text[], $25::bool[], $26::text[], $27::bool[], $28::timestamptz[], $29::bool[], $30::timestamptz[], $31::bool[], $32::int8[], $33::bool[], $34::uuid[], $35::bool[], $36::uuid[], $37::bool[], $38::text[], $39::bool[], $40::text[], $41::bool[], $42::text[], $43::bool[], $44::text[], $45::bool[], $46::text[], $47::bool[], $48::timestamptz[], $49::bool[], $50::timestamptz[], $51::bool[], $52::int8[], $53::bool[], $54::text[], $55::bool[], $56::timestamptz[], $57::bool[], $58::timestamptz[], $59::bool[], $60::text[], $61::bool[], $62::decimal[], $63::bool[], $64::decimal[], $65::bool[], $66::decimal[], $67::bool[]) as v(' +
+                    '"id", "tenantId", "tenantId#present", "invoiceId", "invoiceId#present", "sentAt", "sentAt#present", "number", "number#present", "customerId", "customerId#present", "customerTenantId", "customerTenantId#present", "customerName", "customerName#present", "customerEmail", "customerEmail#present", "customerAddress", "customerAddress#present", "customerBusinessId", "customerBusinessId#present", "customerEInvoiceAddress", "customerEInvoiceAddress#present", "customerEInvoiceOperator", "customerEInvoiceOperator#present", "customerLanguage", "customerLanguage#present", "customerCreatedAt", "customerCreatedAt#present", "customerUpdatedAt", "customerUpdatedAt#present", "customerVersion", "customerVersion#present", "sellerId", "sellerId#present", "sellerTenantId", "sellerTenantId#present", "sellerName", "sellerName#present", "sellerBusinessId", "sellerBusinessId#present", "sellerEInvoiceAddress", "sellerEInvoiceAddress#present", "sellerEInvoiceOperator", "sellerEInvoiceOperator#present", "sellerLanguage", "sellerLanguage#present", "sellerCreatedAt", "sellerCreatedAt#present", "sellerUpdatedAt", "sellerUpdatedAt#present", "sellerVersion", "sellerVersion#present", "language", "language#present", "issueDate", "issueDate#present", "dueDate", "dueDate#present", "notes", "notes#present", "netAmount", "netAmount#present", "taxAmount", "taxAmount#present", "totalAmount", "totalAmount#present") ' +
                     'where u."id" = v."id" ' +
                     'returning u."id"',
-                [idValues, invoiceIdValues, invoiceIdPresent, sentAtValues, sentAtPresent, numberValues, numberPresent, customerIdValues, customerIdPresent, customerNameValues, customerNamePresent, customerEmailValues, customerEmailPresent, customerAddressValues, customerAddressPresent, customerBusinessIdValues, customerBusinessIdPresent, customerEInvoiceAddressValues, customerEInvoiceAddressPresent, customerEInvoiceOperatorValues, customerEInvoiceOperatorPresent, customerLanguageValues, customerLanguagePresent, customerCreatedAtValues, customerCreatedAtPresent, customerUpdatedAtValues, customerUpdatedAtPresent, customerVersionValues, customerVersionPresent, sellerIdValues, sellerIdPresent, sellerNameValues, sellerNamePresent, sellerBusinessIdValues, sellerBusinessIdPresent, sellerEInvoiceAddressValues, sellerEInvoiceAddressPresent, sellerEInvoiceOperatorValues, sellerEInvoiceOperatorPresent, sellerLanguageValues, sellerLanguagePresent, sellerCreatedAtValues, sellerCreatedAtPresent, sellerUpdatedAtValues, sellerUpdatedAtPresent, sellerVersionValues, sellerVersionPresent, languageValues, languagePresent, issueDateValues, issueDatePresent, dueDateValues, dueDatePresent, notesValues, notesPresent, netAmountValues, netAmountPresent, taxAmountValues, taxAmountPresent, totalAmountValues, totalAmountPresent],
+                [idValues, tenantIdValues, tenantIdPresent, invoiceIdValues, invoiceIdPresent, sentAtValues, sentAtPresent, numberValues, numberPresent, customerIdValues, customerIdPresent, customerTenantIdValues, customerTenantIdPresent, customerNameValues, customerNamePresent, customerEmailValues, customerEmailPresent, customerAddressValues, customerAddressPresent, customerBusinessIdValues, customerBusinessIdPresent, customerEInvoiceAddressValues, customerEInvoiceAddressPresent, customerEInvoiceOperatorValues, customerEInvoiceOperatorPresent, customerLanguageValues, customerLanguagePresent, customerCreatedAtValues, customerCreatedAtPresent, customerUpdatedAtValues, customerUpdatedAtPresent, customerVersionValues, customerVersionPresent, sellerIdValues, sellerIdPresent, sellerTenantIdValues, sellerTenantIdPresent, sellerNameValues, sellerNamePresent, sellerBusinessIdValues, sellerBusinessIdPresent, sellerEInvoiceAddressValues, sellerEInvoiceAddressPresent, sellerEInvoiceOperatorValues, sellerEInvoiceOperatorPresent, sellerLanguageValues, sellerLanguagePresent, sellerCreatedAtValues, sellerCreatedAtPresent, sellerUpdatedAtValues, sellerUpdatedAtPresent, sellerVersionValues, sellerVersionPresent, languageValues, languagePresent, issueDateValues, issueDatePresent, dueDateValues, dueDatePresent, notesValues, notesPresent, netAmountValues, netAmountPresent, taxAmountValues, taxAmountPresent, totalAmountValues, totalAmountPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

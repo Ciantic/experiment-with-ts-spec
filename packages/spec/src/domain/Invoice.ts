@@ -5,6 +5,7 @@ import type { Version } from "../primitives/Version.ts";
 import type { Customer, CustomerId } from "./Customer.ts";
 import type { InvoiceRow } from "./InvoiceRow.ts";
 import type { Seller, SellerId } from "./Seller.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;
@@ -28,6 +29,16 @@ export interface Invoice {
      * @widget text
      */
     id: InvoiceId;
+
+    /**
+     * The identifier of the tenant this invoice belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The human-readable invoice number shown to the customer.

@@ -9,6 +9,7 @@ import { querySellerSelectSchema } from "./querySeller.ts";
 export const queryInvoiceSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
+        tenantId: z.literal(true).optional(),
         number: z.literal(true).optional(),
         customerId: z.literal(true).optional(),
         customer: z.union([z.literal(true), z.lazy(() => queryCustomerSelectSchema)]).optional(),
@@ -31,6 +32,7 @@ export const queryInvoiceSelectSchema = z.lazy(() =>
 export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
         customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
         sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
     }).optional(),

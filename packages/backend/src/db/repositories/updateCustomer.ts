@@ -6,7 +6,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: CustomerPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 16;
+const PARAMETERS_PER_ROW = 18;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -20,6 +20,8 @@ export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Pr
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
             const versionValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
+            const tenantIdPresent: boolean[] = [];
             const nameValues: Array<unknown> = [];
             const namePresent: boolean[] = [];
             const emailValues: Array<unknown> = [];
@@ -37,6 +39,8 @@ export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Pr
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
+                tenantIdPresent.push(row.tenantId !== undefined);
                 nameValues.push(row.name ?? null);
                 namePresent.push(row.name !== undefined);
                 emailValues.push(row.email ?? null);
@@ -54,6 +58,7 @@ export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Pr
             }
             const result = await tx.query(
                 'update "customer" as u set ' +
+                    '"tenantId" = case when v."tenantId#present" then v."tenantId" else u."tenantId" end, ' +
                     '"name" = case when v."name#present" then v."name" else u."name" end, ' +
                     '"email" = case when v."email#present" then v."email" else u."email" end, ' +
                     '"address" = case when v."address#present" then v."address" else u."address" end, ' +
@@ -61,11 +66,11 @@ export async function updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Pr
                     '"eInvoiceAddress" = case when v."eInvoiceAddress#present" then v."eInvoiceAddress" else u."eInvoiceAddress" end, ' +
                     '"eInvoiceOperator" = case when v."eInvoiceOperator#present" then v."eInvoiceOperator" else u."eInvoiceOperator" end, ' +
                     '"language" = case when v."language#present" then v."language" else u."language" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[], $15::text[], $16::bool[]) as v(' +
-                    '"id", "version", "name", "name#present", "email", "email#present", "address", "address#present", "businessId", "businessId#present", "eInvoiceAddress", "eInvoiceAddress#present", "eInvoiceOperator", "eInvoiceOperator#present", "language", "language#present") ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[], $15::text[], $16::bool[], $17::text[], $18::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "name", "name#present", "email", "email#present", "address", "address#present", "businessId", "businessId#present", "eInvoiceAddress", "eInvoiceAddress#present", "eInvoiceOperator", "eInvoiceOperator#present", "language", "language#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, nameValues, namePresent, emailValues, emailPresent, addressValues, addressPresent, businessIdValues, businessIdPresent, eInvoiceAddressValues, eInvoiceAddressPresent, eInvoiceOperatorValues, eInvoiceOperatorPresent, languageValues, languagePresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, nameValues, namePresent, emailValues, emailPresent, addressValues, addressPresent, businessIdValues, businessIdPresent, eInvoiceAddressValues, eInvoiceAddressPresent, eInvoiceOperatorValues, eInvoiceOperatorPresent, languageValues, languagePresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

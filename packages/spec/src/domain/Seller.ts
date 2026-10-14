@@ -3,6 +3,7 @@ import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.ts";
 import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.ts";
 import type { Language } from "../primitives/Language.ts";
 import type { Version } from "../primitives/Version.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for a seller. */
 export type SellerId = BrandedId<"SellerId">;
@@ -26,6 +27,16 @@ export interface Seller {
      * @widget text
      */
     id: SellerId;
+
+    /**
+     * The identifier of the tenant this seller belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The display name of the seller.

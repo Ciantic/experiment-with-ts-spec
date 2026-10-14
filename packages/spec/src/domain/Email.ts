@@ -1,6 +1,7 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
 import type { EmailAddress } from "../primitives/EmailAddress.ts";
 import type { Version } from "../primitives/Version.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for a queued email. */
 export type EmailId = BrandedId<"EmailId">;
@@ -28,6 +29,16 @@ export interface Email {
      * @widget text
      */
     id: EmailId;
+
+    /**
+     * The identifier of the tenant this email belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The address the email is sent from.

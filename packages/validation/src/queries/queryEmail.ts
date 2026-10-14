@@ -6,6 +6,7 @@ import * as primitives from "../primitives.ts";
 export const queryEmailSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
+        tenantId: z.literal(true).optional(),
         from: z.literal(true).optional(),
         to: z.literal(true).optional(),
         subject: z.literal(true).optional(),
@@ -24,6 +25,7 @@ export const queryEmailSelectSchema = z.lazy(() =>
 export const queryEmailSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"EmailId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
         status: z.array(z.enum(["pending", "sending", "sent", "failed"])).optional(),
     }).optional(),
     order: z.array(

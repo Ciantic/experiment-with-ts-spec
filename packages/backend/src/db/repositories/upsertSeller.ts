@@ -10,7 +10,7 @@ const keyOf = (row: Record<string, unknown>): SellerPrimaryKey => ({ id: row["id
 const keyName = (row: SellerUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 7;
+const PARAMETERS_PER_ROW = 8;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -24,6 +24,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const businessIdValues: Array<unknown> = [];
             const eInvoiceAddressValues: Array<unknown> = [];
@@ -32,6 +33,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 businessIdValues.push(row.businessId ?? null);
                 eInvoiceAddressValues.push(row.eInvoiceAddress ?? null);
@@ -40,17 +42,19 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "seller" as u ("id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") select ' +
+                'insert into "seller" as u ("id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."name", ' +
                     'v."businessId", ' +
                     'v."eInvoiceAddress", ' +
                     'v."eInvoiceOperator", ' +
                     'v."language", ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int8[]) as v(' +
-                    '"id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::int8[]) as v(' +
+                    '"id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") ' +
                     'on conflict ("id") do update set ' +
+                    '"tenantId" = excluded."tenantId", ' +
                     '"name" = excluded."name", ' +
                     '"businessId" = excluded."businessId", ' +
                     '"eInvoiceAddress" = excluded."eInvoiceAddress", ' +
@@ -58,7 +62,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
                     '"language" = excluded."language" ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, versionValues],
+                [idValues, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

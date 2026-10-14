@@ -10,7 +10,7 @@ const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["i
 const keyName = (row: InvoiceUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 9;
+const PARAMETERS_PER_ROW = 10;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -24,6 +24,7 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const numberValues: Array<unknown> = [];
             const customerIdValues: Array<unknown> = [];
             const sellerIdValues: Array<unknown> = [];
@@ -34,6 +35,7 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 numberValues.push(row.number ?? null);
                 customerIdValues.push(row.customerId ?? null);
                 sellerIdValues.push(row.sellerId ?? null);
@@ -44,8 +46,9 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice" as u ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "version") select ' +
+                'insert into "invoice" as u ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "version") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."number", ' +
                     'v."customerId", ' +
                     'v."sellerId", ' +
@@ -54,9 +57,10 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
                     'v."dueDate", ' +
                     'v."notes", ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::uuid[], $4::uuid[], $5::text[], $6::timestamptz[], $7::timestamptz[], $8::text[], $9::int8[]) as v(' +
-                    '"id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[], $10::int8[]) as v(' +
+                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "version") ' +
                     'on conflict ("id") do update set ' +
+                    '"tenantId" = excluded."tenantId", ' +
                     '"number" = excluded."number", ' +
                     '"customerId" = excluded."customerId", ' +
                     '"sellerId" = excluded."sellerId", ' +
@@ -66,7 +70,7 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
                     '"notes" = excluded."notes" ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, versionValues],
+                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

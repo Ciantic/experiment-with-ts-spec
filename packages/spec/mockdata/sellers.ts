@@ -1,4 +1,5 @@
 import type { Seller, SellerId } from "../src/domain/Seller.ts";
+import type { TenantId } from "../src/domain/Tenant.ts";
 import type { EInvoiceAddress } from "../src/primitives/EInvoiceAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
@@ -6,6 +7,7 @@ import type { Version } from "../src/primitives/Version.ts";
 export const sellers: Seller[] = [
     {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as SellerId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         name: "Firma Oy",
         businessId: "9876543-2",
         eInvoiceAddress: "003798765432" as EInvoiceAddress,
@@ -17,6 +19,7 @@ export const sellers: Seller[] = [
     },
     {
         id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as SellerId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         name: "Nordic Ab",
         businessId: "8765432-1",
         eInvoiceOperator: "basware",

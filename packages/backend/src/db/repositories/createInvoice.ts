@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 8;
+const PARAMETERS_PER_ROW = 9;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const numberValues: Array<unknown> = [];
             const customerIdValues: Array<unknown> = [];
             const sellerIdValues: Array<unknown> = [];
@@ -30,6 +31,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
             const notesValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 numberValues.push(row.number ?? null);
                 customerIdValues.push(row.customerId ?? null);
                 sellerIdValues.push(row.sellerId ?? null);
@@ -39,8 +41,9 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                 notesValues.push(row.notes ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice" ("id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") select ' +
+                'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."number", ' +
                     'v."customerId", ' +
                     'v."sellerId", ' +
@@ -48,10 +51,10 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                     'v."issueDate", ' +
                     'v."dueDate", ' +
                     'v."notes" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::uuid[], $4::uuid[], $5::text[], $6::timestamptz[], $7::timestamptz[], $8::text[]) as v(' +
-                    '"id", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[]) as v(' +
+                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") ' +
                     'returning "invoice"."id"',
-                [idValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues],
+                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

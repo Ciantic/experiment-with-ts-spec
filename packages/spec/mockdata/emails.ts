@@ -1,4 +1,5 @@
 import type { Email, EmailId } from "../src/domain/Email.ts";
+import type { TenantId } from "../src/domain/Tenant.ts";
 import type { EmailAddress } from "../src/primitives/EmailAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
@@ -6,6 +7,7 @@ import type { Version } from "../src/primitives/Version.ts";
 export const emails: Email[] = [
     {
         id: "00000000-0000-4000-8000-000000000201" as EmailId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@acme.example" as EmailAddress,
         to: "invoices@acme.example" as EmailAddress,
         subject: "Invoice 2026-0001",
@@ -19,6 +21,7 @@ export const emails: Email[] = [
     },
     {
         id: "00000000-0000-4000-8000-000000000202" as EmailId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@beta.example" as EmailAddress,
         to: "invoices@beta.example" as EmailAddress,
         subject: "Invoice 2026-0002",
@@ -33,6 +36,7 @@ export const emails: Email[] = [
     },
     {
         id: "00000000-0000-4000-8000-000000000203" as EmailId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@gamma.example" as EmailAddress,
         to: "rechnung@gamma.example" as EmailAddress,
         subject: "Invoice 2026-0003",

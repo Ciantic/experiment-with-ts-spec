@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): EmailPrimaryKey => ({ id: row["id"] as EmailPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 13;
+const PARAMETERS_PER_ROW = 14;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const fromValues: Array<unknown> = [];
             const toValues: Array<unknown> = [];
             const subjectValues: Array<unknown> = [];
@@ -35,6 +36,7 @@ export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise
             const sentAtValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 fromValues.push(row.from ?? null);
                 toValues.push(row.to ?? null);
                 subjectValues.push(row.subject ?? null);
@@ -49,8 +51,9 @@ export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise
                 sentAtValues.push(row.sentAt ?? null);
             }
             const result = await tx.query(
-                'insert into "email" ("id", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt") select ' +
+                'insert into "email" ("id", "tenantId", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."from", ' +
                     'v."to", ' +
                     'v."subject", ' +
@@ -60,10 +63,10 @@ export async function createEmail(db: SqlExecutor, rows: EmailInsert[]): Promise
                     'case when v."maxAttempts#present" then v."maxAttempts" else 5 end, ' +
                     'v."lastError", ' +
                     'v."sentAt" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bool[], $8::int8[], $9::bool[], $10::int8[], $11::bool[], $12::text[], $13::timestamptz[]) as v(' +
-                    '"id", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bool[], $9::int8[], $10::bool[], $11::int8[], $12::bool[], $13::text[], $14::timestamptz[]) as v(' +
+                    '"id", "tenantId", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt") ' +
                     'returning "email"."id"',
-                [idValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues],
+                [idValues, tenantIdValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

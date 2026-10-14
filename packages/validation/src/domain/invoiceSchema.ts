@@ -7,6 +7,7 @@ import { sellerSchema } from "./sellerSchema.ts";
 
 export const invoiceSchema = z.object({
     id: primitives.brandedIdSchema<"InvoiceId">(),
+    tenantId: primitives.brandedIdSchema<"TenantId">(),
     number: z.string().optional(),
     customerId: primitives.brandedIdSchema<"CustomerId">().optional(),
     customer: z.lazy(() => customerSchema).optional(),

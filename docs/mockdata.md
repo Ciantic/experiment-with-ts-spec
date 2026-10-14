@@ -11,10 +11,11 @@ client has something to read without a fixture being written per test.
 - `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
-The `mockTables` are ordered so foreign keys resolve: customers and sellers, then
-invoices and their rows, then sent invoices and their rows. Tables that reference
-nothing — `Tenant`, `Translation`, and `AuditLog` — sit at the end, where their
-position cannot matter. `seedMockData` walks the list in that order.
+The `mockTables` are ordered so foreign keys resolve: the tenant every row
+belongs to, then customers and sellers, then invoices and their rows, then sent
+invoices and their rows, then queued emails. Tables that reference nothing —
+`Translation` and `AuditLog` — sit at the end, where their position cannot
+matter. `seedMockData` walks the list in that order.
 
 ## Seeding is generic
 

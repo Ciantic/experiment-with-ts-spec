@@ -7,6 +7,7 @@ import { sellerSchema } from "./sellerSchema.ts";
 
 export const invoiceSentSchema = z.object({
     id: primitives.brandedIdSchema<"InvoiceSentId">(),
+    tenantId: primitives.brandedIdSchema<"TenantId">(),
     invoiceId: primitives.brandedIdSchema<"InvoiceId">(),
     sentAt: z.date(),
     number: z.string(),

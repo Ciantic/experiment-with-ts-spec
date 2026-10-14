@@ -5,6 +5,7 @@ import type { Customer } from "./Customer.ts";
 import type { InvoiceId } from "./Invoice.ts";
 import type { InvoiceSentRow } from "./InvoiceSentRow.ts";
 import type { Seller } from "./Seller.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for a sent invoice. */
 export type InvoiceSentId = BrandedId<"InvoiceSentId">;
@@ -30,6 +31,16 @@ export interface InvoiceSent {
      * @widget text
      */
     id: InvoiceSentId;
+
+    /**
+     * The identifier of the tenant this sent invoice belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The draft this sent invoice was issued from.

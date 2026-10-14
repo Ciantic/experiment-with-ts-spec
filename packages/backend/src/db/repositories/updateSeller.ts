@@ -6,7 +6,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: SellerPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 12;
+const PARAMETERS_PER_ROW = 14;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -20,6 +20,8 @@ export async function updateSeller(db: SqlExecutor, rows: SellerPatch[]): Promis
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
             const versionValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
+            const tenantIdPresent: boolean[] = [];
             const nameValues: Array<unknown> = [];
             const namePresent: boolean[] = [];
             const businessIdValues: Array<unknown> = [];
@@ -33,6 +35,8 @@ export async function updateSeller(db: SqlExecutor, rows: SellerPatch[]): Promis
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
+                tenantIdPresent.push(row.tenantId !== undefined);
                 nameValues.push(row.name ?? null);
                 namePresent.push(row.name !== undefined);
                 businessIdValues.push(row.businessId ?? null);
@@ -46,16 +50,17 @@ export async function updateSeller(db: SqlExecutor, rows: SellerPatch[]): Promis
             }
             const result = await tx.query(
                 'update "seller" as u set ' +
+                    '"tenantId" = case when v."tenantId#present" then v."tenantId" else u."tenantId" end, ' +
                     '"name" = case when v."name#present" then v."name" else u."name" end, ' +
                     '"businessId" = case when v."businessId#present" then v."businessId" else u."businessId" end, ' +
                     '"eInvoiceAddress" = case when v."eInvoiceAddress#present" then v."eInvoiceAddress" else u."eInvoiceAddress" end, ' +
                     '"eInvoiceOperator" = case when v."eInvoiceOperator#present" then v."eInvoiceOperator" else u."eInvoiceOperator" end, ' +
                     '"language" = case when v."language#present" then v."language" else u."language" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[]) as v(' +
-                    '"id", "version", "name", "name#present", "businessId", "businessId#present", "eInvoiceAddress", "eInvoiceAddress#present", "eInvoiceOperator", "eInvoiceOperator#present", "language", "language#present") ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "name", "name#present", "businessId", "businessId#present", "eInvoiceAddress", "eInvoiceAddress#present", "eInvoiceOperator", "eInvoiceOperator#present", "language", "language#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, nameValues, namePresent, businessIdValues, businessIdPresent, eInvoiceAddressValues, eInvoiceAddressPresent, eInvoiceOperatorValues, eInvoiceOperatorPresent, languageValues, languagePresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, nameValues, namePresent, businessIdValues, businessIdPresent, eInvoiceAddressValues, eInvoiceAddressPresent, eInvoiceOperatorValues, eInvoiceOperatorPresent, languageValues, languagePresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

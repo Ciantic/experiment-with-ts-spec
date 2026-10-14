@@ -4,6 +4,7 @@ import * as primitives from "../primitives.ts";
 
 export const sellerSchema = z.object({
     id: primitives.brandedIdSchema<"SellerId">(),
+    tenantId: primitives.brandedIdSchema<"TenantId">(),
     name: z.string(),
     businessId: z.string(),
     eInvoiceAddress: primitives.eInvoiceAddressSchema.optional(),

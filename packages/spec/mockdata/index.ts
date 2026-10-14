@@ -29,6 +29,7 @@ export interface MockTable {
 
 /** Every mock table, ordered so foreign keys resolve when inserted in sequence. */
 export const mockTables: MockTable[] = [
+    { entity: "Tenant", rows: tenants },
     { entity: "Customer", rows: customers },
     { entity: "Seller", rows: sellers },
     { entity: "Invoice", rows: invoices },
@@ -36,7 +37,6 @@ export const mockTables: MockTable[] = [
     { entity: "InvoiceSent", rows: invoicesSent },
     { entity: "InvoiceSentRow", rows: invoiceSentRows },
     { entity: "Email", rows: emails },
-    { entity: "Tenant", rows: tenants },
     { entity: "Translation", rows: translations },
     { entity: "AuditLog", rows: auditLogs },
 ];

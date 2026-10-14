@@ -10,7 +10,7 @@ const keyOf = (row: Record<string, unknown>): EmailPrimaryKey => ({ id: row["id"
 const keyName = (row: EmailUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 14;
+const PARAMETERS_PER_ROW = 15;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -24,6 +24,7 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const fromValues: Array<unknown> = [];
             const toValues: Array<unknown> = [];
             const subjectValues: Array<unknown> = [];
@@ -39,6 +40,7 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 fromValues.push(row.from ?? null);
                 toValues.push(row.to ?? null);
                 subjectValues.push(row.subject ?? null);
@@ -54,8 +56,9 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "email" as u ("id", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt", "version") select ' +
+                'insert into "email" as u ("id", "tenantId", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt", "version") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."from", ' +
                     'v."to", ' +
                     'v."subject", ' +
@@ -66,9 +69,10 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                     'v."lastError", ' +
                     'v."sentAt", ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bool[], $8::int8[], $9::bool[], $10::int8[], $11::bool[], $12::text[], $13::timestamptz[], $14::int8[]) as v(' +
-                    '"id", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bool[], $9::int8[], $10::bool[], $11::int8[], $12::bool[], $13::text[], $14::timestamptz[], $15::int8[]) as v(' +
+                    '"id", "tenantId", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt", "version") ' +
                     'on conflict ("id") do update set ' +
+                    '"tenantId" = excluded."tenantId", ' +
                     '"from" = excluded."from", ' +
                     '"to" = excluded."to", ' +
                     '"subject" = excluded."subject", ' +
@@ -80,7 +84,7 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                     '"sentAt" = excluded."sentAt" ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues, versionValues],
+                [idValues, tenantIdValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

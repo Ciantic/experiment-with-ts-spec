@@ -18,6 +18,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "name": "name",
                 "email": "email",
                 "address": "address",
@@ -36,6 +37,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "from": "from",
                 "to": "to",
                 "subject": "subject",
@@ -64,6 +66,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "number": "number",
                 "customerId": "customerId",
                 "sellerId": "sellerId",
@@ -115,6 +118,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "invoiceId": "invoiceId",
                 "description": "description",
                 "quantity": "quantity",
@@ -135,6 +139,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "invoiceId": "invoiceId",
                 "sentAt": "sentAt",
                 "number": "number",
@@ -152,6 +157,7 @@ export const queryModel: QueryModel = {
                     "table": "customer",
                     "columns": {
                         "id": "customerId",
+                        "tenantId": "customerTenantId",
                         "name": "customerName",
                         "email": "customerEmail",
                         "address": "customerAddress",
@@ -169,6 +175,7 @@ export const queryModel: QueryModel = {
                     "table": "seller",
                     "columns": {
                         "id": "sellerId",
+                        "tenantId": "sellerTenantId",
                         "name": "sellerName",
                         "businessId": "sellerBusinessId",
                         "eInvoiceAddress": "sellerEInvoiceAddress",
@@ -191,6 +198,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "invoiceSentId": "invoiceSentId",
                 "description": "description",
                 "quantity": "quantity",
@@ -208,6 +216,7 @@ export const queryModel: QueryModel = {
             "key": "id",
             "fields": {
                 "id": "id",
+                "tenantId": "tenantId",
                 "name": "name",
                 "businessId": "businessId",
                 "eInvoiceAddress": "eInvoiceAddress",

@@ -1,4 +1,5 @@
 import type { Customer, CustomerId } from "../src/domain/Customer.ts";
+import type { TenantId } from "../src/domain/Tenant.ts";
 import type { EInvoiceAddress } from "../src/primitives/EInvoiceAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
@@ -6,6 +7,7 @@ import type { Version } from "../src/primitives/Version.ts";
 export const customers: Customer[] = [
     {
         id: "11111111-1111-4111-8111-111111111111" as CustomerId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         name: "Acme Oy",
         email: "billing@acme.example",
         address: "Mannerheimintie 1, 00100 Helsinki",
@@ -19,6 +21,7 @@ export const customers: Customer[] = [
     },
     {
         id: "22222222-2222-4222-8222-222222222222" as CustomerId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         name: "Beta Ab",
         email: "invoices@beta.example",
         address: "Storgatan 2, 00100 Helsingfors",
@@ -31,6 +34,7 @@ export const customers: Customer[] = [
     },
     {
         id: "33333333-3333-4333-8333-333333333333" as CustomerId,
+        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
         name: "Gamma GmbH",
         email: "rechnung@gamma.example",
         address: "Hauptstrasse 3, 10115 Berlin",

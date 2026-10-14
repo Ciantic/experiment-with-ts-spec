@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): InvoiceSentRowPrimaryKey => ({ id: row["id"] as InvoiceSentRowPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 10;
+const PARAMETERS_PER_ROW = 11;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const invoiceSentIdValues: Array<unknown> = [];
             const descriptionValues: Array<unknown> = [];
             const quantityValues: Array<unknown> = [];
@@ -32,6 +33,7 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
             const totalAmountValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 invoiceSentIdValues.push(row.invoiceSentId ?? null);
                 descriptionValues.push(row.description ?? null);
                 quantityValues.push(row.quantity ?? null);
@@ -43,8 +45,9 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
                 totalAmountValues.push(row.totalAmount ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice_sent_row" ("id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") select ' +
+                'insert into "invoice_sent_row" ("id", "tenantId", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."invoiceSentId", ' +
                     'v."description", ' +
                     'v."quantity", ' +
@@ -54,9 +57,10 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
                     'v."netAmount", ' +
                     'v."taxAmount", ' +
                     'v."totalAmount" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::decimal[], $5::text[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[], $10::decimal[]) as v(' +
-                    '"id", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::decimal[], $6::text[], $7::decimal[], $8::decimal[], $9::decimal[], $10::decimal[], $11::decimal[]) as v(' +
+                    '"id", "tenantId", "invoiceSentId", "description", "quantity", "unit", "unitPrice", "taxRate", "netAmount", "taxAmount", "totalAmount") ' +
                     'on conflict ("id") do update set ' +
+                    '"tenantId" = excluded."tenantId", ' +
                     '"invoiceSentId" = excluded."invoiceSentId", ' +
                     '"description" = excluded."description", ' +
                     '"quantity" = excluded."quantity", ' +
@@ -67,7 +71,7 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
                     '"taxAmount" = excluded."taxAmount", ' +
                     '"totalAmount" = excluded."totalAmount" ' +
                     'returning "invoice_sent_row"."id"',
-                [idValues, invoiceSentIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues, netAmountValues, taxAmountValues, totalAmountValues],
+                [idValues, tenantIdValues, invoiceSentIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues, netAmountValues, taxAmountValues, totalAmountValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

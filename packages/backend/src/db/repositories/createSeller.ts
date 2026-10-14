@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): SellerPrimaryKey => ({ id: row["id"] as SellerPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 6;
+const PARAMETERS_PER_ROW = 7;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const businessIdValues: Array<unknown> = [];
             const eInvoiceAddressValues: Array<unknown> = [];
@@ -28,6 +29,7 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
             const languageValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 businessIdValues.push(row.businessId ?? null);
                 eInvoiceAddressValues.push(row.eInvoiceAddress ?? null);
@@ -35,17 +37,18 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
                 languageValues.push(row.language ?? null);
             }
             const result = await tx.query(
-                'insert into "seller" ("id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
+                'insert into "seller" ("id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."name", ' +
                     'v."businessId", ' +
                     'v."eInvoiceAddress", ' +
                     'v."eInvoiceOperator", ' +
                     'v."language" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) as v(' +
-                    '"id", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) as v(' +
+                    '"id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ' +
                     'returning "seller"."id"',
-                [idValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
+                [idValues, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

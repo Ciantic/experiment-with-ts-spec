@@ -5,6 +5,7 @@ import type { TaxRate } from "../primitives/TaxRate.ts";
 import type { Unit } from "../primitives/Unit.ts";
 import type { Version } from "../primitives/Version.ts";
 import type { InvoiceId } from "./Invoice.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for an invoice row. */
 export type InvoiceRowId = BrandedId<"InvoiceRowId">;
@@ -28,6 +29,16 @@ export interface InvoiceRow {
      * @widget text
      */
     id: InvoiceRowId;
+
+    /**
+     * The identifier of the tenant this invoice row belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The identifier of the invoice this row belongs to.

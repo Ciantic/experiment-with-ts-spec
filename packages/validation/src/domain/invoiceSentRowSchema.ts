@@ -4,6 +4,7 @@ import * as primitives from "../primitives.ts";
 
 export const invoiceSentRowSchema = z.object({
     id: primitives.brandedIdSchema<"InvoiceSentRowId">(),
+    tenantId: primitives.brandedIdSchema<"TenantId">(),
     invoiceSentId: primitives.brandedIdSchema<"InvoiceSentId">(),
     description: z.string(),
     quantity: primitives.quantitySchema,

@@ -4,6 +4,7 @@ import type { Quantity } from "../primitives/Quantity.ts";
 import type { TaxRate } from "../primitives/TaxRate.ts";
 import type { Unit } from "../primitives/Unit.ts";
 import type { InvoiceSentId } from "./InvoiceSent.ts";
+import type { TenantId } from "./Tenant.ts";
 
 /** The unique identifier for a sent invoice row. */
 export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;
@@ -27,6 +28,16 @@ export interface InvoiceSentRow {
      * @widget text
      */
     id: InvoiceSentRowId;
+
+    /**
+     * The identifier of the tenant this sent invoice row belongs to.
+     * 
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId: TenantId;
 
     /**
      * The identifier of the sent invoice this row belongs to.

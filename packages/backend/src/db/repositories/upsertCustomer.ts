@@ -10,7 +10,7 @@ const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["
 const keyName = (row: CustomerUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 9;
+const PARAMETERS_PER_ROW = 10;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -24,6 +24,7 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const emailValues: Array<unknown> = [];
             const addressValues: Array<unknown> = [];
@@ -34,6 +35,7 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 emailValues.push(row.email ?? null);
                 addressValues.push(row.address ?? null);
@@ -44,8 +46,9 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "customer" as u ("id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") select ' +
+                'insert into "customer" as u ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."name", ' +
                     'v."email", ' +
                     'v."address", ' +
@@ -54,9 +57,10 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                     'v."eInvoiceOperator", ' +
                     'v."language", ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::int8[]) as v(' +
-                    '"id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::int8[]) as v(' +
+                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") ' +
                     'on conflict ("id") do update set ' +
+                    '"tenantId" = excluded."tenantId", ' +
                     '"name" = excluded."name", ' +
                     '"email" = excluded."email", ' +
                     '"address" = excluded."address", ' +
@@ -66,7 +70,7 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                     '"language" = excluded."language" ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, versionValues],
+                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

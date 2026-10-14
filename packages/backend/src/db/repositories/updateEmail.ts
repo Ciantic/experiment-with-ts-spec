@@ -6,7 +6,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: EmailPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 20;
+const PARAMETERS_PER_ROW = 22;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -20,6 +20,8 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
             const versionValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
+            const tenantIdPresent: boolean[] = [];
             const fromValues: Array<unknown> = [];
             const fromPresent: boolean[] = [];
             const toValues: Array<unknown> = [];
@@ -41,6 +43,8 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
+                tenantIdPresent.push(row.tenantId !== undefined);
                 fromValues.push(row.from ?? null);
                 fromPresent.push(row.from !== undefined);
                 toValues.push(row.to ?? null);
@@ -62,6 +66,7 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
             }
             const result = await tx.query(
                 'update "email" as u set ' +
+                    '"tenantId" = case when v."tenantId#present" then v."tenantId" else u."tenantId" end, ' +
                     '"from" = case when v."from#present" then v."from" else u."from" end, ' +
                     '"to" = case when v."to#present" then v."to" else u."to" end, ' +
                     '"subject" = case when v."subject#present" then v."subject" else u."subject" end, ' +
@@ -71,11 +76,11 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
                     '"maxAttempts" = case when v."maxAttempts#present" then v."maxAttempts" else u."maxAttempts" end, ' +
                     '"lastError" = case when v."lastError#present" then v."lastError" else u."lastError" end, ' +
                     '"sentAt" = case when v."sentAt#present" then v."sentAt" else u."sentAt" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::int8[], $14::bool[], $15::int8[], $16::bool[], $17::text[], $18::bool[], $19::timestamptz[], $20::bool[]) as v(' +
-                    '"id", "version", "from", "from#present", "to", "to#present", "subject", "subject#present", "body", "body#present", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "lastError#present", "sentAt", "sentAt#present") ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[], $15::int8[], $16::bool[], $17::int8[], $18::bool[], $19::text[], $20::bool[], $21::timestamptz[], $22::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "from", "from#present", "to", "to#present", "subject", "subject#present", "body", "body#present", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "lastError#present", "sentAt", "sentAt#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, fromValues, fromPresent, toValues, toPresent, subjectValues, subjectPresent, bodyValues, bodyPresent, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, lastErrorPresent, sentAtValues, sentAtPresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, fromValues, fromPresent, toValues, toPresent, subjectValues, subjectPresent, bodyValues, bodyPresent, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, lastErrorPresent, sentAtValues, sentAtPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

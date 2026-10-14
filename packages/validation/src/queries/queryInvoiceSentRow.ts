@@ -6,6 +6,7 @@ import * as primitives from "../primitives.ts";
 export const queryInvoiceSentRowSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
+        tenantId: z.literal(true).optional(),
         invoiceSentId: z.literal(true).optional(),
         description: z.literal(true).optional(),
         quantity: z.literal(true).optional(),
@@ -21,6 +22,7 @@ export const queryInvoiceSentRowSelectSchema = z.lazy(() =>
 export const queryInvoiceSentRowSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),

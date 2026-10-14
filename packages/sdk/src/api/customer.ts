@@ -11,7 +11,7 @@ export type { CustomerInsert, CustomerPatch, CustomerPrimaryKey, CustomerUpsert 
 
 /** Query `Customer` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryCustomer<S extends Selection<Customer>>(
-    opts: { filter?: Filters<Customer, "id">; limit?: number; offset?: number; select: S },
+    opts: { filter?: Filters<Customer, "id" | "tenantId">; limit?: number; offset?: number; select: S },
 ): Call<Selected<Customer, S>[]> {
     return call<Selected<Customer, S>[]>("GET", "/customer/query", opts);
 }

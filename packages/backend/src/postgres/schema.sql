@@ -7,8 +7,25 @@ create table "audit_log" (
     constraint "audit_log_pkey" primary key ("id")
 );
 
+create table "tenant" (
+    "id" uuid not null,
+    "name" text not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "tenant_pkey" primary key ("id")
+);
+
+create table "translation" (
+    "lang" text not null,
+    "key" text not null,
+    "value" text,
+    constraint "translation_pkey" primary key ("lang", "key")
+);
+
 create table "customer" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "name" text not null,
     "email" text not null,
     "address" text not null,
@@ -24,6 +41,7 @@ create table "customer" (
 
 create table "email" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "from" text not null,
     "to" text not null,
     "subject" text not null,
@@ -42,6 +60,7 @@ create table "email" (
 
 create table "seller" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "name" text not null,
     "businessId" text not null,
     "eInvoiceAddress" text,
@@ -53,24 +72,9 @@ create table "seller" (
     constraint "seller_pkey" primary key ("id")
 );
 
-create table "tenant" (
-    "id" uuid not null,
-    "name" text not null,
-    "createdAt" timestamptz not null default now(),
-    "updatedAt" timestamptz not null default now(),
-    "version" int8 not null default 0,
-    constraint "tenant_pkey" primary key ("id")
-);
-
-create table "translation" (
-    "lang" text not null,
-    "key" text not null,
-    "value" text,
-    constraint "translation_pkey" primary key ("lang", "key")
-);
-
 create table "invoice" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "number" text unique,
     "customerId" uuid references "customer"("id"),
     "sellerId" uuid references "seller"("id"),
@@ -89,6 +93,7 @@ create table "invoice" (
 
 create table "invoice_row" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "invoiceId" uuid not null references "invoice"("id"),
     "description" text,
     "quantity" decimal,
@@ -106,10 +111,12 @@ create table "invoice_row" (
 
 create table "invoice_sent" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "invoiceId" uuid not null references "invoice"("id"),
     "sentAt" timestamptz not null,
     "number" text not null unique,
     "customerId" uuid,
+    "customerTenantId" uuid,
     "customerName" text,
     "customerEmail" text,
     "customerAddress" text,
@@ -121,6 +128,7 @@ create table "invoice_sent" (
     "customerUpdatedAt" timestamptz,
     "customerVersion" int8,
     "sellerId" uuid,
+    "sellerTenantId" uuid,
     "sellerName" text,
     "sellerBusinessId" text,
     "sellerEInvoiceAddress" text,
@@ -141,6 +149,7 @@ create table "invoice_sent" (
 
 create table "invoice_sent_row" (
     "id" uuid not null,
+    "tenantId" uuid not null references "tenant"("id"),
     "invoiceSentId" uuid not null references "invoice_sent"("id"),
     "description" text not null,
     "quantity" decimal not null,
@@ -152,6 +161,16 @@ create table "invoice_sent_row" (
     "totalAmount" decimal not null,
     constraint "invoice_sent_row_pkey" primary key ("id")
 );
+
+create function "tenant_compute"() returns trigger as $$
+begin
+    NEW."updatedAt" := now();
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "tenant_compute" before insert or update on "tenant"
+    for each row execute function "tenant_compute"();
 
 create function "customer_compute"() returns trigger as $$
 begin
@@ -183,16 +202,6 @@ $$ language plpgsql;
 
 create trigger "seller_compute" before insert or update on "seller"
     for each row execute function "seller_compute"();
-
-create function "tenant_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "tenant_compute" before insert or update on "tenant"
-    for each row execute function "tenant_compute"();
 
 create function "invoice_compute"() returns trigger as $$
 begin
@@ -240,6 +249,20 @@ $$ language plpgsql;
 create trigger "invoice_sent_row_compute" before insert or update on "invoice_sent_row"
     for each row execute function "invoice_sent_row_compute"();
 
+create function "tenant_version"() returns trigger as $$
+begin
+    if NEW."version" is distinct from OLD."version" then
+        raise exception 'version conflict on tenant %', OLD."id"
+            using errcode = '40001';
+    end if;
+    NEW."version" := OLD."version" + 1;
+    return NEW;
+end;
+$$ language plpgsql;
+
+create trigger "tenant_version" before update on "tenant"
+    for each row execute function "tenant_version"();
+
 create function "customer_version"() returns trigger as $$
 begin
     if NEW."version" is distinct from OLD."version" then
@@ -281,20 +304,6 @@ $$ language plpgsql;
 
 create trigger "seller_version" before update on "seller"
     for each row execute function "seller_version"();
-
-create function "tenant_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on tenant %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "tenant_version" before update on "tenant"
-    for each row execute function "tenant_version"();
 
 create function "invoice_version"() returns trigger as $$
 begin

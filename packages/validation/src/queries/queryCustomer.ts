@@ -6,6 +6,7 @@ import * as primitives from "../primitives.ts";
 export const queryCustomerSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
+        tenantId: z.literal(true).optional(),
         name: z.literal(true).optional(),
         email: z.literal(true).optional(),
         address: z.literal(true).optional(),
@@ -22,6 +23,7 @@ export const queryCustomerSelectSchema = z.lazy(() =>
 export const queryCustomerSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),

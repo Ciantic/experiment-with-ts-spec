@@ -6,7 +6,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: InvoiceSentRowPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 19;
+const PARAMETERS_PER_ROW = 21;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -19,6 +19,8 @@ export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
+            const tenantIdPresent: boolean[] = [];
             const invoiceSentIdValues: Array<unknown> = [];
             const invoiceSentIdPresent: boolean[] = [];
             const descriptionValues: Array<unknown> = [];
@@ -39,6 +41,8 @@ export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
             const totalAmountPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
+                tenantIdPresent.push(row.tenantId !== undefined);
                 invoiceSentIdValues.push(row.invoiceSentId ?? null);
                 invoiceSentIdPresent.push(row.invoiceSentId !== undefined);
                 descriptionValues.push(row.description ?? null);
@@ -60,6 +64,7 @@ export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
             }
             const result = await tx.query(
                 'update "invoice_sent_row" as u set ' +
+                    '"tenantId" = case when v."tenantId#present" then v."tenantId" else u."tenantId" end, ' +
                     '"invoiceSentId" = case when v."invoiceSentId#present" then v."invoiceSentId" else u."invoiceSentId" end, ' +
                     '"description" = case when v."description#present" then v."description" else u."description" end, ' +
                     '"quantity" = case when v."quantity#present" then v."quantity" else u."quantity" end, ' +
@@ -69,11 +74,11 @@ export async function updateInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
                     '"netAmount" = case when v."netAmount#present" then v."netAmount" else u."netAmount" end, ' +
                     '"taxAmount" = case when v."taxAmount#present" then v."taxAmount" else u."taxAmount" end, ' +
                     '"totalAmount" = case when v."totalAmount#present" then v."totalAmount" else u."totalAmount" end ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::bool[], $4::text[], $5::bool[], $6::decimal[], $7::bool[], $8::text[], $9::bool[], $10::decimal[], $11::bool[], $12::decimal[], $13::bool[], $14::decimal[], $15::bool[], $16::decimal[], $17::bool[], $18::decimal[], $19::bool[]) as v(' +
-                    '"id", "invoiceSentId", "invoiceSentId#present", "description", "description#present", "quantity", "quantity#present", "unit", "unit#present", "unitPrice", "unitPrice#present", "taxRate", "taxRate#present", "netAmount", "netAmount#present", "taxAmount", "taxAmount#present", "totalAmount", "totalAmount#present") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::bool[], $4::uuid[], $5::bool[], $6::text[], $7::bool[], $8::decimal[], $9::bool[], $10::text[], $11::bool[], $12::decimal[], $13::bool[], $14::decimal[], $15::bool[], $16::decimal[], $17::bool[], $18::decimal[], $19::bool[], $20::decimal[], $21::bool[]) as v(' +
+                    '"id", "tenantId", "tenantId#present", "invoiceSentId", "invoiceSentId#present", "description", "description#present", "quantity", "quantity#present", "unit", "unit#present", "unitPrice", "unitPrice#present", "taxRate", "taxRate#present", "netAmount", "netAmount#present", "taxAmount", "taxAmount#present", "totalAmount", "totalAmount#present") ' +
                     'where u."id" = v."id" ' +
                     'returning u."id"',
-                [idValues, invoiceSentIdValues, invoiceSentIdPresent, descriptionValues, descriptionPresent, quantityValues, quantityPresent, unitValues, unitPresent, unitPriceValues, unitPricePresent, taxRateValues, taxRatePresent, netAmountValues, netAmountPresent, taxAmountValues, taxAmountPresent, totalAmountValues, totalAmountPresent],
+                [idValues, tenantIdValues, tenantIdPresent, invoiceSentIdValues, invoiceSentIdPresent, descriptionValues, descriptionPresent, quantityValues, quantityPresent, unitValues, unitPresent, unitPriceValues, unitPricePresent, taxRateValues, taxRatePresent, netAmountValues, netAmountPresent, taxAmountValues, taxAmountPresent, totalAmountValues, totalAmountPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

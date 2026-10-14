@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): InvoiceRowPrimaryKey => ({ id: row["id"] as InvoiceRowPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 7;
+const PARAMETERS_PER_ROW = 8;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function createInvoiceRow(db: SqlExecutor, rows: InvoiceRowInsert[]
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const invoiceIdValues: Array<unknown> = [];
             const descriptionValues: Array<unknown> = [];
             const quantityValues: Array<unknown> = [];
@@ -29,6 +30,7 @@ export async function createInvoiceRow(db: SqlExecutor, rows: InvoiceRowInsert[]
             const taxRateValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 invoiceIdValues.push(row.invoiceId ?? null);
                 descriptionValues.push(row.description ?? null);
                 quantityValues.push(row.quantity ?? null);
@@ -37,18 +39,19 @@ export async function createInvoiceRow(db: SqlExecutor, rows: InvoiceRowInsert[]
                 taxRateValues.push(row.taxRate ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice_row" ("id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate") select ' +
+                'insert into "invoice_row" ("id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."invoiceId", ' +
                     'v."description", ' +
                     'v."quantity", ' +
                     'v."unit", ' +
                     'v."unitPrice", ' +
                     'v."taxRate" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::decimal[], $5::text[], $6::decimal[], $7::decimal[]) as v(' +
-                    '"id", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::decimal[], $6::text[], $7::decimal[], $8::decimal[]) as v(' +
+                    '"id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate") ' +
                     'returning "invoice_row"."id"',
-                [idValues, invoiceIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues],
+                [idValues, tenantIdValues, invoiceIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

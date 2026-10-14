@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["id"] as CustomerPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 8;
+const PARAMETERS_PER_ROW = 9;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -21,6 +21,7 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const emailValues: Array<unknown> = [];
             const addressValues: Array<unknown> = [];
@@ -30,6 +31,7 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
             const languageValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 emailValues.push(row.email ?? null);
                 addressValues.push(row.address ?? null);
@@ -39,8 +41,9 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
                 languageValues.push(row.language ?? null);
             }
             const result = await tx.query(
-                'insert into "customer" ("id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
+                'insert into "customer" ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
                     'v."id", ' +
+                    'v."tenantId", ' +
                     'v."name", ' +
                     'v."email", ' +
                     'v."address", ' +
@@ -48,10 +51,10 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
                     'v."eInvoiceAddress", ' +
                     'v."eInvoiceOperator", ' +
                     'v."language" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) as v(' +
-                    '"id", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[]) as v(' +
+                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ' +
                     'returning "customer"."id"',
-                [idValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
+                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
