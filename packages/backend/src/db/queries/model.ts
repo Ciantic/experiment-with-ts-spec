@@ -154,7 +154,6 @@ export const queryModel: QueryModel = {
             "relations": {
                 "customer": {
                     "kind": "inlined",
-                    "table": "customer",
                     "columns": {
                         "id": "customerId",
                         "tenantId": "customerTenantId",
@@ -172,7 +171,6 @@ export const queryModel: QueryModel = {
                 },
                 "seller": {
                     "kind": "inlined",
-                    "table": "seller",
                     "columns": {
                         "id": "sellerId",
                         "tenantId": "sellerTenantId",

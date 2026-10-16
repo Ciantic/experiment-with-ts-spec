@@ -74,7 +74,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
         for (const [field, relation] of table.relations) {
             relations[field] =
                 relation.kind === "inlined"
-                    ? { kind: relation.kind, table: relation.table, columns: relation.columns }
+                    ? { kind: relation.kind, columns: relation.columns }
                     : { kind: relation.kind, table: relation.table, column: relation.column };
         }
 

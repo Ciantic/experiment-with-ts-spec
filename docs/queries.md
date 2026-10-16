@@ -476,8 +476,11 @@ table model already carries (`packages/backend/scripts/postgres-model.ts`):
 ```ts
 customer: { kind: "relation", table: "customer", column: "customerId" }
 rows:     { kind: "children", table: "invoice_row", column: "invoiceId" }
-snapshot: { kind: "inlined", table: "customer", columns: { name: "customerName" } }
+snapshot: { kind: "inlined", columns: { name: "customerName" } }
 ```
+
+The resolver types these as a union on `kind`, so a branch to another table always
+carries its `table` and `column`, and an inlined one only its `columns`.
 
 Relation and inlined columns are not the same here. Inlined columns are excluded
 from the table's selectable `fields`, because the spec never declares them. A

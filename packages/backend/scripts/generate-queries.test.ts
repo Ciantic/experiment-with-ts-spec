@@ -95,11 +95,7 @@ describe("buildQueryModel", () => {
 
         expect(relations.customer).toEqual({ kind: "relation", table: "customer", column: "customerId" });
         expect(relations.rows).toEqual({ kind: "children", table: "invoice_row", column: "invoiceId" });
-        expect(relations.snapshot).toEqual({
-            kind: "inlined",
-            table: "customer",
-            columns: { name: "customerName" },
-        });
+        expect(relations.snapshot).toEqual({ kind: "inlined", columns: { name: "customerName" } });
     });
 
     it("records the required filters", () => {

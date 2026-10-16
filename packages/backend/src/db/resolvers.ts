@@ -1,23 +1,25 @@
-/**
- * Generic read resolver over query metadata. See docs/queries.md.
- *
- * Written once by hand: it turns a `Selection` plus a table's generated metadata
- * into SQL. A branch costs one extra query, batched over every parent — there is
- * no JSON aggregation.
- */
+/** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
 import type { Direction, Selection, Selected } from "validation/selection.ts";
 import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
-/** How a branch field of a table reaches another table. */
-export interface QueryRelation {
-    kind: "relation" | "children" | "inlined";
-    /** The target table, for `relation` and `children`. */
-    table?: string;
+/** A branch that reads another table: `relation` is to-one, `children` is to-many. */
+export interface TableRelation {
+    kind: "relation" | "children";
+    /** The target table. */
+    table: string;
     /** `relation`: this table's foreign-key column. `children`: the child's foreign-key column. */
-    column?: string;
-    /** `inlined`: target field -> this table's prefixed column. */
-    columns?: Record<string, string>;
+    column: string;
 }
+
+/** A branch whose fields are columns of this table's own row. */
+export interface InlinedRelation {
+    kind: "inlined";
+    /** Target field -> this table's prefixed column. */
+    columns: Record<string, string>;
+}
+
+/** How a branch field of a table reaches another table, or flattens into its own row. */
+export type QueryRelation = TableRelation | InlinedRelation;
 
 /** A table as the resolver sees it. */
 export interface QueryTable {
@@ -109,10 +111,11 @@ function branchPage(limit: number | undefined, offset: number | undefined, path:
     return { limit, offset: offset ?? 0 };
 }
 
-/** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
+/** A nested fetch's row: its key, the value its filter matched, the raw row, and the shaped result. */
 interface FetchedRow {
     key: unknown;
     match: unknown;
+    row: Record<string, unknown>;
     value: Record<string, unknown>;
 }
 
@@ -207,22 +210,19 @@ function inlinedTargets(columns: Record<string, string>, value: unknown): string
     return Object.keys((value as { select?: Record<string, unknown> }).select ?? {});
 }
 
-/** The physical column an argument of the given name filters, or undefined when it is not filterable. */
-function columnForArgument(meta: QueryTable, name: string): string | undefined {
-    return meta.fields[name];
-}
-
-/** A WHERE clause and its positional parameters. */
-interface FilterSql {
+/** The clauses of one statement and the positional parameters they bind. */
+interface Clauses {
     /** The clause including a leading ` where `, or "" when nothing filters. */
     where: string;
+    /** The rendered `order by` parts. */
+    order: string[];
     params: unknown[];
 }
 
 /** A branch to load with one batched query. */
 interface Branch {
     field: string;
-    relation: QueryRelation;
+    relation: TableRelation;
     /** The branch value as written: `true`, or the read arguments it carries. */
     nested: unknown;
 }
@@ -237,6 +237,14 @@ interface Projection {
     inlined: { field: string; targets: string[] }[];
     toOne: Branch[];
     toMany: Branch[];
+}
+
+/** What a statement and its row mapping share: the table, its projection, and how rows link to a parent. */
+interface ReadPlan {
+    meta: QueryTable;
+    projection: Projection;
+    /** The column linking a branch row to its parent; undefined when the link is the row's own key, or for a root read. */
+    matchColumn: string | undefined;
 }
 
 /** Push values as positional parameters and return their `$n` placeholders. */
@@ -269,10 +277,9 @@ function planProjection(table: string, meta: QueryTable, selection: Record<strin
             continue;
         }
         if (relation.kind === "inlined") {
-            const map = relation.columns ?? {};
             const targets: string[] = [];
-            for (const target of inlinedTargets(map, nested)) {
-                const column = map[target];
+            for (const target of inlinedTargets(relation.columns, nested)) {
+                const column = relation.columns[target];
                 if (column === undefined) {
                     throw new Error(`inlined \`${table}.${field}\` has no column for \`${target}\``);
                 }
@@ -283,15 +290,9 @@ function planProjection(table: string, meta: QueryTable, selection: Record<strin
             continue;
         }
         if (relation.kind === "relation") {
-            if (!relation.column) {
-                throw new Error(`relation \`${table}.${field}\` has no foreign-key column`);
-            }
             columns.push(`${TABLE_ALIAS}.${quote(relation.column)} as ${quote(foreignKeyAlias(field))}`);
             toOne.push({ field, relation, nested });
             continue;
-        }
-        if (!relation.column) {
-            throw new Error(`children \`${table}.${field}\` has no foreign-key column`);
         }
         toMany.push({ field, relation, nested });
     }
@@ -299,8 +300,15 @@ function planProjection(table: string, meta: QueryTable, selection: Record<strin
     return { columns, scalars, inlined, toOne, toMany };
 }
 
+/** Plan one read of a table: its projection and the column that links its rows to a parent. */
+function planRead(table: string, meta: QueryTable, read: FetchRead): ReadPlan {
+    const projection = planProjection(table, meta, read.select);
+    const matchColumn = read.match !== undefined && read.match.column !== meta.key ? read.match.column : undefined;
+    return { meta, projection, matchColumn };
+}
+
 /** The select list: the projection's columns, the row key, and the matched column when it differs. */
-function selectList(meta: QueryTable, projection: Projection, matchColumn: string | undefined): string {
+function selectList({ meta, projection, matchColumn }: ReadPlan): string {
     const columns = [...projection.columns, `${TABLE_ALIAS}.${quote(meta.key)} as ${quote(KEY_ALIAS)}`];
     if (matchColumn !== undefined) {
         columns.push(`${TABLE_ALIAS}.${quote(matchColumn)} as ${quote(MATCH_ALIAS)}`);
@@ -309,7 +317,7 @@ function selectList(meta: QueryTable, projection: Projection, matchColumn: strin
 }
 
 /** The output aliases a projection carries, so a per-parent paging subquery can project them back out. */
-function outputAliases(projection: Projection, matchColumn: string | undefined): string[] {
+function outputAliases({ projection, matchColumn }: ReadPlan): string[] {
     const aliases = [
         ...projection.scalars,
         ...projection.inlined.flatMap(({ field, targets }) =>
@@ -335,7 +343,7 @@ function argumentClause(
     if (!Array.isArray(value)) {
         throw new Error(`filter \`${name}\` on \`${table}\` must be an array`);
     }
-    const column = columnForArgument(meta, name);
+    const column = meta.fields[name];
     if (column === undefined) {
         throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
     }
@@ -346,19 +354,14 @@ function argumentClause(
     return `${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`;
 }
 
-/**
- * The comparison clauses for a read, one `column <op> $n` per named operator. A field and an
- * operator are both checked against the generated whitelist, because the operator reaches the SQL
- * and the value is parameterized. Several operators on one field AND together, so `gte` + `lte` is
- * a range. See docs/queries.md.
- */
+/** The comparison clauses for a read, one `column <op> $n` per whitelisted operator. See docs/queries.md. */
 function whereClauses(table: string, meta: QueryTable, where: WhereClause, params: unknown[]): string[] {
     const clauses: string[] = [];
     for (const [field, condition] of Object.entries(where)) {
         if (condition === undefined) {
             continue;
         }
-        const column = columnForArgument(meta, field);
+        const column = meta.fields[field];
         if (column === undefined) {
             throw new Error(`unknown where field \`${field}\` on \`${table}\``);
         }
@@ -392,24 +395,21 @@ interface FetchRead {
     order?: OrderClause[] | undefined;
     where?: WhereClause | undefined;
     page?: Page | undefined;
-    /** True for a batched branch, whose page applies to each parent rather than to the whole result. */
-    perParent?: boolean | undefined;
 }
 
-/** Build the WHERE clause for a fetch, or undefined when the filter cannot match anything. */
-function buildFilter(table: string, meta: QueryTable, read: FetchRead): FilterSql | undefined {
-    const clauses: string[] = [];
+/** Build the clauses for a fetch, or undefined when the filter cannot match anything. */
+function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses | undefined {
+    const filters: string[] = [];
     const params: unknown[] = [];
 
     if (read.match) {
         if (read.match.values.length === 0) {
             return undefined;
         }
-        clauses.push(`${TABLE_ALIAS}.${quote(read.match.column)} in (${placeholders(params, read.match.values)})`);
+        filters.push(`${TABLE_ALIAS}.${quote(read.match.column)} in (${placeholders(params, read.match.values)})`);
     }
 
-    // A required filter is an invariant rather than a typing convention: a read that omits one
-    // throws here instead of scanning the table unscoped. A branch names its own target's.
+    // A required filter is an invariant: a read that omits one throws instead of scanning unscoped.
     for (const name of meta.requiredFilters ?? []) {
         if (read.args[name] === undefined) {
             throw new Error(`filter \`${name}\` is required on \`${table}\``);
@@ -419,20 +419,20 @@ function buildFilter(table: string, meta: QueryTable, read: FetchRead): FilterSq
         if (value === undefined) {
             continue;
         }
-        clauses.push(argumentClause(table, meta, name, value, params));
+        filters.push(argumentClause(table, meta, name, value, params));
     }
     if (read.where) {
-        clauses.push(...whereClauses(table, meta, read.where, params));
+        filters.push(...whereClauses(table, meta, read.where, params));
     }
 
-    return { where: clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "", params };
+    return {
+        where: filters.length > 0 ? ` where ${filters.join(" and ")}` : "",
+        order: orderParts(table, meta, read.order),
+        params,
+    };
 }
 
-/**
- * The rendered `order by` parts for a read. Only whitelisted fields may order, and a direction is
- * validated because it reaches the SQL. A read that names no ordering falls back to the entity
- * default. See docs/queries.md.
- */
+/** The rendered `order by` parts for a read, falling back to the entity default. See docs/queries.md. */
 function orderParts(table: string, meta: QueryTable, order: OrderClause[] | undefined): string[] {
     const clauses: OrderClause[] =
         order && order.length > 0
@@ -454,15 +454,8 @@ function orderParts(table: string, meta: QueryTable, order: OrderClause[] | unde
 }
 
 /** A read's select list, its WHERE, its order, and its page, as one statement. */
-function plainSql(
-    meta: QueryTable,
-    projection: Projection,
-    matchColumn: string | undefined,
-    where: string,
-    order: string[],
-    page: Page | undefined,
-    params: unknown[],
-): string {
+function plainSql(plan: ReadPlan, clauses: Clauses, page: Page | undefined): string {
+    const { where, order, params } = clauses;
     const orderSql = order.length > 0 ? ` order by ${order.join(", ")}` : "";
     let pageSql = "";
     if (page?.limit !== undefined) {
@@ -473,31 +466,20 @@ function plainSql(
         params.push(page.offset);
         pageSql += ` offset $${params.length}`;
     }
-    return `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${where}${orderSql}${pageSql}`;
+    return `select ${selectList(plan)} from ${quote(plan.meta.name)} as ${TABLE_ALIAS}${where}${orderSql}${pageSql}`;
 }
 
-/**
- * A batched branch's statement when it pages. A branch's `limit`/`offset` bound the rows of each
- * parent, so the page cannot be a plain `limit`: `row_number()` ranks the branch rows per parent
- * and the outer query keeps the window of each. See docs/queries.md.
- */
-function pagedBranchSql(
-    meta: QueryTable,
-    projection: Projection,
-    matchColumn: string | undefined,
-    where: string,
-    order: string[],
-    page: Page,
-    params: unknown[],
-): string {
-    // The parent a branch row belongs to is the value its link matched: the child's foreign key,
-    // or the target's key for a to-one relation, which the key alias carries when they are one.
+/** A batched branch's statement when it pages: `row_number()` ranks rows per parent, so the window is per parent. See docs/queries.md. */
+function pagedBranchSql(plan: ReadPlan, clauses: Clauses, page: Page): string {
+    const { meta, matchColumn } = plan;
+    const { where, order, params } = clauses;
+    // The parent of a branch row is the value its link matched; with no match column the key alias carries it.
     const partitionColumn = matchColumn ?? meta.key;
     const partitionAlias = matchColumn === undefined ? KEY_ALIAS : MATCH_ALIAS;
     const windowOrder =
         order.length > 0 ? order.join(", ") : `${TABLE_ALIAS}.${quote(partitionColumn)} asc`;
-    const ranked = `${selectList(meta, projection, matchColumn)}, row_number() over (partition by ${TABLE_ALIAS}.${quote(partitionColumn)} order by ${windowOrder}) as ${quote(RANK_ALIAS)}`;
-    const aliases = outputAliases(projection, matchColumn)
+    const ranked = `${selectList(plan)}, row_number() over (partition by ${TABLE_ALIAS}.${quote(partitionColumn)} order by ${windowOrder}) as ${quote(RANK_ALIAS)}`;
+    const aliases = outputAliases(plan)
         .map((alias) => `${RANKED_ALIAS}.${quote(alias)}`)
         .join(", ");
     const conditions: string[] = [];
@@ -518,7 +500,7 @@ function copyField(target: Record<string, unknown>, field: string, value: unknow
 }
 
 /** Shape one raw row into its key, the value its filter matched, and the projected fields. */
-function mapRow(projection: Projection, row: Record<string, unknown>, matchColumn: string | undefined): FetchedRow {
+function mapRow({ projection, matchColumn }: ReadPlan, row: Record<string, unknown>): FetchedRow {
     const value: Record<string, unknown> = {};
     for (const field of projection.scalars) {
         copyField(value, field, row[field]);
@@ -533,62 +515,57 @@ function mapRow(projection: Projection, row: Record<string, unknown>, matchColum
     return {
         key: row[KEY_ALIAS],
         match: matchColumn === undefined ? row[KEY_ALIAS] : row[MATCH_ALIAS],
+        row,
         value,
     };
 }
 
-/** Attach each to-one branch: one batched query for every distinct foreign key. */
+/** One batched query for a branch, over every distinct parent key. */
+async function fetchBranch(
+    model: QueryModel,
+    db: SqlExecutor,
+    table: string,
+    { field, relation, nested }: Branch,
+    parents: FetchedRow[],
+): Promise<FetchedRow[]> {
+    const target = model.tables[relation.table];
+    if (!target) {
+        throw new Error(`\`${table}.${field}\` targets unknown table \`${relation.table}\``);
+    }
+    const read = branchRead(target, nested, `${table}.${field}`);
+    const toOne = relation.kind === "relation";
+    const keys = distinct(parents.map((parent) => (toOne ? parent.row[foreignKeyAlias(field)] : parent.key)));
+    const column = toOne ? target.key : relation.column;
+    return fetchRows(model, db, relation.table, { ...read, match: { column, values: keys } });
+}
+
+/** Attach each to-one branch, by the foreign key each parent carries. */
 async function attachToOne(
     model: QueryModel,
     db: SqlExecutor,
     table: string,
     branches: Branch[],
-    rows: Record<string, unknown>[],
     fetched: FetchedRow[],
 ): Promise<void> {
-    for (const { field, relation, nested } of branches) {
-        const targetName = relation.table ?? "";
-        const target = model.tables[targetName];
-        if (!target) {
-            throw new Error(`relation \`${table}.${field}\` targets unknown table \`${targetName}\``);
-        }
-        const read = branchRead(target, nested, `${table}.${field}`);
-        const keys = distinct(rows.map((row) => row[foreignKeyAlias(field)]));
-        const related = await fetchRows(model, db, targetName, {
-            ...read,
-            match: { column: target.key, values: keys },
-            perParent: true,
-        });
+    for (const branch of branches) {
+        const related = await fetchBranch(model, db, table, branch, fetched);
         const byKey = new Map(related.map((item) => [item.key, item.value]));
-        fetched.forEach((item, index) => {
-            const foreignKey = rows[index]?.[foreignKeyAlias(field)];
-            copyField(item.value, field, byKey.get(foreignKey));
-        });
+        for (const parent of fetched) {
+            copyField(parent.value, branch.field, byKey.get(parent.row[foreignKeyAlias(branch.field)]));
+        }
     }
 }
 
-/** Attach each to-many branch: one batched query for every distinct parent key, grouped in memory. */
+/** Attach each to-many branch, grouped in memory by the parent key each row matched. */
 async function attachToMany(
     model: QueryModel,
     db: SqlExecutor,
     table: string,
     branches: Branch[],
-    rows: Record<string, unknown>[],
     fetched: FetchedRow[],
 ): Promise<void> {
-    for (const { field, relation, nested } of branches) {
-        const targetName = relation.table ?? "";
-        const target = model.tables[targetName];
-        if (!target || !relation.column) {
-            throw new Error(`children \`${table}.${field}\` targets unknown table \`${targetName}\``);
-        }
-        const read = branchRead(target, nested, `${table}.${field}`);
-        const keys = distinct(rows.map((row) => row[KEY_ALIAS]));
-        const related = await fetchRows(model, db, targetName, {
-            ...read,
-            match: { column: relation.column, values: keys },
-            perParent: true,
-        });
+    for (const branch of branches) {
+        const related = await fetchBranch(model, db, table, branch, fetched);
         const groups = new Map<unknown, Record<string, unknown>[]>();
         for (const item of related) {
             const group = groups.get(item.match);
@@ -598,8 +575,8 @@ async function attachToMany(
                 groups.set(item.match, [item.value]);
             }
         }
-        for (const item of fetched) {
-            item.value[field] = groups.get(item.key) ?? [];
+        for (const parent of fetched) {
+            parent.value[branch.field] = groups.get(parent.key) ?? [];
         }
     }
 }
@@ -616,25 +593,21 @@ async function fetchRows(
         throw new Error(`no query metadata for table \`${table}\``);
     }
 
-    const projection = planProjection(table, meta, read.select);
-    const matchColumn = read.match !== undefined && read.match.column !== meta.key ? read.match.column : undefined;
-    const built = buildFilter(table, meta, read);
-    if (built === undefined) {
+    const plan = planRead(table, meta, read);
+    const clauses = buildClauses(table, meta, read);
+    if (clauses === undefined) {
         return [];
     }
 
-    const order = orderParts(table, meta, read.order);
-    const params = [...built.params];
     // A branch's page bounds each parent, so it needs the ranked subquery; a root read pages plainly.
     const sql =
-        read.perParent && read.page
-            ? pagedBranchSql(meta, projection, matchColumn, built.where, order, read.page, params)
-            : plainSql(meta, projection, matchColumn, built.where, order, read.perParent ? undefined : read.page, params);
-    const rows = resultRows(await db.query(sql, params));
-    const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
+        read.match && read.page
+            ? pagedBranchSql(plan, clauses, read.page)
+            : plainSql(plan, clauses, read.page);
+    const fetched = resultRows(await db.query(sql, clauses.params)).map((row) => mapRow(plan, row));
 
-    await attachToOne(model, db, table, projection.toOne, rows, fetched);
-    await attachToMany(model, db, table, projection.toMany, rows, fetched);
+    await attachToOne(model, db, table, plan.projection.toOne, fetched);
+    await attachToMany(model, db, table, plan.projection.toMany, fetched);
     return fetched;
 }
 
