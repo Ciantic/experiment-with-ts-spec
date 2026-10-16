@@ -156,6 +156,11 @@ export function querySelectSchemaName(name: string): string {
     return `query${name}SelectSchema`;
 }
 
+/** Invoice -> queryInvoiceSchema, the read's arguments, which a branch nests as its own arguments. */
+export function querySchemaName(name: string): string {
+    return `query${name}Schema`;
+}
+
 /** Invoice -> invoiceInsertSchema. */
 export function insertSchemaName(name: string): string {
     return `${lowerFirst(name)}InsertSchema`;
@@ -504,7 +509,7 @@ function buildQueries(
         }
         queries.push({
             entity: spec.name,
-            schemaName: `query${spec.name}Schema`,
+            schemaName: querySchemaName(spec.name),
             filterFields,
             requiredFilterFields,
             orderFields,

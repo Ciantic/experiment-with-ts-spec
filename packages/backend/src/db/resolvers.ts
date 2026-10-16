@@ -29,11 +29,11 @@ export interface QueryTable {
     fields: Record<string, string>;
     /** Branch fields, mapped to how they are joined or flattened. */
     relations: Record<string, QueryRelation>;
-    /** Filter fields a root read must name, from `@queryFilter required`; absent when the entity marks none. See docs/queries.md. */
+    /** Filter fields a read must name, from `@queryFilter required`; absent when the entity marks none. See docs/queries.md. */
     requiredFilters?: string[];
     /** Orderable field names; absent when the entity marks none. See docs/queries.md. */
     order?: string[];
-    /** The entity's default ordering, applied to a root read that names none. See docs/queries.md. */
+    /** The entity's default ordering, applied to a read that names none. See docs/queries.md. */
     defaultOrder?: { field: string; direction: Direction };
     /** Comparison fields mapped to their allowed operators; absent when the entity marks none. */
     where?: Record<string, string[]>;
@@ -43,11 +43,6 @@ export interface QueryTable {
 export interface QueryModel {
     tables: Record<string, QueryTable>;
 }
-
-/** What a fetch selects and filters on: root arguments, or a column matched against parent keys. */
-type FetchFilter =
-    | { kind: "args"; args: Record<string, unknown> }
-    | { kind: "match"; column: string; values: unknown[] };
 
 /** One ordering clause, as a read passes it: `[field, direction]`. See docs/queries.md. */
 export type OrderClause = [field: string, direction: Direction];
@@ -81,13 +76,13 @@ export interface ResolveOptions<E, S extends Selection<E>> {
 /** The rows a root read returns when it names no `limit`. See docs/queries.md. */
 export const DEFAULT_LIMIT = 1000;
 
-/** A root read's paging window, already defaulted and validated. */
+/** A read's paging window, already defaulted and validated. A branch's `limit` bounds rows per parent. */
 interface Page {
-    limit: number;
+    limit?: number | undefined;
     offset: number;
 }
 
-/** Fill in the paging defaults and reject a value that would reach the SQL unchecked. See docs/queries.md. */
+/** Fill in a root read's paging defaults and reject a value that would reach the SQL unchecked. See docs/queries.md. */
 function resolvePage(limit: number | undefined, offset: number | undefined): Page {
     const resolvedLimit = limit ?? DEFAULT_LIMIT;
     const resolvedOffset = offset ?? 0;
@@ -98,6 +93,20 @@ function resolvePage(limit: number | undefined, offset: number | undefined): Pag
         throw new Error(`offset must be a non-negative integer, found \`${String(offset)}\``);
     }
     return { limit: resolvedLimit, offset: resolvedOffset };
+}
+
+/** A branch's paging window, already validated; absent when the branch names neither `limit` nor `offset`. */
+function branchPage(limit: number | undefined, offset: number | undefined, path: string): Page | undefined {
+    if (limit === undefined && offset === undefined) {
+        return undefined;
+    }
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+        throw new Error(`limit on \`${path}\` must be a positive integer, found \`${String(limit)}\``);
+    }
+    if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
+        throw new Error(`offset on \`${path}\` must be a non-negative integer, found \`${String(offset)}\``);
+    }
+    return { limit, offset: offset ?? 0 };
 }
 
 /** A nested fetch's row: its key, the value its filter matched, and the shaped result. */
@@ -119,14 +128,18 @@ export interface Resolver {
 
 const KEY_ALIAS = "__key";
 const MATCH_ALIAS = "__match";
+const RANK_ALIAS = "__rank";
 
 /** Quote an identifier, matching the generated SQL. */
 function quote(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
 }
 
-/** The alias a root query gives its table. */
+/** The alias a query gives its table. */
 const TABLE_ALIAS = quote("t");
+
+/** The alias a per-parent paging subquery is ranked and read under. */
+const RANKED_ALIAS = quote("r");
 
 /** The alias a to-one branch's foreign-key column is projected under. */
 function foreignKeyAlias(field: string): string {
@@ -150,20 +163,48 @@ function distinct(values: unknown[]): unknown[] {
 }
 
 /** `true` on a branch means its own scalar fields, never recursion into its branches. */
-function normalizeSelection(meta: QueryTable, value: unknown): Record<string, unknown> {
-    if (value === true) {
-        const selection: Record<string, unknown> = {};
-        for (const field of Object.keys(meta.fields)) {
-            selection[field] = true;
-        }
-        return selection;
+function allScalars(meta: QueryTable): Record<string, unknown> {
+    const selection: Record<string, unknown> = {};
+    for (const field of Object.keys(meta.fields)) {
+        selection[field] = true;
     }
-    return value as Record<string, unknown>;
+    return selection;
 }
 
-/** The target fields an `@inlined` branch selects: every column for `true`. */
+/** A branch's value: `true` for every scalar, or the read arguments it carries. See docs/queries.md. */
+interface BranchRead {
+    select: Record<string, unknown>;
+    args: Record<string, unknown>;
+    order?: OrderClause[] | undefined;
+    where?: WhereClause | undefined;
+    page?: Page | undefined;
+}
+
+/** Read a branch's value: `true`, or the same arguments a root read takes, applied to the branch. */
+function branchRead(meta: QueryTable, value: unknown, path: string): BranchRead {
+    if (value === true) {
+        return { select: allScalars(meta), args: {} };
+    }
+    const args = (value ?? {}) as Record<string, unknown>;
+    const select = args.select;
+    if (select === null || typeof select !== "object") {
+        throw new Error(`branch \`${path}\` needs a \`select\``);
+    }
+    return {
+        select: select as Record<string, unknown>,
+        args: (args.filter as Record<string, unknown> | undefined) ?? {},
+        order: args.order as OrderClause[] | undefined,
+        where: args.where as WhereClause | undefined,
+        page: branchPage(args.limit as number | undefined, args.offset as number | undefined, path),
+    };
+}
+
+/** The target fields an `@inlined` branch selects: every column for `true`, else the branch's `select`. */
 function inlinedTargets(columns: Record<string, string>, value: unknown): string[] {
-    return value === true ? Object.keys(columns) : Object.keys(value as Record<string, unknown>);
+    if (value === true) {
+        return Object.keys(columns);
+    }
+    return Object.keys((value as { select?: Record<string, unknown> }).select ?? {});
 }
 
 /** The physical column an argument of the given name filters, or undefined when it is not filterable. */
@@ -182,7 +223,7 @@ interface FilterSql {
 interface Branch {
     field: string;
     relation: QueryRelation;
-    /** The nested selection as written; `true` means every scalar of the branch. */
+    /** The branch value as written: `true`, or the read arguments it carries. */
     nested: unknown;
 }
 
@@ -267,6 +308,22 @@ function selectList(meta: QueryTable, projection: Projection, matchColumn: strin
     return columns.join(", ");
 }
 
+/** The output aliases a projection carries, so a per-parent paging subquery can project them back out. */
+function outputAliases(projection: Projection, matchColumn: string | undefined): string[] {
+    const aliases = [
+        ...projection.scalars,
+        ...projection.inlined.flatMap(({ field, targets }) =>
+            targets.map((target) => inlinedAlias(field, target)),
+        ),
+        ...projection.toOne.map(({ field }) => foreignKeyAlias(field)),
+        KEY_ALIAS,
+    ];
+    if (matchColumn !== undefined) {
+        aliases.push(MATCH_ALIAS);
+    }
+    return aliases;
+}
+
 /** One argument's clause: a set, `column in (…)`. See docs/queries.md. */
 function argumentClause(
     table: string,
@@ -290,7 +347,7 @@ function argumentClause(
 }
 
 /**
- * The comparison clauses for a root read, one `column <op> $n` per named operator. A field and an
+ * The comparison clauses for a read, one `column <op> $n` per named operator. A field and an
  * operator are both checked against the generated whitelist, because the operator reaches the SQL
  * and the value is parameterized. Several operators on one field AND together, so `gte` + `lte` is
  * a range. See docs/queries.md.
@@ -325,42 +382,132 @@ function whereClauses(table: string, meta: QueryTable, where: WhereClause, param
     return clauses;
 }
 
+/** What a fetch reads: the projection, the filter arguments, and the paging/ordering of one read. */
+interface FetchRead {
+    select: Record<string, unknown>;
+    /** The filter arguments: a root read's, or a branch's own. */
+    args: Record<string, unknown>;
+    /** A branch's link to its parents: the column and the parent values to match. */
+    match?: { column: string; values: unknown[] } | undefined;
+    order?: OrderClause[] | undefined;
+    where?: WhereClause | undefined;
+    page?: Page | undefined;
+    /** True for a batched branch, whose page applies to each parent rather than to the whole result. */
+    perParent?: boolean | undefined;
+}
+
 /** Build the WHERE clause for a fetch, or undefined when the filter cannot match anything. */
-function buildFilter(
-    table: string,
-    meta: QueryTable,
-    filter: FetchFilter,
-    where?: WhereClause,
-): FilterSql | undefined {
+function buildFilter(table: string, meta: QueryTable, read: FetchRead): FilterSql | undefined {
     const clauses: string[] = [];
     const params: unknown[] = [];
 
-    if (filter.kind === "match") {
-        if (filter.values.length === 0) {
+    if (read.match) {
+        if (read.match.values.length === 0) {
             return undefined;
         }
-        clauses.push(`${TABLE_ALIAS}.${quote(filter.column)} in (${placeholders(params, filter.values)})`);
-    } else {
-        // A required filter is an invariant rather than a typing convention: a caller that omits one
-        // throws here instead of scanning the table unscoped. A branch fetch never carries filters.
-        for (const name of meta.requiredFilters ?? []) {
-            if (filter.args[name] === undefined) {
-                throw new Error(`filter \`${name}\` is required on \`${table}\``);
-            }
+        clauses.push(`${TABLE_ALIAS}.${quote(read.match.column)} in (${placeholders(params, read.match.values)})`);
+    }
+
+    // A required filter is an invariant rather than a typing convention: a read that omits one
+    // throws here instead of scanning the table unscoped. A branch names its own target's.
+    for (const name of meta.requiredFilters ?? []) {
+        if (read.args[name] === undefined) {
+            throw new Error(`filter \`${name}\` is required on \`${table}\``);
         }
-        for (const [name, value] of Object.entries(filter.args)) {
-            if (value === undefined) {
-                continue;
-            }
-            clauses.push(argumentClause(table, meta, name, value, params));
+    }
+    for (const [name, value] of Object.entries(read.args)) {
+        if (value === undefined) {
+            continue;
         }
-        // Comparisons are a root concern, like `order` and paging; a branch fetch never carries them.
-        if (where) {
-            clauses.push(...whereClauses(table, meta, where, params));
-        }
+        clauses.push(argumentClause(table, meta, name, value, params));
+    }
+    if (read.where) {
+        clauses.push(...whereClauses(table, meta, read.where, params));
     }
 
     return { where: clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "", params };
+}
+
+/**
+ * The rendered `order by` parts for a read. Only whitelisted fields may order, and a direction is
+ * validated because it reaches the SQL. A read that names no ordering falls back to the entity
+ * default. See docs/queries.md.
+ */
+function orderParts(table: string, meta: QueryTable, order: OrderClause[] | undefined): string[] {
+    const clauses: OrderClause[] =
+        order && order.length > 0
+            ? order
+            : meta.defaultOrder
+                ? [[meta.defaultOrder.field, meta.defaultOrder.direction]]
+                : [];
+    const orderable = new Set(meta.order ?? []);
+    return clauses.map(([field, direction]) => {
+        const column = meta.fields[field];
+        if (column === undefined || !orderable.has(field)) {
+            throw new Error(`unknown order field \`${field}\` on \`${table}\``);
+        }
+        if (direction !== "asc" && direction !== "desc") {
+            throw new Error(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
+        }
+        return `${TABLE_ALIAS}.${quote(column)} ${direction}`;
+    });
+}
+
+/** A read's select list, its WHERE, its order, and its page, as one statement. */
+function plainSql(
+    meta: QueryTable,
+    projection: Projection,
+    matchColumn: string | undefined,
+    where: string,
+    order: string[],
+    page: Page | undefined,
+    params: unknown[],
+): string {
+    const orderSql = order.length > 0 ? ` order by ${order.join(", ")}` : "";
+    let pageSql = "";
+    if (page?.limit !== undefined) {
+        params.push(page.limit);
+        pageSql += ` limit $${params.length}`;
+    }
+    if (page && page.offset > 0) {
+        params.push(page.offset);
+        pageSql += ` offset $${params.length}`;
+    }
+    return `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${where}${orderSql}${pageSql}`;
+}
+
+/**
+ * A batched branch's statement when it pages. A branch's `limit`/`offset` bound the rows of each
+ * parent, so the page cannot be a plain `limit`: `row_number()` ranks the branch rows per parent
+ * and the outer query keeps the window of each. See docs/queries.md.
+ */
+function pagedBranchSql(
+    meta: QueryTable,
+    projection: Projection,
+    matchColumn: string | undefined,
+    where: string,
+    order: string[],
+    page: Page,
+    params: unknown[],
+): string {
+    // The parent a branch row belongs to is the value its link matched: the child's foreign key,
+    // or the target's key for a to-one relation, which the key alias carries when they are one.
+    const partitionColumn = matchColumn ?? meta.key;
+    const partitionAlias = matchColumn === undefined ? KEY_ALIAS : MATCH_ALIAS;
+    const windowOrder =
+        order.length > 0 ? order.join(", ") : `${TABLE_ALIAS}.${quote(partitionColumn)} asc`;
+    const ranked = `${selectList(meta, projection, matchColumn)}, row_number() over (partition by ${TABLE_ALIAS}.${quote(partitionColumn)} order by ${windowOrder}) as ${quote(RANK_ALIAS)}`;
+    const aliases = outputAliases(projection, matchColumn)
+        .map((alias) => `${RANKED_ALIAS}.${quote(alias)}`)
+        .join(", ");
+    const conditions: string[] = [];
+    params.push(page.offset);
+    conditions.push(`${RANKED_ALIAS}.${quote(RANK_ALIAS)} > $${params.length}`);
+    if (page.limit !== undefined) {
+        params.push(page.offset + page.limit);
+        conditions.push(`${RANKED_ALIAS}.${quote(RANK_ALIAS)} <= $${params.length}`);
+    }
+    return `select ${aliases} from (select ${ranked} from ${quote(meta.name)} as ${TABLE_ALIAS}${where}) as ${RANKED_ALIAS} where ${conditions.join(" and ")} order by ${RANKED_ALIAS}.${quote(partitionAlias)}, ${RANKED_ALIAS}.${quote(RANK_ALIAS)}`;
 }
 
 /** Copy a projected field unless it is `null`, matching the optional spec. See docs/queries.md. */
@@ -368,37 +515,6 @@ function copyField(target: Record<string, unknown>, field: string, value: unknow
     if (value !== null && value !== undefined) {
         target[field] = value;
     }
-}
-
-/**
- * The `order by` clause for a root read, or "" when nothing orders. Only whitelisted fields may
- * order, and a direction is validated because it reaches the SQL. A read that names no ordering
- * falls back to the entity default. See docs/queries.md.
- */
-function buildOrder(table: string, meta: QueryTable, order: OrderClause[] | undefined): string {
-    // Normalise the entity default to the same tuple shape, so the loop has one case.
-    const clauses: OrderClause[] =
-        order && order.length > 0
-            ? order
-            : meta.defaultOrder
-                ? [[meta.defaultOrder.field, meta.defaultOrder.direction]]
-                : [];
-    if (clauses.length === 0) {
-        return "";
-    }
-    const orderable = new Set(meta.order ?? []);
-    const parts = clauses.map(([field, direction]) => {
-        const column = meta.fields[field];
-        if (column === undefined || !orderable.has(field)) {
-            throw new Error(`unknown order field \`${field}\` on \`${table}\``);
-        }
-        // A tuple decodes to unchecked values, so the direction is re-checked before it reaches SQL.
-        if (direction !== "asc" && direction !== "desc") {
-            throw new Error(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
-        }
-        return `${TABLE_ALIAS}.${quote(column)} ${direction}`;
-    });
-    return ` order by ${parts.join(", ")}`;
 }
 
 /** Shape one raw row into its key, the value its filter matched, and the projected fields. */
@@ -436,11 +552,12 @@ async function attachToOne(
         if (!target) {
             throw new Error(`relation \`${table}.${field}\` targets unknown table \`${targetName}\``);
         }
+        const read = branchRead(target, nested, `${table}.${field}`);
         const keys = distinct(rows.map((row) => row[foreignKeyAlias(field)]));
-        const related = await fetchRows(model, db, targetName, normalizeSelection(target, nested), {
-            kind: "match",
-            column: target.key,
-            values: keys,
+        const related = await fetchRows(model, db, targetName, {
+            ...read,
+            match: { column: target.key, values: keys },
+            perParent: true,
         });
         const byKey = new Map(related.map((item) => [item.key, item.value]));
         fetched.forEach((item, index) => {
@@ -465,11 +582,12 @@ async function attachToMany(
         if (!target || !relation.column) {
             throw new Error(`children \`${table}.${field}\` targets unknown table \`${targetName}\``);
         }
+        const read = branchRead(target, nested, `${table}.${field}`);
         const keys = distinct(rows.map((row) => row[KEY_ALIAS]));
-        const related = await fetchRows(model, db, targetName, normalizeSelection(target, nested), {
-            kind: "match",
-            column: relation.column,
-            values: keys,
+        const related = await fetchRows(model, db, targetName, {
+            ...read,
+            match: { column: relation.column, values: keys },
+            perParent: true,
         });
         const groups = new Map<unknown, Record<string, unknown>[]>();
         for (const item of related) {
@@ -486,44 +604,32 @@ async function attachToMany(
     }
 }
 
-/** Read one table, then attach its branches. A branch recurses here with a `match` filter. */
+/** Read one table, then attach its branches. A branch recurses here with a parent link and its own arguments. */
 async function fetchRows(
     model: QueryModel,
     db: SqlExecutor,
     table: string,
-    selection: Record<string, unknown>,
-    filter: FetchFilter,
-    order?: OrderClause[],
-    page?: Page,
-    where?: WhereClause,
+    read: FetchRead,
 ): Promise<FetchedRow[]> {
     const meta = model.tables[table];
     if (!meta) {
         throw new Error(`no query metadata for table \`${table}\``);
     }
 
-    const projection = planProjection(table, meta, selection);
-    const matchColumn = filter.kind === "match" && filter.column !== meta.key ? filter.column : undefined;
-    const built = buildFilter(table, meta, filter, where);
+    const projection = planProjection(table, meta, read.select);
+    const matchColumn = read.match !== undefined && read.match.column !== meta.key ? read.match.column : undefined;
+    const built = buildFilter(table, meta, read);
     if (built === undefined) {
         return [];
     }
 
-    // Only a root read orders and pages; a batched branch keeps its own order and is never cut.
-    const root = filter.kind === "args";
-    const orderSql = root ? buildOrder(table, meta, order) : "";
+    const order = orderParts(table, meta, read.order);
     const params = [...built.params];
-    let pageSql = "";
-    if (root && page) {
-        params.push(page.limit);
-        pageSql += ` limit $${params.length}`;
-        if (page.offset > 0) {
-            params.push(page.offset);
-            pageSql += ` offset $${params.length}`;
-        }
-    }
-
-    const sql = `select ${selectList(meta, projection, matchColumn)} from ${quote(meta.name)} as ${TABLE_ALIAS}${built.where}${orderSql}${pageSql}`;
+    // A branch's page bounds each parent, so it needs the ranked subquery; a root read pages plainly.
+    const sql =
+        read.perParent && read.page
+            ? pagedBranchSql(meta, projection, matchColumn, built.where, order, read.page, params)
+            : plainSql(meta, projection, matchColumn, built.where, order, read.perParent ? undefined : read.page, params);
     const rows = resultRows(await db.query(sql, params));
     const fetched = rows.map((row) => mapRow(projection, row, matchColumn));
 
@@ -540,16 +646,13 @@ export function createResolver(model: QueryModel): Resolver {
         args: Record<string, unknown>,
         opts: ResolveOptions<E, S>,
     ): Promise<Selected<E, S>[]> {
-        const rows = await fetchRows(
-            model,
-            db,
-            table,
-            opts.select as Record<string, unknown>,
-            { kind: "args", args },
-            opts.order,
-            resolvePage(opts.limit, opts.offset),
-            opts.where,
-        );
+        const rows = await fetchRows(model, db, table, {
+            select: opts.select as Record<string, unknown>,
+            args,
+            order: opts.order,
+            where: opts.where,
+            page: resolvePage(opts.limit, opts.offset),
+        });
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];
     }
 

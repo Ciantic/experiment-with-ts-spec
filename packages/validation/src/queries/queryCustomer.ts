@@ -2,7 +2,7 @@
 import { z } from "zod";
 import * as primitives from "../primitives.ts";
 
-/** A `select` over Customer: `true` for a scalar, a nested select for a branch. */
+/** A `select` over Customer: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryCustomerSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),

@@ -2,7 +2,7 @@
 import { z } from "zod";
 import * as primitives from "../primitives.ts";
 
-/** A `select` over AuditLog: `true` for a scalar, a nested select for a branch. */
+/** A `select` over AuditLog: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryAuditLogSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),

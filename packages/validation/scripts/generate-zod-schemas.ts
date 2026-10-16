@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { loadSpec, lowerFirst, type SpecModel } from "spec/scripts/spec-model.ts";
 import {
     buildZodModel,
+    querySchemaName,
     type ZodEntity,
     type ZodModel,
     type ZodPrimitive,
@@ -103,11 +104,11 @@ export function generateQueryFile(
         for (const dependency of [...selectDependencies].sort((a, b) => a.localeCompare(b))) {
             const target = entitiesByName.get(dependency);
             if (target && dependency !== entity) {
-                lines.push(`import { ${target.querySelectName} } from "./query${target.name}.ts";`);
+                lines.push(`import { ${querySchemaName(target.name)} } from "./query${target.name}.ts";`);
             }
         }
         lines.push("");
-        lines.push(`/** A \`select\` over ${entity}: \`true\` for a scalar, a nested select for a branch. */`);
+        lines.push(`/** A \`select\` over ${entity}: \`true\` for a scalar, a branch's read arguments for a branch. */`);
         lines.push(`export const ${entitySchema.querySelectName} = z.lazy(() =>`);
         lines.push("    z.strictObject({");
         for (const field of entitySchema.selectFields) {
@@ -116,9 +117,9 @@ export function generateQueryFile(
                 continue;
             }
             const target = entitiesByName.get(field.target);
-            const targetSelect = target ? target.querySelectName : "z.never()";
+            const targetArgs = target ? querySchemaName(target.name) : "z.never()";
             lines.push(
-                `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetSelect})]).optional(),`,
+                `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetArgs})]).optional(),`,
             );
         }
         lines.push("    }),");

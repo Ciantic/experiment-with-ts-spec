@@ -386,15 +386,18 @@ export const queryInvoiceSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
         totalAmount: z.literal(true).optional(),
-        customer: z.union([z.literal(true), z.lazy(() => queryCustomerSelectSchema)]).optional(),
-        rows: z.union([z.literal(true), z.lazy(() => queryInvoiceRowSelectSchema)]).optional(),
+        customer: z.union([z.literal(true), z.lazy(() => queryCustomerSchema)]).optional(),
+        rows: z.union([z.literal(true), z.lazy(() => queryInvoiceRowSchema)]).optional(),
     }),
 );
 ```
 
 - A **scalar** field takes `true`.
 - A **branch** — an entity reference or a child collection — takes `true` (its
-  own scalars) or a nested select.
+  own scalars, unfiltered) or the target's read arguments, `query<name>Schema`.
+  The branch is then validated by the same schema a root read uses: its `select`
+  is mandatory and its `filter`/`order`/`where`/`limit`/`offset` are checked
+  against the target's own annotations.
 - A field that is neither is **rejected**: the object is `z.strictObject`, so an
   unknown key fails rather than being stripped. That is what makes the schema a
   validator rather than a hint.

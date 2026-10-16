@@ -106,7 +106,7 @@ structured one:
 - **A filter is a set.** `Filters` maps a field to an array, and every clause is
   `in (…)`. `?id=a&id=b` can spell one set; it cannot spell two independent ones
   without inventing an encoding.
-- **`select` is a nested object.** `{ number: true, rows: { description: true } }`
+- **`select` is a nested object.** `{ number: true, rows: { select: { description: true } } }`
   survives a query string only with bracket encoding, and then the argument is
   parsed by hand instead of by `strictObject`, which is what makes an unknown key
   fail rather than be stripped.
@@ -182,7 +182,7 @@ export function queryInvoice<S extends Selection<Invoice>>(
 ```typescript
 const [invoice] = await exec(http, queryInvoice({
     filter: { tenantId: [tenantId], id: [id] },
-    select: { number: true, totalAmount: true, rows: { description: true } },
+    select: { number: true, totalAmount: true, rows: { select: { description: true } } },
 }));
 // invoice.rows![0].description  ✓
 // invoice.rows![0].taxAmount    ✗  not selected

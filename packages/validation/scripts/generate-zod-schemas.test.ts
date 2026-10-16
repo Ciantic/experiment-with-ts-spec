@@ -640,9 +640,9 @@ describe("generateQueryFile", () => {
 
         expect(code).toContain("export const queryThingSelectSchema = z.lazy(() =>");
         expect(code).toContain("        id: z.literal(true).optional(),");
-        expect(code).toContain('import { queryChildSelectSchema } from "./queryChild.ts";');
+        expect(code).toContain('import { queryChildSchema } from "./queryChild.ts";');
         expect(code).toContain(
-            "        children: z.union([z.literal(true), z.lazy(() => queryChildSelectSchema)]).optional(),",
+            "        children: z.union([z.literal(true), z.lazy(() => queryChildSchema)]).optional(),",
         );
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).toContain("    filter: z.strictObject({");
@@ -739,8 +739,8 @@ describe("generateQueryFile", () => {
             tsStubImports({
                 zod: { z },
                 "../primitives.ts": { brandedIdSchema: () => z.string(), moneySchema: z.string() },
-                "./queryChild.ts": { queryChildSelectSchema: z.strictObject({}) },
-                "./queryParent.ts": { queryParentSelectSchema: z.strictObject({}) },
+                "./queryChild.ts": { queryChildSchema: z.strictObject({}) },
+                "./queryParent.ts": { queryParentSchema: z.strictObject({}) },
             }),
         );
 
@@ -790,8 +790,8 @@ describe("select schemas", () => {
                     versionSchema: z.bigint(),
                     languageSchema: scalar,
                 },
-                "./queryChild.ts": { queryChildSelectSchema: z.strictObject({ id: z.literal(true).optional() }) },
-                "./queryParent.ts": { queryParentSelectSchema: z.strictObject({ id: z.literal(true).optional() }) },
+                "./queryChild.ts": { queryChildSchema: z.strictObject({ id: z.literal(true).optional() }) },
+                "./queryParent.ts": { queryParentSchema: z.strictObject({ id: z.literal(true).optional() }) },
             }),
         );
     }
@@ -819,6 +819,26 @@ describe("select schemas", () => {
         const exports = loadQuery(join("queries", "queryThing.ts"));
 
         expect(exports.queryThingSelectSchema?.safeParse({ parent: 5 }).success).toBe(false);
+    });
+
+    it("accepts a branch's read arguments, which require their own select", () => {
+        const { files } = generate({ entities: { Thing: THING } });
+        const code = files.get(join("queries", "queryThing.ts")) ?? "";
+        const z = zodStub();
+        const scalar = z.string();
+        const exports = tsLoadGeneratedModule<Record<string, Schema>>(
+            code,
+            tsStubImports({
+                zod: { z },
+                "../primitives.ts": { brandedIdSchema: () => scalar, moneySchema: scalar },
+                "./queryChild.ts": { queryChildSchema: z.strictObject({ select: z.strictObject({}) }) },
+                "./queryParent.ts": { queryParentSchema: z.strictObject({ select: z.strictObject({}) }) },
+            }),
+        );
+
+        expect(exports.queryThingSelectSchema?.safeParse({ children: { select: {} } }).success).toBe(true);
+        // The branch nests the target's args schema, whose `select` is mandatory.
+        expect(exports.queryThingSelectSchema?.safeParse({ children: {} }).success).toBe(false);
     });
 
     it("validates an entity with no branches", () => {

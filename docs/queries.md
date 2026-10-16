@@ -236,8 +236,10 @@ updatedAt?: Date;
 ```
 
 An entity with no `@queryOrderBy` field takes no `order` (its opts type omits
-the key) and is returned in database order. Ordering is a root-only feature:
-a branch cannot carry `order` any more than it can carry `filter`.
+the key) and is returned in database order. A branch carries its own `order`
+inside its read arguments, the same way it carries a `filter`; the target's
+whitelist is what an order clause is checked against, so a branch orders only by
+its own entity's fields.
 
 ## `@queryWhere`
 
@@ -288,14 +290,13 @@ issueDate?: Date;
 
 A field may carry `@queryFilter`, `@queryWhere`, and `@queryOrderBy` at once — they
 are separate read facets. An entity with no `@queryWhere` field takes no `where` (its
-opts type omits the key). Like `order`, comparisons are a **root-only** feature:
-a branch fetch never carries them.
+opts type omits the key). Like `order`, a branch carries its own `where`, checked
+against the target's own `@queryWhere` whitelist.
 
 ## `limit` and `offset`
 
 Every read pages. `limit` bounds how many rows a read returns and `offset` skips
-leading rows, both applied to the **root** query only — a batched branch is never
-cut, so a parent's children come back whole.
+leading rows.
 
 ```ts
 const page = await queryInvoice(db, {
@@ -307,10 +308,17 @@ const page = await queryInvoice(db, {
 });
 ```
 
-`limit` defaults to **1000** and `offset` to **0**, so a read that names neither
-returns the first 1000 matching rows. The default is the resolver's
+`limit` defaults to **1000** and `offset` to **0**, so a root read that names
+neither returns the first 1000 matching rows. The default is the resolver's
 `DEFAULT_LIMIT`; pass a larger `limit` to widen the window, or a smaller one to
 want less.
+
+A branch names its own `limit` and `offset` in its read arguments, and there they
+bound **each parent**, not the batch: `rows: { select: {…}, limit: 1 }` returns the
+first row of every invoice, not the first row of all invoices. A branch that names
+neither is unbounded. The resolver ranks a branch's rows per parent
+(`row_number()` over the parent key) and keeps each parent's window, so a batched
+branch still costs one query.
 
 A non-positive `limit` or a negative `offset` is a **type error** and, over
 HTTP, a 400; the resolver re-checks both, because a decoded number reaches the
@@ -324,9 +332,24 @@ caller asks for, narrowed in the type system. `Selection` describes what may be
 asked; `Selected` is the result.
 
 ```ts
-/** The fields a caller wants: `true` for a scalar, a nested `Selection` for a branch. */
+/** The scalar field names of `E`: the fields a branch's `filter`, `order`, or `where` may name. */
+export type ScalarKeys<E> = {
+    [K in keyof E]-?: Scalar<E[K]> extends true ? K : never;
+}[keyof E];
+
+/** The arguments of a read over `E`, as a branch carries them: the same shape a root read takes. */
+export type QueryArgs<E> = {
+    select: Selection<E>;
+    filter?: { [K in ScalarKeys<E>]?: readonly NonNullable<E[K]>[] };
+    order?: readonly (readonly [field: ScalarKeys<E>, direction: Direction])[];
+    where?: { [K in ScalarKeys<E>]?: { [P in CompareOp]?: NonNullable<E[K]> } };
+    limit?: number;
+    offset?: number;
+};
+
+/** The fields a caller wants: `true` for a scalar, `true` or a read's arguments for a branch. */
 export type Selection<E> = {
-    [K in keyof E]?: Scalar<E[K]> extends true ? true : true | Selection<ElementOf<E[K]>>;
+    [K in keyof E]?: Scalar<E[K]> extends true ? true : true | QueryArgs<ElementOf<E[K]>>;
 };
 
 /** The result of `E` under selection `S`: only the selected keys, each optional. */
@@ -334,14 +357,39 @@ export type Selected<E, S> = {
     [K in keyof S & keyof E]?: NonNullable<S[K]> extends true
         ? E[K]
         : IsArray<E[K]> extends true
-            ? Selected<ElementOf<E[K]>, NonNullable<S[K]>>[]
-            : Selected<ElementOf<E[K]>, NonNullable<S[K]>>;
+            ? Selected<ElementOf<E[K]>, BranchSelect<S[K]>>[]
+            : Selected<ElementOf<E[K]>, BranchSelect<S[K]>>;
 };
 ```
 
 A scalar is selected with `true`; a branch (a child collection or a relation) is
-selected either with `true` — every scalar of the branch — or with a nested
-`Selection`. Properties not named are absent from the result, not `undefined`.
+selected either with `true` — every scalar of the branch, unfiltered — or with a
+**read's arguments**: a required `select`, plus the `filter`, `order`, `where`,
+`limit`, and `offset` a root read takes. Properties not named are absent from the
+result, not `undefined`.
+
+```ts
+const [invoice] = await queryInvoice(db, {
+    filter: { tenantId: [tenantId] },
+    select: {
+        number: true,
+        // The same arguments `queryInvoiceRow` takes, applied to this invoice's rows.
+        rows: {
+            select: { description: true, totalAmount: true },
+            order: [["totalAmount", "desc"]],
+            limit: 3,
+        },
+    },
+});
+```
+
+A branch's `select` is mandatory, so the empty object is not a branch. The
+runtime reads the same annotations a root read does: a branch `filter`/`order`/
+`where` is checked against the **target's** whitelists, so an unannotated field
+is a runtime throw (and a 400 over HTTP) even though the branch's `filter`,
+`order`, and `where` are typed structurally, over every scalar field. A root read
+keeps the per-entity `Filters`/`Order`/`Where` types, so an unknown field there
+stays a compile error; only a branch is checked at run time.
 
 What counts as a scalar is decided by `Scalar`, which reads the `Brand`
 that `@primitive` already puts on every primitive:
@@ -370,7 +418,12 @@ A call site narrows exactly:
 ```ts
 const [invoice] = await queryInvoice(db, {
     filter: { tenantId: [tenantId], id: [id] },
-    select: { id: true, number: true, totalAmount: true, rows: { description: true, totalAmount: true } },
+    select: {
+        id: true,
+        number: true,
+        totalAmount: true,
+        rows: { select: { description: true, totalAmount: true } },
+    },
 });
 // invoice.rows![0].totalAmount  ✓
 // invoice.rows![0].taxAmount    ✗  not selected
@@ -378,8 +431,8 @@ const [invoice] = await queryInvoice(db, {
 ```
 
 The compiler rejects a field that is not on the entity, a nested selection on a
-scalar, a field not named in the selection, a non-array filter, and a read that
-leaves out a required filter.
+scalar, a field not named in the selection, a branch without a `select`, a
+non-array filter, and a root read that leaves out a required filter.
 
 The generator emits the **contract and the wiring**, never SQL. It reads only
 annotations: `@queryFilter` for the filters, the existing table model for the
@@ -413,7 +466,9 @@ at the call site and are not the same storage:
 An inlined branch is not a join: its columns are already on the row. The
 freshness differs too — a relation reads the current record, an inlined value is
 the frozen snapshot — and the call site cannot tell them apart. See
-`docs/invoice-snapshotting.md`.
+`docs/invoice-snapshotting.md`. An inlined branch still takes a `select`, but its
+other read arguments have nowhere to apply: there is no separate statement to
+filter, order, or page, so they are ignored for an inlined branch.
 
 The generator records the distinction in `queryModel`, from the branch tags the
 table model already carries (`packages/backend/scripts/postgres-model.ts`):
@@ -441,6 +496,14 @@ time from `queryModel` plus the selection:
   foreign key, attached back by key.
 - **`@children`** — one batched `where child.fk in (…)`, grouped in memory.
 
+A branch's own arguments join that statement: its `filter` narrows the batched
+`in (…)` set, its `where` adds comparisons on the target's columns, and its
+`order` sorts the batch before it is grouped. Its `limit`/`offset` bound each
+parent, which needs a ranked subquery rather than a plain `limit` — the resolver
+ranks the branch rows over the parent key and keeps each parent's window. A
+branch with no `select` throws, as does a filter, order, or comparison the target
+does not allow.
+
 A projected scalar is copied only when its column is not `null`, and a to-one
 branch whose foreign key is `null` is left out. A `null` column and an absent
 key therefore look the same on the wire: a value is present exactly when the
@@ -466,11 +529,11 @@ empty set matches nothing. Multiple filters are ANDed. The linter rejects
 Ordering, paging, and comparisons are applied the same way: the resolver reads
 the table's `order`/`defaultOrder` and `where` whitelists from `queryModel`,
 refuses a field or operator that is not on them, and validates the direction and
-operator before they reach the SQL, where every value is parameterized. It fills
-in `limit` (default 1000) and `offset` (default 0) and rejects a value that is
-not a positive integer or a non-negative integer. Only the root query is
-ordered, paged, and compared; a batched branch keeps its own order so grouping
-stays stable and is never truncated or filtered.
+operator before they reach the SQL, where every value is parameterized. A root
+read's `limit` defaults to 1000 and its `offset` to 0, and a value that is not a
+positive integer or a non-negative integer is rejected; a branch's `limit`/`offset`
+are optional and bound each parent. A branch keeps the batch's grouping stable,
+because the ranked window orders each parent's rows before they are grouped.
 
 ## Gotchas
 
@@ -481,6 +544,16 @@ stays stable and is never truncated or filtered.
   it did not select or that was `null`.
 - **`true` on a branch selects scalars only.** It does not recurse into nested
   branches, so a default selection cannot fan out into unbounded joins.
+- **A branch is `true` or a read's arguments.** An object branch requires a
+  `select`, so `rows: {}` is invalid; `rows: { select: { description: true } }` is
+  how a branch is narrowed. On an **inlined** branch only `select` applies — there
+  is no separate statement to filter, order, or page.
+- **A branch's facets are typed structurally, checked at run time.** The branch's
+  `filter`, `order`, and `where` accept every scalar field of the target, because a
+  hand-written `Selection` cannot read the target's annotations. The resolver (and
+  the generated args schema, over HTTP) still refuses a field or operator the
+  target does not allow, so an unannotated one is a throw or a 400 rather than a
+  compile error. A root read keeps the exact `Filters`/`Order`/`Where` types.
 - **A filter reads columns the selection may omit.** `select` governs the
   projection; the `args` still read whatever they name, and so do `order` and
   `where`.
@@ -493,8 +566,9 @@ stays stable and is never truncated or filtered.
   the operator `filter` cannot express.
 - **Filters come only from `@queryFilter`, plus the primary key.** A field
   without the tag is not filterable, each `@primaryKey` field is a filter without
-  it, and a branch field may not carry it; filtering by a relation is not
-  implemented.
+  it, and a branch field may not carry it. A parent is not filtered by a related
+  record's columns, such as `customer.name`; a branch's own `filter` narrows the
+  branch, and the foreign key is a scalar field, so `customerId` is filterable.
 - **A required filter is a precondition, not a filter value.** `@queryFilter
   required` narrows nothing by itself; it makes the caller name the field. Every
   tenant-owned entity marks its `tenantId` that way, so a read cannot quietly span
@@ -519,19 +593,22 @@ stays stable and is never truncated or filtered.
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
 - **Ordering comes only from `@queryOrderBy`.** A field without the tag cannot
-  order, and a direction is `asc` or `desc`. Like a filter, ordering is a root
-  concern: a branch field may not carry the tag.
-- **A read is capped by default.** `limit` defaults to 1000, so a filter that
-  matches more rows returns the first 1000 unless the caller asks for more.
-  There is no `limit: null` for "all rows"; a page is always bounded.
+  order, and a direction is `asc` or `desc`. The tag is scalar-only, so a branch
+  field may not carry it; a branch orders by its own entity's fields, through the
+  same whitelist.
+- **A root read is capped by default, a branch is not.** `limit` defaults to 1000
+  on a root read, so a filter that matches more rows returns the first 1000 unless
+  the caller asks for more. There is no `limit: null` for "all rows"; a root page
+  is always bounded, while a branch returns every matching row unless it names its
+  own `limit`.
 - **`offset` is not a cursor.** A concurrent insert or delete can shift a row
   across pages between calls. Stable paging over a mutable table needs a keyset
   cursor, which is not implemented.
 - **The read types are shared, the reader is not.** `Selection`, `Selected`,
-  `Filters`, `Order`, and `Where` are pure types with no query in them, so they
-  live in `packages/validation/src/selection.ts` and both the backend and the
-  generated REST client import them from there. The SQL, the resolver, and the
-  metadata stay in the backend.
+  `QueryArgs`, `Filters`, `Order`, and `Where` are pure types with no query in
+  them, so they live in `packages/validation/src/selection.ts` and both the
+  backend and the generated REST client import them from there. The SQL, the
+  resolver, and the metadata stay in the backend.
 
 ## Why the resolver is hand-written
 
@@ -550,22 +627,17 @@ middle ground if the args logic grows past equality.
 
 ## Deliberately not implemented
 
-- **Comparisons on a branch.** `@queryWhere` is scalar-only, so `queryInvoice` cannot
-  compare a related record's columns, such as `customer.name`.
-- **Filters on a branch.** `@queryFilter` is scalar-only, so `queryInvoice`
-  cannot filter on a related record's columns, such as `customer.name`. The
-  foreign key is a scalar field, so `customerId` is filterable.
+- **Comparing or filtering a parent by a branch's columns.** `@queryWhere` and
+  `@queryFilter` are scalar-only, so `queryInvoice` cannot compare or filter on a
+  related record's columns, such as `customer.name`. A branch's own `filter` and
+  `where` narrow the branch, not the parent; the foreign key is a scalar field, so
+  `customerId` filters the parent.
 - **More comparison operators.** The vocabulary is `eq ne gt gte lt lte`. `like`,
   `isNull`, and a case-insensitive match would each be another entry.
 - **Comparisons across fields.** A `where` value is a literal, not a column
   reference, so `totalAmount > netAmount` is not expressible.
 - **A row at most, not exactly one.** There is no `limit 1` shorthand; a caller
   takes the first result, which fetches a whole page.
-- **Per-branch arguments.** A branch cannot carry `order`/`where`/`limit`/
-  `offset`; `rows: { description: true }` has nowhere to put them. The extension
-  point is to widen a branch from `Selection<E>` to `{ select?: Selection<E>;
-  order?: …; where?: …; limit?: number; offset?: number }` and recurse into
-  `.select`.
 - **Cursor pagination and a total count.** `limit`/`offset` page a read, but
   there is no keyset cursor and no way to ask how many rows matched.
 - **`@projection` generation.** If static read SQL is ever wanted, the hook is a

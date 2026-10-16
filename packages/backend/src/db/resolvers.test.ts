@@ -55,6 +55,8 @@ const model: QueryModel = {
             key: "id",
             fields: { id: "id", description: "description", amount: "amount" },
             relations: {},
+            order: ["id", "amount"],
+            where: { amount: ["eq", "ne", "gt", "gte", "lt", "lte"] },
         },
         widget: {
             name: "widget",
@@ -140,21 +142,21 @@ describe("resolveMany", () => {
     });
 
     it("omits a null inlined target", async () => {
-        const select = { id: true, snapshot: { name: true, email: true } } as const;
+        const select = { id: true, snapshot: { select: { name: true, email: true } } } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i4"] }, { select });
 
         expect(rows).toEqual([{ id: "i4", snapshot: {} }]);
     });
 
     it("omits a to-one relation whose foreign key is null", async () => {
-        const select = { id: true, customer: { name: true } } as const;
+        const select = { id: true, customer: { select: { name: true } } } as const;
         const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i4"] }, { select });
 
         expect(rows).toEqual([{ id: "i4" }]);
     });
 
     it("reads an inlined branch from the same row, with no extra query", async () => {
-        const select = { number: true, snapshot: { name: true } } as const;
+        const select = { number: true, snapshot: { select: { name: true } } } as const;
         const counted = counting(db);
         const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
 
@@ -163,7 +165,7 @@ describe("resolveMany", () => {
     });
 
     it("loads a to-one relation in one batched query", async () => {
-        const select = { number: true, customer: { name: true } } as const;
+        const select = { number: true, customer: { select: { name: true } } } as const;
         const counted = counting(db);
         const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
 
@@ -173,7 +175,7 @@ describe("resolveMany", () => {
     });
 
     it("loads a to-many branch in one batched query and groups it", async () => {
-        const select = { number: true, rows: { description: true, amount: true } } as const;
+        const select = { number: true, rows: { select: { description: true, amount: true } } } as const;
         const counted = counting(db);
         const rows = await resolver.resolveMany<Invoice, typeof select>(counted, "invoice", {}, { select });
 
@@ -304,7 +306,7 @@ describe("resolveMany required filters", () => {
     });
 
     it("leaves a branch fetch alone, because only a root read carries filters", async () => {
-        const select = { id: true, rows: { description: true } } as const;
+        const select = { id: true, rows: { select: { description: true } } } as const;
         const rows = await scoped.resolveMany<Invoice, typeof select>(
             db,
             "invoice",
@@ -423,7 +425,7 @@ describe("resolveMany paging", () => {
     });
 
     it("does not page a branch, only the root", async () => {
-        const selectWithRows = { id: true, rows: { id: true } } as const;
+        const selectWithRows = { id: true, rows: { select: { id: true } } } as const;
         const rows = await resolver.resolveMany<Invoice, typeof selectWithRows>(db, "invoice", {}, {
             select: selectWithRows,
             limit: 1,
@@ -516,7 +518,7 @@ describe("resolveMany where", () => {
     });
 
     it("leaves a branch unfiltered by a root comparison", async () => {
-        const selectWithRows = { id: true, rows: { id: true } } as const;
+        const selectWithRows = { id: true, rows: { select: { id: true } } } as const;
         const rows = await resolver.resolveMany<Invoice, typeof selectWithRows>(db, "invoice", {}, {
             select: selectWithRows,
             order: [["id", "asc"]],
@@ -525,5 +527,88 @@ describe("resolveMany where", () => {
 
         expect(rows.map((row) => row.id)).toEqual(["i2", "i3", "i4"]);
         expect(rows[0]?.rows).toHaveLength(1);
+    });
+});
+
+describe("resolveMany branch arguments", () => {
+    it("filters a branch with its own filter set", async () => {
+        const select = { id: true, rows: { select: { amount: true }, filter: { description: ["Widget"] } } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1"] }, { select });
+
+        expect(rows[0]?.rows).toEqual([{ amount: "50" }]);
+    });
+
+    it("filters a branch with its own comparison", async () => {
+        const select = { id: true, rows: { select: { id: true }, where: { amount: { eq: "200" } } } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1", "i2"] }, { select });
+
+        expect(rows[0]?.rows).toEqual([]);
+        expect(rows[1]?.rows).toEqual([{ id: "r3" }]);
+    });
+
+    it("orders a branch with its own clauses", async () => {
+        const select = {
+            id: true,
+            rows: { select: { id: true }, order: [["amount", "desc"], ["id", "asc"]] },
+        } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1"] }, { select });
+
+        expect(rows[0]?.rows).toEqual([{ id: "r1" }, { id: "r2" }]);
+    });
+
+    it("pages each parent's rows independently", async () => {
+        const select = { id: true, rows: { select: { id: true }, order: [["id", "asc"]], limit: 1 } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1", "i2"] }, { select });
+
+        expect(rows[0]?.rows).toEqual([{ id: "r1" }]);
+        expect(rows[1]?.rows).toEqual([{ id: "r3" }]);
+    });
+
+    it("skips a branch offset within each parent", async () => {
+        const select = { id: true, rows: { select: { id: true }, order: [["id", "asc"]], offset: 1 } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1", "i2"] }, { select });
+
+        expect(rows[0]?.rows).toEqual([{ id: "r2" }]);
+        expect(rows[1]?.rows).toEqual([]);
+    });
+
+    it("filters a to-one relation branch", async () => {
+        const select = { id: true, customer: { select: { name: true }, filter: { name: ["Beta"] } } } as const;
+        const rows = await resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: ["i1", "i2"] }, { select });
+
+        expect(rows[0]).toEqual({ id: "i1" });
+        expect(rows[1]?.customer).toEqual({ name: "Beta" });
+    });
+
+    it("rejects a branch without a select", async () => {
+        const select = { id: true, rows: { filter: { id: ["r1"] } } } as never;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select }),
+        ).rejects.toThrow("branch `invoice.rows` needs a `select`");
+    });
+
+    it("rejects a branch filter that names no column", async () => {
+        const select = { id: true, rows: { select: { id: true }, filter: { nonsense: ["x"] } } } as never;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select }),
+        ).rejects.toThrow("unknown filter field `nonsense` on `invoice_row`");
+    });
+
+    it("rejects a branch order field the target does not whitelist", async () => {
+        const select = { id: true, rows: { select: { id: true }, order: [["description", "asc"]] } } as never;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select }),
+        ).rejects.toThrow("unknown order field `description` on `invoice_row`");
+    });
+
+    it("rejects a branch limit that is not a positive integer", async () => {
+        const select = { id: true, rows: { select: { id: true }, limit: 0 } } as never;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", {}, { select }),
+        ).rejects.toThrow("limit on `invoice.rows` must be a positive integer, found `0`");
     });
 });
