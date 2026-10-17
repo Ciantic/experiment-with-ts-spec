@@ -1,0 +1,17 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "jsPlugins": ["./scripts/oxlint/errors.js"],
+    "rules": {
+        "errors/throws-jsdoc": "error",
+        "errors/no-plain-error": "error"
+    },
+    "overrides": [
+        {
+            "files": ["**/*.test.ts", "**/scripts/**"],
+            "rules": {
+                "errors/throws-jsdoc": "off",
+                "errors/no-plain-error": "off"
+            }
+        }
+    ]
+}

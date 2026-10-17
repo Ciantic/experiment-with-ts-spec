@@ -4,10 +4,11 @@
   "description": "",
   "private": true,
   "scripts": {
-    "test": "pnpm -r run test",
+    "test": "pnpm -r run test && node --test scripts/oxlint/errors.test.js",
     "typecheck": "tsc --noEmit && pnpm -r run typecheck",
-    "lint": "pnpm run lint:spec",
+    "lint": "pnpm run lint:spec && pnpm run lint:oxlint",
     "lint:spec": "pnpm --filter spec run lint:spec",
+    "lint:oxlint": "oxlint",
     "generate": "node scripts/generate.ts",
     "generate:schema": "pnpm --filter backend run generate:schema",
     "generate:schema:stdout": "pnpm --filter backend run generate:schema:stdout",
@@ -23,7 +24,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^26.6.2"
+    "@types/node": "^26.6.2",
+    "oxlint": "^1.88.0"
   },
   "devEngines": {
     "packageManager": {

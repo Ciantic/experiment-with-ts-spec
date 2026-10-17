@@ -2,6 +2,7 @@
 import type { InvoiceSentInsert } from "validation/repositories/invoiceSentInsertSchema.ts";
 import type { InvoiceSentPrimaryKey } from "validation/repositories/invoiceSentPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { ShortWriteError } from "../errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoiceSentPrimaryKey => ({ id: row["id"] as InvoiceSentPrimaryKey["id"] });
@@ -12,6 +13,10 @@ const PARAMETERS_PER_ROW = 34;
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create `invoice_sent` rows, returning the key of each.
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ */
 export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSentInsert[]): Promise<InvoiceSentPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -133,7 +138,7 @@ export async function createInvoiceSent(db: SqlExecutor, rows: InvoiceSentInsert
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
-                throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this create supplied');
+                throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this create supplied');
             }
             keys.push(...written.map(keyOf));
         }

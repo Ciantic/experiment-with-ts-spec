@@ -2,6 +2,7 @@
 import type { TenantUpsert } from "validation/repositories/tenantUpsertSchema.ts";
 import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { VersionConflictError } from "../errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id"] as TenantPrimaryKey["id"] });
@@ -15,6 +16,10 @@ const PARAMETERS_PER_ROW = 3;
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create or replace `tenant` rows, returning the key of each.
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ */
 export async function upsertTenant(db: SqlExecutor, rows: TenantUpsert[]): Promise<TenantPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -49,7 +54,7 @@ export async function upsertTenant(db: SqlExecutor, rows: TenantUpsert[]): Promi
             if (writtenKeys.size !== chunk.length) {
                 const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));
                 const named = missed.length > 0 ? missed : chunk;
-                throw Object.assign(new Error('no row of tenant is at the version this upsert claims for ' + named.map(keyName).join(", ")), { code: "40001" });
+                throw new VersionConflictError('no row of tenant is at the version this upsert claims for ' + named.map(keyName).join(", "));
             }
             keys.push(...written.map(keyOf));
         }

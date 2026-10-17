@@ -2,6 +2,9 @@
 import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
+/**
+ * Delete `translation` rows by key.
+ */
 export async function deleteTranslation(db: SqlExecutor, rows: TranslationPrimaryKey[]): Promise<void> {
     if (rows.length === 0) {
         return;

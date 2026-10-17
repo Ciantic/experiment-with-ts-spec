@@ -1,6 +1,7 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
+import * as dbErrors from "../src/db/errors.ts";
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
@@ -99,7 +100,10 @@ interface GeneratedRepository {
 
 /** Evaluates a generated module in memory; the port's runtime helpers are its only runtime import. */
 function loadModule(code: string): Record<string, unknown> {
-    return tsLoadGeneratedModule(code, tsStubImports({ "../sql-executor.ts": sqlExecutor }));
+    return tsLoadGeneratedModule(
+        code,
+        tsStubImports({ "../sql-executor.ts": sqlExecutor, "../errors.ts": dbErrors }),
+    );
 }
 
 /** The create, update, and delete functions, each resolved from its own generated module. */
@@ -553,7 +557,7 @@ describe("generateCreate", () => {
         expect(code).toContain("const written = resultRows(result);");
         expect(code).toContain("if (written.length !== chunk.length) {");
         expect(code).toContain(
-            "throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');",
+            "throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');",
         );
     });
 
@@ -615,7 +619,7 @@ describe("generateUpdate", () => {
         expect(code).toContain("            if (written.size !== chunk.length) {");
         expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
         expect(code).toContain(
-            "                throw Object.assign(new Error('no row of customer matches this patch: ' + named.map(keyOf).join(\", \")), { code: \"40001\" });",
+            "                throw new NoMatchingRowError('no row of customer matches this patch: ' + named.map(keyOf).join(\", \"));",
         );
     });
 
@@ -659,7 +663,7 @@ describe("generateUpdate", () => {
         expect(code).not.toContain('"version" = case when');
         expect(code).not.toContain("versionPresent");
         expect(code).toContain("no row of customer is at the version this patch supplied for ' + named.map(keyOf).join(\", \")");
-        expect(code).toContain('code: "40001"');
+        expect(code).toContain("throw new VersionConflictError(");
     });
 
     it("carries no version for an entity that has none, and still rejects an unmatched row", () => {
@@ -670,7 +674,7 @@ describe("generateUpdate", () => {
         expect(snapshot).not.toContain("versionValues");
         expect(snapshot).not.toContain('u."version"');
         expect(snapshot).toContain("no row of invoice_sent matches this patch: ' + named.map(keyOf).join(\", \")");
-        expect(snapshot).toContain('code: "40001"');
+        expect(snapshot).toContain("throw new NoMatchingRowError(");
     });
 
     it("names every key column of a composite key in the rejection message", () => {
@@ -775,7 +779,7 @@ describe("generateUpsert", () => {
         expect(code).toContain('            const writtenKeys = new Set(written.map((row) => String(row["id"])));');
         expect(code).toContain("                const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));");
         expect(code).toContain(
-            "throw Object.assign(new Error('no row of customer is at the version this upsert claims for ' + named.map(keyName).join(\", \")), { code: \"40001\" });",
+            "throw new VersionConflictError('no row of customer is at the version this upsert claims for ' + named.map(keyName).join(\", \"));",
         );
         // The rows the predicate matched come back as the call's keys.
         expect(code).toContain("            keys.push(...written.map(keyOf));");
@@ -796,7 +800,7 @@ describe("generateUpsert", () => {
         expect(snapshot).toContain("            const written = resultRows(result);");
         expect(snapshot).toContain("if (written.length !== chunk.length) {");
         expect(snapshot).toContain(
-            "throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
+            "throw new ShortWriteError('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
         );
     });
 
@@ -1254,6 +1258,9 @@ describe("generated repositories against PGlite", () => {
         await expect(widgets.update(db, [{ id: WIDGET_ID, name: "run", version: 0n }])).rejects.toMatchObject({
             code: "40001",
         });
+        await expect(widgets.update(db, [{ id: WIDGET_ID, name: "run", version: 0n }])).rejects.toBeInstanceOf(
+            dbErrors.VersionConflictError,
+        );
     });
 
     it("rejects the whole call when one row of several is stale", async () => {

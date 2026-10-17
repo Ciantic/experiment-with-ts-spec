@@ -7,6 +7,7 @@ import {
     type SqlExecutor,
     type TransactionOptions,
 } from "../db/sql-executor.ts";
+import { AppError, RequestError } from "../errors.ts";
 import { error, failure, statusFor, type HttpResponse } from "./http-response.ts";
 import type { Route } from "./router.ts";
 
@@ -37,7 +38,7 @@ interface PlannedGroup {
 type Planned = PlannedCall | PlannedGroup;
 
 /** A group body the handler refuses, naming the entry that is wrong. */
-class BadGroup extends Error {
+class BadGroup extends RequestError {
     readonly path: number[];
     readonly issues: unknown;
 
@@ -49,14 +50,14 @@ class BadGroup extends Error {
 }
 
 /** A handler that failed inside a group, carrying the path of the entry that raised. */
-class GroupFailure extends Error {
+class GroupFailure extends AppError {
     readonly path: number[];
-    readonly code: unknown;
 
     constructor(thrown: unknown, path: number[]) {
-        super(thrown instanceof Error ? thrown.message : "request failed");
+        super(thrown instanceof Error ? thrown.message : "request failed", statusFor(thrown), {
+            cause: thrown,
+        });
         this.path = path;
-        this.code = (thrown as { code?: unknown } | null)?.code;
     }
 }
 
@@ -76,7 +77,10 @@ function spell(values: readonly string[]): string {
     return values.length <= 1 ? last : `${values.slice(0, -1).join(", ")}, or ${last}`;
 }
 
-/** One mode of a group's options, refused unless it is a literal the port writes into its `begin`. */
+/**
+ * One mode of a group's options, refused unless it is a literal the port writes into its `begin`.
+ * @throws {BadGroup} when the value is not one of the literals the mode accepts
+ */
 function literal<T extends string>(values: readonly T[], value: unknown, what: string, path: number[]): T {
     if (!isOneOf(values, value)) {
         throw new BadGroup(`${what} must be ${spell(values)}`, path);
@@ -84,7 +88,10 @@ function literal<T extends string>(values: readonly T[], value: unknown, what: s
     return value as T;
 }
 
-/** Whether the value is the boolean a mode takes. */
+/**
+ * Whether the value is the boolean a mode takes.
+ * @throws {BadGroup} when the value is not a boolean
+ */
 function flag(value: unknown, what: string, path: number[]): boolean {
     if (typeof value !== "boolean") {
         throw new BadGroup(`${what} must be true or false`, path);
@@ -92,7 +99,10 @@ function flag(value: unknown, what: string, path: number[]): boolean {
     return value;
 }
 
-/** Check the modes a group names; only a group that opens a root boundary takes any. */
+/**
+ * Check the modes a group names; only a group that opens a root boundary takes any.
+ * @throws {BadGroup} when a batch or a nested group names options, or a mode is not an object or one of the accepted keys
+ */
 function planOptions(
     wire: unknown,
     kind: GroupKind,
@@ -130,7 +140,10 @@ function planOptions(
     };
 }
 
-/** Check one node of a group body: its shape, then the call it names, then that call's `input`. */
+/**
+ * Check one node of a group body: its shape, then the call it names, then that call's `input`.
+ * @throws {BadGroup} when the node is neither a call nor a group, or a group has no kind or calls
+ */
 function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBoundary: boolean): Planned {
     if (!isRecord(wire)) {
         throw new BadGroup("a group entry must be an object", path);
@@ -166,7 +179,10 @@ function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBounda
     throw new BadGroup("a group entry must be a call or a group", path);
 }
 
-/** Resolve one call against the route table by the id it names, and validate its argument. */
+/**
+ * Resolve one call against the route table by the id it names, and validate its argument.
+ * @throws {BadGroup} when the call names no operation, or its argument fails the route's schema
+ */
 function planCall(value: unknown, resolve: ResolveRoute, path: number[]): PlannedCall {
     if (!isRecord(value)) {
         throw new BadGroup("a call must be an object", path);
@@ -189,7 +205,10 @@ function planCall(value: unknown, resolve: ResolveRoute, path: number[]): Planne
     return { kind: "call", route, argument: parsed.data };
 }
 
-/** Check a whole group body. The top level must be a group, not a lone call. */
+/**
+ * Check a whole group body. The top level must be a group, not a lone call.
+ * @throws {BadGroup} when the body is a lone call or a malformed group
+ */
 function planGroup(value: unknown, resolve: ResolveRoute): PlannedGroup {
     const node = planNode(value, resolve, [], false);
     if (node.kind === "call") {

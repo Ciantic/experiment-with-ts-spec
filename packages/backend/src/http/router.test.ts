@@ -1,6 +1,7 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
+import { QueryError, ShortWriteError, VersionConflictError } from "../db/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
@@ -216,6 +217,29 @@ describe("createRouter", () => {
 
         expect(response.status).toBe(409);
         expect(JSON.parse(response.body)).toEqual({ error: "version conflict" });
+    });
+
+    it("maps an AppError by the status it carries", async () => {
+        const cases = [
+            { thrown: new QueryError("bad read"), status: 400 },
+            { thrown: new VersionConflictError("stale"), status: 409 },
+            { thrown: new ShortWriteError("lost rows"), status: 500 },
+        ];
+
+        for (const { thrown, status } of cases) {
+            const router = createRouter(db, [
+                echoRoute({
+                    handler: async () => {
+                        throw thrown;
+                    },
+                }),
+            ]);
+
+            const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+
+            expect(response.status).toBe(status);
+            expect(JSON.parse(response.body)).toEqual({ error: thrown.message });
+        }
     });
 
     it("maps a unique violation to 409 and an unknown failure to 500", async () => {

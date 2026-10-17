@@ -33,6 +33,9 @@
 - Only single-line comments in code. If you need more than one line of
   explanation, put it in `docs/` instead and leave a one-line pointer where the
   code needs it.
+- Errors are `AppError` subclasses; the database layer narrows them under
+  `DbError` (`docs/errors.md`). Every `throw new X` documents
+  `@throws {X} why` on an enclosing function, and `pnpm lint` enforces it.
 
 ## Docs
 

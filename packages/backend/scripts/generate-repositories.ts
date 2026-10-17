@@ -222,15 +222,21 @@ function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
 }
 
 /** The header and type imports every operation module carries, naming the write types it uses. */
-function modulePrologue(writeTypes: string | string[], executorImport?: string): string[] {
+function modulePrologue(writeTypes: string | string[], executorImport?: string, errorImport?: string): string[] {
     const types = typeof writeTypes === "string" ? [writeTypes] : writeTypes;
     return [
         HEADER,
         // The repository, the wire schema, and the client all name the one type validation declares.
         ...types.map((writeType) => `import type { ${writeType} } from "validation/${validationFileName(writeType)}";`),
         executorImport ?? 'import type { SqlExecutor } from "../sql-executor.ts";',
+        ...(errorImport === undefined ? [] : [errorImport]),
         "",
     ];
+}
+
+/** The JSDoc a generated operation carries, naming every error it raises. See docs/errors.md. */
+function operationDoc(summary: string, throws: readonly string[]): string[] {
+    return ["/**", ` * ${summary}`, ...throws.map((thrown) => ` * @throws ${thrown}`), " */"];
 }
 
 /** The `where` that matches each row of the `data` alias to the row it addresses. */
@@ -290,6 +296,7 @@ export function generateCreate(table: Table): string {
     const lines = modulePrologue(
         [`${entity}Insert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        'import { ShortWriteError } from "../errors.ts";',
     );
 
     lines.push("/** The key a written row was given, as the insert returned it. */");
@@ -301,6 +308,11 @@ export function generateCreate(table: Table): string {
     lines.push("/** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
+    lines.push(
+        ...operationDoc(`Create \`${table.name}\` rows, returning the key of each.`, [
+            "{ShortWriteError} when the insert writes fewer rows than the call supplied",
+        ]),
+    );
     lines.push(
         `export async function create${entity}(db: SqlExecutor, rows: ${entity}Insert[]): Promise<${entity}PrimaryKey[]> {`,
     );
@@ -317,7 +329,7 @@ export function generateCreate(table: Table): string {
     lines.push("            const written = resultRows(result);");
     lines.push("            if (written.length !== chunk.length) {");
     lines.push(
-        `                throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
+        `                throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
     );
     lines.push("            }");
     lines.push("            keys.push(...written.map(keyOf));");
@@ -380,9 +392,11 @@ export function generateUpdate(table: Table): string {
         version === undefined
             ? `'no row of ${table.name} matches this patch: '`
             : `'no row of ${table.name} is at the version this patch supplied for '`;
+    const conflict = version === undefined ? "NoMatchingRowError" : "VersionConflictError";
     const lines = modulePrologue(
         `${entity}Patch`,
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        `import { ${conflict} } from "../errors.ts";`,
     );
 
     lines.push("/** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */");
@@ -394,6 +408,18 @@ export function generateUpdate(table: Table): string {
     lines.push("/** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */");
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
+    lines.push(
+        ...operationDoc(
+            version === undefined
+                ? `Patch \`${table.name}\` rows by key.`
+                : `Patch \`${table.name}\` rows at the version each row claims.`,
+            [
+                version === undefined
+                    ? "{NoMatchingRowError} when a key the patch addresses is not there"
+                    : "{VersionConflictError} when a row is not at the version the patch supplied",
+            ],
+        ),
+    );
     lines.push(`export async function update${entity}(db: SqlExecutor, rows: ${entity}Patch[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
     lines.push("        return;");
@@ -410,7 +436,7 @@ export function generateUpdate(table: Table): string {
     // A chunk naming one key twice writes fewer rows than it carries, and has no single row to blame.
     lines.push("                const named = missed.length > 0 ? missed : chunk;");
     lines.push(
-        `                throw Object.assign(new Error(${rejection} + named.map(keyOf).join(", ")), { code: "40001" });`,
+        `                throw new ${conflict}(${rejection} + named.map(keyOf).join(", "));`,
     );
     lines.push("            }");
     lines.push("        }");
@@ -487,9 +513,11 @@ export function generateUpsert(table: Table): string {
     const { arrays } = statement;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     const version = versionColumn(table);
+    const conflict = version === undefined ? "ShortWriteError" : "VersionConflictError";
     const lines = modulePrologue(
         [`${entity}Upsert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        `import { ${conflict} } from "../errors.ts";`,
     );
 
     lines.push("/** The key a written row carries, as the upsert returned it. */");
@@ -507,6 +535,13 @@ export function generateUpsert(table: Table): string {
     lines.push("const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);");
     lines.push("");
     lines.push(
+        ...operationDoc(`Create or replace \`${table.name}\` rows, returning the key of each.`, [
+            version === undefined
+                ? "{ShortWriteError} when the upsert writes fewer rows than the call supplied"
+                : "{VersionConflictError} when a row is not at the version the upsert claimed",
+        ]),
+    );
+    lines.push(
         `export async function upsert${entity}(db: SqlExecutor, rows: ${entity}Upsert[]): Promise<${entity}PrimaryKey[]> {`,
     );
     lines.push("    if (rows.length === 0) {");
@@ -523,7 +558,7 @@ export function generateUpsert(table: Table): string {
         // Every conflicting row is replaced, so a short count is lost data rather than a stale claim.
         lines.push("            if (written.length !== chunk.length) {");
         lines.push(
-            `                throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this upsert supplied');`,
+            `                throw new ShortWriteError('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this upsert supplied');`,
         );
         lines.push("            }");
     } else {
@@ -533,7 +568,7 @@ export function generateUpsert(table: Table): string {
         lines.push("                const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));");
         lines.push("                const named = missed.length > 0 ? missed : chunk;");
         lines.push(
-            `                throw Object.assign(new Error('no row of ${table.name} is at the version this upsert claims for ' + named.map(keyName).join(", ")), { code: "40001" });`,
+            `                throw new VersionConflictError('no row of ${table.name} is at the version this upsert claims for ' + named.map(keyName).join(", "));`,
         );
         lines.push("            }");
     }
@@ -582,6 +617,7 @@ export function generateDelete(table: Table): string {
     const { before, after } = deleteStatement(table);
     const lines = modulePrologue(`${entity}PrimaryKey`);
 
+    lines.push(...operationDoc(`Delete \`${table.name}\` rows by key.`, []));
     lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
     lines.push("        return;");

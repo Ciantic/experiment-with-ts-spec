@@ -2,6 +2,7 @@
 import type { InvoiceSentRowUpsert } from "validation/repositories/invoiceSentRowUpsertSchema.ts";
 import type { InvoiceSentRowPrimaryKey } from "validation/repositories/invoiceSentRowPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { ShortWriteError } from "../errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoiceSentRowPrimaryKey => ({ id: row["id"] as InvoiceSentRowPrimaryKey["id"] });
@@ -12,6 +13,10 @@ const PARAMETERS_PER_ROW = 11;
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create or replace `invoice_sent_row` rows, returning the key of each.
+ * @throws {ShortWriteError} when the upsert writes fewer rows than the call supplied
+ */
 export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRowUpsert[]): Promise<InvoiceSentRowPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -75,7 +80,7 @@ export async function upsertInvoiceSentRow(db: SqlExecutor, rows: InvoiceSentRow
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
-                throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent_row rows this upsert supplied');
+                throw new ShortWriteError('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent_row rows this upsert supplied');
             }
             keys.push(...written.map(keyOf));
         }

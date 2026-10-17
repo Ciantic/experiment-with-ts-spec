@@ -2,6 +2,9 @@
 import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
+/**
+ * Delete `customer` rows by key.
+ */
 export async function deleteCustomer(db: SqlExecutor, rows: CustomerPrimaryKey[]): Promise<void> {
     if (rows.length === 0) {
         return;

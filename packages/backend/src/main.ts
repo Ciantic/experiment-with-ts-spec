@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createTransactionalDb, type SqlExecutor } from "./db/sql-executor.ts";
+import { UsageError } from "./errors.ts";
 import { createApiServer } from "./http/server.ts";
 import { seedMockData } from "./mock/seed.ts";
 import { createPglite, createPglitePool } from "./postgres/pglite-setup.ts";
@@ -77,7 +78,10 @@ export async function startServer(options: StartOptions = {}): Promise<StartedSe
     return { server, db, port };
 }
 
-/** Read `--port <n>`, `--seed` (alias `--mock`), and `--log-sql` from the command line. */
+/**
+ * Read `--port <n>`, `--seed` (alias `--mock`), and `--log-sql` from the command line.
+ * @throws {UsageError} when `--port` has no integer beside it
+ */
 export function parseArgs(argv: string[]): StartOptions {
     const options: StartOptions = {};
     for (let index = 0; index < argv.length; index += 1) {
@@ -89,7 +93,7 @@ export function parseArgs(argv: string[]): StartOptions {
         } else if (arg === "--port") {
             const value = argv[index + 1];
             if (value === undefined || !Number.isInteger(Number(value))) {
-                throw new Error("--port needs an integer");
+                throw new UsageError("--port needs an integer");
             }
             options.port = Number(value);
             index += 1;

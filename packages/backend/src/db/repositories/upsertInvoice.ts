@@ -2,6 +2,7 @@
 import type { InvoiceUpsert } from "validation/repositories/invoiceUpsertSchema.ts";
 import type { InvoicePrimaryKey } from "validation/repositories/invoicePrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { VersionConflictError } from "../errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });
@@ -15,6 +16,10 @@ const PARAMETERS_PER_ROW = 11;
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create or replace `invoice` rows, returning the key of each.
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ */
 export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Promise<InvoicePrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -81,7 +86,7 @@ export async function upsertInvoice(db: SqlExecutor, rows: InvoiceUpsert[]): Pro
             if (writtenKeys.size !== chunk.length) {
                 const missed = chunk.filter((row) => !writtenKeys.has(keyName(row)));
                 const named = missed.length > 0 ? missed : chunk;
-                throw Object.assign(new Error('no row of invoice is at the version this upsert claims for ' + named.map(keyName).join(", ")), { code: "40001" });
+                throw new VersionConflictError('no row of invoice is at the version this upsert claims for ' + named.map(keyName).join(", "));
             }
             keys.push(...written.map(keyOf));
         }

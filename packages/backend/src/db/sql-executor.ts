@@ -1,4 +1,5 @@
 /** The `SqlExecutor` port over a pool: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
+import { DriverResultError, SavepointOptionsError } from "./errors.ts";
 import type { SqlPool, SqlSession } from "./sql-pool.ts";
 
 /** The callback one boundary runs, on the handle that boundary owns. */
@@ -17,22 +18,28 @@ export interface SqlExecutor {
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */
 export const MAX_STATEMENT_PARAMETERS = 32767;
 
-/** Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`). */
+/**
+ * Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`).
+ * @throws {DriverResultError} when the result carries no count
+ */
 export function affectedRows(result: unknown): number {
     // `rowCount` is `number | null` in `pg`, so it is accepted only when it is a number.
     const counts = (result ?? {}) as { affectedRows?: unknown; rowCount?: unknown };
     const count = counts.affectedRows ?? counts.rowCount;
     if (typeof count !== "number") {
-        throw new Error("the executor did not return an affected-row count");
+        throw new DriverResultError("the executor did not return an affected-row count");
     }
     return count;
 }
 
-/** Get the rows a statement returned, which both PGlite and `pg` answer under `rows`. */
+/**
+ * Get the rows a statement returned, which both PGlite and `pg` answer under `rows`.
+ * @throws {DriverResultError} when the result carries no rows array
+ */
 export function resultRows(result: unknown): Array<Record<string, unknown>> {
     const returned = (result ?? {}) as { rows?: unknown };
     if (!Array.isArray(returned.rows)) {
-        throw new Error("the executor did not return rows");
+        throw new DriverResultError("the executor did not return rows");
     }
     return returned.rows as Array<Record<string, unknown>>;
 }
@@ -68,13 +75,18 @@ function begin(options?: TransactionOptions): string {
 export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     let savepoints = 0;
 
-    /** The handle a nested boundary runs on: queries on the same session, nesting one level deeper. */
+    /**
+     * The handle a nested boundary runs on: queries on the same session, nesting one level deeper.
+     * @throws {SavepointOptionsError} when a nested boundary is asked for transaction options
+     */
     function handle(session: SqlSession): SqlExecutor {
         return {
             query: (sql, parameters) => session.query(sql, parameters),
             transaction: (run) => savepoint(session, run),
             transactionWith: async () => {
-                throw new Error("a nested boundary is a savepoint, which opens with no transaction options");
+                throw new SavepointOptionsError(
+                    "a nested boundary is a savepoint, which opens with no transaction options",
+                );
             },
         };
     }

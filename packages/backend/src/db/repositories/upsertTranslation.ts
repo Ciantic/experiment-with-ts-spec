@@ -2,6 +2,7 @@
 import type { TranslationUpsert } from "validation/repositories/translationUpsertSchema.ts";
 import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { ShortWriteError } from "../errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): TranslationPrimaryKey => ({ lang: row["lang"] as TranslationPrimaryKey["lang"], key: row["key"] as TranslationPrimaryKey["key"] });
@@ -12,6 +13,10 @@ const PARAMETERS_PER_ROW = 3;
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create or replace `translation` rows, returning the key of each.
+ * @throws {ShortWriteError} when the upsert writes fewer rows than the call supplied
+ */
 export async function upsertTranslation(db: SqlExecutor, rows: TranslationUpsert[]): Promise<TranslationPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -42,7 +47,7 @@ export async function upsertTranslation(db: SqlExecutor, rows: TranslationUpsert
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
-                throw new Error('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' translation rows this upsert supplied');
+                throw new ShortWriteError('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' translation rows this upsert supplied');
             }
             keys.push(...written.map(keyOf));
         }

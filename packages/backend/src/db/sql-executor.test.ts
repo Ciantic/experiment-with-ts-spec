@@ -1,6 +1,7 @@
 /** Checks that the port nests with savepoints, over a real driver. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
+import { DriverResultError } from "./errors.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { affectedRows, createTransactionalDb, resultRows } from "./sql-executor.ts";
 import type { SqlPool } from "./sql-pool.ts";
@@ -28,6 +29,7 @@ describe("affectedRows", () => {
 
     it("throws on a result that carries neither count, rather than reading as a conflict", () => {
         expect(() => affectedRows({ rows: [] })).toThrow("the executor did not return an affected-row count");
+        expect(() => affectedRows({ rows: [] })).toThrow(DriverResultError);
         expect(() => affectedRows({ rowCount: null })).toThrow();
         expect(() => affectedRows(undefined)).toThrow();
         expect(() => affectedRows(null)).toThrow();
@@ -55,6 +57,7 @@ describe("resultRows", () => {
 
     it("throws on a result that carries no rows, rather than reading as a statement that wrote none", () => {
         expect(() => resultRows({ affectedRows: 1 })).toThrow("the executor did not return rows");
+        expect(() => resultRows({ affectedRows: 1 })).toThrow(DriverResultError);
         expect(() => resultRows(undefined)).toThrow();
         expect(() => resultRows(null)).toThrow();
     });

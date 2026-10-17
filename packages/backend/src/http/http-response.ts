@@ -1,4 +1,5 @@
 /** The HTTP result shape and the plain-JSON failures both handlers answer with. See docs/rest-api.md. */
+import { AppError } from "../errors.ts";
 
 /** One response. Success bodies are `devalue`; error bodies are plain JSON. */
 export interface HttpResponse {
@@ -16,8 +17,11 @@ const ERROR_STATUSES: Record<string, number> = {
     "40001": 409, // serialization_failure: the version-conflict raise. See docs/versioning.md
 };
 
-/** The status a thrown database error maps to. */
+/** The status a thrown error maps to: an {@link AppError} names its own, and a driver error maps from its SQLSTATE. */
 export function statusFor(thrown: unknown): number {
+    if (thrown instanceof AppError) {
+        return thrown.status;
+    }
     const code = (thrown as { code?: unknown }).code;
     if (typeof code !== "string") {
         return 500;

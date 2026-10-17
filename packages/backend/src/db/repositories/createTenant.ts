@@ -2,6 +2,7 @@
 import type { TenantInsert } from "validation/repositories/tenantInsertSchema.ts";
 import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { ShortWriteError } from "../errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id"] as TenantPrimaryKey["id"] });
@@ -12,6 +13,10 @@ const PARAMETERS_PER_ROW = 2;
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create `tenant` rows, returning the key of each.
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ */
 export async function createTenant(db: SqlExecutor, rows: TenantInsert[]): Promise<TenantPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -37,7 +42,7 @@ export async function createTenant(db: SqlExecutor, rows: TenantInsert[]): Promi
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
-                throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' tenant rows this create supplied');
+                throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' tenant rows this create supplied');
             }
             keys.push(...written.map(keyOf));
         }

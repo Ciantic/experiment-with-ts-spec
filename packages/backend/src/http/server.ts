@@ -7,20 +7,25 @@
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { SqlExecutor } from "../db/sql-executor.ts";
+import { PayloadTooLargeError } from "../errors.ts";
+import { error, statusFor } from "./http-response.ts";
 import { routes } from "./routes/index.ts";
 import { createRouter, type HttpResponse } from "./router.ts";
 
 /** The largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000;
 
-/** Read a request body, refusing one larger than {@link MAX_BODY_BYTES}. */
+/**
+ * Read a request body, refusing one larger than {@link MAX_BODY_BYTES}.
+ * @throws {PayloadTooLargeError} when the body passes the byte cap
+ */
 async function readBody(request: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of request as AsyncIterable<Buffer>) {
         size += chunk.length;
         if (size > MAX_BODY_BYTES) {
-            throw new Error("request body too large");
+            throw new PayloadTooLargeError("request body too large");
         }
         chunks.push(chunk);
     }
@@ -45,7 +50,7 @@ export function createApiServer(db: SqlExecutor): Server {
                 write(response, await router.handle({ method, url, body: await readBody(request) }));
             } catch (thrown) {
                 const message = thrown instanceof Error ? thrown.message : "request failed";
-                write(response, { status: 400, body: JSON.stringify({ error: message }) });
+                write(response, error(statusFor(thrown), message));
             }
         })();
     });

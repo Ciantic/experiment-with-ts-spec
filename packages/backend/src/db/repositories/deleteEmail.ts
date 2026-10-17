@@ -2,6 +2,9 @@
 import type { EmailPrimaryKey } from "validation/repositories/emailPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
+/**
+ * Delete `email` rows by key.
+ */
 export async function deleteEmail(db: SqlExecutor, rows: EmailPrimaryKey[]): Promise<void> {
     if (rows.length === 0) {
         return;

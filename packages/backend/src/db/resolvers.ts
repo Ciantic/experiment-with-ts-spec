@@ -1,5 +1,6 @@
 /** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
 import type { Direction, FilterDefault, Selection, Selected } from "validation/selection.ts";
+import { QueryError } from "./errors.ts";
 import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
 /** A branch that reads another table: `relation` is to-one, `children` is to-many. */
@@ -89,29 +90,35 @@ interface Page {
     offset: number;
 }
 
-/** Fill in a root read's paging defaults and reject a value that would reach the SQL unchecked. See docs/queries.md. */
+/**
+ * Fill in a root read's paging defaults and reject a value that would reach the SQL unchecked.
+ * @throws {QueryError} when the limit is not a positive integer or the offset is not a non-negative one
+ */
 function resolvePage(limit: number | undefined, offset: number | undefined): Page {
     const resolvedLimit = limit ?? DEFAULT_LIMIT;
     const resolvedOffset = offset ?? 0;
     if (!Number.isInteger(resolvedLimit) || resolvedLimit < 1) {
-        throw new Error(`limit must be a positive integer, found \`${String(limit)}\``);
+        throw new QueryError(`limit must be a positive integer, found \`${String(limit)}\``);
     }
     if (!Number.isInteger(resolvedOffset) || resolvedOffset < 0) {
-        throw new Error(`offset must be a non-negative integer, found \`${String(offset)}\``);
+        throw new QueryError(`offset must be a non-negative integer, found \`${String(offset)}\``);
     }
     return { limit: resolvedLimit, offset: resolvedOffset };
 }
 
-/** A branch's paging window, already validated; absent when the branch names neither `limit` nor `offset`. */
+/**
+ * A branch's paging window, already validated; absent when the branch names neither `limit` nor `offset`.
+ * @throws {QueryError} when the branch's limit or offset is not the integer the SQL can take
+ */
 function branchPage(limit: number | undefined, offset: number | undefined, path: string): Page | undefined {
     if (limit === undefined && offset === undefined) {
         return undefined;
     }
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
-        throw new Error(`limit on \`${path}\` must be a positive integer, found \`${String(limit)}\``);
+        throw new QueryError(`limit on \`${path}\` must be a positive integer, found \`${String(limit)}\``);
     }
     if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
-        throw new Error(`offset on \`${path}\` must be a non-negative integer, found \`${String(offset)}\``);
+        throw new QueryError(`offset on \`${path}\` must be a non-negative integer, found \`${String(offset)}\``);
     }
     return { limit, offset: offset ?? 0 };
 }
@@ -188,7 +195,10 @@ interface BranchRead {
     page?: Page | undefined;
 }
 
-/** Read a branch's value: `true`, or the same arguments a root read takes, applied to the branch. */
+/**
+ * Read a branch's value: `true`, or the same arguments a root read takes, applied to the branch.
+ * @throws {QueryError} when the branch names no select
+ */
 function branchRead(meta: QueryTable, value: unknown, path: string): BranchRead {
     if (value === true) {
         return { select: allScalars(meta), args: {} };
@@ -196,7 +206,7 @@ function branchRead(meta: QueryTable, value: unknown, path: string): BranchRead 
     const args = (value ?? {}) as Record<string, unknown>;
     const select = args.select;
     if (select === null || typeof select !== "object") {
-        throw new Error(`branch \`${path}\` needs a \`select\``);
+        throw new QueryError(`branch \`${path}\` needs a \`select\``);
     }
     return {
         select: select as Record<string, unknown>,
@@ -258,7 +268,10 @@ function inSet(column: string, values: unknown[], params: unknown[]): string {
     return `${TABLE_ALIAS}.${quote(column)} = any($${params.length})`;
 }
 
-/** Split a selection into the select list, the scalars, the inlined columns, and the branches. */
+/**
+ * Split a selection into the select list, the scalars, the inlined columns, and the branches.
+ * @throws {QueryError} when the selection names a field the table does not have, or an inlined field no column
+ */
 function planProjection(table: string, meta: QueryTable, selection: Record<string, unknown>): Projection {
     const columns: string[] = [];
     const scalars: string[] = [];
@@ -271,7 +284,7 @@ function planProjection(table: string, meta: QueryTable, selection: Record<strin
         if (!relation) {
             const column = meta.fields[field];
             if (column === undefined) {
-                throw new Error(`unknown field \`${field}\` on \`${table}\``);
+                throw new QueryError(`unknown field \`${field}\` on \`${table}\``);
             }
             columns.push(`${TABLE_ALIAS}.${quote(column)} as ${quote(field)}`);
             scalars.push(field);
@@ -282,7 +295,7 @@ function planProjection(table: string, meta: QueryTable, selection: Record<strin
             for (const target of inlinedTargets(relation.columns, nested)) {
                 const column = relation.columns[target];
                 if (column === undefined) {
-                    throw new Error(`inlined \`${table}.${field}\` has no column for \`${target}\``);
+                    throw new QueryError(`inlined \`${table}.${field}\` has no column for \`${target}\``);
                 }
                 columns.push(`${TABLE_ALIAS}.${quote(column)} as ${quote(inlinedAlias(field, target))}`);
                 targets.push(target);
@@ -361,7 +374,10 @@ function nullFilterTest(value: unknown): "is null" | "is not null" | undefined {
     return undefined;
 }
 
-/** One argument's clause: a set (`column = any($n)`), or a null test. See docs/queries.md. */
+/**
+ * One argument's clause: a set (`column = any($n)`), or a null test. See docs/queries.md.
+ * @throws {QueryError} when the filter names no column, or its value is neither an array nor a null test
+ */
 function argumentClause(
     table: string,
     meta: QueryTable,
@@ -371,14 +387,14 @@ function argumentClause(
 ): string {
     const column = meta.fields[name];
     if (column === undefined) {
-        throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
+        throw new QueryError(`unknown filter field \`${name}\` on \`${table}\``);
     }
     const nullTest = nullFilterTest(value);
     if (nullTest !== undefined) {
         return `${TABLE_ALIAS}.${quote(column)} ${nullTest}`;
     }
     if (!Array.isArray(value)) {
-        throw new Error(`filter \`${name}\` on \`${table}\` must be an array or a null test`);
+        throw new QueryError(`filter \`${name}\` on \`${table}\` must be an array or a null test`);
     }
     const values = distinct(value);
     if (values.length === 0) {
@@ -387,7 +403,10 @@ function argumentClause(
     return inSet(column, values, params);
 }
 
-/** One omitted filter's default clause: a null test, or a value compared with the column. See docs/queries.md. */
+/**
+ * One omitted filter's default clause: a null test, or a value compared with the column. See docs/queries.md.
+ * @throws {QueryError} when the default names a filter field the table does not have
+ */
 function defaultClause(
     table: string,
     meta: QueryTable,
@@ -397,7 +416,7 @@ function defaultClause(
 ): string {
     const column = meta.fields[name];
     if (column === undefined) {
-        throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
+        throw new QueryError(`unknown filter field \`${name}\` on \`${table}\``);
     }
     if (value.kind === "isNull") {
         return `${TABLE_ALIAS}.${quote(column)} is null`;
@@ -409,7 +428,10 @@ function defaultClause(
     return `${TABLE_ALIAS}.${quote(column)} = $${params.length}`;
 }
 
-/** The comparison clauses for a read, one `column <op> $n` per whitelisted operator; a null test binds nothing. See docs/queries.md. */
+/**
+ * The comparison clauses for a read, one `column <op> $n` per whitelisted operator; a null test binds nothing.
+ * @throws {QueryError} when the where names no column, or an operator the field does not allow or a null test that is not `true`
+ */
 function whereClauses(table: string, meta: QueryTable, where: WhereClause, params: unknown[]): string[] {
     const clauses: string[] = [];
     for (const [field, condition] of Object.entries(where)) {
@@ -418,7 +440,7 @@ function whereClauses(table: string, meta: QueryTable, where: WhereClause, param
         }
         const column = meta.fields[field];
         if (column === undefined) {
-            throw new Error(`unknown where field \`${field}\` on \`${table}\``);
+            throw new QueryError(`unknown where field \`${field}\` on \`${table}\``);
         }
         const allowed = meta.where?.[field] ?? [];
         const parts: string[] = [];
@@ -429,17 +451,17 @@ function whereClauses(table: string, meta: QueryTable, where: WhereClause, param
             const nullOperator = NULL_COMPARISON_SQL[operator];
             if (nullOperator !== undefined) {
                 if (!allowed.includes(operator)) {
-                    throw new Error(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
+                    throw new QueryError(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
                 }
                 if (value !== true) {
-                    throw new Error(`where operator \`${operator}\` on \`${field}\` of \`${table}\` takes \`true\``);
+                    throw new QueryError(`where operator \`${operator}\` on \`${field}\` of \`${table}\` takes \`true\``);
                 }
                 parts.push(`${TABLE_ALIAS}.${quote(column)} ${nullOperator}`);
                 continue;
             }
             const sqlOperator = COMPARISON_SQL[operator];
             if (sqlOperator === undefined || !allowed.includes(operator)) {
-                throw new Error(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
+                throw new QueryError(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
             }
             params.push(value);
             parts.push(`${TABLE_ALIAS}.${quote(column)} ${sqlOperator} $${params.length}`);
@@ -463,7 +485,10 @@ interface FetchRead {
     page?: Page | undefined;
 }
 
-/** Build the clauses for a fetch, or undefined when the filter cannot match anything. */
+/**
+ * Build the clauses for a fetch, or undefined when the filter cannot match anything.
+ * @throws {QueryError} when the read names a filter field the table does not have, or omits one its queryFilter requires
+ */
 function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses | undefined {
     const filters: string[] = [];
     const params: unknown[] = [];
@@ -478,7 +503,7 @@ function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses
     // A required filter is an invariant: a read that omits one throws instead of scanning unscoped.
     for (const name of meta.requiredFilters ?? []) {
         if (read.args[name] === undefined) {
-            throw new Error(`filter \`${name}\` is required on \`${table}\``);
+            throw new QueryError(`filter \`${name}\` is required on \`${table}\``);
         }
     }
     for (const [name, value] of Object.entries(read.args)) {
@@ -505,7 +530,10 @@ function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses
     };
 }
 
-/** The rendered `order by` parts for a read, falling back to the entity default. See docs/queries.md. */
+/**
+ * The rendered `order by` parts for a read, falling back to the entity default. See docs/queries.md.
+ * @throws {QueryError} when the order names no column, or a direction other than `asc` or `desc`
+ */
 function orderParts(table: string, meta: QueryTable, order: OrderClause[] | undefined): string[] {
     const clauses: OrderClause[] =
         order && order.length > 0
@@ -517,10 +545,10 @@ function orderParts(table: string, meta: QueryTable, order: OrderClause[] | unde
     return clauses.map(([field, direction]) => {
         const column = meta.fields[field];
         if (column === undefined || !orderable.has(field)) {
-            throw new Error(`unknown order field \`${field}\` on \`${table}\``);
+            throw new QueryError(`unknown order field \`${field}\` on \`${table}\``);
         }
         if (direction !== "asc" && direction !== "desc") {
-            throw new Error(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
+            throw new QueryError(`order direction for \`${field}\` on \`${table}\` must be "asc" or "desc"`);
         }
         return `${TABLE_ALIAS}.${quote(column)} ${direction}`;
     });
@@ -593,7 +621,10 @@ function mapRow({ projection, matchColumn }: ReadPlan, row: Record<string, unkno
     };
 }
 
-/** One batched query for a branch, over every distinct parent key. */
+/**
+ * One batched query for a branch, over every distinct parent key.
+ * @throws {QueryError} when the branch targets a table the query model does not have
+ */
 async function fetchBranch(
     model: QueryModel,
     db: SqlExecutor,
@@ -603,7 +634,7 @@ async function fetchBranch(
 ): Promise<FetchedRow[]> {
     const target = model.tables[relation.table];
     if (!target) {
-        throw new Error(`\`${table}.${field}\` targets unknown table \`${relation.table}\``);
+        throw new QueryError(`\`${table}.${field}\` targets unknown table \`${relation.table}\``);
     }
     const read = branchRead(target, nested, `${table}.${field}`);
     const toOne = relation.kind === "relation";
@@ -654,7 +685,10 @@ async function attachToMany(
     }
 }
 
-/** Read one table, then attach its branches. A branch recurses here with a parent link and its own arguments. */
+/**
+ * Read one table, then attach its branches. A branch recurses here with a parent link and its own arguments.
+ * @throws {QueryError} when the table is not in the query model, or the read names a field, filter, order, or page the model refuses
+ */
 async function fetchRows(
     model: QueryModel,
     db: SqlExecutor,
@@ -663,7 +697,7 @@ async function fetchRows(
 ): Promise<FetchedRow[]> {
     const meta = model.tables[table];
     if (!meta) {
-        throw new Error(`no query metadata for table \`${table}\``);
+        throw new QueryError(`no query metadata for table \`${table}\``);
     }
 
     const plan = planRead(table, meta, read);
@@ -684,7 +718,10 @@ async function fetchRows(
     return fetched;
 }
 
-/** Build a resolver bound to a table model. The generated functions call this once. */
+/**
+ * Build a resolver bound to a table model. The generated functions call this once.
+ * @throws {QueryError} when a read names a field, filter, order, or page the model refuses
+ */
 export function createResolver(model: QueryModel): Resolver {
     async function resolveMany<E, S extends Selection<E>>(
         db: SqlExecutor,

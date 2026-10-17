@@ -156,10 +156,10 @@ An insert writes every row it carries, so each statement's returned-row count is
 compared with the chunk it was given, and a short count is a rejected call. That
 is what makes a silent loss loud: a `before insert` trigger returning `null`
 skips its row without raising, and a driver that quietly declines a statement
-answers nothing at all. Neither is a caller's mistake, so the thrown error
-carries no SQLSTATE and the router serves it as a server fault. The rows the
-statement returns are the keys the call answers with, so the check and the return
-value are the same read.
+answers nothing at all. Neither is a caller's mistake, so the thrown
+`ShortWriteError` carries no SQLSTATE and the router serves it as a server fault.
+The rows the statement returns are the keys the call answers with, so the check
+and the return value are the same read.
 
 ## Patching
 
@@ -226,9 +226,9 @@ own guard fire. See `docs/versioning.md`.
 
 A statement that writes fewer rows than its chunk carried is a rejected call
 rather than a no-op: the statement returns the keys it wrote, and the generated
-code throws `code: "40001"` naming the rows it did not, which is the `409` the
-router already serves for a version conflict. That covers both a stale version
-and an id that is not there.
+code throws a `ConflictError` carrying `code: "40001"` and naming the rows it
+did not, which is the `409` the router already serves for a version conflict.
+That covers both a stale version and an id that is not there.
 
 A call carrying more than one row opens a boundary, and its chunks commit
 together; a single row is one atomic statement and runs on the handle it was
@@ -279,15 +279,15 @@ returning u."id"
   therefore both what a new row is born at and what the stored row must hold for
   the replacement to happen (`docs/versioning.md`).
 - **A row at another version is left alone**, so the statement writes fewer rows
-  than it carried, and the generated code rejects the call with `code: "40001"`
-  naming those rows — the same rejection a stale patch raises. The target is
-  aliased only where the predicate needs it, so an entity with no version
-  conflicts on the key and replaces unconditionally.
+  than it carried, and the generated code rejects the call with a
+  `VersionConflictError` naming those rows — the same rejection a stale patch
+  raises. The target is aliased only where the predicate needs it, so an entity
+  with no version conflicts on the key and replaces unconditionally.
 - **An entity with no version** — the snapshots — has nothing to claim, so its
   upsert is the create's statement plus `on conflict ("id") do update`: no
   predicate, and every conflicting row replaced. A short count
   there is not a stale claim but a row the database declined to write, and it
-  raises the same plain error a create raises.
+  raises a `ShortWriteError`, as a create raises.
 
 `excluded` is the whole of what the conflict path can read: PostgreSQL does not
 let the `do update` see the statement's own source relation, so the upsert cannot

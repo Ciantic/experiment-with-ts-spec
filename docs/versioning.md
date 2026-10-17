@@ -134,7 +134,7 @@ rows than the statement's chunk carried:
 ```ts
 const written = new Set(resultRows(result).map((row) => String(row["id"])));
 if (written.size !== chunk.length) {
-    throw Object.assign(new Error(…), { code: "40001" });
+    throw new VersionConflictError(…);
 }
 ```
 
@@ -143,10 +143,10 @@ The reader throws too, rather than answering no rows, when a result carries no
 conflict.
 
 A statement carries a chunk of rows, so a short write names the rows it left out
-by their keys. `code: "40001"` is the same SQLSTATE the trigger raises, so the
-router maps both to a `409` (`docs/rest-api.md`) and a client keeps one
-conflict path. The thrown error aborts the surrounding transaction, so a
-multi-row call whose second row is stale writes nothing at all.
+by their keys. `ConflictError` carries `code: "40001"`, the same SQLSTATE the
+trigger raises, so the router maps both to a `409` (`docs/rest-api.md`) and a
+client keeps one conflict path. The thrown error aborts the surrounding
+transaction, so a multi-row call whose second row is stale writes nothing at all.
 
 Both ways of matching no row — a version the row has moved past, and an id that
 does not exist — arrive as that one rejection. Telling them apart would take a
@@ -223,11 +223,11 @@ gives an upsert three outcomes per row:
   required and the claim is taken at face value.
 - **The conflict path cannot assign the version**, for the reason above: the
   trigger's guard would fire on a correct replacement.
-- **A rejection is the same one a stale patch raises**, `code: "40001"` naming
-  the rows the statement did not write, and the same `409` on the wire
-  (`docs/rest-api.md`). Both ways of missing a row — a version the row has moved
-  past, and an id that is not there — arrive as that one rejection here, since a
-  missing row is inserted rather than rejected.
+- **A rejection is the same one a stale patch raises**, a `ConflictError`
+  carrying `code: "40001"` and naming the rows the statement did not write, and
+  the same `409` on the wire (`docs/rest-api.md`). Both ways of missing a row — a
+  version the row has moved past, and an id that is not there — arrive as that
+  one rejection here, since a missing row is inserted rather than rejected.
 - **The conflict target is the primary key.** An upsert of a row whose unique
   *other* column is taken raises the database's `23505` rather than replacing,
   and the router serves it as a `409` like any other unique violation.

@@ -2,6 +2,9 @@
 import type { InvoiceRowPrimaryKey } from "validation/repositories/invoiceRowPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
+/**
+ * Delete `invoice_row` rows by key.
+ */
 export async function deleteInvoiceRow(db: SqlExecutor, rows: InvoiceRowPrimaryKey[]): Promise<void> {
     if (rows.length === 0) {
         return;

@@ -253,8 +253,10 @@ Two rules follow from the codec:
 
 ## Status mapping
 
-The handler turns a thrown database error into a status from its `code`
-(`statusFor`, `src/http/http-response.ts`):
+The handler turns a thrown error into a status. An `AppError` names its own
+status; only an error that is not one is matched against the driver's `code`
+(`statusFor`, `src/http/http-response.ts`). `docs/errors.md` records the
+hierarchy.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
@@ -265,10 +267,12 @@ The handler turns a thrown database error into a status from its `code`
 | `40001` | 409 | a version conflict, or a patch or upsert that matched no row (`docs/versioning.md`) |
 | anything else | 500 | a server fault |
 
-A `q` parameter or a body that does not decode is 400, an argument the schema
-rejects is 400 with the Zod issues, and a method/path pair not in the table is
-404. An absent argument decodes as `undefined`, which the schema then rejects —
-the same path as an empty body.
+A generated query raises `QueryError` (400) for a read the query model refuses,
+and a body past the transport cap raises `PayloadTooLargeError` (413). A `q`
+parameter or a body that does not decode is 400, an argument the schema rejects
+is 400 with the Zod issues, and a method/path pair not in the table is 404. An
+absent argument decodes as `undefined`, which the schema then rejects — the same
+path as an empty body.
 
 A group failure answers the same way and adds the `path` of the entry that
 failed, so a caller can name it without re-deriving it from the tree it sent.

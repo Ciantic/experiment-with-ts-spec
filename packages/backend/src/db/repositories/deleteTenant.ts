@@ -2,6 +2,9 @@
 import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
+/**
+ * Delete `tenant` rows by key.
+ */
 export async function deleteTenant(db: SqlExecutor, rows: TenantPrimaryKey[]): Promise<void> {
     if (rows.length === 0) {
         return;

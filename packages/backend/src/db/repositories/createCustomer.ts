@@ -2,6 +2,7 @@
 import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";
 import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
+import { ShortWriteError } from "../errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["id"] as CustomerPrimaryKey["id"] });
@@ -12,6 +13,10 @@ const PARAMETERS_PER_ROW = 9;
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
 
+/**
+ * Create `customer` rows, returning the key of each.
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ */
 export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<CustomerPrimaryKey[]> {
     if (rows.length === 0) {
         return [];
@@ -58,7 +63,7 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
-                throw new Error('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');
+                throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');
             }
             keys.push(...written.map(keyOf));
         }

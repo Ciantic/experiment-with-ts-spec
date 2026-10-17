@@ -16,9 +16,15 @@ export type SendMethod = "POST" | "PUT" | "PATCH";
 
 /** What the generated modules call. */
 export interface HttpClient {
-    /** Send the argument as the `q` query parameter: the reads and the delete. */
+    /**
+     * Send the argument as the `q` query parameter: the reads and the delete.
+     * @throws {HttpError} when the server answers a non-2xx status
+     */
     query<T>(method: QueryMethod, path: string, argument?: unknown): Promise<T>;
-    /** Send the argument as the request body: the writes that carry rows. */
+    /**
+     * Send the argument as the request body: the writes that carry rows.
+     * @throws {HttpError} when the server answers a non-2xx status
+     */
     send<T>(method: SendMethod, path: string, body: unknown): Promise<T>;
 }
 
@@ -59,7 +65,10 @@ function readError(text: string): unknown {
     }
 }
 
-/** A client over `baseUrl`, using `fetch` unless another implementation is given. */
+/**
+ * A client over `baseUrl`, using `fetch` unless another implementation is given.
+ * @throws {HttpError} when the server answers a non-2xx status
+ */
 export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetch): HttpClient {
     const base = baseUrl.replace(/\/$/, "");
 
