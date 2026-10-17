@@ -171,6 +171,7 @@ a string, so a date or an enum value needs no quotes (`default=2024-01-01`,
 ```ts
 /**
  * @fieldName Deleted at
+ * @deletedAt
  * @queryFilter default=null
  * @widget date
  */
@@ -180,8 +181,8 @@ deletedAt?: Date;
 A read that leaves `deletedAt` out matches only the rows where the column is
 `null`, which is how soft deletion is modelled: the column is an ordinary
 nullable field, `update` sets the moment, and every read hides trashed rows
-unless it names the filter. There is no special tag, no `trash` or `restore`
-operation, and no `trashed` argument. See `docs/soft-delete.md`.
+unless it names the filter. The `@deletedAt` marker adds no behaviour of its own;
+it only makes the linter check that shape. See `docs/soft-delete.md`.
 
 A default is not a set: it is one literal, compared with `=` (or `is null`). A
 read that names the filter overrides it and matches the set it passes, so the

@@ -375,6 +375,7 @@ interface FieldTags {
     trigger: SpecTag | undefined;
     createdAt: SpecTag | undefined;
     updatedAt: SpecTag | undefined;
+    deletedAt: SpecTag | undefined;
     pgDefault: SpecTag | undefined;
     pgAutoIncrement: SpecTag | undefined;
     branches: BranchTag[];
@@ -410,6 +411,7 @@ function resolveFieldTags(property: SpecProperty): FieldTags {
         trigger: first("pgTrigger"),
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
+        deletedAt: first("deletedAt"),
         pgDefault: first("pgDefault"),
         pgAutoIncrement: first("pgAutoIncrement"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
@@ -603,6 +605,36 @@ function lintClocks(tags: FieldTags, report: Report): void {
     }
     if (tags.createdAt && tags.updatedAt) {
         report("@createdAt and @updatedAt are mutually exclusive", tags.updatedAt);
+    }
+}
+
+/**
+ * `@deletedAt` marks a row's deletion moment; it changes no generation, so the whole rule is its shape.
+ * See docs/soft-delete.md.
+ */
+function lintDeletedAt(tags: FieldTags, report: Report): void {
+    const tag = tags.deletedAt;
+    if (!tag) {
+        return;
+    }
+    if ((tag.value ?? "")) {
+        report("@deletedAt takes no value", tag);
+    }
+    reportIfBranch(tags, tag, report);
+    // A branch is not a column, so the rest of the shape does not apply to it.
+    if (tags.branches.length > 0) {
+        return;
+    }
+    if (tags.typeText !== "Date") {
+        report(`@deletedAt must be on a \`Date\` field, found \`${tags.typeText ?? "unknown"}\``, tag);
+    }
+    // A live row has no deletion moment, so the column is nullable and the field optional.
+    if (!tags.optional) {
+        report("@deletedAt is null while the row is live, so the field must be optional; add the `?`", tag);
+    }
+    // The hiding of deleted rows is the filter's default, not this marker's, so the field has to carry it.
+    if (parseQueryFilter(tags.queryFilter?.value).default !== null) {
+        report("@deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows", tag);
     }
 }
 
@@ -884,6 +916,7 @@ function lintProperty(
     lintComputedMechanism(tags, report);
     lintTrigger(tags, report);
     lintClocks(tags, report);
+    lintDeletedAt(tags, report);
     lintDefaultTag(tags, report);
     lintAutoIncrement(tags, report);
     lintBranches(tags, report);
