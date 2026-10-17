@@ -12,8 +12,7 @@ read that does not ask for them.
  *
  * @fieldName Deleted at
  * @deletedAt
- * @queryFilter default=null
- * @queryWhere gte
+ * @queryFilter default=isNull
  * @widget date
  */
 deletedAt?: Date;
@@ -33,17 +32,17 @@ moment and makes the linter check the shape a reader depends on:
 
 - the field is optional, so the column is nullable;
 - its type is `Date`;
-- it carries `@queryFilter default=null`, so a read that omits the filter sees
+- it carries `@queryFilter default=isNull`, so a read that omits the filter sees
   live rows only;
 - it is a scalar field, not a branch, and the tag takes no value.
 
 The tag is reserved for a future mechanism. Until then removing it changes
-nothing but the lint finding, and `@queryFilter default=null` alone provides the
+nothing but the lint finding, and `@queryFilter default=isNull` alone provides the
 behaviour.
 
 ## Reads default to live rows
 
-`@queryFilter default=null` makes the filter match `is null` when a read omits
+`@queryFilter default=isNull` makes the filter match `is null` when a read omits
 it. Every read of the entity therefore returns live rows unless it names the
 filter:
 
@@ -51,21 +50,20 @@ filter:
 const live = await queryInvoice(db, { filter: { tenantId: [tenantId] }, select: { number: true, deletedAt: true } });
 ```
 
-A read that names `deletedAt` overrides the default and matches the set it
-passes. A set cannot say "is not null", so a trashed-only read compares instead,
-which is what `@queryWhere gte` on the field allows:
+A read that names `deletedAt` overrides the default. A set cannot say "is not
+null", so a read of deleted rows uses the filter's null test:
 
 ```ts
-const trashed = await queryInvoice(db, {
-    filter: { tenantId: [tenantId] },
-    where: { deletedAt: { gte: new Date(0) } },
+const deleted = await queryInvoice(db, {
+    filter: { tenantId: [tenantId], deletedAt: { isNotNull: true } },
     select: { number: true, deletedAt: true },
 });
 ```
 
-`null < value` is not true, so the comparison matches exactly the rows whose
-`deletedAt` has a value. A `where` condition on a field overrides that field's
-filter default, so the default does not narrow the comparison away.
+`{ isNull: true }` is the explicit spelling of the default, and a where clause
+such as `where: { deletedAt: { isNotNull: true } }` works too when the field
+whitelists `@queryWhere`; both null tests take `true` and bind no parameter. A
+`where` condition on a field overrides that field's filter default.
 
 ## Trash and restore are updates
 
@@ -92,7 +90,8 @@ un-delete a row.
   not a write lock.
 - **The default applies to branches.** A `@children` or `@relation` branch reads
   through the same resolver, so a branch over the entity hides its deleted rows
-  unless the branch names the filter (`docs/queries.md`).
+  unless the branch names the filter — a null test included — or compares the
+  field (`docs/queries.md`).
 - **Purging is a delete.** `delete<Entity>` removes the row for good; nothing
   purges trashed rows on a schedule.
 - **An actor is not modelled.** Who trashed a row (`deletedBy`) is a separate

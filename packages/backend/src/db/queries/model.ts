@@ -111,13 +111,12 @@ export const queryModel: QueryModel = {
                 "issueDate": [
                     "gte",
                     "lte"
-                ],
-                "deletedAt": [
-                    "gte"
                 ]
             },
             "filterDefaults": {
-                "deletedAt": null
+                "deletedAt": {
+                    "kind": "isNull"
+                }
             }
         },
         "invoice_row": {

@@ -1249,11 +1249,11 @@ export interface Thing {
         expect(findings).toEqual([]);
     });
 
-    it("rejects a value that is neither `required` nor `default=null`", () => {
+    it("rejects a value that is neither `required` nor `default=<value>`", () => {
         const findings = lintSourceText(field("value", "yes"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryFilter takes no value, `required`, or `default=<literal>`, found `yes`",
+            "`value`: @queryFilter takes no value, `required`, or `default=<value>`, found `yes`",
         ]);
     });
 
@@ -1268,22 +1268,36 @@ export interface Thing {
             ${field};
         }`;
 
-    it("accepts default=null on an optional field", () => {
-        const findings = lintSourceText(custom("@queryFilter default=null", "deletedAt?: Date"));
+    it("accepts default=isNull on an optional field", () => {
+        const findings = lintSourceText(custom("@queryFilter default=isNull", "deletedAt?: Date"));
 
         expect(findings).toEqual([]);
     });
 
-    it("rejects default=null on a field whose column is not nullable", () => {
-        const findings = lintSourceText(custom("@queryFilter default=null", "deletedAt: Date"));
+    it("accepts default=isNotNull on an optional field", () => {
+        const findings = lintSourceText(custom("@queryFilter default=isNotNull", "deletedAt?: Date"));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects default=isNull on a field whose column is not nullable", () => {
+        const findings = lintSourceText(custom("@queryFilter default=isNull", "deletedAt: Date"));
 
         expect(messages(findings)).toEqual([
-            "`deletedAt`: @queryFilter default=null needs an optional field, whose column is nullable",
+            "`deletedAt`: @queryFilter default=isNull needs an optional field, whose column is nullable",
+        ]);
+    });
+
+    it("rejects the retired default=null spelling", () => {
+        const findings = lintSourceText(custom("@queryFilter default=null", "deletedAt?: Date"));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @queryFilter spells a null default `default=isNull`, not `default=null`",
         ]);
     });
 
     it("rejects a filter that is both required and defaulted", () => {
-        const findings = lintSourceText(custom("@queryFilter required default=null", "value?: string"));
+        const findings = lintSourceText(custom("@queryFilter required default=isNull", "value?: string"));
 
         expect(messages(findings)).toEqual([
             "`value`: @queryFilter cannot be both `required` and defaulted",
@@ -1304,11 +1318,17 @@ export interface Thing {
         }
     });
 
-    it("rejects a default with no literal", () => {
+    it("reads a quoted null keyword as a string, so a text value can spell it", () => {
+        const findings = lintSourceText(custom('@queryFilter default="isNull"', "status?: string"));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a default with no value", () => {
         const findings = lintSourceText(custom("@queryFilter default=", "value?: string"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryFilter default= needs a literal: `null`, a boolean, a number, or a string",
+            "`value`: @queryFilter default= needs a value: `isNull`, `isNotNull`, a boolean, a number, or a string",
         ]);
     });
 
@@ -1370,13 +1390,21 @@ export interface Thing {
         }`;
 
     it("accepts @deletedAt on a nullable Date with a null filter default", () => {
-        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=null"]));
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=isNull"]));
 
         expect(findings).toEqual([]);
     });
 
+    it("rejects @deletedAt whose filter defaults to isNotNull", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=isNotNull"]));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt needs @queryFilter default=isNull on the same field, so a read hides deleted rows",
+        ]);
+    });
+
     it("rejects @deletedAt on a field whose type is not Date", () => {
-        const findings = lintSourceText(field("string", ["@deletedAt", "@queryFilter default=null"]));
+        const findings = lintSourceText(field("string", ["@deletedAt", "@queryFilter default=isNull"]));
 
         expect(messages(findings)).toEqual([
             "`deletedAt`: @deletedAt must be on a `Date` field, found `string`",
@@ -1384,11 +1412,11 @@ export interface Thing {
     });
 
     it("rejects @deletedAt on a required field, whose column would be not null", () => {
-        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=null"], false));
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=isNull"], false));
 
         expect(messages(findings)).toEqual([
             "`deletedAt`: @deletedAt is null while the row is live, so the field must be optional; add the `?`",
-            "`deletedAt`: @queryFilter default=null needs an optional field, whose column is nullable",
+            "`deletedAt`: @queryFilter default=isNull needs an optional field, whose column is nullable",
         ]);
     });
 
@@ -1396,7 +1424,7 @@ export interface Thing {
         const findings = lintSourceText(field("Date", ["@deletedAt"]));
 
         expect(messages(findings)).toEqual([
-            "`deletedAt`: @deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows",
+            "`deletedAt`: @deletedAt needs @queryFilter default=isNull on the same field, so a read hides deleted rows",
         ]);
     });
 
@@ -1404,12 +1432,12 @@ export interface Thing {
         const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=2024-01-01"]));
 
         expect(messages(findings)).toEqual([
-            "`deletedAt`: @deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows",
+            "`deletedAt`: @deletedAt needs @queryFilter default=isNull on the same field, so a read hides deleted rows",
         ]);
     });
 
     it("rejects @deletedAt with a value", () => {
-        const findings = lintSourceText(field("Date", ["@deletedAt trashed", "@queryFilter default=null"]));
+        const findings = lintSourceText(field("Date", ["@deletedAt trashed", "@queryFilter default=isNull"]));
 
         expect(messages(findings)).toEqual(["`deletedAt`: @deletedAt takes no value"]);
     });
@@ -2014,7 +2042,7 @@ export interface Thing {
         const findings = lintSourceText(field(""));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryWhere requires at least one operator, one of: eq, ne, gt, gte, lt, lte",
+            "`value`: @queryWhere requires at least one operator, one of: eq, ne, gt, gte, lt, lte, isNull, isNotNull",
         ]);
     });
 
@@ -2022,7 +2050,31 @@ export interface Thing {
         const findings = lintSourceText(field("between"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryWhere `between` is not one of: eq, ne, gt, gte, lt, lte",
+            "`value`: @queryWhere `between` is not one of: eq, ne, gt, gte, lt, lte, isNull, isNotNull",
+        ]);
+    });
+
+    it("accepts a null test on an optional field", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Value
+                 * @queryWhere isNull isNotNull
+                 * @widget date
+                 */
+                value?: Date;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects a null test on a field whose column is not nullable", () => {
+        const findings = lintSourceText(field("eq isNotNull"));
+
+        expect(messages(findings)).toEqual([
+            "`value`: @queryWhere `isNotNull` needs an optional field, whose column is nullable",
         ]);
     });
 

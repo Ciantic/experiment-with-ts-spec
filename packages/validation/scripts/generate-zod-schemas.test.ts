@@ -243,6 +243,36 @@ export interface Scoped {
 }
 `.trim();
 
+/** A row whose nullable filter can be matched by set or by null test, and whose field is comparable for null. */
+const FILTERED = `
+import type { BrandedId } from "./primitives.ts";
+
+/** The identifier of a filtered row. */
+export type FilteredId = BrandedId<"FilteredId">;
+
+/**
+ * A filtered row.
+ *
+ * @pgTable filtered
+ * @entity
+ */
+export interface Filtered {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: FilteredId;
+    /**
+     * The moment the row was deleted; null while it is live.
+     *
+     * @queryFilter default=isNull
+     * @queryWhere isNull isNotNull
+     */
+    deletedAt?: Date;
+}
+`.trim();
+
 /** The Zod surface the stub needs, so the functional tests stay typed. */
 interface ZodStub {
     string: () => { optional: () => unknown };
@@ -631,6 +661,29 @@ describe("buildZodModel queries", () => {
         ]);
         expect(queryChild?.whereFields).toEqual([]);
     });
+
+    it("lets a nullable filter take a null test as well as a set", () => {
+        const { model } = generate({ entities: { Filtered: FILTERED } });
+        const queryFiltered = model.queries.find((query) => query.entity === "Filtered");
+
+        expect(queryFiltered?.filterFields).toEqual([
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"FilteredId">()).optional()' },
+            {
+                name: "deletedAt",
+                expression:
+                    "z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional()",
+            },
+        ]);
+    });
+
+    it("keeps a not-null filter a plain set, since it has no nulls to test", () => {
+        const { model } = generate({ entities: { Thing: THING } });
+        const queryThing = model.queries.find((query) => query.entity === "Thing");
+
+        expect(queryThing?.filterFields).toEqual([
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).optional()' },
+        ]);
+    });
 });
 
 describe("generateQueryFile", () => {
@@ -665,6 +718,58 @@ describe("generateQueryFile", () => {
 
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).not.toContain("getThingSchema");
+    });
+
+    it("emits a null test beside the set for a nullable filter, and a literal value for a null comparison", () => {
+        const { model } = generate({ entities: { Filtered: FILTERED } });
+        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
+        const queries = model.queries.filter((query) => query.entity === "Filtered");
+        const code = generateQueryFile("Filtered", queries, byName);
+
+        expect(code).toContain(
+            '        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),',
+        );
+        expect(code).toContain("            isNull: z.literal(true).optional(),");
+        expect(code).toContain("            isNotNull: z.literal(true).optional(),");
+    });
+
+    it("accepts a null test in a filter and rejects a value where the test belongs", () => {
+        const { model } = generate({ entities: { Filtered: FILTERED } });
+        const byName = new Map(model.entities.map((entity) => [entity.name, entity]));
+        const queries = model.queries.filter((query) => query.entity === "Filtered");
+        const code = generateQueryFile("Filtered", queries, byName);
+        const z = zodStub();
+        const exports = tsLoadGeneratedModule<Record<string, Schema>>(
+            code,
+            tsStubImports({
+                zod: { z },
+                "../primitives.ts": { brandedIdSchema: () => z.string() },
+            }),
+        );
+
+        expect(
+            exports.queryFilteredSchema?.safeParse({ filter: { deletedAt: { isNotNull: true } }, select: {} })
+                .success,
+        ).toBe(true);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ filter: { deletedAt: { isNull: true } }, select: {} }).success,
+        ).toBe(true);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ filter: { deletedAt: { isNull: false } }, select: {} }).success,
+        ).toBe(false);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ filter: { deletedAt: { isMaybe: true } }, select: {} }).success,
+        ).toBe(false);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ filter: { deletedAt: { isNull: true, isNotNull: true } }, select: {} })
+                .success,
+        ).toBe(false);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ where: { deletedAt: { isNotNull: true } }, select: {} }).success,
+        ).toBe(true);
+        expect(
+            exports.queryFilteredSchema?.safeParse({ where: { deletedAt: { isNotNull: "yes" } }, select: {} }).success,
+        ).toBe(false);
     });
 
     it("requires the filter object when the entity requires a filter", () => {

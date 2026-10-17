@@ -77,7 +77,7 @@ default), at most `limit` of them, in pages of `offset`.
 ```
 @queryFilter
 @queryFilter required
-@queryFilter default=<literal>
+@queryFilter default=<value>
 ```
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
@@ -118,6 +118,32 @@ contributes one filter per key column, so each part of the key filters on its ow
 A field without `@queryFilter` is not filterable. Branch fields
 (`@relation`/`@children`/`@inlined`) may not carry it; a relation is filtered
 through its `@foreignKey` field, which is a scalar like any other.
+
+A filter's value is a **set** by default, but a nullable field also takes a null
+test instead. That is how a read names the rows a default would hide:
+
+```ts
+// Live invoices: the default fills in `is null`.
+const live = await queryInvoice(db, { filter: { tenantId: [tenantId] }, select: { number: true } });
+
+// Deleted invoices: the null test replaces the default.
+const deleted = await queryInvoice(db, {
+    filter: { tenantId: [tenantId], deletedAt: { isNotNull: true } },
+    select: { number: true, deletedAt: true },
+});
+
+// Invoices with no customer.
+const unassigned = await queryInvoice(db, {
+    filter: { tenantId: [tenantId], customerId: { isNull: true } },
+    select: { number: true },
+});
+```
+
+`{ isNull: true }` and `{ isNotNull: true }` take no value. They are offered only
+for an optional field, whose column can hold null; a null test on a not-null
+column would match every row or none, so the linter rejects
+`@queryWhere isNull|isNotNull` there and the generated schema does not accept the
+test on a required filter. See "Filters are sets" below.
 
 ### A required filter
 
@@ -163,38 +189,43 @@ points at declares that column with `@tenantOwned`. See `docs/tenancy.md`.
 
 ### A defaulted filter
 
-`@queryFilter default=<literal>` gives the filter a value to match when a read
-omits it. The literal is `null`, a boolean, a number, or a string; a bare token is
-a string, so a date or an enum value needs no quotes (`default=2024-01-01`,
-`default=draft`), and quotes are also accepted (`default="draft"`).
+`@queryFilter default=<value>` gives the filter a value to match when a read
+omits it. The value is one of the null-test keywords `isNull` and `isNotNull`, a
+boolean, a number, or a string. A bare token is a string, so a date or an enum
+value needs no quotes (`default=2024-01-01`, `default=draft`), and quotes are
+also accepted (`default="draft"`). A quoted keyword is a string too, so a text
+column can default to the text `isNull`.
 
 ```ts
 /**
  * @fieldName Deleted at
  * @deletedAt
- * @queryFilter default=null
+ * @queryFilter default=isNull
  * @widget date
  */
 deletedAt?: Date;
 ```
 
 A read that leaves `deletedAt` out matches only the rows where the column is
-`null`, which is how soft deletion is modelled: the column is an ordinary
-nullable field, `update` sets the moment, and every read hides trashed rows
-unless it names the filter. The `@deletedAt` marker adds no behaviour of its own;
-it only makes the linter check that shape. See `docs/soft-delete.md`.
+`null`, because `isNull` compiles to `is null`. That is how soft deletion is
+modelled: the column is an ordinary nullable field, `update` sets the moment,
+and every read hides trashed rows unless it names the filter. The `@deletedAt`
+marker adds no behaviour of its own; it only makes the linter check that shape.
+See `docs/soft-delete.md`.
 
-A default is not a set: it is one literal, compared with `=` (or `is null`). A
-read that names the filter overrides it and matches the set it passes, so the
+A default is not a set: it is one value, compared with `=` or a null test. A
+read that names the filter overrides it — with a set or a null test — so the
 default only fills a hole. Defaults combine with the other filters and with
 `where`, all with `and` — but a `where` condition on the same field counts as
 naming it, so it replaces the default rather than narrowing it.
 
-- **`null` needs a nullable field.** A `null` default on a not-null column could
-  never match; the linter reports it. Any other literal works on either.
+- **A null test needs a nullable field.** `default=isNull` and
+  `default=isNotNull` read a nullable column; on a not-null one the first would
+  never match and the second would match everything, so the linter reports both.
+  A literal works on either.
 - **A default never makes a filter required.** The filter stays optional in the
   generated type, the wire schema, and the SDK; a read that names it wins, and a
-  read that omits it gets the literal.
+  read that omits it gets the declared value.
 - **A default applies to branches too.** A branch narrows through the same
   resolver, so a `@children` or `@relation` branch over a defaulted entity hides
   the defaulted rows unless its own arguments name the filter or compare the
@@ -206,7 +237,8 @@ naming it, so it replaces the default rather than narrowing it.
 
 Every filter is an array and every clause is `= any($n)`, so a single value is
 written as a one-element array. An array matches any of its values, and an empty
-array matches nothing.
+array matches nothing. A filter whose field is nullable also takes a null test,
+`{ isNull: true }` or `{ isNotNull: true }`, because a set cannot say either.
 
 Several filters are combined with **`and`**: `{ tenantId: […], customerId: […] }`
 requires both. A filter left `undefined` is dropped — unless it declares a
@@ -218,8 +250,11 @@ The generated type makes every filter optional except the ones the tag marks
 required:
 
 ```ts
-type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: NonNullable<E[P]>[] } & Partial<{
-    [P in Exclude<K, R>]: NonNullable<E[P]>[];
+type NullFilter = { isNull: true } | { isNotNull: true };
+type FilterValue<T> = readonly NonNullable<T>[] | (undefined extends T ? NullFilter : never);
+
+type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: FilterValue<E[P]> } & Partial<{
+    [P in Exclude<K, R>]: FilterValue<E[P]>;
 }>;
 ```
 
@@ -305,18 +340,28 @@ const invoices = await queryInvoice(db, {
 
 The operator list is **required**: a bare `@queryWhere` is a lint finding. The
 vocabulary is `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, mapped to `=`, `<>`, `>`,
-`>=`, `<`, `<=`. Each operator takes one value; several operators on one field
-AND together, so `{ gte, lte }` **is** a range and no `between` operator is
-needed. An operator the field does not declare is a **type error** and, over
-HTTP, a 400.
+`>=`, `<`, `<=`, plus the null tests `isNull` and `isNotNull`. Every operator
+except the last two takes one value; several operators on one field AND together,
+so `{ gte, lte }` **is** a range and no `between` operator is needed. The null
+tests take `true` and bind no parameter. An operator the field does not declare
+is a **type error** and, over HTTP, a 400.
 
 ```ts
 /** The comparison arguments of a read. See docs/queries.md. */
+type NullOp = "isNull" | "isNotNull";
+
 export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
-    [K in keyof O & keyof E]?: { [P in Extract<NonNullable<O[K]>, PropertyKey>]?: NonNullable<E[K]> };
+    [K in keyof O & keyof E]?: {
+        [P in Extract<NonNullable<O[K]>, PropertyKey>]?: P extends NullOp ? true : NonNullable<E[K]>;
+    };
 };
-export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | NullOp;
 ```
+
+A null test is also a filter's job when the field declares `@queryFilter`, but
+`where` keeps the alternative for a field that is comparable and not filterable,
+and it combines with a `filter` on the same field. A null test on a not-null
+column matches everything or nothing, so the linter rejects it there.
 
 `filter` stays for membership: an `= any($n)` is index-friendly and reads a whole
 set in one comparison, so a read may use both — `filter` to narrow cheaply, then
@@ -605,22 +650,24 @@ because the ranked window orders each parent's rows before they are grouped.
 - **A filter reads columns the selection may omit.** `select` governs the
   projection; the `args` still read whatever they name, and so do `order` and
   `where`.
-- **Set membership, or the `@queryWhere` operators.** A `filter` is an array matched
-  with `= any($n)`; an empty set matches nothing, and a non-array value throws. A
-  comparison goes through `where`, whose operators are whitelisted per field.
-  A range is `{ gte, lte }`, not a `between`.
+- **Set membership, a null test, or the `@queryWhere` operators.** A `filter` is
+  an array matched with `= any($n)`, or `{ isNull: true }`/`{ isNotNull: true }`
+  on a nullable field; an empty set matches nothing, and a value that is neither
+  throws. A comparison goes through `where`, whose operators are whitelisted per
+  field, and whose null tests take `true`. A range is `{ gte, lte }`, not a
+  `between`.
 - **`eq` overlaps `filter`.** `where: { id: { eq } }` says what
   `filter: { id: [value] }` already says; `eq` exists for symmetry and `ne` is
-  the operator `filter` cannot express.
+  the operator a set cannot express, as are the two null tests.
 - **Filters come only from `@queryFilter`, plus the primary key.** A field
   without the tag is not filterable, each `@primaryKey` field is a filter without
   it, and a branch field may not carry it. A parent is not filtered by a related
   record's columns, such as `customer.name`; a branch's own `filter` narrows the
   branch, and the foreign key is a scalar field, so `customerId` is filterable.
 - **A default fills a hole, it does not narrow by itself.** `@queryFilter
-  default=<literal>` applies when a read omits the filter; a read that names it
-  overrides the literal. This is how a nullable `deletedAt` reads live rows by
-  default, without a tag of its own (`docs/soft-delete.md`).
+  default=<value>` applies when a read omits the filter; a read that names it
+  overrides the declared value. This is how a nullable `deletedAt` reads live rows
+  by default (`docs/soft-delete.md`).
 - **A required filter is a precondition, not a filter value.** `@queryFilter
   required` narrows nothing by itself; it makes the caller name the field. Every
   tenant-owned entity marks its `tenantId` that way, so a read cannot quietly span

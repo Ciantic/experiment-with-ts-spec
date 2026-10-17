@@ -235,15 +235,34 @@ describe("parseSpec tags", () => {
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
     });
 
-    it("decodes @queryFilter default=null as a null value", () => {
+    it("decodes @queryFilter default=isNull as a null test", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryFilter default=null\n     */", "code?: Date;"),
+            "Thing.ts": thing("    /**\n     * @queryFilter default=isNull\n     */", "code?: Date;"),
         });
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: null,
+            default: { kind: "isNull" },
         });
+    });
+
+    it("decodes @queryFilter default=isNotNull as a not-null test", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=isNotNull\n     */", "code?: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: { kind: "isNotNull" },
+        });
+    });
+
+    it("keeps the retired default=null spelling out of the model, for the linter to report", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=null\n     */", "code?: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
     });
 
     it("decodes a numeric filter default", () => {
@@ -253,7 +272,7 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: 0,
+            default: { kind: "literal", value: 0 },
         });
     });
 
@@ -264,7 +283,7 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: true,
+            default: { kind: "literal", value: true },
         });
     });
 
@@ -275,7 +294,7 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: "draft",
+            default: { kind: "literal", value: "draft" },
         });
     });
 
@@ -286,7 +305,18 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: "draft",
+            default: { kind: "literal", value: "draft" },
+        });
+    });
+
+    it("keeps a quoted null keyword a string, so a text column can default to that text", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing('    /**\n     * @queryFilter default="isNull"\n     */', "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: { kind: "literal", value: "isNull" },
         });
     });
 
@@ -297,7 +327,7 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: "on hold",
+            default: { kind: "literal", value: "on hold" },
         });
     });
 
@@ -308,18 +338,18 @@ describe("parseSpec tags", () => {
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: false,
-            default: "9007199254740993",
+            default: { kind: "literal", value: "9007199254740993" },
         });
     });
 
     it("decodes both options when one tag carries them", () => {
         const { interfaces } = parse({
-            "Thing.ts": thing("    /**\n     * @queryFilter required default=null\n     */", "code?: string;"),
+            "Thing.ts": thing("    /**\n     * @queryFilter required default=isNull\n     */", "code?: string;"),
         });
 
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
             required: true,
-            default: null,
+            default: { kind: "isNull" },
         });
     });
 

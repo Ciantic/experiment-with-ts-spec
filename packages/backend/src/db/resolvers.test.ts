@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
+import type { FilterDefault } from "validation/selection.ts";
 import { createResolver, type QueryModel } from "./resolvers.ts";
 
 /** Fixture entities, so the tests do not read the real spec. */
@@ -248,7 +249,15 @@ describe("resolveMany", () => {
 
         await expect(
             resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: "i1" }, { select }),
-        ).rejects.toThrow("filter `id` on `invoice` must be an array");
+        ).rejects.toThrow("filter `id` on `invoice` must be an array or a null test");
+    });
+
+    it("rejects a filter value that is neither a set nor a null test", async () => {
+        const select = { id: true } as const;
+
+        await expect(
+            resolver.resolveMany<Invoice, typeof select>(db, "invoice", { id: { isNull: false } }, { select }),
+        ).rejects.toThrow("filter `id` on `invoice` must be an array or a null test");
     });
 
     it("returns nothing for a filter that matches no rows", async () => {
@@ -329,7 +338,7 @@ describe("resolveMany required filters", () => {
 });
 
 /** Resolvers over the `task` fixture, each with the filter defaults one test needs. */
-function taskResolver(filterDefaults: Record<string, string | number | boolean | null>) {
+function taskResolver(filterDefaults: Record<string, FilterDefault>) {
     return createResolver({
         tables: {
             task: {
@@ -352,31 +361,91 @@ describe("resolveMany filter defaults", () => {
     };
 
     it("matches null when a defaulted filter is omitted", async () => {
-        expect(await ids(taskResolver({ deletedAt: null }), {})).toEqual(["t1", "t3"]);
+        expect(await ids(taskResolver({ deletedAt: { kind: "isNull" } }), {})).toEqual(["t1", "t3"]);
     });
 
     it("matches a declared string when the filter is omitted", async () => {
-        expect(await ids(taskResolver({ status: "open" }), {})).toEqual(["t1", "t2"]);
+        expect(await ids(taskResolver({ status: { kind: "literal", value: "open" } }), {})).toEqual(["t1", "t2"]);
     });
 
     it("binds a literal against the column's type, so a date string matches a timestamp column", async () => {
-        expect(await ids(taskResolver({ deletedAt: "2026-10-17T12:00:00Z" }), {})).toEqual(["t2"]);
+        expect(await ids(taskResolver({ deletedAt: { kind: "literal", value: "2026-10-17T12:00:00Z" } }), {})).toEqual(["t2"]);
     });
 
     it("matches a declared number when the filter is omitted", async () => {
-        expect(await ids(taskResolver({ priority: 0 }), {})).toEqual(["t3"]);
+        expect(await ids(taskResolver({ priority: { kind: "literal", value: 0 } }), {})).toEqual(["t3"]);
     });
 
     it("lets a named filter override the default", async () => {
-        expect(await ids(taskResolver({ status: "open" }), { status: ["done"] })).toEqual(["t3"]);
+        expect(await ids(taskResolver({ status: { kind: "literal", value: "open" } }), { status: ["done"] })).toEqual(["t3"]);
     });
 
     it("combines two defaults with and", async () => {
-        expect(await ids(taskResolver({ status: "open", priority: 2 }), {})).toEqual(["t2"]);
+        expect(await ids(taskResolver({ status: { kind: "literal", value: "open" }, priority: { kind: "literal", value: 2 } }), {})).toEqual(["t2"]);
     });
 
     it("combines a default with a named filter", async () => {
-        expect(await ids(taskResolver({ deletedAt: null }), { status: ["done"] })).toEqual(["t3"]);
+        expect(await ids(taskResolver({ deletedAt: { kind: "isNull" } }), { status: ["done"] })).toEqual(["t3"]);
+    });
+
+    it("matches nulls with an `isNull` filter", async () => {
+        expect(await ids(taskResolver({}), { deletedAt: { isNull: true } })).toEqual(["t1", "t3"]);
+    });
+
+    it("matches rows with a value with an `isNotNull` filter, overriding the default", async () => {
+        expect(await ids(taskResolver({ deletedAt: { kind: "isNull" } }), { deletedAt: { isNotNull: true } })).toEqual(["t2"]);
+    });
+
+    it("rejects an unknown null test", async () => {
+        await expect(ids(taskResolver({}), { deletedAt: { isMaybe: true } })).rejects.toThrow(
+            "filter `deletedAt` on `task` must be an array or a null test",
+        );
+    });
+
+    it("filters with a `where` null test instead of a value", async () => {
+        const resolver = createResolver({
+            tables: {
+                task: {
+                    name: "task",
+                    key: "id",
+                    fields: { id: "id", deletedAt: "deletedAt" },
+                    relations: {},
+                    order: ["id"],
+                    where: { deletedAt: ["isNull", "isNotNull"] },
+                },
+            },
+        });
+        const read = async (where: Record<string, Record<string, unknown>>) =>
+            (
+                await resolver.resolveMany<{ id: string }, typeof select>(db, "task", {}, { select, where })
+            ).map((row) => row.id);
+
+        expect(await read({ deletedAt: { isNull: true } })).toEqual(["t1", "t3"]);
+        expect(await read({ deletedAt: { isNotNull: true } })).toEqual(["t2"]);
+    });
+
+    it("rejects a `where` null test that passes a value", async () => {
+        const resolver = createResolver({
+            tables: {
+                task: {
+                    name: "task",
+                    key: "id",
+                    fields: { id: "id", deletedAt: "deletedAt" },
+                    relations: {},
+                    order: ["id"],
+                    where: { deletedAt: ["isNull"] },
+                },
+            },
+        });
+
+        await expect(
+            resolver.resolveMany<{ id: string }, typeof select>(
+                db,
+                "task",
+                {},
+                { select, where: { deletedAt: { isNull: false } } },
+            ),
+        ).rejects.toThrow("where operator `isNull` on `deletedAt` of `task` takes `true`");
     });
 
     it("lets a comparison on the same field override the default", async () => {
@@ -389,7 +458,7 @@ describe("resolveMany filter defaults", () => {
                     relations: {},
                     order: ["id"],
                     where: { deletedAt: ["gte"] },
-                    filterDefaults: { deletedAt: null },
+                    filterDefaults: { deletedAt: { kind: "isNull" } },
                 },
             },
         });

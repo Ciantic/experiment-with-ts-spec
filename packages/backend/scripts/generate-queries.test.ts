@@ -71,12 +71,13 @@ const scoped = table("scoped", "Scoped", [
     column("tenantId", { queryFilter: { required: true } }),
 ]);
 
-/** An entity whose filters fall back to a literal when a read omits them. */
+/** An entity whose filters fall back to a value when a read omits them. */
 const defaulted = table("defaulted", "Defaulted", [
     column("id", { primaryKey: true, queryFilter: { required: false } }),
-    column("state", { queryFilter: { required: false, default: "open" } }),
-    column("priority", { queryFilter: { required: false, default: 0 } }),
-    column("deletedAt", { notNull: false, queryFilter: { required: false, default: null } }),
+    column("state", { queryFilter: { required: false, default: { kind: "literal", value: "open" } } }),
+    column("priority", { queryFilter: { required: false, default: { kind: "literal", value: 0 } } }),
+    column("deletedAt", { notNull: false, queryFilter: { required: false, default: { kind: "isNull" } } }),
+    column("approvedAt", { notNull: false, queryFilter: { required: false, default: { kind: "isNotNull" } } }),
 ]);
 
 const tables = new Map([
@@ -121,7 +122,12 @@ describe("buildQueryModel", () => {
     it("records the filters' literal defaults", () => {
         const model = buildQueryModel(new Map([["Defaulted", defaulted]]));
 
-        expect(model.tables.defaulted?.filterDefaults).toEqual({ state: "open", priority: 0, deletedAt: null });
+        expect(model.tables.defaulted?.filterDefaults).toEqual({
+            state: { kind: "literal", value: "open" },
+            priority: { kind: "literal", value: 0 },
+            deletedAt: { kind: "isNull" },
+            approvedAt: { kind: "isNotNull" },
+        });
     });
 
     it("omits default metadata when no filter declares one", () => {
@@ -254,6 +260,16 @@ describe("renderQueryModule", () => {
         expect(code).toContain("import type { Filters, Selected, Selection, Where } from");
         expect(code).toContain('where?: Where<Sized, { amount: "gte" | "lte" }>');
         expect(code).toContain("where: opts.where");
+    });
+
+    it("names a null test among the whitelisted operators", () => {
+        const nullable = table("nullable", "Nullable", [
+            column("id", { primaryKey: true, queryFilter: { required: false } }),
+            column("deletedAt", { notNull: false, where: ["isNull", "isNotNull"] }),
+        ]);
+        const code = renderQueryModule("Nullable", nullable);
+
+        expect(code).toContain('where?: Where<Nullable, { deletedAt: "isNull" | "isNotNull" }>');
     });
 
     it("omits the where key from the opts type when the entity marks nothing comparable", () => {
