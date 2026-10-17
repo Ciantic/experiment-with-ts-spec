@@ -17,6 +17,7 @@ import {
     isReferentialAction,
     loadSpec,
     parseForeignKey,
+    parseQueryFilter,
     parseInMemorySpec,
     parseParameters,
     resolveType,
@@ -756,19 +757,30 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
     }
 }
 
-/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it. */
+/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it, `default=<literal>` fills it in when omitted. */
 function lintQueryFilter(tags: FieldTags, report: Report): void {
     const tag = tags.queryFilter;
     if (!tag) {
         return;
     }
-    const text = (tag.value ?? "").trim();
-    if (text !== "" && text !== "required") {
-        report(`@queryFilter takes no value or \`required\`, found \`${text}\``, tag);
-    }
     reportIfBranch(tags, tag, report);
+    const parsed = parseQueryFilter(tag.value);
+    for (const token of parsed.unknown) {
+        report(`@queryFilter takes no value, \`required\`, or \`default=<literal>\`, found \`${token}\``, tag);
+    }
+    if (parsed.emptyDefault) {
+        report("@queryFilter default= needs a literal: `null`, a boolean, a number, or a string", tag);
+    }
+    // `null` is a value of a nullable column; on a not-null one the default would match nothing.
+    if (parsed.default === null && !tags.optional) {
+        report("@queryFilter default=null needs an optional field, whose column is nullable", tag);
+    }
+    // A required filter is always named, so its default would never apply.
+    if (parsed.required && parsed.default !== undefined) {
+        report("@queryFilter cannot be both `required` and defaulted", tag);
+    }
     // The primary key is an optional filter already (spec-model defaults it), so only `required` adds anything.
-    if (tags.primaryKey && text !== "required") {
+    if (tags.primaryKey && !parsed.required) {
         report("the primary key is a filter by default; drop @queryFilter, or write `required`", tag);
     }
 }

@@ -25,6 +25,7 @@ export const queryInvoiceSelectSchema = z.lazy(() =>
         notes: z.literal(true).optional(),
         createdAt: z.literal(true).optional(),
         updatedAt: z.literal(true).optional(),
+        deletedAt: z.literal(true).optional(),
         version: z.literal(true).optional(),
     }),
 );
@@ -35,6 +36,7 @@ export const queryInvoiceSchema = z.strictObject({
         tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
         customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
         sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
+        deletedAt: z.array(z.date()).optional(),
     }).optional(),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
@@ -43,6 +45,9 @@ export const queryInvoiceSchema = z.strictObject({
         issueDate: z.strictObject({
             gte: z.date().optional(),
             lte: z.date().optional(),
+        }).optional(),
+        deletedAt: z.strictObject({
+            gte: z.date().optional(),
         }).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),

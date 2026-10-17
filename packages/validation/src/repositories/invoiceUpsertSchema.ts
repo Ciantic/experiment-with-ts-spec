@@ -23,8 +23,9 @@ export const invoiceUpsertSchema = invoiceSchema
         issueDate: invoiceSchema.shape.issueDate.nullable(),
         dueDate: invoiceSchema.shape.dueDate.nullable(),
         notes: invoiceSchema.shape.notes.nullable(),
+        deletedAt: invoiceSchema.shape.deletedAt.nullable(),
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes", never>;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", never>;

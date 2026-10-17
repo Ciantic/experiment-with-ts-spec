@@ -121,6 +121,16 @@ beforeAll(async () => {
         create table widget (id text primary key, seq int not null);
         insert into widget (id, seq)
             select 'w' || lpad(n::text, 5, '0'), n from generate_series(1, 1500) as n;
+        create table task (
+            id text primary key,
+            status text not null,
+            priority int not null,
+            "deletedAt" timestamptz
+        );
+        insert into task (id, status, priority, "deletedAt") values
+            ('t1', 'open', 1, null),
+            ('t2', 'open', 2, '2026-10-17T12:00:00Z'),
+            ('t3', 'done', 0, null);
     `);
     db = createTransactionalDb(createPglitePool(pglite));
 });
@@ -315,6 +325,82 @@ describe("resolveMany required filters", () => {
         );
 
         expect(rows[0]?.rows).toEqual([{ description: "Widget" }, { description: "Gadget" }]);
+    });
+});
+
+/** Resolvers over the `task` fixture, each with the filter defaults one test needs. */
+function taskResolver(filterDefaults: Record<string, string | number | boolean | null>) {
+    return createResolver({
+        tables: {
+            task: {
+                name: "task",
+                key: "id",
+                fields: { id: "id", status: "status", priority: "priority", deletedAt: "deletedAt" },
+                relations: {},
+                order: ["id"],
+                filterDefaults,
+            },
+        },
+    });
+}
+
+describe("resolveMany filter defaults", () => {
+    const select = { id: true } as const;
+    const ids = async (resolver: ReturnType<typeof taskResolver>, args: Record<string, unknown>) => {
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(db, "task", args, { select });
+        return rows.map((row) => row.id);
+    };
+
+    it("matches null when a defaulted filter is omitted", async () => {
+        expect(await ids(taskResolver({ deletedAt: null }), {})).toEqual(["t1", "t3"]);
+    });
+
+    it("matches a declared string when the filter is omitted", async () => {
+        expect(await ids(taskResolver({ status: "open" }), {})).toEqual(["t1", "t2"]);
+    });
+
+    it("binds a literal against the column's type, so a date string matches a timestamp column", async () => {
+        expect(await ids(taskResolver({ deletedAt: "2026-10-17T12:00:00Z" }), {})).toEqual(["t2"]);
+    });
+
+    it("matches a declared number when the filter is omitted", async () => {
+        expect(await ids(taskResolver({ priority: 0 }), {})).toEqual(["t3"]);
+    });
+
+    it("lets a named filter override the default", async () => {
+        expect(await ids(taskResolver({ status: "open" }), { status: ["done"] })).toEqual(["t3"]);
+    });
+
+    it("combines two defaults with and", async () => {
+        expect(await ids(taskResolver({ status: "open", priority: 2 }), {})).toEqual(["t2"]);
+    });
+
+    it("combines a default with a named filter", async () => {
+        expect(await ids(taskResolver({ deletedAt: null }), { status: ["done"] })).toEqual(["t3"]);
+    });
+
+    it("lets a comparison on the same field override the default", async () => {
+        const resolver = createResolver({
+            tables: {
+                task: {
+                    name: "task",
+                    key: "id",
+                    fields: { id: "id", deletedAt: "deletedAt" },
+                    relations: {},
+                    order: ["id"],
+                    where: { deletedAt: ["gte"] },
+                    filterDefaults: { deletedAt: null },
+                },
+            },
+        });
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(
+            db,
+            "task",
+            {},
+            { select, where: { deletedAt: { gte: new Date(0) } } },
+        );
+
+        expect(rows.map((row) => row.id)).toEqual(["t2"]);
     });
 });
 

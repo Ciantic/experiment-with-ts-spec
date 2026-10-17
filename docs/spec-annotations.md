@@ -101,11 +101,12 @@ Field tags:
   is required, at most one per interface, the field type must be `Version`, and
   it is exclusive with `@computed`. See `docs/versioning.md`.
 - `@queryFilter` — a bare marker that makes the field a filter of the entity's
-  generated reads; `@queryFilter required` makes every read name it. A filter is a
-  set matched with `= any($n)`; several are combined with `and`. Scalar fields only; a
-  branch field may not carry it, and it is redundant on the `@primaryKey` field,
-  which is an optional filter by default — `required` is the one thing it can add.
-  See `docs/queries.md`.
+  generated reads; `@queryFilter required` makes every read name it;
+  `@queryFilter default=<literal>` matches that literal when a read omits the
+  filter. A filter is a set matched with `= any($n)`; several are combined with
+  `and`. Scalar fields only; a branch field may not carry it, and it is redundant
+  on the `@primaryKey` field, which is an optional filter by default — `required`
+  is the one thing it can add. See `docs/queries.md`.
 - `@queryOrderBy` — makes the field an ordering key of the entity's generated
   reads. A bare marker whitelists the field; `@queryOrderBy default asc|desc`
   also makes it the entity's default ordering (at most one per interface).
@@ -703,9 +704,12 @@ Enforced:
   interface linking to the root. Every reference to an owned interface must state
   `scope=<that column>` and must come from an interface owned by the same column;
   a scope anywhere else is a finding. See `docs/tenancy.md`.
-- `@queryFilter` is a bare marker on a scalar field, or `required`; a branch field
-  may not carry it, and on the `@primaryKey` field, which is an optional filter
-  already, only `required` is accepted. See `docs/queries.md`.
+- `@queryFilter` is a bare marker on a scalar field, or `required`, or
+  `default=<literal>`: `null`, a boolean, a number, or a string (a bare token is a
+  string). A branch field may not carry it; on the `@primaryKey` field, which is
+  an optional filter already, only `required` is accepted; a `default=null` needs
+  an optional field; and `required` with a default is a finding, since the default
+  would never apply. See `docs/queries.md`.
 - `@queryOrderBy` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
@@ -744,10 +748,12 @@ Gotchas:
   on a key field is therefore a lint finding, not a second way to say the same
   thing: the default has one spelling, and `required` is the one it cannot express.
 - **`@queryFilter` is checked structurally, not by type.** The linter rejects it
-  on a branch field (a `@relation`/`@children`/`@inlined` marker), on a value that
-  is not `required`, and on a bare tag over the primary key, but it does not
-  resolve the field's type: the generated read types the filter from the field's
-  own type, so a non-scalar would surface there.
+  on a branch field (a `@relation`/`@children`/`@inlined` marker), on a token that
+  is not `required` or `default=<literal>`, on a bare tag over the primary key,
+  and on `default=null` over a not-null field, but it does not resolve the field's
+  type: the generated read types the filter from the field's own type, so a
+  non-scalar would surface there. A literal is compared with `=` by the resolver,
+  which is what catches a value the column's type cannot hold.
 - **`@relation` and its `@foreignKey` field are paired by the generator, not the
   linter.** The linter checks tags; the cross-field rule is enforced when the
   table model is built, so the diagnostic comes from `pnpm generate` with a file

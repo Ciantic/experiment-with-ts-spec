@@ -219,6 +219,94 @@ describe("parseSpec tags", () => {
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: false });
     });
 
+    it("decodes @queryFilter default=null as a null value", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=null\n     */", "code?: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: null,
+        });
+    });
+
+    it("decodes a numeric filter default", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=0\n     */", "code: number;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: 0,
+        });
+    });
+
+    it("decodes a boolean filter default", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=true\n     */", "code: boolean;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: true,
+        });
+    });
+
+    it("decodes a bare filter default as a string, so a date or an enum value needs no quotes", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=draft\n     */", "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: "draft",
+        });
+    });
+
+    it("decodes a quoted filter default", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing('    /**\n     * @queryFilter default="draft"\n     */', "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: "draft",
+        });
+    });
+
+    it("keeps a quoted filter default containing spaces in one value", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing('    /**\n     * @queryFilter default="on hold"\n     */', "code: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: "on hold",
+        });
+    });
+
+    it("keeps an integer too large for a JS number as the exact text, so an int8 literal is not rounded", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter default=9007199254740993\n     */", "code: bigint;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: false,
+            default: "9007199254740993",
+        });
+    });
+
+    it("decodes both options when one tag carries them", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @queryFilter required default=null\n     */", "code?: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({
+            required: true,
+            default: null,
+        });
+    });
+
     it("decodes @primaryKey as a bare marker", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @primaryKey\n     */", "id: ThingId;"),

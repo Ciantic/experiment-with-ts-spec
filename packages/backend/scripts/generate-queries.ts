@@ -7,7 +7,7 @@
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
+import { loadSpec, type FilterDefault, type SpecModel } from "spec/scripts/spec-model.ts";
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
@@ -36,6 +36,7 @@ interface QueryTableData {
     order?: string[];
     defaultOrder?: { field: string; direction: string };
     where?: Record<string, string[]>;
+    filterDefaults?: Record<string, FilterDefault>;
 }
 
 /** QueryModel as plain data, matching the resolver's `QueryModel`. */
@@ -103,6 +104,18 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
         const whereColumns = table.columns.filter((column) => column.where !== undefined);
         if (whereColumns.length > 0) {
             data.where = Object.fromEntries(whereColumns.map((column) => [column.name, column.where ?? []]));
+        }
+
+        // A defaulted filter is applied when a read leaves it out, so the resolver reads the literal too.
+        const filterDefaults: Record<string, FilterDefault> = {};
+        for (const column of table.columns) {
+            const fallback = column.queryFilter?.default;
+            if (fallback !== undefined) {
+                filterDefaults[column.name] = fallback;
+            }
+        }
+        if (Object.keys(filterDefaults).length > 0) {
+            data.filterDefaults = filterDefaults;
         }
 
         out[table.name] = data;
