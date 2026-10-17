@@ -1,5 +1,5 @@
 /** The HTTP result shape and the plain-JSON failures both handlers answer with. See docs/rest-api.md. */
-import { AppError } from "../errors.ts";
+import { AppError, apiErrorBody } from "validation/errors.ts";
 
 /** One response. Success bodies are `devalue`; error bodies are plain JSON. */
 export interface HttpResponse {
@@ -23,22 +23,13 @@ export function statusFor(thrown: unknown): number {
         return thrown.status;
     }
     const code = (thrown as { code?: unknown }).code;
-    if (typeof code !== "string") {
+    if (typeof code !== "string" || !Object.hasOwn(ERROR_STATUSES, code)) {
         return 500;
     }
     return ERROR_STATUSES[code] ?? 500;
 }
 
-/** A plain-JSON error body, so a failure is readable without the codec. */
-export function error(status: number, message: string): HttpResponse {
-    return { status, body: JSON.stringify({ error: message }) };
-}
-
-/** The same, for a group failure: the path names the entry that raised. */
-export function failure(status: number, message: string, path: number[], issues?: unknown): HttpResponse {
-    const body: Record<string, unknown> = { error: message, path };
-    if (issues !== undefined) {
-        body["issues"] = issues;
-    }
-    return { status, body: JSON.stringify(body) };
+/** The plain-JSON response for a thrown error, carrying the kind the SDK rebuilds it from. */
+export function errorFrom(thrown: unknown): HttpResponse {
+    return { status: statusFor(thrown), body: JSON.stringify(apiErrorBody(thrown)) };
 }

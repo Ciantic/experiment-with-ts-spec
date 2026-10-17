@@ -7,8 +7,8 @@ import {
     type SqlExecutor,
     type TransactionOptions,
 } from "../db/sql-executor.ts";
-import { AppError, RequestError } from "../errors.ts";
-import { error, failure, statusFor, type HttpResponse } from "./http-response.ts";
+import { AppError, BadGroupError, RequestError } from "validation/errors.ts";
+import { errorFrom, statusFor, type HttpResponse } from "./http-response.ts";
 import type { Route } from "./router.ts";
 
 /** The path the group entry point is mounted at. See docs/rest-api.md. */
@@ -37,27 +37,17 @@ interface PlannedGroup {
 
 type Planned = PlannedCall | PlannedGroup;
 
-/** A group body the handler refuses, naming the entry that is wrong. */
-class BadGroup extends RequestError {
-    readonly path: number[];
-    readonly issues: unknown;
-
-    constructor(message: string, path: number[], issues?: unknown) {
-        super(message);
-        this.path = path;
-        this.issues = issues;
-    }
-}
-
 /** A handler that failed inside a group, carrying the path of the entry that raised. */
 class GroupFailure extends AppError {
-    readonly path: number[];
+    declare readonly path: number[];
 
     constructor(thrown: unknown, path: number[]) {
-        super(thrown instanceof Error ? thrown.message : "request failed", statusFor(thrown), {
-            cause: thrown,
-        });
-        this.path = path;
+        const kind = thrown instanceof AppError ? thrown.kind : undefined;
+        super(
+            thrown instanceof Error ? thrown.message : "request failed",
+            { ...(kind === undefined ? {} : { kind }), status: statusFor(thrown) },
+            { cause: thrown, path, issues: thrown instanceof AppError ? thrown.issues : undefined },
+        );
     }
 }
 
@@ -79,29 +69,29 @@ function spell(values: readonly string[]): string {
 
 /**
  * One mode of a group's options, refused unless it is a literal the port writes into its `begin`.
- * @throws {BadGroup} when the value is not one of the literals the mode accepts
+ * @throws {BadGroupError} when the value is not one of the literals the mode accepts
  */
 function literal<T extends string>(values: readonly T[], value: unknown, what: string, path: number[]): T {
     if (!isOneOf(values, value)) {
-        throw new BadGroup(`${what} must be ${spell(values)}`, path);
+        throw new BadGroupError(`${what} must be ${spell(values)}`, { path });
     }
     return value as T;
 }
 
 /**
  * Whether the value is the boolean a mode takes.
- * @throws {BadGroup} when the value is not a boolean
+ * @throws {BadGroupError} when the value is not a boolean
  */
 function flag(value: unknown, what: string, path: number[]): boolean {
     if (typeof value !== "boolean") {
-        throw new BadGroup(`${what} must be true or false`, path);
+        throw new BadGroupError(`${what} must be true or false`, { path });
     }
     return value;
 }
 
 /**
  * Check the modes a group names; only a group that opens a root boundary takes any.
- * @throws {BadGroup} when a batch or a nested group names options, or a mode is not an object or one of the accepted keys
+ * @throws {BadGroupError} when a batch or a nested group names options, or a mode is not an object or one of the accepted keys
  */
 function planOptions(
     wire: unknown,
@@ -113,17 +103,17 @@ function planOptions(
         return undefined;
     }
     if (kind === "batch") {
-        throw new BadGroup("a batch opens no boundary, so it takes no transaction options", path);
+        throw new BadGroupError("a batch opens no boundary, so it takes no transaction options", { path });
     }
     if (inBoundary) {
-        throw new BadGroup("a nested boundary is a savepoint, which takes no transaction options", path);
+        throw new BadGroupError("a nested boundary is a savepoint, which takes no transaction options", { path });
     }
     if (!isRecord(wire)) {
-        throw new BadGroup("transaction options must be an object", path);
+        throw new BadGroupError("transaction options must be an object", { path });
     }
     for (const key of Object.keys(wire)) {
         if (key !== "isolationLevel" && key !== "accessMode" && key !== "deferrable") {
-            throw new BadGroup(`a transaction option must be isolationLevel, accessMode, or deferrable, not ${key}`, path);
+            throw new BadGroupError(`a transaction option must be isolationLevel, accessMode, or deferrable, not ${key}`, { path });
         }
     }
 
@@ -142,11 +132,11 @@ function planOptions(
 
 /**
  * Check one node of a group body: its shape, then the call it names, then that call's `input`.
- * @throws {BadGroup} when the node is neither a call nor a group, or a group has no kind or calls
+ * @throws {BadGroupError} when the node is neither a call nor a group, or a group has no kind or calls
  */
 function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBoundary: boolean): Planned {
     if (!isRecord(wire)) {
-        throw new BadGroup("a group entry must be an object", path);
+        throw new BadGroupError("a group entry must be an object", { path });
     }
 
     if ("call" in wire) {
@@ -156,15 +146,15 @@ function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBounda
     if ("group" in wire) {
         const group = wire["group"];
         if (!isRecord(group)) {
-            throw new BadGroup("a group must be an object", path);
+            throw new BadGroupError("a group must be an object", { path });
         }
         const kind = group["kind"];
         if (kind !== "batch" && kind !== "transaction" && kind !== "attempt") {
-            throw new BadGroup("a group kind must be batch, transaction, or attempt", path);
+            throw new BadGroupError("a group kind must be batch, transaction, or attempt", { path });
         }
         const calls = group["calls"];
         if (!Array.isArray(calls)) {
-            throw new BadGroup("a group must carry calls", path);
+            throw new BadGroupError("a group must carry calls", { path });
         }
         const options = planOptions(group["options"], kind, inBoundary, path);
         // A transaction or an attempt opens a boundary, so its own calls are inside one.
@@ -176,30 +166,30 @@ function planNode(wire: unknown, resolve: ResolveRoute, path: number[], inBounda
         };
     }
 
-    throw new BadGroup("a group entry must be a call or a group", path);
+    throw new BadGroupError("a group entry must be a call or a group", { path });
 }
 
 /**
  * Resolve one call against the route table by the id it names, and validate its argument.
- * @throws {BadGroup} when the call names no operation, or its argument fails the route's schema
+ * @throws {BadGroupError} when the call names no operation, or its argument fails the route's schema
  */
 function planCall(value: unknown, resolve: ResolveRoute, path: number[]): PlannedCall {
     if (!isRecord(value)) {
-        throw new BadGroup("a call must be an object", path);
+        throw new BadGroupError("a call must be an object", { path });
     }
     const id = value["operation"];
     if (typeof id !== "string") {
-        throw new BadGroup("a call must name an operation", path);
+        throw new BadGroupError("a call must name an operation", { path });
     }
 
     const route = resolve(id);
     if (!route) {
-        throw new BadGroup(`no operation \`${id}\``, path);
+        throw new BadGroupError(`no operation \`${id}\``, { path });
     }
 
     const parsed = route.input.safeParse(value["argument"]);
     if (!parsed.success) {
-        throw new BadGroup("invalid request", path, parsed.error.issues);
+        throw new BadGroupError("invalid request", { path, issues: parsed.error.issues });
     }
 
     return { kind: "call", route, argument: parsed.data };
@@ -207,12 +197,12 @@ function planCall(value: unknown, resolve: ResolveRoute, path: number[]): Planne
 
 /**
  * Check a whole group body. The top level must be a group, not a lone call.
- * @throws {BadGroup} when the body is a lone call or a malformed group
+ * @throws {BadGroupError} when the body is a lone call or a malformed group
  */
 function planGroup(value: unknown, resolve: ResolveRoute): PlannedGroup {
     const node = planNode(value, resolve, [], false);
     if (node.kind === "call") {
-        throw new BadGroup("the body must be a group", []);
+        throw new BadGroupError("the body must be a group", { path: [] });
     }
     return node;
 }
@@ -264,7 +254,15 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
     if (!(outcome.error instanceof GroupFailure) || !within(outcome.error.path, path)) {
         throw outcome.error;
     }
-    return { ok: false, error: { message: outcome.error.message, path: outcome.error.path } };
+    const kind = outcome.error.kind;
+    return {
+        ok: false,
+        error: {
+            message: outcome.error.message,
+            path: outcome.error.path,
+            ...(kind === undefined ? {} : { kind }),
+        },
+    };
 }
 
 /** Decode, check, run, and encode a tree of calls. */
@@ -273,26 +271,22 @@ export async function handleGroup(db: SqlExecutor, resolve: ResolveRoute, body: 
     try {
         value = body === "" ? undefined : decode(body);
     } catch {
-        return error(400, "malformed request");
+        return errorFrom(new RequestError("malformed request"));
     }
 
     let planned: PlannedGroup;
     try {
         planned = planGroup(value, resolve);
     } catch (thrown) {
-        if (!(thrown instanceof BadGroup)) {
+        if (!(thrown instanceof BadGroupError)) {
             throw thrown;
         }
-        return failure(400, thrown.message, thrown.path, thrown.issues);
+        return errorFrom(thrown);
     }
 
     try {
         return { status: 200, body: encode(await execute(db, planned, [])) };
     } catch (thrown) {
-        if (thrown instanceof GroupFailure) {
-            return failure(statusFor(thrown), thrown.message, thrown.path);
-        }
-        const message = thrown instanceof Error ? thrown.message : "request failed";
-        return error(statusFor(thrown), message);
+        return errorFrom(thrown);
     }
 }

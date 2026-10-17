@@ -6,9 +6,9 @@
  */
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { PayloadTooLargeError } from "validation/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
-import { PayloadTooLargeError } from "../errors.ts";
-import { error, statusFor } from "./http-response.ts";
+import { errorFrom } from "./http-response.ts";
 import { routes } from "./routes/index.ts";
 import { createRouter, type HttpResponse } from "./router.ts";
 
@@ -49,8 +49,7 @@ export function createApiServer(db: SqlExecutor): Server {
             try {
                 write(response, await router.handle({ method, url, body: await readBody(request) }));
             } catch (thrown) {
-                const message = thrown instanceof Error ? thrown.message : "request failed";
-                write(response, error(statusFor(thrown), message));
+                write(response, errorFrom(thrown));
             }
         })();
     });

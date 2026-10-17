@@ -1,6 +1,6 @@
 /** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
 import type { Direction, FilterDefault, Selection, Selected } from "validation/selection.ts";
-import { QueryError } from "./errors.ts";
+import { QueryError } from "validation/errors.ts";
 import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
 /** A branch that reads another table: `relation` is to-one, `children` is to-many. */

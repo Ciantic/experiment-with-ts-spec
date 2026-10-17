@@ -39,7 +39,10 @@ export interface Group<R> {
 /** A tolerated group's outcome: what it produced, or the failure that rolled it back. */
 export type Attempted<R> =
     | { readonly ok: true; readonly value: R }
-    | { readonly ok: false; readonly error: { readonly message: string; readonly path: number[] } };
+    | {
+          readonly ok: false;
+          readonly error: { readonly message: string; readonly path: number[]; readonly kind?: string };
+      };
 
 /** What `exec` accepts: a call, or a group of them. */
 export type Executable<R = unknown> = Call<R> | Group<R>;

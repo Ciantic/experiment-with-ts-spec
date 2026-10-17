@@ -80,12 +80,12 @@ tester.run("no-plain-error", plugin.rules["no-plain-error"], {
         {
             code: `export function plain(): void { throw new Error("no"); }`,
             filename: "plain.ts",
-            errors: [{ message: /specific AppError or DbError subclass/ }],
+            errors: [{ message: /specific AppError subclass/ }],
         },
         {
             code: `export function assembled(): void { throw Object.assign(new Error("no"), { code: "X" }); }`,
             filename: "assembled.ts",
-            errors: [{ message: /specific AppError or DbError subclass/ }],
+            errors: [{ message: /specific AppError subclass/ }],
         },
     ],
 });

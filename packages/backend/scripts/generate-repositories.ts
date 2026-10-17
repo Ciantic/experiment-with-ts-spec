@@ -296,7 +296,7 @@ export function generateCreate(table: Table): string {
     const lines = modulePrologue(
         [`${entity}Insert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        'import { ShortWriteError } from "../errors.ts";',
+        'import { ShortWriteError } from "validation/errors.ts";',
     );
 
     lines.push("/** The key a written row was given, as the insert returned it. */");
@@ -396,7 +396,7 @@ export function generateUpdate(table: Table): string {
     const lines = modulePrologue(
         `${entity}Patch`,
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        `import { ${conflict} } from "../errors.ts";`,
+        `import { ${conflict} } from "validation/errors.ts";`,
     );
 
     lines.push("/** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */");
@@ -517,7 +517,7 @@ export function generateUpsert(table: Table): string {
     const lines = modulePrologue(
         [`${entity}Upsert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        `import { ${conflict} } from "../errors.ts";`,
+        `import { ${conflict} } from "validation/errors.ts";`,
     );
 
     lines.push("/** The key a written row carries, as the upsert returned it. */");

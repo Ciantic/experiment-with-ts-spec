@@ -2,7 +2,7 @@
 import type { TenantInsert } from "validation/repositories/tenantInsertSchema.ts";
 import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id"] as TenantPrimaryKey["id"] });

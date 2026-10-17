@@ -1,7 +1,7 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
-import { createHttpClient, exec, transactionWith } from "sdk/index.ts";
+import { AppError, createHttpClient, exec, transactionWith, ValidationError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes/index.ts";
@@ -119,11 +119,13 @@ describe("a live server", () => {
 
     it("claims a route for every write, so a malformed one is a 400 and not a 404", async () => {
         for (const [name, builder] of builders().filter(([name]) => !name.startsWith("query"))) {
-            const thrown = (await exec(http, builder("not a write") as Executable<never>).catch(
+            const thrown = await exec(http, builder("not a write") as Executable<never>).catch(
                 (error: unknown) => error,
-            )) as { status?: number };
+            );
 
-            expect(thrown.status, name).toBe(400);
+            expect(thrown, name).toBeInstanceOf(ValidationError);
+            expect((thrown as AppError).status, name).toBe(400);
+            expect((thrown as AppError).kind, name).toBe("validation");
         }
     });
 
@@ -147,9 +149,10 @@ describe("a live server", () => {
 
         const thrown = (await exec(http, builder([{ at: new Date(0) }]) as Executable<never>).catch(
             (error: unknown) => error,
-        )) as { status?: number };
+        )) as AppError;
 
         expect(name).toMatch(GENERATED);
+        expect(thrown).toBeInstanceOf(ValidationError);
         expect(thrown.status).toBe(400);
     });
 

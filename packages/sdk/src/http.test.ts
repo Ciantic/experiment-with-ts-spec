@@ -1,7 +1,14 @@
 /** Unit tests for the hand-written transport, over a stub `fetch`. See docs/testing.md. */
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
-import { createHttpClient, HttpError } from "./http.ts";
+import {
+    AppError,
+    HttpError,
+    NoMatchingRowError,
+    ValidationError,
+    VersionConflictError,
+    createHttpClient,
+} from "./http.ts";
 
 interface Recorded {
     url: string;
@@ -103,7 +110,7 @@ describe("createHttpClient responses", () => {
         expect(await http.send("POST", "/widget", [])).toBeUndefined();
     });
 
-    it("throws an HttpError carrying the parsed error body", async () => {
+    it("falls back to an HttpError for a body with no kind", async () => {
         const stub = stubFetch(
             new Response(JSON.stringify({ error: "version conflict" }), { status: 409 }),
         );
@@ -112,8 +119,62 @@ describe("createHttpClient responses", () => {
         const failure = await http.send("PATCH", "/widget", []).catch((thrown: unknown) => thrown);
 
         expect(failure).toBeInstanceOf(HttpError);
+        expect(failure).toBeInstanceOf(AppError);
         expect((failure as HttpError).status).toBe(409);
         expect((failure as HttpError).body).toEqual({ error: "version conflict" });
+    });
+
+    it("rethrows the error class the body names", async () => {
+        const stub = stubFetch(
+            new Response(JSON.stringify({ error: "no row", kind: "version-conflict" }), { status: 409 }),
+        );
+        const http = createHttpClient("http://api.example", stub.impl);
+
+        const failure = await http.send("PATCH", "/widget", []).catch((thrown: unknown) => thrown);
+
+        expect(failure).toBeInstanceOf(VersionConflictError);
+        expect(failure).not.toBeInstanceOf(HttpError);
+        expect((failure as VersionConflictError).status).toBe(409);
+        expect((failure as VersionConflictError).kind).toBe("version-conflict");
+        expect((failure as VersionConflictError).message).toBe("no row");
+    });
+
+    it("keeps the path and issues a typed failure carries", async () => {
+        const issues = [{ path: ["rows", 0], message: "required" }];
+        const pathStub = stubFetch(
+            new Response(JSON.stringify({ error: "stale", kind: "no-matching-row", path: [1, 0] }), {
+                status: 409,
+            }),
+        );
+        const issuesStub = stubFetch(
+            new Response(JSON.stringify({ error: "invalid", kind: "validation", issues }), { status: 400 }),
+        );
+
+        const stale = await createHttpClient("http://api.example", pathStub.impl)
+            .send("PATCH", "/widget", [])
+            .catch((thrown: unknown) => thrown);
+        const invalid = await createHttpClient("http://api.example", issuesStub.impl)
+            .send("POST", "/widget", [])
+            .catch((thrown: unknown) => thrown);
+
+        expect(stale).toBeInstanceOf(NoMatchingRowError);
+        expect((stale as NoMatchingRowError).path).toEqual([1, 0]);
+        expect(invalid).toBeInstanceOf(ValidationError);
+        expect((invalid as ValidationError).issues).toEqual(issues);
+    });
+
+    it("falls back to an HttpError for a kind this client does not know", async () => {
+        const stub = stubFetch(
+            new Response(JSON.stringify({ error: "from a newer server", kind: "not-implemented-yet" }), {
+                status: 501,
+            }),
+        );
+        const http = createHttpClient("http://api.example", stub.impl);
+
+        const failure = await http.send("POST", "/widget", []).catch((thrown: unknown) => thrown);
+
+        expect(failure).toBeInstanceOf(HttpError);
+        expect((failure as HttpError).status).toBe(501);
     });
 
     it("keeps a non-JSON error body as text", async () => {

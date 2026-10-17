@@ -2,7 +2,7 @@
 import type { SellerUpsert } from "validation/repositories/sellerUpsertSchema.ts";
 import type { SellerPrimaryKey } from "validation/repositories/sellerPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { VersionConflictError } from "../errors.ts";
+import { VersionConflictError } from "validation/errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): SellerPrimaryKey => ({ id: row["id"] as SellerPrimaryKey["id"] });

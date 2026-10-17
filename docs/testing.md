@@ -37,6 +37,14 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/validation/scripts/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
+- `packages/validation/scripts/errors.test.ts` — the shared error contract:
+  `apiErrorBody` names the wire kind, `apiErrorFromBody` rebuilds every kind with
+  the response's status, and an unknown kind or an unclassified body stays
+  undefined. The class list is a fixture, so a new kind is added there once.
+- `packages/sdk/src/http.test.ts` — a non-2xx response with a known kind becomes
+  that class with its path and issues, one with no kind or an unknown kind stays
+  an `HttpError`, and `client.test.ts` asserts the group path survives the
+  rebuild.
 - `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
   domain. A second group transpiles the generated module, builds a matching

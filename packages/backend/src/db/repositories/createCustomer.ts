@@ -2,7 +2,7 @@
 import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";
 import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["id"] as CustomerPrimaryKey["id"] });

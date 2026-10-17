@@ -232,8 +232,10 @@ and it carries the `q` parameter as well as the bodies.
 - A group sends `devalue.stringify`'d tree as the body, the same way.
 - A success response is `devalue`; the client decodes it.
 - A failure is plain `JSON.stringify`, so an error is readable in a log or in
-  `curl` without a decoder. The client branches on the status: not-ok means
-  parse JSON, ok means decode.
+  `curl` without a decoder. It carries `error` and, when the server classified
+  it, `kind`; a group failure adds `path`, and a refused argument adds `issues`.
+  The client branches on the status: not-ok means parse JSON and rebuild the
+  class from `kind`, ok means decode. See `docs/errors.md`.
 
 The reason to prefer it over a wire schema per entity is that `Date` and `bigint`
 survive as themselves. `version` is `bigint & Brand`, `issueDate` is a `Date`,
@@ -253,10 +255,10 @@ Two rules follow from the codec:
 
 ## Status mapping
 
-The handler turns a thrown error into a status. An `AppError` names its own
-status; only an error that is not one is matched against the driver's `code`
-(`statusFor`, `src/http/http-response.ts`). `docs/errors.md` records the
-hierarchy.
+The handler turns a thrown error into a status and a plain-JSON body. An
+`AppError` names its own status and kind; only an error that is not one is
+matched against the driver's `code` (`statusFor`, `src/http/http-response.ts`).
+`docs/errors.md` records the hierarchy and the body shape.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
@@ -269,14 +271,16 @@ hierarchy.
 
 A generated query raises `QueryError` (400) for a read the query model refuses,
 and a body past the transport cap raises `PayloadTooLargeError` (413). A `q`
-parameter or a body that does not decode is 400, an argument the schema rejects
-is 400 with the Zod issues, and a method/path pair not in the table is 404. An
-absent argument decodes as `undefined`, which the schema then rejects — the same
-path as an empty body.
+parameter or a body that does not decode is a `RequestError` (400), an argument
+the schema rejects is a `ValidationError` (400) with the Zod issues, and a
+method/path pair not in the table is a `NotFoundError` (404). An absent argument
+decodes as `undefined`, which the schema then rejects — the same path as an
+empty body.
 
 A group failure answers the same way and adds the `path` of the entry that
-failed, so a caller can name it without re-deriving it from the tree it sent.
-`docs/transactions.md` records the shape.
+failed, so a caller can name it without re-deriving it from the tree it sent. A
+typed conflict inside a group keeps its `kind`, so the SDK raises the same class
+with the path attached. `docs/transactions.md` records the shape.
 
 A group that names transaction options it cannot open a boundary with — a
 `batch`, or a group nested inside another boundary — is a 400 at the `path` of

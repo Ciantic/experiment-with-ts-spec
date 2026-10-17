@@ -7,6 +7,9 @@
  * why a client call and the server call it reaches share one TypeScript type.
  */
 import { parse as decode, stringify as encode } from "devalue";
+import { AppError, apiErrorFromBody } from "validation/errors.ts";
+
+export * from "validation/errors.ts";
 
 /** The verbs that carry their argument in the `q` query parameter. */
 export type QueryMethod = "GET" | "DELETE";
@@ -18,29 +21,28 @@ export type SendMethod = "POST" | "PUT" | "PATCH";
 export interface HttpClient {
     /**
      * Send the argument as the `q` query parameter: the reads and the delete.
-     * @throws {HttpError} when the server answers a non-2xx status
+     * @throws {AppError} the error class the response names, or `HttpError` when it names none
      */
     query<T>(method: QueryMethod, path: string, argument?: unknown): Promise<T>;
     /**
      * Send the argument as the request body: the writes that carry rows.
-     * @throws {HttpError} when the server answers a non-2xx status
+     * @throws {AppError} the error class the response names, or `HttpError` when it names none
      */
     send<T>(method: SendMethod, path: string, body: unknown): Promise<T>;
 }
 
-/** A non-2xx response. The body is the server's plain-JSON error. */
-export class HttpError extends Error {
-    readonly status: number;
+/** A non-2xx response this client cannot classify; the body is the server's plain-JSON error. */
+export class HttpError extends AppError {
     readonly body: unknown;
-    /** The tree path of the entry that failed, when the failure came from a group. */
-    readonly path: number[] | undefined;
 
     constructor(status: number, body: unknown) {
-        super(`request failed with status ${status}`);
-        this.name = "HttpError";
-        this.status = status;
+        const path = readPath(body);
+        super(
+            `request failed with status ${status}`,
+            { kind: "http", status },
+            path === undefined ? {} : { path },
+        );
         this.body = body;
-        this.path = readPath(body);
     }
 }
 
@@ -67,11 +69,15 @@ function readError(text: string): unknown {
 
 /**
  * A client over `baseUrl`, using `fetch` unless another implementation is given.
- * @throws {HttpError} when the server answers a non-2xx status
+ * @throws {AppError} the error class the response names, or `HttpError` when it names none
  */
 export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetch): HttpClient {
     const base = baseUrl.replace(/\/$/, "");
 
+    /**
+     * Send one request and decode its answer, raising the error the body names.
+     * @throws {AppError} the error class the response names, or `HttpError` when it names none
+     */
     async function run<T>(method: string, url: string, body: string | undefined): Promise<T> {
         const init: RequestInit = { method };
         if (body !== undefined) {
@@ -82,7 +88,8 @@ export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetc
         const response = await fetchImpl(url, init);
         const text = await response.text();
         if (!response.ok) {
-            throw new HttpError(response.status, readError(text));
+            const failure = readError(text);
+            throw apiErrorFromBody(response.status, failure) ?? new HttpError(response.status, failure);
         }
         // A void call answers `null`, which the generated signature types as `void`.
         return (text === "" ? undefined : decode(text)) as T;

@@ -2,7 +2,7 @@
 import type { InvoiceSentInsert } from "validation/repositories/invoiceSentInsertSchema.ts";
 import type { InvoiceSentPrimaryKey } from "validation/repositories/invoiceSentPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoiceSentPrimaryKey => ({ id: row["id"] as InvoiceSentPrimaryKey["id"] });

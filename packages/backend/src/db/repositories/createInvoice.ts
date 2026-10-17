@@ -2,7 +2,7 @@
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 import type { InvoicePrimaryKey } from "validation/repositories/invoicePrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });

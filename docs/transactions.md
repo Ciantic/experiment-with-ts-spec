@@ -340,7 +340,10 @@ export interface TransactionOptions {
 
 export type Attempted<R> =
     | { readonly ok: true; readonly value: R }
-    | { readonly ok: false; readonly error: { readonly message: string; readonly path: number[] } };
+    | {
+          readonly ok: false;
+          readonly error: { readonly message: string; readonly path: number[]; readonly kind?: string };
+      };
 
 export type Executable<R = unknown> = Call<R> | Group<R>;
 ```
@@ -448,7 +451,7 @@ await exec(client, transaction(
     createCustomer([patient]),
 ));
 // the survivor and patient commit; the victim's group is rolled back to its savepoint
-// [[{ id: … }], { ok: false, error: { message: …, path: [1, 1] } }, [{ id: … }]]
+// [[{ id: … }], { ok: false, error: { message: …, path: [1, 1], kind: "…" } }, [{ id: … }]]
 ```
 
 An `attempt` reports rather than raises, so it answers a marker instead of a
@@ -457,12 +460,15 @@ value:
 | Outcome | Result |
 | --- | --- |
 | succeeded | `{ ok: true, value: <the group's results> }` |
-| failed | `{ ok: false, error: { message, path } }` |
+| failed | `{ ok: false, error: { message, path, kind? } }` |
 
 `path` is absolute from the request root, the same coordinate a group failure
 uses, so a caller can name the entry that failed without walking the tree it
-sent. Only a failure inside the `attempt`'s own subtree is tolerated; anything
-else propagates, so an outer failure is never mistaken for a tolerated one.
+sent. `kind`, when present, is the same wire token the SDK rebuilds a thrown
+error from (`docs/errors.md`), so a tolerated version conflict is still
+distinguishable from any other failure. Only a failure inside the `attempt`'s
+own subtree is tolerated; anything else propagates, so an outer failure is never
+mistaken for a tolerated one.
 
 Resolution through the route table is what keeps this from becoming a second
 surface. Every call a group can make is a call that already exists, and a check
@@ -497,10 +503,11 @@ body, so a batched read escapes the `q` length limit that `docs/rest-api.md`
 records, and the 1 MB body cap is the only size bound besides a cap on the number
 of entries.
 
-A failed group names the entry that failed by its path in the tree:
+A failed group names the entry that failed by its path in the tree, and keeps
+the kind of the error that raised:
 
 ```json
-{ "error": "version conflict on invoice 3f…", "path": [2, 1] }
+{ "error": "version conflict on invoice 3f…", "kind": "version-conflict", "path": [2, 1] }
 ```
 
 That is what makes a retry tractable. The client holds the tree it sent, so it can

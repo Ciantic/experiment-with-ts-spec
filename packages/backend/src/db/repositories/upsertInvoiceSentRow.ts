@@ -2,7 +2,7 @@
 import type { InvoiceSentRowUpsert } from "validation/repositories/invoiceSentRowUpsertSchema.ts";
 import type { InvoiceSentRowPrimaryKey } from "validation/repositories/invoiceSentRowPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): InvoiceSentRowPrimaryKey => ({ id: row["id"] as InvoiceSentRowPrimaryKey["id"] });

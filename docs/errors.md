@@ -2,37 +2,115 @@
 
 ## The hierarchy
 
-`packages/backend/src/errors.ts` owns `AppError`, the base of every error the
-server raises itself. It carries the HTTP `status` the error answers with, and
-an optional `code` for the SQLSTATE a driver raised. `statusFor` in
-`packages/backend/src/http/http-response.ts` reads that status first; only an
-error that is not an `AppError` is matched against the driver's `code`
+The error classes are hand-written in `packages/validation/src/errors.ts`, outside
+the generated barrels, and imported by path. A class is shared because the same
+failure has to be catchable in the backend and in the SDK: the code that throws
+it and the code that re-raises it from a response name one class, not two
+mirrors. `AppError` is the base of both the errors the server raises and the
+error the client raises when it cannot classify a response.
+
+| Class | Wire kind | Status | Raised when |
+| --- | --- | --- | --- |
+| `AppError` | — | — | base of every error the API reports |
+| `RequestError` | `request` | 400 | a request the server refuses before a handler |
+| `NotFoundError` | `not-found` | 404 | no route serves the method and path |
+| `ValidationError` | `validation` | 400 | the route's schema refuses the decoded argument |
+| `PayloadTooLargeError` | `payload-too-large` | 413 | a body past the transport's 1 MB cap |
+| `BadGroupError` | `bad-group` | 400 | a group body is malformed before any call runs |
+| `QueryError` | `query` | 400 | a read names a field, filter, order, or page the query model refuses |
+| `ConflictError` | — | 409 | base of a write that matched fewer rows than the call addressed |
+| `VersionConflictError` | `version-conflict` | 409 | a versioned patch or upsert claims a version the row has moved past |
+| `NoMatchingRowError` | `no-matching-row` | 409 | a versionless patch addresses a key that is not there |
+| `ShortWriteError` | `short-write` | 500 | a create or snapshot upsert writes fewer rows than it carried |
+| `DriverResultError` | `driver-result` | 500 | `affectedRows` or `resultRows` reads a result the driver did not shape |
+| `SavepointOptionsError` | `savepoint-options` | 400 | a nested boundary is asked for transaction options |
+| `HttpError` | `http` | response's status | the SDK cannot classify a non-2xx body |
+
+`ConflictError` carries the SQLSTATE `"40001"`, the code the version trigger
+raises, so a repository conflict and a driver conflict reach the router as the
+same `409`. `NoMatchingRowError` shares the code because both ways of matching no
+row take the same recovery: re-read, then retry (`docs/versioning.md`).
+`HttpError` lives in the SDK, not in the shared module: it is only what the
+client falls back to.
+
+`UsageError` and `MockDataError` stay in `packages/backend/src/errors.ts`. They
+extend `AppError` but never reach an HTTP response — one is a command line the
+entry point cannot interpret, the other is spec mock data with no generated
+create repository — so no client class mirrors them.
+
+## The wire
+
+A failed response is plain JSON. `apiErrorBody` in the shared module writes the
+body the SDK reads:
+
+```json
+{
+  "error": "no row of seller is at the version this patch supplied for 3f…",
+  "kind": "version-conflict",
+  "path": [1, 0],
+  "issues": ["…"]
+}
+```
+
+`error` is the message, `kind` is the stable token a client rebuilds the class
+from, `path` names the group entry that failed, and `issues` carries a refused
+argument's report. `path` and `issues` are present only when they apply. An
+unclassified failure — a plain `Error`, or a driver error matched by its
+SQLSTATE — has no `kind`, so the client keeps it as an `HttpError`.
+
+`kind` is deliberately not the class name. It is the wire contract, so renaming
+a class does not change what a client sends or expects. `ERROR_CLASSES` in
+`packages/validation/src/errors.ts` is the one table mapping a kind to a class;
+a new kind needs an entry there and a class that accepts the same
+`(message, options)` constructor.
+
+## The SDK
+
+`createHttpClient` parses the body of a non-2xx response and calls
+`apiErrorFromBody`. A known `kind` becomes its class with the response's status,
+and the message, path, and issues the body carried. An absent or unknown kind
+becomes `HttpError`, which extends `AppError` and keeps the raw `body`. So:
+
+```ts
+try {
+    await exec(http, updateSeller([patch]));
+} catch (thrown) {
+    if (thrown instanceof VersionConflictError) {
+        // re-read, then retry
+    }
+    if (thrown instanceof AppError) {
+        // any failure the API reported, typed or not
+    }
+}
+```
+
+`packages/sdk/src/index.ts` re-exports `packages/sdk/src/http.ts`, which
+re-exports the shared module, so a client imports `AppError`,
+`VersionConflictError`, and `HttpError` from `sdk/index.ts`.
+
+An `attempt` group does not throw its inner failure; it reports it as a value.
+That value carries the same `kind` as the class the failure would have become,
+so a caller can tell a tolerated version conflict from any other failure
+(`docs/transactions.md`). It is a plain object, not an `AppError` instance,
+because it did not fail the request.
+
+## The backend
+
+`errorFrom` in `packages/backend/src/http/http-response.ts` is the one place a
+thrown error becomes a response: `statusFor` picks the status, and
+`apiErrorBody` writes the body. `statusFor` returns an `AppError`'s own status
+first; only an error that is not one is matched against the driver's `code`
 (`docs/rest-api.md`).
 
-`packages/backend/src/db/errors.ts` narrows the hierarchy to the database layer:
+Inside a group, `GroupFailure` wraps the handler's error, copies its `kind`,
+`issues`, and status, and adds the tree path of the entry that raised. The SDK
+therefore reconstructs the original class with the group coordinates attached,
+rather than a generic group error.
 
-| Error | Raised when | Status | Code |
-| --- | --- | --- | --- |
-| `DbError` | base for the errors below | — | — |
-| `QueryError` | a read names a field, filter, order, or page the query model refuses | 400 | — |
-| `ConflictError` | base for a write that matched fewer rows than the call addressed | 409 | `40001` |
-| `VersionConflictError` | a versioned patch or upsert claims a version the row has moved past | 409 | `40001` |
-| `NoMatchingRowError` | a versionless patch addresses a key that is not there | 409 | `40001` |
-| `ShortWriteError` | a create or snapshot upsert writes fewer rows than it carried | 500 | — |
-| `DriverResultError` | `affectedRows` or `resultRows` reads a result the driver did not shape | 500 | — |
-| `SavepointOptionsError` | a nested boundary is asked for transaction options | 400 | — |
-
-`ConflictError` carries the SQLSTATE the version trigger raises, so a version
-conflict from a repository and one raised by Postgres reach the router as the
-same `409`. `NoMatchingRowError` shares the code because both ways of matching
-no row take the same recovery: re-read, then retry (`docs/versioning.md`).
-
-The HTTP layer has its own narrow errors: `RequestError` (400) and `BadGroup`
-in `packages/backend/src/http/group-handler.ts`, `PayloadTooLargeError` (413)
-for a body past the transport cap, `UsageError` for the command line, and
-`MockDataError` for spec mock data with no create repository. `GroupFailure`
-wraps a handler failure and keeps its status and the tree path of the entry that
-raised, so a group failure maps exactly as the same error would outside a group.
+A driver failure is not wrapped in an `AppError`. It reaches the router with the
+SQLSTATE the driver gave it, and `statusFor` maps it through the table in
+`docs/rest-api.md`. The same applies to `DriverResultError`, which
+`resultRows` raises while a repository reads a statement's returned rows.
 
 ## The JSDoc contract
 
@@ -69,11 +147,5 @@ their throws are fixtures and tooling failures rather than API contract.
 A generated operation declares the errors it raises directly. A create and a
 snapshot upsert raise `ShortWriteError`; a versioned update or upsert raises
 `VersionConflictError`; a versionless update raises `NoMatchingRowError`. The
-error classes are imported from `packages/backend/src/db/errors.ts`, so a
-repository module names the type it throws rather than assembling an error with
-`Object.assign`.
-
-A driver failure is not wrapped: it reaches the router with the SQLSTATE the
-driver gave it, and `statusFor` maps it through the table in
-`docs/rest-api.md`. The same applies to `DriverResultError` raised by
-`resultRows` while a repository reads a statement's returned rows.
+error classes are imported from `validation/errors.ts`, so a repository module
+names the type it throws rather than assembling an error with `Object.assign`.

@@ -2,7 +2,7 @@
 import type { EmailUpsert } from "validation/repositories/emailUpsertSchema.ts";
 import type { EmailPrimaryKey } from "validation/repositories/emailPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { VersionConflictError } from "../errors.ts";
+import { VersionConflictError } from "validation/errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): EmailPrimaryKey => ({ id: row["id"] as EmailPrimaryKey["id"] });

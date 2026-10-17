@@ -1,7 +1,7 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import * as sharedErrors from "validation/errors.ts";
 import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
-import * as dbErrors from "../src/db/errors.ts";
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
 import { createTransactionalDb } from "../src/db/sql-executor.ts";
@@ -102,7 +102,7 @@ interface GeneratedRepository {
 function loadModule(code: string): Record<string, unknown> {
     return tsLoadGeneratedModule(
         code,
-        tsStubImports({ "../sql-executor.ts": sqlExecutor, "../errors.ts": dbErrors }),
+        tsStubImports({ "../sql-executor.ts": sqlExecutor, "validation/errors.ts": sharedErrors }),
     );
 }
 
@@ -1259,7 +1259,7 @@ describe("generated repositories against PGlite", () => {
             code: "40001",
         });
         await expect(widgets.update(db, [{ id: WIDGET_ID, name: "run", version: 0n }])).rejects.toBeInstanceOf(
-            dbErrors.VersionConflictError,
+            sharedErrors.VersionConflictError,
         );
     });
 

@@ -13,7 +13,7 @@ import {
     type Attempted,
     type Call,
 } from "./client.ts";
-import { createHttpClient, HttpError, type HttpClient } from "./http.ts";
+import { createHttpClient, HttpError, VersionConflictError, type HttpClient } from "./http.ts";
 
 interface Recorded {
     url: string;
@@ -304,16 +304,19 @@ describe("groups", () => {
         });
     });
 
-    it("raises an HttpError naming the entry that failed", async () => {
-        const { http } = client(JSON.stringify({ error: "version conflict", path: [1, 0] }), 409);
+    it("raises the typed error naming the entry that failed", async () => {
+        const { http } = client(
+            JSON.stringify({ error: "version conflict", kind: "version-conflict", path: [1, 0] }),
+            409,
+        );
 
         const failure = await exec(http, transaction(call<void>("createWidget", "POST", "/widget", []))).catch(
             (thrown: unknown) => thrown,
         );
 
-        expect(failure).toBeInstanceOf(HttpError);
-        expect((failure as HttpError).status).toBe(409);
-        expect((failure as HttpError).path).toEqual([1, 0]);
+        expect(failure).toBeInstanceOf(VersionConflictError);
+        expect((failure as VersionConflictError).status).toBe(409);
+        expect((failure as VersionConflictError).path).toEqual([1, 0]);
     });
 
     it("reports no path for a failure that is not a group's", async () => {
@@ -323,6 +326,7 @@ describe("groups", () => {
             (thrown: unknown) => thrown,
         );
 
+        expect(failure).toBeInstanceOf(HttpError);
         expect((failure as HttpError).path).toBeUndefined();
     });
 });

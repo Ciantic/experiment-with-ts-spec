@@ -162,7 +162,7 @@ const plugin = {
                             context.report({
                                 node,
                                 message:
-                                    "throw a specific AppError or DbError subclass, not Error; see docs/errors.md",
+                                    "throw a specific AppError subclass, not Error; see docs/errors.md",
                             });
                         }
                     },

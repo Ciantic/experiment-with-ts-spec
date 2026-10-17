@@ -37,12 +37,15 @@ schema uses, so the backend repositories, the REST API, the generated client, an
   query module.
 - `packages/validation/src/index.ts` — the barrel re-exporting the primitives and
   the three directories.
+- `packages/validation/src/errors.ts` — hand-written, not generated: the shared
+  error classes and the wire helpers. It is outside the barrel, like
+  `selection.ts`, so the SDK imports it by path (`docs/errors.md`).
 
 A regeneration removes the modules the spec no longer declares, so a dropped entity
 leaves no schema, write, or query module behind. The walk descends into the three
 directories, and a file goes only when its first line is the generator's header —
 which is what keeps the hand-written modules that share the output root (`insert.ts`,
-`patch.ts`, `upsert.ts`, `selection.ts`) in place.
+`patch.ts`, `upsert.ts`, `selection.ts`, `errors.ts`) in place.
 
 A write module derives from the domain module rather than restating the entity:
 each one imports `<name>Schema` from `../domain/<entity>Schema.ts` and projects it.
@@ -66,6 +69,14 @@ are hand-written too, in `packages/validation/src/insert.ts`,
 `packages/validation/src/patch.ts`, and `packages/validation/src/upsert.ts`, and
 the generated modules import them the same way: they express a shape a mapped type
 cannot, and they are what keeps the type and the schema on one field set.
+
+`packages/validation/src/errors.ts` is hand-written for the same reason: the
+error classes and the wire `kind` that names them are the contract between the
+backend and the SDK, so both import the one module rather than keeping mirrored
+classes. The backend re-raises with `apiErrorBody`, the SDK rebuilds with
+`apiErrorFromBody`, and an unclassified body becomes the SDK's `HttpError`. See
+`docs/errors.md`. The module imports nothing, so the client still loads no
+`zod`.
 
 ```typescript
 export const invoiceSchema = z.object({

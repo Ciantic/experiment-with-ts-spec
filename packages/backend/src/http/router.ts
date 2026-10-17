@@ -1,8 +1,9 @@
 /** The hand-written request handler: match one request to its route, decode, check, run, and encode. See docs/rest-api.md. */
 import { parse as decode, stringify as encode } from "devalue";
+import { NotFoundError, RequestError, ValidationError } from "validation/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { GROUP_PATH, handleGroup } from "./group-handler.ts";
-import { error, statusFor, type HttpResponse } from "./http-response.ts";
+import { errorFrom, type HttpResponse } from "./http-response.ts";
 
 export type { HttpResponse };
 
@@ -56,7 +57,7 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
 
             const route = resolve(request.method, url.pathname);
             if (!route) {
-                return error(404, "no route");
+                return errorFrom(new NotFoundError("no route"));
             }
 
             // A `query` call carries its argument in `q`; a `body` call in the request body.
@@ -71,15 +72,12 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
             try {
                 value = encoded === undefined ? undefined : decode(encoded);
             } catch {
-                return error(400, "malformed request");
+                return errorFrom(new RequestError("malformed request"));
             }
 
             const parsed = route.input.safeParse(value);
             if (!parsed.success) {
-                return {
-                    status: 400,
-                    body: JSON.stringify({ error: "invalid request", issues: parsed.error.issues }),
-                };
+                return errorFrom(new ValidationError("invalid request", { issues: parsed.error.issues }));
             }
 
             try {
@@ -87,8 +85,7 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
                 // A `get` miss and a void write both encode as `null`.
                 return { status: 200, body: encode(result ?? null) };
             } catch (thrown) {
-                const message = thrown instanceof Error ? thrown.message : "request failed";
-                return error(statusFor(thrown), message);
+                return errorFrom(thrown);
             }
         },
     };

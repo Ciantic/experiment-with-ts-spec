@@ -2,7 +2,7 @@
 import type { AuditLogInsert } from "validation/repositories/auditLogInsertSchema.ts";
 import type { AuditLogPrimaryKey } from "validation/repositories/auditLogPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): AuditLogPrimaryKey => ({ id: row["id"] as AuditLogPrimaryKey["id"] });

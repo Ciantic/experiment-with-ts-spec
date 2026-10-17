@@ -2,7 +2,7 @@
   "name": "validation",
   "version": "1.0.0",
   "private": true,
-  "description": "Generated Zod schemas, the shared Insert/Patch and read-selection types for the spec, plus the generator that writes the schemas.",
+  "description": "Generated Zod schemas, the shared Insert/Patch and read-selection types, and the shared API error classes for the spec, plus the generator that writes the schemas.",
   "license": "ISC",
   "type": "module",
   "exports": {

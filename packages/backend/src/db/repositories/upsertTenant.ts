@@ -2,7 +2,7 @@
 import type { TenantUpsert } from "validation/repositories/tenantUpsertSchema.ts";
 import type { TenantPrimaryKey } from "validation/repositories/tenantPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { VersionConflictError } from "../errors.ts";
+import { VersionConflictError } from "validation/errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id"] as TenantPrimaryKey["id"] });

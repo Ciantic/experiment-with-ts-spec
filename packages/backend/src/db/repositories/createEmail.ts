@@ -2,7 +2,7 @@
 import type { EmailInsert } from "validation/repositories/emailInsertSchema.ts";
 import type { EmailPrimaryKey } from "validation/repositories/emailPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row was given, as the insert returned it. */
 const keyOf = (row: Record<string, unknown>): EmailPrimaryKey => ({ id: row["id"] as EmailPrimaryKey["id"] });

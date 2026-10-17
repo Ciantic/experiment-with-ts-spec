@@ -3,8 +3,9 @@
 - `packages/spec/` — TypeScript interfaces that form the definition of the
   application.
 - `packages/validation/` — generated Zod schemas, the shared Patch/Insert types,
-  and the shared read types, consumed by the backend, the SDK, and eventually the
-  frontend. Owns the generator that writes the schemas.
+  the shared read types, and the shared API error classes, consumed by the
+  backend, the SDK, and eventually the frontend. Owns the generator that writes
+  the schemas.
 - `packages/backend/` — Postgres schema, generated repositories, and result
   mapping for the spec.
 - `packages/sdk/` — generated type-safe REST client, plus the hand-written
@@ -33,8 +34,9 @@
 - Only single-line comments in code. If you need more than one line of
   explanation, put it in `docs/` instead and leave a one-line pointer where the
   code needs it.
-- Errors are `AppError` subclasses; the database layer narrows them under
-  `DbError` (`docs/errors.md`). Every `throw new X` documents
+- Errors are `AppError` subclasses, shared with the SDK from
+  `packages/validation/src/errors.ts`; only errors that never reach the wire
+  stay in the backend (`docs/errors.md`). Every `throw new X` documents
   `@throws {X} why` on an enclosing function, and `pnpm lint` enforces it.
 
 ## Docs

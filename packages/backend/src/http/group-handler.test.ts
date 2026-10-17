@@ -1,6 +1,7 @@
 /** Unit tests for the group entry point, over fixture routes it resolves by operation id. See docs/testing.md and docs/transactions.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
+import { VersionConflictError } from "validation/errors.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { HttpResponse } from "./http-response.ts";
@@ -112,7 +113,7 @@ describe("handleGroup", () => {
         const response = await handle([echoRoute()], groupBody("batch", [callEntry("missing", {})]));
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "no operation `missing`", path: [0] });
+        expect(JSON.parse(response.body)).toEqual({ error: "no operation `missing`", kind: "bad-group", path: [0] });
     });
 
     it("validates every call before running any of them", async () => {
@@ -133,7 +134,7 @@ describe("handleGroup", () => {
         );
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "invalid request", path: [1], issues: ["bad"] });
+        expect(JSON.parse(response.body)).toEqual({ error: "invalid request", kind: "bad-group", path: [1], issues: ["bad"] });
         expect(ran).toEqual([]);
     });
 
@@ -141,21 +142,21 @@ describe("handleGroup", () => {
         const response = await handle([echoRoute()], stringify(callEntry("echo", {})));
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "the body must be a group", path: [] });
+        expect(JSON.parse(response.body)).toEqual({ error: "the body must be a group", kind: "bad-group", path: [] });
     });
 
     it("refuses a malformed group body", async () => {
         const response = await handle([echoRoute()], stringify({ group: { kind: "nope", calls: [] } }));
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "a group kind must be batch, transaction, or attempt", path: [] });
+        expect(JSON.parse(response.body)).toEqual({ error: "a group kind must be batch, transaction, or attempt", kind: "bad-group", path: [] });
     });
 
     it("answers 400 for a group body that is not decodable", async () => {
         const response = await handle([echoRoute()], "not devalue");
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "malformed request" });
+        expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
     });
 
     it("opens no boundary for a batch", async () => {
@@ -258,6 +259,25 @@ describe("handleGroup", () => {
         expect(decode(response.body)).toEqual([{ ok: false, error: { message: "version conflict", path: [0, 0] } }]);
     });
 
+    it("names the kind of an attempt's failure, so a tolerated conflict stays diagnosable", async () => {
+        const response = await handle(
+            [
+                echoRoute({
+                    id: "inner",
+                    handler: async () => {
+                        throw new VersionConflictError("version conflict");
+                    },
+                }),
+            ],
+            groupBody("batch", [{ group: { kind: "attempt", calls: [callEntry("inner", {})] } }]),
+        );
+
+        expect(response.status).toBe(200);
+        expect(decode(response.body)).toEqual([
+            { ok: false, error: { message: "version conflict", path: [0, 0], kind: "version-conflict" } },
+        ]);
+    });
+
     it("answers an attempt's success with its results", async () => {
         const response = await handle([echoRoute()], groupBody("attempt", [callEntry("echo", { n: 1 })]));
 
@@ -315,7 +335,7 @@ describe("handleGroup", () => {
                 echoRoute({
                     id: "inner",
                     handler: async () => {
-                        throw Object.assign(new Error("version conflict"), { code: "40001" });
+                        throw new VersionConflictError("version conflict");
                     },
                 }),
             ],
@@ -326,7 +346,11 @@ describe("handleGroup", () => {
         );
 
         expect(response.status).toBe(409);
-        expect(JSON.parse(response.body)).toEqual({ error: "version conflict", path: [1, 0] });
+        expect(JSON.parse(response.body)).toEqual({
+            error: "version conflict",
+            kind: "version-conflict",
+            path: [1, 0],
+        });
     });
 
     it("opens a transaction boundary with the modes the group named", async () => {
@@ -378,6 +402,7 @@ describe("handleGroup", () => {
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({
             error: "a batch opens no boundary, so it takes no transaction options",
+            kind: "bad-group",
             path: [],
         });
     });
@@ -393,6 +418,7 @@ describe("handleGroup", () => {
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({
             error: "a nested boundary is a savepoint, which takes no transaction options",
+            kind: "bad-group",
             path: [0],
         });
     });
@@ -409,12 +435,14 @@ describe("handleGroup", () => {
 
         expect(JSON.parse(badLevel.body)).toEqual({
             error: "an isolation level must be serializable, repeatable read, read committed, or read uncommitted",
+            kind: "bad-group",
             path: [],
         });
-        expect(JSON.parse(badMode.body)).toEqual({ error: "an access mode must be read write, or read only", path: [] });
-        expect(JSON.parse(badFlag.body)).toEqual({ error: "deferrable must be true or false", path: [] });
+        expect(JSON.parse(badMode.body)).toEqual({ error: "an access mode must be read write, or read only", kind: "bad-group", path: [] });
+        expect(JSON.parse(badFlag.body)).toEqual({ error: "deferrable must be true or false", kind: "bad-group", path: [] });
         expect(JSON.parse(badKey.body)).toEqual({
             error: "a transaction option must be isolationLevel, accessMode, or deferrable, not snapshot",
+            kind: "bad-group",
             path: [],
         });
         expect([badLevel.status, badMode.status, badFlag.status, badKey.status]).toEqual([400, 400, 400, 400]);

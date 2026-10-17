@@ -1,8 +1,9 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import { QueryError, ShortWriteError, VersionConflictError } from "../db/errors.ts";
+import { QueryError, ShortWriteError, VersionConflictError } from "validation/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
+import { statusFor } from "./http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
 
@@ -101,7 +102,7 @@ describe("createRouter", () => {
         const response = await router.handle({ method: "POST", url: "/echo", body: "not devalue" });
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "malformed request" });
+        expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
     });
 
     it("answers 400 with the issues when the schema rejects", async () => {
@@ -110,7 +111,7 @@ describe("createRouter", () => {
         const response = await router.handle({ method: "POST", url: "/echo", body: "" });
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "invalid request", issues: ["bad"] });
+        expect(JSON.parse(response.body)).toEqual({ error: "invalid request", kind: "validation", issues: ["bad"] });
     });
 
     it("passes the decoded body to the handler and encodes the result", async () => {
@@ -155,7 +156,7 @@ describe("createRouter", () => {
         const response = await router.handle({ method: "GET", url: "/echo?q=not%20devalue", body: "" });
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "malformed request" });
+        expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
     });
 
     it("decodes an absent argument as undefined, leaving the schema to reject it", async () => {
@@ -238,7 +239,7 @@ describe("createRouter", () => {
             const response = await router.handle({ method: "POST", url: "/echo", body: "" });
 
             expect(response.status).toBe(status);
-            expect(JSON.parse(response.body)).toEqual({ error: thrown.message });
+            expect(JSON.parse(response.body)).toEqual({ error: thrown.message, kind: thrown.kind });
         }
     });
 
@@ -276,6 +277,12 @@ describe("createRouter", () => {
         expect(JSON.parse(response.body)).toEqual({ error: "value rejected by a row constraint" });
     });
 
+    it("does not read an inherited property as a SQLSTATE", () => {
+        expect(statusFor({ code: "constructor" })).toBe(500);
+        expect(statusFor({ code: "toString" })).toBe(500);
+        expect(statusFor({ code: "40001" })).toBe(409);
+    });
+
     it("opens a boundary when a handler asks for one, and no other", async () => {
         const router = createRouter(db, [
             echoRoute({
@@ -309,6 +316,6 @@ describe("createRouter", () => {
         const response = await router.handle({ method: "POST", url: GROUP_PATH, body });
 
         expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "no operation `/echo`", path: [0] });
+        expect(JSON.parse(response.body)).toEqual({ error: "no operation `/echo`", kind: "bad-group", path: [0] });
     });
 });

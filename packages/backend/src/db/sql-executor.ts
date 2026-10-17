@@ -1,5 +1,5 @@
 /** The `SqlExecutor` port over a pool: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
-import { DriverResultError, SavepointOptionsError } from "./errors.ts";
+import { DriverResultError, SavepointOptionsError } from "validation/errors.ts";
 import type { SqlPool, SqlSession } from "./sql-pool.ts";
 
 /** The callback one boundary runs, on the handle that boundary owns. */

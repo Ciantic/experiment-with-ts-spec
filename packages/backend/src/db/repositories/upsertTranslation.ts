@@ -2,7 +2,7 @@
 import type { TranslationUpsert } from "validation/repositories/translationUpsertSchema.ts";
 import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";
 import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";
-import { ShortWriteError } from "../errors.ts";
+import { ShortWriteError } from "validation/errors.ts";
 
 /** The key a written row carries, as the upsert returned it. */
 const keyOf = (row: Record<string, unknown>): TranslationPrimaryKey => ({ lang: row["lang"] as TranslationPrimaryKey["lang"], key: row["key"] as TranslationPrimaryKey["key"] });
