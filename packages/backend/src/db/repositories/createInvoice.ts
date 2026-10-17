@@ -7,7 +7,7 @@ import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-e
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 9;
+const PARAMETERS_PER_ROW = 10;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -29,6 +29,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
             const issueDateValues: Array<unknown> = [];
             const dueDateValues: Array<unknown> = [];
             const notesValues: Array<unknown> = [];
+            const deletedAtValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 tenantIdValues.push(row.tenantId ?? null);
@@ -39,9 +40,10 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                 issueDateValues.push(row.issueDate ?? null);
                 dueDateValues.push(row.dueDate ?? null);
                 notesValues.push(row.notes ?? null);
+                deletedAtValues.push(row.deletedAt ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") select ' +
+                'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "deletedAt") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."number", ' +
@@ -50,11 +52,12 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                     'v."language", ' +
                     'v."issueDate", ' +
                     'v."dueDate", ' +
-                    'v."notes" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[]) as v(' +
-                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes") ' +
+                    'v."notes", ' +
+                    'v."deletedAt" ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[], $10::timestamptz[]) as v(' +
+                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "deletedAt") ' +
                     'returning "invoice"."id"',
-                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues],
+                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, deletedAtValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

@@ -76,8 +76,10 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by
 `filter` sets and `where` comparisons. A filter the entity marks `@queryFilter
 required` has to be named, so a read of a tenant-scoped entity that omits its
-`tenantId` is a 400 rather than the whole table. A caller that wants a single row
-takes the first result (`docs/queries.md`).
+`tenantId` is a 400 rather than the whole table. A filter with a
+`@queryFilter default=<literal>` matches that literal when the read omits it,
+which is how a nullable `deletedAt` hides trashed rows (`docs/soft-delete.md`). A
+caller that wants a single row takes the first result (`docs/queries.md`).
 
 A create takes `<entity>InsertSchema`, the columns the database does not own, and
 a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly

@@ -79,6 +79,7 @@ export const queryModel: QueryModel = {
                 "notes": "notes",
                 "createdAt": "createdAt",
                 "updatedAt": "updatedAt",
+                "deletedAt": "deletedAt",
                 "version": "version"
             },
             "relations": {
@@ -110,7 +111,13 @@ export const queryModel: QueryModel = {
                 "issueDate": [
                     "gte",
                     "lte"
+                ],
+                "deletedAt": [
+                    "gte"
                 ]
+            },
+            "filterDefaults": {
+                "deletedAt": null
             }
         },
         "invoice_row": {

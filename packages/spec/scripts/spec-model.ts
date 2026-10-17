@@ -166,6 +166,12 @@ export function isCompareOperator(value: string): value is CompareOperator {
     return (COMPARE_OPERATORS as readonly string[]).includes(value);
 }
 
+/**
+ * The literal a filter matches when a read omits it. `null` is the value a nullable column's filter
+ * defaults to; every other literal is a value of the column's type. See docs/queries.md.
+ */
+export type FilterDefault = string | number | boolean | null;
+
 /** The write operations `@repository` and `@restRepository` may name, in canonical order. */
 export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
 export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
@@ -287,8 +293,8 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
     pgType?: string;
-    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it. See docs/queries.md. */
-    queryFilter?: { required: boolean };
+    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<literal>` fills it in when a read omits it. See docs/queries.md. */
+    queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
@@ -611,6 +617,94 @@ function parseReadOperations(value: string | undefined): ReadOperation[] {
     return READ_OPERATIONS.filter((operation) => tokens.includes(operation));
 }
 
+/** A parsed `@queryFilter` value: the options it names, and the tokens it does not understand. */
+export interface ParsedQueryFilter {
+    required: boolean;
+    default?: FilterDefault;
+    /** Tokens that name no option; the linter reports them. */
+    unknown: string[];
+    /** True when a `default=` token carries no literal; the linter reports it. */
+    emptyDefault: boolean;
+}
+
+/** Split a tag value on whitespace, keeping a quoted string in one token, e.g. `default="a b"`. */
+function splitTagTokens(value: string): string[] {
+    const tokens: string[] = [];
+    let current = "";
+    let quote: string | undefined;
+    for (const character of value) {
+        if (quote !== undefined) {
+            current += character;
+            if (character === quote) {
+                quote = undefined;
+            }
+        } else if (character === '"' || character === "'") {
+            quote = character;
+            current += character;
+        } else if (/\s/.test(character)) {
+            if (current !== "") {
+                tokens.push(current);
+                current = "";
+            }
+        } else {
+            current += character;
+        }
+    }
+    if (current !== "") {
+        tokens.push(current);
+    }
+    return tokens;
+}
+
+/**
+ * Parse the literal after `default=`: `null`, a boolean, a number, or a string. A quoted string is a
+ * value; a bare token is read as a string too, which is how a date or an enum value is written.
+ * Returns undefined for an empty or malformed literal, which the linter reports.
+ */
+export function parseFilterDefault(text: string): FilterDefault | undefined {
+    if (text === "") {
+        return undefined;
+    }
+    if (text === "null") {
+        return null;
+    }
+    if (text === "true" || text === "false") {
+        return text === "true";
+    }
+    const quoted =
+        (text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"));
+    if (quoted) {
+        return text.length < 2 ? undefined : text.slice(1, -1);
+    }
+    const number = Number(text);
+    if (text.trim() !== "" && Number.isFinite(number) && (!Number.isInteger(number) || Number.isSafeInteger(number))) {
+        return number;
+    }
+    return text;
+}
+
+/** Parse a `@queryFilter` value into the options it names, so the parser and the linter agree on the vocabulary. */
+export function parseQueryFilter(value: string | undefined): ParsedQueryFilter {
+    const parsed: ParsedQueryFilter = { required: false, unknown: [], emptyDefault: false };
+    for (const token of splitTagTokens(value ?? "")) {
+        if (token === "required") {
+            parsed.required = true;
+            continue;
+        }
+        if (!token.startsWith("default=")) {
+            parsed.unknown.push(token);
+            continue;
+        }
+        const literal = parseFilterDefault(token.slice("default=".length));
+        if (literal === undefined) {
+            parsed.emptyDefault = true;
+        } else {
+            parsed.default = literal;
+        }
+    }
+    return parsed;
+}
+
 /** Read a `@foreignKey` value: the first token is the entity, each later `key=action` is an option. */
 export function parseForeignKey(value: string): ForeignKey {
     const tokens = value.split(/\s+/).filter((token) => token !== "");
@@ -723,12 +817,20 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "pgType":
                     if (value !== undefined) tags.pgType ??= value;
                     break;
-                case "queryFilter":
-                    // Bare marks the field filterable; `required` also makes every read name it.
+                case "queryFilter": {
+                    // Bare marks the field filterable; `required` and `default=<literal>` add options.
                     if (tags.queryFilter === undefined) {
-                        tags.queryFilter = { required: value?.trim() === "required" };
+                        const parsed = parseQueryFilter(value);
+                        const filter: { required: boolean; default?: FilterDefault } = {
+                            required: parsed.required,
+                        };
+                        if (parsed.default !== undefined) {
+                            filter.default = parsed.default;
+                        }
+                        tags.queryFilter = filter;
                     }
                     break;
+                }
                 case "queryOrderBy": {
                     // Bare marks the field orderable; `default asc|desc` also names the entity default.
                     if (tags.queryOrderBy === undefined) {

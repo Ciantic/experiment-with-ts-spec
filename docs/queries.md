@@ -77,6 +77,7 @@ default), at most `limit` of them, in pages of `offset`.
 ```
 @queryFilter
 @queryFilter required
+@queryFilter default=<literal>
 ```
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
@@ -160,6 +161,46 @@ separate annotation: `@foreignKey Invoice scope=tenantId` makes the reference
 composite, so a row cannot point at another tenant's invoice, and the interface it
 points at declares that column with `@tenantOwned`. See `docs/tenancy.md`.
 
+### A defaulted filter
+
+`@queryFilter default=<literal>` gives the filter a value to match when a read
+omits it. The literal is `null`, a boolean, a number, or a string; a bare token is
+a string, so a date or an enum value needs no quotes (`default=2024-01-01`,
+`default=draft`), and quotes are also accepted (`default="draft"`).
+
+```ts
+/**
+ * @fieldName Deleted at
+ * @queryFilter default=null
+ * @widget date
+ */
+deletedAt?: Date;
+```
+
+A read that leaves `deletedAt` out matches only the rows where the column is
+`null`, which is how soft deletion is modelled: the column is an ordinary
+nullable field, `update` sets the moment, and every read hides trashed rows
+unless it names the filter. There is no special tag, no `trash` or `restore`
+operation, and no `trashed` argument. See `docs/soft-delete.md`.
+
+A default is not a set: it is one literal, compared with `=` (or `is null`). A
+read that names the filter overrides it and matches the set it passes, so the
+default only fills a hole. Defaults combine with the other filters and with
+`where`, all with `and` — but a `where` condition on the same field counts as
+naming it, so it replaces the default rather than narrowing it.
+
+- **`null` needs a nullable field.** A `null` default on a not-null column could
+  never match; the linter reports it. Any other literal works on either.
+- **A default never makes a filter required.** The filter stays optional in the
+  generated type, the wire schema, and the SDK; a read that names it wins, and a
+  read that omits it gets the literal.
+- **A default applies to branches too.** A branch narrows through the same
+  resolver, so a `@children` or `@relation` branch over a defaulted entity hides
+  the defaulted rows unless its own arguments name the filter or compare the
+  field.
+- **A required filter cannot be defaulted.** Its default would never apply, so
+  the two are a lint finding together.
+
 ### Filters are sets, combined with `and`
 
 Every filter is an array and every clause is `= any($n)`, so a single value is
@@ -167,9 +208,10 @@ written as a one-element array. An array matches any of its values, and an empty
 array matches nothing.
 
 Several filters are combined with **`and`**: `{ tenantId: […], customerId: […] }`
-requires both. A filter left `undefined` is dropped, so a read that names only the
-tenant returns every row of that tenant — and an entity with no required filter,
-such as `Tenant`, lists everything when `filter` is left out.
+requires both. A filter left `undefined` is dropped — unless it declares a
+default, which is applied in its place — so a read that names only the tenant
+returns every row of that tenant, and an entity with no required filter, such as
+`Tenant`, lists everything when `filter` is left out.
 
 The generated type makes every filter optional except the ones the tag marks
 required:
@@ -574,6 +616,10 @@ because the ranked window orders each parent's rows before they are grouped.
   it, and a branch field may not carry it. A parent is not filtered by a related
   record's columns, such as `customer.name`; a branch's own `filter` narrows the
   branch, and the foreign key is a scalar field, so `customerId` is filterable.
+- **A default fills a hole, it does not narrow by itself.** `@queryFilter
+  default=<literal>` applies when a read omits the filter; a read that names it
+  overrides the literal. This is how a nullable `deletedAt` reads live rows by
+  default, without a tag of its own (`docs/soft-delete.md`).
 - **A required filter is a precondition, not a filter value.** `@queryFilter
   required` narrows nothing by itself; it makes the caller name the field. Every
   tenant-owned entity marks its `tenantId` that way, so a read cannot quietly span

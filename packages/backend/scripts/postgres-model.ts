@@ -10,6 +10,7 @@ import {
     isUpdatable,
     type CompareOperator,
     type Diagnostic,
+    type FilterDefault,
     type ForeignKey,
     type ReferentialAction,
     type OrderDirection,
@@ -68,8 +69,8 @@ export interface Column {
     generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
-    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it. See docs/queries.md. */
-    queryFilter?: { required: boolean };
+    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<literal>` fills it in when omitted. See docs/queries.md. */
+    queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
     queryOrder?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with. See docs/queries.md. */

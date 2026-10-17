@@ -24,6 +24,7 @@ export const invoicePatchSchema = invoiceSchema
         issueDate: invoiceSchema.shape.issueDate.nullable(),
         dueDate: invoiceSchema.shape.dueDate.nullable(),
         notes: invoiceSchema.shape.notes.nullable(),
+        deletedAt: invoiceSchema.shape.deletedAt.nullable(),
     })
     .required({
         id: true,
@@ -32,4 +33,4 @@ export const invoicePatchSchema = invoiceSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type InvoicePatch = Patch<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes">;
+export type InvoicePatch = Patch<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt">;

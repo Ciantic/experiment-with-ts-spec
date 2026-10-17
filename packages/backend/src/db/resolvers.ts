@@ -37,9 +37,14 @@ export interface QueryTable {
     order?: string[];
     /** The entity's default ordering, applied to a read that names none. See docs/queries.md. */
     defaultOrder?: { field: string; direction: Direction };
-    /** Comparison fields mapped to their allowed operators; absent when the entity marks none. */
+    /** The comparison fields mapped to their allowed operators; absent when the entity marks none. */
     where?: Record<string, string[]>;
+    /** Filter fields matched against a literal when a read omits them, from `@queryFilter default=<literal>`. See docs/queries.md. */
+    filterDefaults?: Record<string, FilterDefault>;
 }
+
+/** The literal a filter matches when a read omits it, from `@queryFilter default=<literal>`. See docs/queries.md. */
+export type FilterDefault = string | number | boolean | null;
 
 /** Every table the resolver may read, keyed by physical table name. */
 export interface QueryModel {
@@ -350,6 +355,25 @@ function argumentClause(
     return inSet(column, values, params);
 }
 
+/** One omitted filter's default clause: `is null`, or a value compared with the column. See docs/queries.md. */
+function defaultClause(
+    table: string,
+    meta: QueryTable,
+    name: string,
+    value: FilterDefault,
+    params: unknown[],
+): string {
+    const column = meta.fields[name];
+    if (column === undefined) {
+        throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
+    }
+    if (value === null) {
+        return `${TABLE_ALIAS}.${quote(column)} is null`;
+    }
+    params.push(value);
+    return `${TABLE_ALIAS}.${quote(column)} = $${params.length}`;
+}
+
 /** The comparison clauses for a read, one `column <op> $n` per whitelisted operator. See docs/queries.md. */
 function whereClauses(table: string, meta: QueryTable, where: WhereClause, params: unknown[]): string[] {
     const clauses: string[] = [];
@@ -416,6 +440,13 @@ function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses
             continue;
         }
         filters.push(argumentClause(table, meta, name, value, params));
+    }
+    // A filter a read leaves out falls back to its default; a comparison on the field overrides it.
+    for (const [name, value] of Object.entries(meta.filterDefaults ?? {})) {
+        if (read.args[name] !== undefined || read.where?.[name] !== undefined) {
+            continue;
+        }
+        filters.push(defaultClause(table, meta, name, value, params));
     }
     if (read.where) {
         filters.push(...whereClauses(table, meta, read.where, params));

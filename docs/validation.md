@@ -359,7 +359,9 @@ export const queryInvoiceSchema = z.strictObject({
 Every filter is optional — mirroring the generated `Filters<…>` type — except the
 one `@queryFilter required` marks, which drops the `.optional()` on the field and
 on the `filter` object that holds it, so `queryInvoiceSchema` rejects a read that
-names no tenant. The filter is its own
+names no tenant. A `@queryFilter default=<literal>` stays optional: the literal
+is applied by the resolver when the read omits the field, so it needs no schema
+of its own. The filter is its own
 `z.strictObject`, so a flat filter field or an unknown filter key fails rather
 than being stripped, and a data field named `select` cannot collide with the
 projection. Each `order` clause is a `[field, direction]` tuple whose field is

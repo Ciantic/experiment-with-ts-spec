@@ -71,6 +71,14 @@ const scoped = table("scoped", "Scoped", [
     column("tenantId", { queryFilter: { required: true } }),
 ]);
 
+/** An entity whose filters fall back to a literal when a read omits them. */
+const defaulted = table("defaulted", "Defaulted", [
+    column("id", { primaryKey: true, queryFilter: { required: false } }),
+    column("state", { queryFilter: { required: false, default: "open" } }),
+    column("priority", { queryFilter: { required: false, default: 0 } }),
+    column("deletedAt", { notNull: false, queryFilter: { required: false, default: null } }),
+]);
+
 const tables = new Map([
     ["Invoice", invoice],
     ["Seller", seller],
@@ -108,6 +116,18 @@ describe("buildQueryModel", () => {
         const model = buildQueryModel(tables).tables.invoice;
 
         expect(model?.requiredFilters).toBeUndefined();
+    });
+
+    it("records the filters' literal defaults", () => {
+        const model = buildQueryModel(new Map([["Defaulted", defaulted]]));
+
+        expect(model.tables.defaulted?.filterDefaults).toEqual({ state: "open", priority: 0, deletedAt: null });
+    });
+
+    it("omits default metadata when no filter declares one", () => {
+        const model = buildQueryModel(tables).tables.invoice;
+
+        expect(model?.filterDefaults).toBeUndefined();
     });
 
     it("records the orderable fields and the entity default ordering", () => {

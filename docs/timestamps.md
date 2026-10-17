@@ -162,10 +162,11 @@ from `@inlined`.
 
 ## Deliberately not implemented
 
-- **Soft delete (`deletedAt`).** Deletion is a real `delete`.
 - **Optimistic locking via `updatedAt`.** Not this column: `now()` is transaction
   time, so two writes in one transaction share a value and a stale read could
   still match. A separate monotonic counter fills that role; see
   `docs/versioning.md`.
 - **Timestamps on the snapshots.** Above.
 - **An actor column.** Who made the change (`updatedBy`) is not modelled.
+- **A trash marker tag.** A row's deletion moment is an ordinary nullable
+  `deletedAt` field with `@queryFilter default=null`; see `docs/soft-delete.md`.

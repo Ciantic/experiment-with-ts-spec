@@ -24,8 +24,9 @@ export const invoiceInsertSchema = invoiceSchema
         issueDate: invoiceSchema.shape.issueDate.nullable(),
         dueDate: invoiceSchema.shape.dueDate.nullable(),
         notes: invoiceSchema.shape.notes.nullable(),
+        deletedAt: invoiceSchema.shape.deletedAt.nullable(),
     })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceInsert = Insert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes", never>;
+export type InvoiceInsert = Insert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", never>;

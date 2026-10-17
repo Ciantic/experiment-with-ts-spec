@@ -181,6 +181,16 @@ export interface Invoice {
     updatedAt: Date;
 
     /**
+     * The moment the invoice was trashed; null while it is live.
+     *
+     * @fieldName Deleted at
+     * @queryFilter default=null
+     * @queryWhere gte
+     * @widget date
+     */
+    deletedAt?: Date;
+
+    /**
      * The revision of the invoice, incremented on every write.
      * 
      * @fieldName Version

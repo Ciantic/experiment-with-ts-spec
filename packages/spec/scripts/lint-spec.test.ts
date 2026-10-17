@@ -1249,11 +1249,66 @@ export interface Thing {
         expect(findings).toEqual([]);
     });
 
-    it("rejects a value that is not `required`", () => {
+    it("rejects a value that is neither `required` nor `default=null`", () => {
         const findings = lintSourceText(field("value", "yes"));
 
         expect(messages(findings)).toEqual([
-            "`value`: @queryFilter takes no value or `required`, found `yes`",
+            "`value`: @queryFilter takes no value, `required`, or `default=<literal>`, found `yes`",
+        ]);
+    });
+
+    const custom = (doc: string, field: string) =>
+        `/** @entity */
+export interface Thing {
+            /**
+             * @fieldName Label
+             * @widget text
+             ${doc}
+             */
+            ${field};
+        }`;
+
+    it("accepts default=null on an optional field", () => {
+        const findings = lintSourceText(custom("@queryFilter default=null", "deletedAt?: Date"));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects default=null on a field whose column is not nullable", () => {
+        const findings = lintSourceText(custom("@queryFilter default=null", "deletedAt: Date"));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @queryFilter default=null needs an optional field, whose column is nullable",
+        ]);
+    });
+
+    it("rejects a filter that is both required and defaulted", () => {
+        const findings = lintSourceText(custom("@queryFilter required default=null", "value?: string"));
+
+        expect(messages(findings)).toEqual([
+            "`value`: @queryFilter cannot be both `required` and defaulted",
+        ]);
+    });
+
+    it("accepts a non-null default on a not-null field, whose column has no null to match", () => {
+        const findings = lintSourceText(custom("@queryFilter default=0", "amount: number"));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts quoted and bare string defaults", () => {
+        for (const value of ['default="draft"', "default=draft", "default=2024-01-01", 'default="on hold"']) {
+            const findings = lintSourceText(custom(`@queryFilter ${value}`, "status?: string"));
+
+            expect(findings).toEqual([]);
+        }
+    });
+
+    it("rejects a default with no literal", () => {
+        const findings = lintSourceText(custom("@queryFilter default=", "value?: string"));
+
+        expect(messages(findings)).toEqual([
+            "`value`: @queryFilter default= needs a literal: `null`, a boolean, a number, or a string",
         ]);
     });
 

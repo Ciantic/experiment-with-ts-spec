@@ -89,6 +89,7 @@ create table "invoice" (
     "notes" text,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
+    "deletedAt" timestamptz,
     "version" int8 not null default 0,
     constraint "invoice_pkey" primary key ("id"),
     constraint "invoice_tenantId_customerId_fkey" foreign key ("tenantId", "customerId") references "customer" ("tenantId", "id"),
