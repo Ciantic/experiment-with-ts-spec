@@ -1,5 +1,5 @@
 /** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
-import type { Direction, Selection, Selected, Trashed } from "validation/selection.ts";
+import type { Direction, Selection, Selected } from "validation/selection.ts";
 import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
 /** A branch that reads another table: `relation` is to-one, `children` is to-many. */
@@ -39,8 +39,6 @@ export interface QueryTable {
     defaultOrder?: { field: string; direction: Direction };
     /** Comparison fields mapped to their allowed operators; absent when the entity marks none. */
     where?: Record<string, string[]>;
-    /** The `@deletedAt` column; present on a soft-deletable entity, whose reads then hide trashed rows by default. See docs/soft-delete.md. */
-    deletedAt?: string;
 }
 
 /** Every table the resolver may read, keyed by physical table name. */
@@ -75,8 +73,6 @@ export interface ResolveOptions<E, S extends Selection<E>> {
     offset?: number | undefined;
     /** Comparison arguments; each field is restricted to its `@queryWhere` operators. See docs/queries.md. */
     where?: WhereClause | undefined;
-    /** Which rows of a soft-deletable entity the read returns; absent means the live ones. See docs/soft-delete.md. */
-    trashed?: Trashed | undefined;
 }
 
 /** The rows a root read returns when it names no `limit`. See docs/queries.md. */
@@ -184,7 +180,6 @@ interface BranchRead {
     args: Record<string, unknown>;
     order?: OrderClause[] | undefined;
     where?: WhereClause | undefined;
-    trashed?: Trashed | undefined;
     page?: Page | undefined;
 }
 
@@ -203,7 +198,6 @@ function branchRead(meta: QueryTable, value: unknown, path: string): BranchRead 
         args: (args.filter as Record<string, unknown> | undefined) ?? {},
         order: args.order as OrderClause[] | undefined,
         where: args.where as WhereClause | undefined,
-        trashed: args.trashed as Trashed | undefined,
         page: branchPage(args.limit as number | undefined, args.offset as number | undefined, path),
     };
 }
@@ -396,7 +390,6 @@ interface FetchRead {
     match?: { column: string; values: unknown[] } | undefined;
     order?: OrderClause[] | undefined;
     where?: WhereClause | undefined;
-    trashed?: Trashed | undefined;
     page?: Page | undefined;
 }
 
@@ -427,37 +420,12 @@ function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses
     if (read.where) {
         filters.push(...whereClauses(table, meta, read.where, params));
     }
-    const trashed = trashedClause(table, meta, read.trashed);
-    if (trashed !== undefined) {
-        filters.push(trashed);
-    }
 
     return {
         where: filters.length > 0 ? ` where ${filters.join(" and ")}` : "",
         order: orderParts(table, meta, read.order),
         params,
     };
-}
-
-/** The clause that hides or isolates trashed rows, or undefined when every row qualifies. See docs/soft-delete.md. */
-function trashedClause(table: string, meta: QueryTable, trashed: Trashed | undefined): string | undefined {
-    if (meta.deletedAt === undefined) {
-        if (trashed !== undefined) {
-            throw new Error(`\`trashed\` is not available on \`${table}\`, which has no @deletedAt field`);
-        }
-        return undefined;
-    }
-    const column = `${TABLE_ALIAS}.${quote(meta.deletedAt)}`;
-    switch (trashed ?? "exclude") {
-        case "exclude":
-            return `${column} is null`;
-        case "only":
-            return `${column} is not null`;
-        case "include":
-            return undefined;
-        default:
-            throw new Error(`trashed on \`${table}\` must be "exclude", "include" or "only", found \`${String(trashed)}\``);
-    }
 }
 
 /** The rendered `order by` parts for a read, falling back to the entity default. See docs/queries.md. */
@@ -652,7 +620,6 @@ export function createResolver(model: QueryModel): Resolver {
             args,
             order: opts.order,
             where: opts.where,
-            trashed: opts.trashed,
             page: resolvePage(opts.limit, opts.offset),
         });
         return rows.map((row) => row.value) as unknown as Selected<E, S>[];

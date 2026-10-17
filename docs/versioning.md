@@ -287,8 +287,7 @@ matched before the generated code rejects the call
   surfacing a conflict to a user is the caller's decision.
 - **Deletes checking a version.** `deleteCustomer` keys on the primary key only.
   Deleting a row someone else has just updated is a real race, but a delete is
-  idempotent enough to omit the check. Trash and restore are not: they claim the
-  version like a patch (`docs/soft-delete.md`).
+  idempotent enough to omit the check.
 
 ## Wiring
 

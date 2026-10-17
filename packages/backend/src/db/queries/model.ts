@@ -79,7 +79,6 @@ export const queryModel: QueryModel = {
                 "notes": "notes",
                 "createdAt": "createdAt",
                 "updatedAt": "updatedAt",
-                "deletedAt": "deletedAt",
                 "version": "version"
             },
             "relations": {
@@ -112,8 +111,7 @@ export const queryModel: QueryModel = {
                     "gte",
                     "lte"
                 ]
-            },
-            "deletedAt": "deletedAt"
+            }
         },
         "invoice_row": {
             "name": "invoice_row",

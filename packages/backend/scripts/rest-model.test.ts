@@ -341,47 +341,4 @@ export interface Bad {
         expect(widget?.whereFields).toEqual([{ name: "amount", operators: ["gte", "lte"] }]);
         expect(marker?.whereFields).toEqual([]);
     });
-
-    describe("soft delete", () => {
-        const NOTE = `
-/**
- * @pgTable note
- * @repository create trash restore
- * @restRepository create trash restore
- * @queries query
- * @restQueries query
- * @entity
- */
-export interface Note {
-    /** @primaryKey */
-    id: string;
-
-    /** @deletedAt */
-    removedAt?: Date;
-}
-`.trim();
-        const note = build({ Note: NOTE }).entities[0];
-
-        it("exposes trash and restore as POSTs to an action path, carrying the keys in the body", () => {
-            expect(note?.operations).toContainEqual({
-                id: "trashNote",
-                kind: "trash",
-                method: "POST",
-                path: "/note/trash",
-                source: "body",
-            });
-            expect(note?.operations).toContainEqual({
-                id: "restoreNote",
-                kind: "restore",
-                method: "POST",
-                path: "/note/restore",
-                source: "body",
-            });
-        });
-
-        it("marks only the entity that carries @deletedAt as trashable", () => {
-            expect(note?.trashable).toBe(true);
-            expect(model.entities.every((entity) => !entity.trashable)).toBe(true);
-        });
-    });
 });

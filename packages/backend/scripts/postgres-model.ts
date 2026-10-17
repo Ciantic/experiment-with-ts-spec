@@ -68,8 +68,6 @@ export interface Column {
     generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
-    /** The soft-delete column: null while the row is live, set by `trash` and cleared by `restore`. See docs/soft-delete.md. */
-    deletedAt?: boolean;
     /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it. See docs/queries.md. */
     queryFilter?: { required: boolean };
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
@@ -143,11 +141,6 @@ export function primaryKeyColumns(table: Table): Column[] {
         throw new Error(`${table.interfaceName} has no @primaryKey column`);
     }
     return columns;
-}
-
-/** The soft-delete column, or undefined when the table is not soft-deletable. See docs/soft-delete.md. */
-export function deletedAtColumn(table: Table): Column | undefined {
-    return table.columns.find((column) => column.deletedAt);
 }
 
 /** Quote an identifier, matching the tags in the spec. */
@@ -423,9 +416,6 @@ function addScalarColumn(
     }
     if (tags.version) {
         column.version = true;
-    }
-    if (tags.deletedAt) {
-        column.deletedAt = true;
     }
 
     if (foreignKey !== undefined && foreignKeyTable !== undefined) {

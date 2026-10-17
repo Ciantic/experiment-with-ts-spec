@@ -23,6 +23,5 @@ export const invoiceSchema = z.object({
     notes: z.string().optional(),
     createdAt: z.date(),
     updatedAt: z.date(),
-    deletedAt: z.date().optional(),
     version: primitives.versionSchema,
 });
