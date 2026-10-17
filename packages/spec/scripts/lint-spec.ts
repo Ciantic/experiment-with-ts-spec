@@ -13,6 +13,7 @@ import {
     WRITE_OPERATIONS,
     isCompareOperator,
     isForeignKeyOption,
+    isNullOperator,
     isOrderDirection,
     isReferentialAction,
     loadSpec,
@@ -633,8 +634,8 @@ function lintDeletedAt(tags: FieldTags, report: Report): void {
         report("@deletedAt is null while the row is live, so the field must be optional; add the `?`", tag);
     }
     // The hiding of deleted rows is the filter's default, not this marker's, so the field has to carry it.
-    if (parseQueryFilter(tags.queryFilter?.value).default !== null) {
-        report("@deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows", tag);
+    if (parseQueryFilter(tags.queryFilter?.value).default?.kind !== "isNull") {
+        report("@deletedAt needs @queryFilter default=isNull on the same field, so a read hides deleted rows", tag);
     }
 }
 
@@ -789,7 +790,7 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
     }
 }
 
-/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it, `default=<literal>` fills it in when omitted. */
+/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it, `default=<value>` fills it in when omitted. */
 function lintQueryFilter(tags: FieldTags, report: Report): void {
     const tag = tags.queryFilter;
     if (!tag) {
@@ -798,14 +799,17 @@ function lintQueryFilter(tags: FieldTags, report: Report): void {
     reportIfBranch(tags, tag, report);
     const parsed = parseQueryFilter(tag.value);
     for (const token of parsed.unknown) {
-        report(`@queryFilter takes no value, \`required\`, or \`default=<literal>\`, found \`${token}\``, tag);
+        report(`@queryFilter takes no value, \`required\`, or \`default=<value>\`, found \`${token}\``, tag);
+    }
+    if (parsed.nullSpelling) {
+        report("@queryFilter spells a null default `default=isNull`, not `default=null`", tag);
     }
     if (parsed.emptyDefault) {
-        report("@queryFilter default= needs a literal: `null`, a boolean, a number, or a string", tag);
+        report("@queryFilter default= needs a value: `isNull`, `isNotNull`, a boolean, a number, or a string", tag);
     }
-    // `null` is a value of a nullable column; on a not-null one the default would match nothing.
-    if (parsed.default === null && !tags.optional) {
-        report("@queryFilter default=null needs an optional field, whose column is nullable", tag);
+    // A null test reads a nullable column; on a not-null one it would match every row or none.
+    if ((parsed.default?.kind === "isNull" || parsed.default?.kind === "isNotNull") && !tags.optional) {
+        report(`@queryFilter default=${parsed.default.kind} needs an optional field, whose column is nullable`, tag);
     }
     // A required filter is always named, so its default would never apply.
     if (parsed.required && parsed.default !== undefined) {
@@ -890,6 +894,11 @@ function lintWhere(tags: FieldTags, report: Report): void {
         if (!isCompareOperator(token)) {
             report(`@queryWhere \`${token}\` is not one of: ${COMPARE_OPERATORS.join(", ")}`, tag);
         }
+    }
+    // A not-null column never matches `is null` and always matches `is not null`, so neither is a query.
+    const nullTest = tokens.find((token) => isNullOperator(token));
+    if (nullTest !== undefined && !tags.optional) {
+        report(`@queryWhere \`${nullTest}\` needs an optional field, whose column is nullable`, tag);
     }
     reportIfBranch(tags, tag, report);
 }

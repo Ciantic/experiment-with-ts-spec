@@ -34,9 +34,9 @@ export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
         tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-        customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
-        sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
-        deletedAt: z.array(z.date()).optional(),
+        customerId: z.union([z.array(primitives.brandedIdSchema<"CustomerId">()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),
+        sellerId: z.union([z.array(primitives.brandedIdSchema<"SellerId">()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),
+        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),
     }).optional(),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
@@ -45,9 +45,6 @@ export const queryInvoiceSchema = z.strictObject({
         issueDate: z.strictObject({
             gte: z.date().optional(),
             lte: z.date().optional(),
-        }).optional(),
-        deletedAt: z.strictObject({
-            gte: z.date().optional(),
         }).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),

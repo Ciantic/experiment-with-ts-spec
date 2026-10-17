@@ -1,5 +1,5 @@
 /** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
-import type { Direction, Selection, Selected } from "validation/selection.ts";
+import type { Direction, FilterDefault, Selection, Selected } from "validation/selection.ts";
 import { resultRows, type SqlExecutor } from "./sql-executor.ts";
 
 /** A branch that reads another table: `relation` is to-one, `children` is to-many. */
@@ -39,12 +39,12 @@ export interface QueryTable {
     defaultOrder?: { field: string; direction: Direction };
     /** The comparison fields mapped to their allowed operators; absent when the entity marks none. */
     where?: Record<string, string[]>;
-    /** Filter fields matched against a literal when a read omits them, from `@queryFilter default=<literal>`. See docs/queries.md. */
+    /** Filter values matched when a read omits them, from `@queryFilter default=<value>`. See docs/queries.md. */
     filterDefaults?: Record<string, FilterDefault>;
 }
 
-/** The literal a filter matches when a read omits it, from `@queryFilter default=<literal>`. See docs/queries.md. */
-export type FilterDefault = string | number | boolean | null;
+/** The value a filter matches when a read omits it, from `@queryFilter default=<value>`. See docs/queries.md. */
+export type { FilterDefault } from "validation/selection.ts";
 
 /** Every table the resolver may read, keyed by physical table name. */
 export interface QueryModel {
@@ -333,7 +333,35 @@ function outputAliases({ projection, matchColumn }: ReadPlan): string[] {
     return aliases;
 }
 
-/** One argument's clause: a set, `column = any($n)`. See docs/queries.md. */
+/** The comparison operators that test for null; each takes `true` and binds no parameter. See docs/queries.md. */
+const NULL_COMPARISON_SQL: Record<string, string> = {
+    isNull: "is null",
+    isNotNull: "is not null",
+};
+
+/** A filter's null test, when the value is one; undefined for a set or a malformed value. See docs/queries.md. */
+function nullFilterTest(value: unknown): "is null" | "is not null" | undefined {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return undefined;
+    }
+    const entries = Object.entries(value);
+    if (entries.length !== 1) {
+        return undefined;
+    }
+    const [name, test] = entries[0] as [string, unknown];
+    if (test !== true) {
+        return undefined;
+    }
+    if (name === "isNull") {
+        return "is null";
+    }
+    if (name === "isNotNull") {
+        return "is not null";
+    }
+    return undefined;
+}
+
+/** One argument's clause: a set (`column = any($n)`), or a null test. See docs/queries.md. */
 function argumentClause(
     table: string,
     meta: QueryTable,
@@ -341,12 +369,16 @@ function argumentClause(
     value: unknown,
     params: unknown[],
 ): string {
-    if (!Array.isArray(value)) {
-        throw new Error(`filter \`${name}\` on \`${table}\` must be an array`);
-    }
     const column = meta.fields[name];
     if (column === undefined) {
         throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
+    }
+    const nullTest = nullFilterTest(value);
+    if (nullTest !== undefined) {
+        return `${TABLE_ALIAS}.${quote(column)} ${nullTest}`;
+    }
+    if (!Array.isArray(value)) {
+        throw new Error(`filter \`${name}\` on \`${table}\` must be an array or a null test`);
     }
     const values = distinct(value);
     if (values.length === 0) {
@@ -355,7 +387,7 @@ function argumentClause(
     return inSet(column, values, params);
 }
 
-/** One omitted filter's default clause: `is null`, or a value compared with the column. See docs/queries.md. */
+/** One omitted filter's default clause: a null test, or a value compared with the column. See docs/queries.md. */
 function defaultClause(
     table: string,
     meta: QueryTable,
@@ -367,14 +399,17 @@ function defaultClause(
     if (column === undefined) {
         throw new Error(`unknown filter field \`${name}\` on \`${table}\``);
     }
-    if (value === null) {
+    if (value.kind === "isNull") {
         return `${TABLE_ALIAS}.${quote(column)} is null`;
     }
-    params.push(value);
+    if (value.kind === "isNotNull") {
+        return `${TABLE_ALIAS}.${quote(column)} is not null`;
+    }
+    params.push(value.value);
     return `${TABLE_ALIAS}.${quote(column)} = $${params.length}`;
 }
 
-/** The comparison clauses for a read, one `column <op> $n` per whitelisted operator. See docs/queries.md. */
+/** The comparison clauses for a read, one `column <op> $n` per whitelisted operator; a null test binds nothing. See docs/queries.md. */
 function whereClauses(table: string, meta: QueryTable, where: WhereClause, params: unknown[]): string[] {
     const clauses: string[] = [];
     for (const [field, condition] of Object.entries(where)) {
@@ -389,6 +424,17 @@ function whereClauses(table: string, meta: QueryTable, where: WhereClause, param
         const parts: string[] = [];
         for (const [operator, value] of Object.entries(condition)) {
             if (value === undefined) {
+                continue;
+            }
+            const nullOperator = NULL_COMPARISON_SQL[operator];
+            if (nullOperator !== undefined) {
+                if (!allowed.includes(operator)) {
+                    throw new Error(`where operator \`${operator}\` is not allowed on \`${field}\` of \`${table}\``);
+                }
+                if (value !== true) {
+                    throw new Error(`where operator \`${operator}\` on \`${field}\` of \`${table}\` takes \`true\``);
+                }
+                parts.push(`${TABLE_ALIAS}.${quote(column)} ${nullOperator}`);
                 continue;
             }
             const sqlOperator = COMPARISON_SQL[operator];

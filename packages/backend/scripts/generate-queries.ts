@@ -106,7 +106,7 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
             data.where = Object.fromEntries(whereColumns.map((column) => [column.name, column.where ?? []]));
         }
 
-        // A defaulted filter is applied when a read leaves it out, so the resolver reads the literal too.
+        // A defaulted filter is applied when a read leaves it out, so the resolver reads the value too.
         const filterDefaults: Record<string, FilterDefault> = {};
         for (const column of table.columns) {
             const fallback = column.queryFilter?.default;

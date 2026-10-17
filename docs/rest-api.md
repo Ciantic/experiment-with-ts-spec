@@ -77,8 +77,10 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 `filter` sets and `where` comparisons. A filter the entity marks `@queryFilter
 required` has to be named, so a read of a tenant-scoped entity that omits its
 `tenantId` is a 400 rather than the whole table. A filter with a
-`@queryFilter default=<literal>` matches that literal when the read omits it,
-which is how a nullable `deletedAt` hides trashed rows (`docs/soft-delete.md`). A
+`@queryFilter default=<value>` matches that value when the read omits it,
+which is how a nullable `deletedAt` hides trashed rows (`docs/soft-delete.md`).
+A nullable field's filter also takes `{ isNull: true }` or `{ isNotNull: true }`
+instead of a set, which is how a read asks for the deleted rows. A
 caller that wants a single row takes the first result (`docs/queries.md`).
 
 A create takes `<entity>InsertSchema`, the columns the database does not own, and

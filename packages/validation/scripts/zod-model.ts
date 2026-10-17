@@ -474,10 +474,15 @@ function buildQueries(
                 );
                 continue;
             }
+            const setExpression = `z.array(${resolved})`;
+            // Only a nullable column has nulls to test, so only an optional field accepts a null test.
+            const expression = property.optional
+                ? `z.union([${setExpression}, z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })])`
+                : setExpression;
             filterFields.push({
                 name: property.name,
-                // A required filter is a plain set; an optional one may be left out.
-                expression: `z.array(${resolved})${property.tags.queryFilter.required ? "" : ".optional()"}`,
+                // A required filter is always named; an optional one may be left out.
+                expression: `${expression}${property.tags.queryFilter.required ? "" : ".optional()"}`,
             });
             if (property.tags.queryFilter.required) {
                 requiredFilterFields.push(property.name);

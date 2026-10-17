@@ -185,8 +185,7 @@ export interface Invoice {
      *
      * @fieldName Deleted at
      * @deletedAt
-     * @queryFilter default=null
-     * @queryWhere gte
+     * @queryFilter default=isNull
      * @widget date
      */
     deletedAt?: Date;

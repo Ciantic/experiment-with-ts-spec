@@ -359,16 +359,20 @@ export const queryInvoiceSchema = z.strictObject({
 Every filter is optional — mirroring the generated `Filters<…>` type — except the
 one `@queryFilter required` marks, which drops the `.optional()` on the field and
 on the `filter` object that holds it, so `queryInvoiceSchema` rejects a read that
-names no tenant. A `@queryFilter default=<literal>` stays optional: the literal
+names no tenant. A `@queryFilter default=<value>` stays optional: the value
 is applied by the resolver when the read omits the field, so it needs no schema
-of its own. The filter is its own
+of its own. A filter over an optional field accepts a null test as well as a set,
+`z.union([z.array(…), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })])`,
+because a set cannot say "is null"; a not-null field keeps the plain set. The
+filter is its own
 `z.strictObject`, so a flat filter field or an unknown filter key fails rather
 than being stripped, and a data field named `select` cannot collide with the
 projection. Each `order` clause is a `[field, direction]` tuple whose field is
 whitelisted (`z.enum`), so an unknown sort key is a 400 rather than a `500` from
 the resolver. Each `where` field is a `z.strictObject` of **only** the operators
 `@queryWhere` declared, so a comparison the spec does not allow is a 400 too; the
-field's own schema types each operator's value. `limit` is a positive integer
+field's own schema types each operator's value, and a null test is
+`z.literal(true)`. `limit` is a positive integer
 and `offset` a non-negative integer, so a bad page is a 400. An entity with no
 `@queryOrderBy` field gets no `order` key and an entity with no `@queryWhere` field no
 `where` key; every read gets `limit` and `offset`.

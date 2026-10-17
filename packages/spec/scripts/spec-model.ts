@@ -158,8 +158,12 @@ export interface ForeignKey {
     scope?: string;
 }
 
-/** The comparison operators a `@queryWhere` field may name. */
-export const COMPARE_OPERATORS = ["eq", "ne", "gt", "gte", "lt", "lte"] as const;
+/** The operators that test a column for null and take no value. See docs/queries.md. */
+export const NULL_OPERATORS = ["isNull", "isNotNull"] as const;
+export type NullOperator = (typeof NULL_OPERATORS)[number];
+
+/** The comparison operators a `@queryWhere` field may name, in canonical order. */
+export const COMPARE_OPERATORS = ["eq", "ne", "gt", "gte", "lt", "lte", ...NULL_OPERATORS] as const;
 export type CompareOperator = (typeof COMPARE_OPERATORS)[number];
 
 /** True when the text is one of {@link COMPARE_OPERATORS}. */
@@ -167,11 +171,20 @@ export function isCompareOperator(value: string): value is CompareOperator {
     return (COMPARE_OPERATORS as readonly string[]).includes(value);
 }
 
+/** True when the operator tests for null and so takes no value. */
+export function isNullOperator(value: string): value is NullOperator {
+    return (NULL_OPERATORS as readonly string[]).includes(value);
+}
+
 /**
- * The literal a filter matches when a read omits it. `null` is the value a nullable column's filter
- * defaults to; every other literal is a value of the column's type. See docs/queries.md.
+ * The value a filter matches when a read omits it: a literal of the column's type, or a null test.
+ * `isNull` and `isNotNull` are keywords, so a *string* with that text is written quoted.
+ * See docs/queries.md.
  */
-export type FilterDefault = string | number | boolean | null;
+export type FilterDefault =
+    | { kind: "isNull" }
+    | { kind: "isNotNull" }
+    | { kind: "literal"; value: string | number | boolean };
 
 /** The write operations `@repository` and `@restRepository` may name, in canonical order. */
 export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
@@ -254,7 +267,7 @@ export interface Tags {
     createdAt: boolean;
     /** The field holds the row's last-write moment; the database maintains it. See docs/timestamps.md. */
     updatedAt: boolean;
-    /** The field holds the row's deletion moment; it must be a nullable `Date` with `@queryFilter default=null`. See docs/soft-delete.md. */
+    /** The field holds the row's deletion moment; it must be a nullable `Date` with `@queryFilter default=isNull`. See docs/soft-delete.md. */
     deletedAt: boolean;
     /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
     pgVirtual?: string;
@@ -296,7 +309,7 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
     pgType?: string;
-    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<literal>` fills it in when a read omits it. See docs/queries.md. */
+    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<value>` fills it in when a read omits it. See docs/queries.md. */
     queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
@@ -626,8 +639,10 @@ export interface ParsedQueryFilter {
     default?: FilterDefault;
     /** Tokens that name no option; the linter reports them. */
     unknown: string[];
-    /** True when a `default=` token carries no literal; the linter reports it. */
+    /** True when a `default=` token carries no value; the linter reports it. */
     emptyDefault: boolean;
+    /** True when the tag spells a null default `default=null`; the keyword is `isNull`. */
+    nullSpelling: boolean;
 }
 
 /** Split a tag value on whitespace, keeping a quoted string in one token, e.g. `default="a b"`. */
@@ -660,35 +675,49 @@ function splitTagTokens(value: string): string[] {
 }
 
 /**
- * Parse the literal after `default=`: `null`, a boolean, a number, or a string. A quoted string is a
- * value; a bare token is read as a string too, which is how a date or an enum value is written.
- * Returns undefined for an empty or malformed literal, which the linter reports.
+ * Parse the value after `default=`: the keywords `isNull` and `isNotNull`, a boolean, a number, or
+ * a string. A quoted string is always a literal; a bare token is read as a string too, which is how
+ * a date or an enum value is written. Returns undefined for an empty or malformed value, and for the
+ * retired `null` spelling, which the linter reports.
  */
 export function parseFilterDefault(text: string): FilterDefault | undefined {
-    if (text === "") {
+    if (text === "isNull") {
+        return { kind: "isNull" };
+    }
+    if (text === "isNotNull") {
+        return { kind: "isNotNull" };
+    }
+    if (text === "" || text === "null") {
         return undefined;
     }
-    if (text === "null") {
-        return null;
-    }
     if (text === "true" || text === "false") {
-        return text === "true";
+        return { kind: "literal", value: text === "true" };
     }
     const quoted =
         (text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"));
     if (quoted) {
-        return text.length < 2 ? undefined : text.slice(1, -1);
+        return text.length < 2 ? undefined : { kind: "literal", value: text.slice(1, -1) };
     }
     const number = Number(text);
-    if (text.trim() !== "" && Number.isFinite(number) && (!Number.isInteger(number) || Number.isSafeInteger(number))) {
-        return number;
+    // An integer beyond the safe range would be rounded, so it stays the exact text for Postgres to cast.
+    if (
+        text.trim() !== "" &&
+        Number.isFinite(number) &&
+        (!Number.isInteger(number) || Number.isSafeInteger(number))
+    ) {
+        return { kind: "literal", value: number };
     }
-    return text;
+    return { kind: "literal", value: text };
 }
 
 /** Parse a `@queryFilter` value into the options it names, so the parser and the linter agree on the vocabulary. */
 export function parseQueryFilter(value: string | undefined): ParsedQueryFilter {
-    const parsed: ParsedQueryFilter = { required: false, unknown: [], emptyDefault: false };
+    const parsed: ParsedQueryFilter = {
+        required: false,
+        unknown: [],
+        emptyDefault: false,
+        nullSpelling: false,
+    };
     for (const token of splitTagTokens(value ?? "")) {
         if (token === "required") {
             parsed.required = true;
@@ -696,6 +725,10 @@ export function parseQueryFilter(value: string | undefined): ParsedQueryFilter {
         }
         if (!token.startsWith("default=")) {
             parsed.unknown.push(token);
+            continue;
+        }
+        if (token === "default=null") {
+            parsed.nullSpelling = true;
             continue;
         }
         const literal = parseFilterDefault(token.slice("default=".length));
@@ -822,7 +855,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (value !== undefined) tags.pgType ??= value;
                     break;
                 case "queryFilter": {
-                    // Bare marks the field filterable; `required` and `default=<literal>` add options.
+                    // Bare marks the field filterable; `required` and `default=<value>` add options.
                     if (tags.queryFilter === undefined) {
                         const parsed = parseQueryFilter(value);
                         const filter: { required: boolean; default?: FilterDefault } = {

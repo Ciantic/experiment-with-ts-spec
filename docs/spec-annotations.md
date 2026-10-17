@@ -77,7 +77,7 @@ Field tags:
   `NEW."<field>" := now()` in the table's trigger, and the field is required. See
   `docs/timestamps.md`.
 - `@deletedAt` — the row's deletion moment. A bare marker on an optional `Date`
-  field that also carries `@queryFilter default=null`, so the column is a
+  field that also carries `@queryFilter default=isNull`, so the column is a
   nullable `timestamptz` and a read hides deleted rows unless it names the
   filter. The tag adds no generation: `update` writes the column, and the filter
   does the hiding. It is a contract the linter checks, reserved for a future
@@ -108,7 +108,7 @@ Field tags:
   it is exclusive with `@computed`. See `docs/versioning.md`.
 - `@queryFilter` — a bare marker that makes the field a filter of the entity's
   generated reads; `@queryFilter required` makes every read name it;
-  `@queryFilter default=<literal>` matches that literal when a read omits the
+  `@queryFilter default=<value>` matches that value when a read omits the
   filter. A filter is a set matched with `= any($n)`; several are combined with
   `and`. Scalar fields only; a branch field may not carry it, and it is redundant
   on the `@primaryKey` field, which is an optional filter by default — `required`
@@ -118,9 +118,12 @@ Field tags:
   also makes it the entity's default ordering (at most one per interface).
   Scalar fields only; a branch field may not carry it. See `docs/queries.md`.
 - `@queryWhere <op>…` — whitelists the comparison operators the field may be narrowed
-  with, space-separated, one or more of `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
-  The list is required: a bare `@queryWhere` is a lint finding. Scalar fields only; a
-  branch field may not carry it. See `docs/queries.md`.
+  with, space-separated, one or more of `eq`, `ne`, `gt`, `gte`, `lt`, `lte`,
+  `isNull`, `isNotNull`.
+  The list is required: a bare `@queryWhere` is a lint finding. The two null
+  tests take `true`, bind no parameter, and need an optional field, whose column
+  can hold null. Scalar fields only; a branch field may not carry it. See
+  `docs/queries.md`.
 
 Interface tags:
 
@@ -711,20 +714,23 @@ Enforced:
   `scope=<that column>` and must come from an interface owned by the same column;
   a scope anywhere else is a finding. See `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`, or
-  `default=<literal>`: `null`, a boolean, a number, or a string (a bare token is a
-  string). A branch field may not carry it; on the `@primaryKey` field, which is
-  an optional filter already, only `required` is accepted; a `default=null` needs
-  an optional field; and `required` with a default is a finding, since the default
-  would never apply. See `docs/queries.md`.
+  `default=<value>`: the keywords `isNull` and `isNotNull`, a boolean, a number,
+  or a string (a bare token is a string, and so is a quoted keyword). A branch
+  field may not carry it; on the `@primaryKey` field, which is an optional filter
+  already, only `required` is accepted; a null-test default needs an optional
+  field; and `required` with a default is a finding, since the default would never
+  apply. The retired `default=null` is reported as `default=isNull`. See
+  `docs/queries.md`.
 - `@deletedAt` takes no value, sits on an optional `Date` field that carries
-  `@queryFilter default=null`, and may not sit on a branch field. The field's own
+  `@queryFilter default=isNull`, and may not sit on a branch field. The field's own
   tags already require the nullable column and the filter, so the marker reports
   a missing or differently defaulted filter. See `docs/soft-delete.md`.
 - `@queryOrderBy` is a bare marker on a scalar field, or `default asc|desc`; a
   branch field may not carry it, and at most one field may declare the default.
   See `docs/queries.md`.
 - `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
-  `lt`, `lte`; a branch field may not carry it. See `docs/queries.md`.
+  `lt`, `lte`, `isNull`, `isNotNull`; a branch field may not carry it, and a null
+  test needs an optional field. See `docs/queries.md`.
 - `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
   operations: the write tags one or more of `create`, `upsert`, `update`,
   `delete`, the read tags one or more of `query`. `@repository` and
@@ -739,7 +745,7 @@ Gotchas:
 
 - **`@deletedAt` generates nothing.** It is a lint-checked marker on a field
   that already works: the column is nullable because the field is optional, reads
-  hide deleted rows because of `@queryFilter default=null`, and `update` writes
+  hide deleted rows because of `@queryFilter default=isNull`, and `update` writes
   the moment. A generator must not read the tag until a mechanism needs it.
 - **`@computed` takes no parameters.** It is a bare marker; the expression sits
   in the mechanism tag beside it, so `storage=` or `formula=` on it is a finding.
@@ -763,8 +769,8 @@ Gotchas:
   thing: the default has one spelling, and `required` is the one it cannot express.
 - **`@queryFilter` is checked structurally, not by type.** The linter rejects it
   on a branch field (a `@relation`/`@children`/`@inlined` marker), on a token that
-  is not `required` or `default=<literal>`, on a bare tag over the primary key,
-  and on `default=null` over a not-null field, but it does not resolve the field's
+  is not `required` or `default=<value>`, on a bare tag over the primary key,
+  and on a null-test default over a not-null field, but it does not resolve the field's
   type: the generated read types the filter from the field's own type, so a
   non-scalar would surface there. A literal is compared with `=` by the resolver,
   which is what catches a value the column's type cannot hold.

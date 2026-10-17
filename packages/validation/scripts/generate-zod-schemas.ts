@@ -4,7 +4,7 @@
  */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { loadSpec, lowerFirst, type SpecModel } from "spec/scripts/spec-model.ts";
+import { isNullOperator, loadSpec, lowerFirst, type SpecModel } from "spec/scripts/spec-model.ts";
 import {
     buildZodModel,
     querySchemaName,
@@ -153,7 +153,9 @@ export function generateQueryFile(
             for (const field of query.whereFields) {
                 lines.push(`        ${field.name}: z.strictObject({`);
                 for (const operator of field.operators) {
-                    lines.push(`            ${operator}: ${field.expression}.optional(),`);
+                    // A null test takes `true`; every other operator takes a value of the field's type.
+                    const expression = isNullOperator(operator) ? "z.literal(true)" : field.expression;
+                    lines.push(`            ${operator}: ${expression}.optional(),`);
                 }
                 lines.push("        }).optional(),");
             }

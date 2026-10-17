@@ -1,5 +1,6 @@
 /** Read types: the column-limiting selection, the filter arguments, and the ordering clauses. See docs/queries.md. */
 import type { Brand } from "spec/primitives/Brand.ts";
+export type { FilterDefault } from "spec/scripts/spec-model.ts";
 
 /** A leaf column: a keyword, a branded primitive, a `Date`, or a union of those. */
 type Scalar<T> = NonNullable<T> extends string | number | boolean | bigint | Date | Brand<any>
@@ -18,17 +19,28 @@ export type Direction = "asc" | "desc";
 /** One ordering clause of a read: `[field, direction]` over a whitelisted field. See docs/queries.md. */
 export type Order<K extends PropertyKey> = [field: K, direction: Direction];
 
-/** The comparison operators a `@queryWhere` field may name. See docs/queries.md. */
-export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+/** The operators that test whether a column is null; they take no value. See docs/queries.md. */
+export type NullOp = "isNull" | "isNotNull";
 
-/** Comparison arguments of a read: each field whitelisted to the operators `@queryWhere` declared, one value each. See docs/queries.md. */
+/** The comparison operators a `@queryWhere` field may name. See docs/queries.md. */
+export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | NullOp;
+
+/** Comparison arguments of a read: each field whitelisted to the operators `@queryWhere` declared; a null test takes `true`. See docs/queries.md. */
 export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
-    [K in keyof O & keyof E]?: { [P in Extract<NonNullable<O[K]>, PropertyKey>]?: NonNullable<E[K]> };
+    [K in keyof O & keyof E]?: {
+        [P in Extract<NonNullable<O[K]>, PropertyKey>]?: P extends NullOp ? true : NonNullable<E[K]>;
+    };
 };
 
+/** A null test a filter may carry instead of a set: `filter: { deletedAt: { isNotNull: true } }`. See docs/queries.md. */
+export type NullFilter = { isNull: true } | { isNotNull: true };
+
+/** One filter's value: a set matched with `= any($n)`, or, on a nullable field, a null test. See docs/queries.md. */
+export type FilterValue<T> = readonly NonNullable<T>[] | (undefined extends T ? NullFilter : never);
+
 /** The filter arguments of a read: each named field, as a set matched with `in (…)`. `R` names the filters a read must carry. See docs/queries.md. */
-export type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: NonNullable<E[P]>[] } & Partial<{
-    [P in Exclude<K, R>]: NonNullable<E[P]>[];
+export type Filters<E, K extends keyof E, R extends K = never> = { [P in R]: FilterValue<E[P]> } & Partial<{
+    [P in Exclude<K, R>]: FilterValue<E[P]>;
 }>;
 
 /** The scalar field names of `E`: the fields a branch's `filter`, `order`, or `where` may name. See docs/queries.md. */
@@ -39,9 +51,9 @@ export type ScalarKeys<E> = {
 /** The arguments of a read over `E`, as a branch carries them: the same shape a root read takes. See docs/queries.md. */
 export type QueryArgs<E> = {
     select: Selection<E>;
-    filter?: { [K in ScalarKeys<E>]?: readonly NonNullable<E[K]>[] };
+    filter?: { [K in ScalarKeys<E>]?: FilterValue<E[K]> };
     order?: readonly (readonly [field: ScalarKeys<E>, direction: Direction])[];
-    where?: { [K in ScalarKeys<E>]?: { [P in CompareOp]?: NonNullable<E[K]> } };
+    where?: { [K in ScalarKeys<E>]?: { [P in CompareOp]?: P extends NullOp ? true : NonNullable<E[K]> } };
     limit?: number;
     offset?: number;
 };

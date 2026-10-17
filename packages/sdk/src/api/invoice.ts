@@ -11,7 +11,7 @@ export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
 /** Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
-    opts: { filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte"; deletedAt: "gte" }>; limit?: number; offset?: number; select: S },
+    opts: { filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
 ): Call<Selected<Invoice, S>[]> {
     return call<Selected<Invoice, S>[]>("queryInvoice", "GET", "/invoice/query", opts);
 }
