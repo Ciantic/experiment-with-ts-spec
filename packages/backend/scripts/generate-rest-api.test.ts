@@ -87,38 +87,6 @@ describe("renderEntityRoutes", () => {
         expect(code).toContain("input: z.array(widgetPatchSchema)");
     });
 
-    it("routes trash and restore as POSTs that validate a batch of keys", () => {
-        const note = build({
-            Note: `/**
- * @pgTable note
- * @repository create trash restore
- * @restRepository trash restore
- * @entity
- */
-export interface Note {
-    /** @primaryKey */
-    id: string;
-
-    /** @deletedAt */
-    removedAt?: Date;
-}`,
-        }).entities[0];
-        if (!note) {
-            throw new Error("fixture is missing the note entity");
-        }
-
-        const code = renderEntityRoutes(note);
-
-        expect(code).toContain('import { restoreNote, trashNote } from "../../db/repositories/index.ts";');
-        expect(code).toContain('id: "trashNote"');
-        expect(code).toContain('path: "/note/trash"');
-        expect(code).toContain('path: "/note/restore"');
-        expect(code).toContain('method: "POST"');
-        expect(code).toContain("input: z.array(noteTrashKeySchema)");
-        expect(code).not.toContain("notePrimaryKeySchema");
-        expect(code).toContain("handler: (db, body) => trashNote(db, body as never)");
-    });
-
     it("validates a write as a batch, since the repository takes rows", () => {
         const code = render();
 

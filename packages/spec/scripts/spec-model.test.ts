@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "ts-morph";
-import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, deletedAtProperty, omittedFromInsert, omittedFromPatch, parseInMemorySpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
+import { SPEC_SRC_ROOT, collectAliases, defaultedInsertProperties, omittedFromInsert, omittedFromPatch, parseInMemorySpec, primaryKeyProperties, readTags, resolveType, type TypeResolution } from "./spec-model.ts";
 
 const GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -416,43 +416,6 @@ describe("parseSpec clock tags", () => {
         expect(properties[0]?.tags.updatedAt).toBe(false);
         expect(properties[1]?.tags.updatedAt).toBe(true);
         expect(properties[1]?.tags.createdAt).toBe(false);
-    });
-});
-
-describe("parseSpec @deletedAt", () => {
-    const source = [
-        "/**\n * @entity\n * @repository create trash restore\n */\nexport interface Thing {",
-        "    id: string;",
-        "    /**\n     * @deletedAt\n     */",
-        "    removedAt?: Date;",
-        "}",
-    ].join("\n");
-
-    it("decodes @deletedAt as a bare marker and finds the field", () => {
-        const thing = parse({ "Thing.ts": source }).interfaces.get("Thing")!;
-
-        expect(thing.properties[1]?.tags.deletedAt).toBe(true);
-        expect(thing.properties[0]?.tags.deletedAt).toBe(false);
-        expect(deletedAtProperty(thing)?.name).toBe("removedAt");
-    });
-
-    it("finds no soft-delete field on an interface without the tag", () => {
-        const thing = parse({ "Thing.ts": "/** @entity */\nexport interface Thing { id: string; }" }).interfaces.get("Thing")!;
-
-        expect(deletedAtProperty(thing)).toBeUndefined();
-    });
-
-    it("keeps the field out of a create and a patch, since only trash and restore write it", () => {
-        const thing = parse({ "Thing.ts": source }).interfaces.get("Thing")!;
-
-        expect(omittedFromInsert(thing).map((property) => property.name)).toEqual(["removedAt"]);
-        expect(omittedFromPatch(thing).map((property) => property.name)).toEqual(["removedAt"]);
-    });
-
-    it("reads trash and restore as repository operations", () => {
-        const thing = parse({ "Thing.ts": source }).interfaces.get("Thing")!;
-
-        expect(thing.repositoryOperations).toEqual(["create", "trash", "restore"]);
     });
 });
 

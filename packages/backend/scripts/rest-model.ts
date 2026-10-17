@@ -66,8 +66,6 @@ export interface RestEntity {
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
-    /** True when the entity carries `@deletedAt`, so `query` accepts `trashed`. See docs/soft-delete.md. */
-    trashable: boolean;
     operations: RestOperation[];
 }
 
@@ -102,10 +100,6 @@ function writeOperation(entity: string, path: string, kind: WriteOperation): Res
         // A delete carries keys, not row data, and a `DELETE` body is not universally relayed.
         case "delete":
             return { id, kind, method: "DELETE", path, source: "query" };
-        // Trash and restore change state and are not idempotent in the REST sense of a new resource, so each is a `POST` to an action path with the keys in the body.
-        case "trash":
-        case "restore":
-            return { id, kind, method: "POST", path: `${path}/${kind}`, source: "body" };
     }
 }
 
@@ -160,7 +154,6 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        trashable: properties.some((property) => property.tags.deletedAt),
         operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations),
     };
 }

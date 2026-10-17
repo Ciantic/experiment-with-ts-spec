@@ -27,10 +27,6 @@ schema uses, so the backend repositories, the REST API, the generated client, an
 - `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
   schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
   only when the entity declares a `@primaryKey`.
-- `packages/validation/src/repositories/<entity>TrashKeySchema.ts` — the schema and
-  type (`<name>TrashKeySchema`, `<Entity>TrashKey`) a trash or restore takes: the
-  key plus the `@version` field when there is one. Written only for an entity that
-  declares `@deletedAt` (`docs/soft-delete.md`).
 - `packages/validation/src/domain/index.ts`,
   `packages/validation/src/repositories/index.ts` — the barrels re-exporting their
   own directory.
@@ -373,9 +369,7 @@ the resolver. Each `where` field is a `z.strictObject` of **only** the operators
 field's own schema types each operator's value. `limit` is a positive integer
 and `offset` a non-negative integer, so a bad page is a 400. An entity with no
 `@queryOrderBy` field gets no `order` key and an entity with no `@queryWhere` field no
-`where` key; every read gets `limit` and `offset`. An entity with a `@deletedAt`
-field also gets `trashed`, a `z.enum` of `exclude`, `include`, and `only`
-(`docs/soft-delete.md`).
+`where` key; every read gets `limit` and `offset`.
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

@@ -11,7 +11,6 @@ import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
-    deletedAtColumn,
     primaryKeyColumns,
     type Table,
 } from "./postgres-model.ts";
@@ -37,7 +36,6 @@ interface QueryTableData {
     order?: string[];
     defaultOrder?: { field: string; direction: string };
     where?: Record<string, string[]>;
-    deletedAt?: string;
 }
 
 /** QueryModel as plain data, matching the resolver's `QueryModel`. */
@@ -107,12 +105,6 @@ export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
             data.where = Object.fromEntries(whereColumns.map((column) => [column.name, column.where ?? []]));
         }
 
-        // A soft-deletable entity names its column, so the resolver hides trashed rows unless a read asks for them.
-        const deletedAt = deletedAtColumn(table);
-        if (deletedAt) {
-            data.deletedAt = deletedAt.name;
-        }
-
         out[table.name] = data;
     }
     return { tables: out };
@@ -166,7 +158,6 @@ export function renderQueryModule(entity: string, table: Table): string {
     const required = requiredFilterFields(table);
     const order = orderFields(table);
     const where = whereFields(table);
-    const trashed = deletedAtColumn(table) !== undefined;
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     const selectionTypes = ["Selection", "Selected"];
@@ -179,9 +170,6 @@ export function renderQueryModule(entity: string, table: Table): string {
     if (where.length > 0) {
         selectionTypes.push("Where");
     }
-    if (trashed) {
-        selectionTypes.push("Trashed");
-    }
     selectionTypes.sort((a, b) => a.localeCompare(b));
     lines.push(`import type { ${selectionTypes.join(", ")} } from "validation/selection.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
@@ -192,12 +180,11 @@ export function renderQueryModule(entity: string, table: Table): string {
     lines.push("");
     lines.push(`/** Query \`${entity}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`);
     lines.push(
-        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, required, order, where, trashed)}): Promise<Selected<${entity}, S>[]> {`,
+        `export function query${entity}<S extends Selection<${entity}>>(db: SqlExecutor, opts: ${queryOptsType(entity, filters, required, order, where)}): Promise<Selected<${entity}, S>[]> {`,
     );
     const resolverOpts =
         (order.length > 0 ? "order: opts.order, " : "") +
         (where.length > 0 ? "where: opts.where, " : "") +
-        (trashed ? "trashed: opts.trashed, " : "") +
         "limit: opts.limit, offset: opts.offset";
     lines.push(
         `    return resolver.resolveMany<${entity}, S>(db, ${JSON.stringify(table.name)}, ${queryArgs(filters)}, { select: opts.select, ${resolverOpts} });`,
@@ -213,7 +200,6 @@ function queryOptsType(
     required: string[],
     order: string[],
     where: { name: string; operators: string[] }[],
-    trashed: boolean,
 ): string {
     const parts: string[] = [];
     if (filters.length > 0) {
@@ -226,10 +212,6 @@ function queryOptsType(
     }
     if (where.length > 0) {
         parts.push(`where?: ${whereType(entity, where)}`);
-    }
-    // A soft-deletable entity's reads return live rows unless they say otherwise.
-    if (trashed) {
-        parts.push("trashed?: Trashed");
     }
     // Every read pages: `limit` defaults to the resolver's cap, `offset` to 0.
     parts.push("limit?: number", "offset?: number", "select: S");

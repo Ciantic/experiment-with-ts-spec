@@ -80,8 +80,7 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
   sets the nullability. A `@relation` with no such field, or more than one
   candidate, is a diagnostic.
 - `@children` on an array field is skipped; the child table owns the foreign key.
-- `@unique` adds a `unique` constraint. On a table with a `@deletedAt` column it
-  becomes a partial unique index over live rows instead (`docs/soft-delete.md`).
+- `@unique` adds a `unique` constraint.
 - `@pgDefault <expression>` appends `default <expression>`. The column is `not null`,
   so the field is required. The repository generators name the column in
   their statements, and a row that omits it writes the declared default, so that

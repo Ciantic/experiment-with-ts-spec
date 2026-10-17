@@ -15,8 +15,7 @@ The output is committed. Regenerate rather than editing it by hand.
 ## What a repository is here
 
 Each entity gets one module per operation `@repository` names — four for an
-entity that carries the whole set of ordinary writes, six when it is
-soft-deletable and names `trash` and `restore` too (`docs/soft-delete.md`):
+entity that carries the whole set:
 
 ```ts
 // createCustomer.ts
@@ -84,7 +83,6 @@ exist in this shape:
 - **upsert** — the same insert with `on conflict ("id") do update set … = excluded.…`, predicated on the version where the entity has one, in one boundary whenever the call carries more than one row.
 - **update** — one statement per chunk of rows, `update "t" as u set ... from unnest(...) as v(...) where u."id" = v."id"`, in one boundary whenever the call carries more than one row.
 - **delete** — one `delete from "t" using (values (...), (...)) as data("id") where "t"."id" = data."id"`.
-- **trash** and **restore** — an `update … set "deletedAt" = now()` (or `null`) over a `(values …)` list, in the delete's shape. On a versioned entity it matches the key and the claimed version and rejects a miss with `40001`; otherwise it matches the key and the current state, so a repeat is a no-op. They take `<Entity>TrashKey`. See `docs/soft-delete.md`.
 
 Each function returns early on an empty array, so the caller does not have to
 guard.

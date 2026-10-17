@@ -60,7 +60,6 @@ function queryOptsType(
     required: string[],
     order: string[],
     where: { name: string; operators: string[] }[],
-    trashed: boolean,
 ): string {
     const parts: string[] = [];
     if (filters.length > 0) {
@@ -73,9 +72,6 @@ function queryOptsType(
     }
     if (where.length > 0) {
         parts.push(`where?: ${whereType(name, where)}`);
-    }
-    if (trashed) {
-        parts.push("trashed?: Trashed");
     }
     parts.push("limit?: number", "offset?: number", "select: S");
     return `{ ${parts.join("; ")} }`;
@@ -104,10 +100,6 @@ function comment(entity: RestEntity, kind: RestKind): string {
                 : `/** Patch \`${name}\` rows; a row that is not there rejects the call. See docs/versioning.md. */`;
         case "delete":
             return `/** Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. */`;
-        case "trash":
-            return `/** Trash \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}${entity.versionFields.length > 0 ? ` at the version claimed; a stale one rejects the call` : ""}: reads stop returning them until restored. See docs/soft-delete.md. */`;
-        case "restore":
-            return `/** Restore trashed \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}${entity.versionFields.length > 0 ? ` at the version claimed; a stale one rejects the call` : ""}. See docs/soft-delete.md. */`;
     }
 }
 
@@ -124,8 +116,6 @@ export function renderClientModule(entity: RestEntity): string {
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
-    const trash = operation(entity, "trash");
-    const restore = operation(entity, "restore");
 
     const selectionTypes = ["Selection", "Selected"];
     if (entity.filters.length > 0) {
@@ -136,9 +126,6 @@ export function renderClientModule(entity: RestEntity): string {
     }
     if (entity.whereFields.length > 0) {
         selectionTypes.push("Where");
-    }
-    if (entity.trashable) {
-        selectionTypes.push("Trashed");
     }
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
@@ -156,13 +143,9 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         validationTypes.push(`${name}Insert`);
     }
-    // Create, upsert, and delete name the key, so the type follows whichever of them exists.
+    // Create, upsert, and delete all name the key, so the type follows whichever of them exists.
     if (create || upsert || remove) {
         validationTypes.push(keyType(entity));
-    }
-    // Trash and restore claim the version too, so they share a type of their own.
-    if (trash || restore) {
-        validationTypes.push(`${name}TrashKey`);
     }
     if (upsert) {
         validationTypes.push(`${name}Upsert`);
@@ -192,7 +175,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("");
         lines.push(comment(entity, "query"));
         lines.push(`export function ${query.id}<S extends Selection<${name}>>(`);
-        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields, entity.trashable)},`);
+        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields)},`);
         lines.push(`): Call<Selected<${name}, S>[]> {`);
         lines.push(
             `    return call<Selected<${name}, S>[]>("${query.id}", "${query.method}", "${query.path}", opts);`,
@@ -229,15 +212,6 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`export function ${remove.id}(rows: ${keyType(entity)}[]): Call<void> {`);
         lines.push(`    return call<void>("${remove.id}", "${remove.method}", "${remove.path}", rows);`);
         lines.push("}");
-    }
-    for (const action of [trash, restore]) {
-        if (action) {
-            lines.push("");
-            lines.push(comment(entity, action.kind));
-            lines.push(`export function ${action.id}(rows: ${name}TrashKey[]): Call<void> {`);
-            lines.push(`    return call<void>("${action.id}", "${action.method}", "${action.path}", rows);`);
-            lines.push("}");
-        }
     }
 
     return lines.join("\n") + "\n";

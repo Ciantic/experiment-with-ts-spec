@@ -245,28 +245,6 @@ function lintEntity(
         }
     }
 
-    // An entity has at most one soft-delete column, and trash and restore need it to write.
-    const trashable = spec.properties.filter((property) => property.tags.deletedAt);
-    for (const property of trashable.slice(1)) {
-        findings.push({
-            filePath,
-            line: property.location.line,
-            message: `\`${name}\`: @deletedAt may appear on at most one field`,
-        });
-    }
-    if (trashable.length === 0) {
-        const repository = (spec.tags.written.byName.get("repository") ?? [])[0];
-        for (const operation of ["trash", "restore"] as const) {
-            if (spec.repositoryOperations.includes(operation)) {
-                findings.push({
-                    filePath,
-                    line: repository?.line ?? spec.location.line,
-                    message: `\`${name}\`: @repository \`${operation}\` needs a field tagged @deletedAt`,
-                });
-            }
-        }
-    }
-
     // At most one ordering field may declare the entity default; otherwise it is ambiguous.
     const defaultOrdered = spec.properties.filter(
         (property) => property.tags.queryOrderBy?.default !== undefined,
@@ -396,7 +374,6 @@ interface FieldTags {
     trigger: SpecTag | undefined;
     createdAt: SpecTag | undefined;
     updatedAt: SpecTag | undefined;
-    deletedAt: SpecTag | undefined;
     pgDefault: SpecTag | undefined;
     pgAutoIncrement: SpecTag | undefined;
     branches: BranchTag[];
@@ -432,7 +409,6 @@ function resolveFieldTags(property: SpecProperty): FieldTags {
         trigger: first("pgTrigger"),
         createdAt: first("createdAt"),
         updatedAt: first("updatedAt"),
-        deletedAt: first("deletedAt"),
         pgDefault: first("pgDefault"),
         pgAutoIncrement: first("pgAutoIncrement"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
@@ -626,46 +602,6 @@ function lintClocks(tags: FieldTags, report: Report): void {
     }
     if (tags.createdAt && tags.updatedAt) {
         report("@createdAt and @updatedAt are mutually exclusive", tags.updatedAt);
-    }
-}
-
-/** `@deletedAt` marks the soft-delete column: nullable, written only by trash and restore. See docs/soft-delete.md. */
-function lintDeletedAt(tags: FieldTags, report: Report): void {
-    const tag = tags.deletedAt;
-    if (!tag) {
-        return;
-    }
-    if ((tag.value ?? "")) {
-        report("@deletedAt takes no value", tag);
-    }
-    reportIfBranch(tags, tag, report);
-    if (tags.typeText !== "Date") {
-        report(`@deletedAt must be on a \`Date\` field, found \`${tags.typeText ?? "unknown"}\``, tag);
-    }
-    // A live row has no deletion moment, so the column is nullable and the field optional.
-    if (!tags.optional) {
-        report("@deletedAt is null while the row is live, so the field must be optional; add the `?`", tag);
-    }
-    // Every one of these gives the column a value of its own, which a live row must not have.
-    for (const [name, other] of [
-        ["computed", tags.computed],
-        ["pgDefault", tags.pgDefault],
-        ["createdAt", tags.createdAt],
-        ["updatedAt", tags.updatedAt],
-        ["version", tags.version],
-        ["primaryKey", tags.primaryKey],
-        ["pgAutoIncrement", tags.pgAutoIncrement],
-    ] as const) {
-        if (other) {
-            report(`@deletedAt and @${name} are mutually exclusive`, tag);
-        }
-    }
-    for (const { name } of tags.mechanism) {
-        report(`@deletedAt and @${name} are mutually exclusive`, tag);
-    }
-    // The default exclusion of trashed rows comes with the tag, and a filter is a set that cannot match null.
-    if (tags.queryFilter) {
-        report("@deletedAt already hides trashed rows from a read, which names them with `trashed`; drop @queryFilter", tags.queryFilter);
     }
 }
 
@@ -936,7 +872,6 @@ function lintProperty(
     lintComputedMechanism(tags, report);
     lintTrigger(tags, report);
     lintClocks(tags, report);
-    lintDeletedAt(tags, report);
     lintDefaultTag(tags, report);
     lintAutoIncrement(tags, report);
     lintBranches(tags, report);

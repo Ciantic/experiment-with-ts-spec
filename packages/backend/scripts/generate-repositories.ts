@@ -5,7 +5,6 @@ import { loadSpec, lowerFirst, type SpecModel, type WriteOperation } from "spec/
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
-    deletedAtColumn,
     quote,
     type Column,
     type Table,
@@ -23,13 +22,11 @@ const INDEX_FILE = "index.ts";
 export function validationFileName(writeType: string): string {
     const kind = writeType.endsWith("PrimaryKey")
         ? "PrimaryKey"
-        : writeType.endsWith("TrashKey")
-          ? "TrashKey"
-          : writeType.endsWith("Insert")
-            ? "Insert"
-            : writeType.endsWith("Upsert")
-              ? "Upsert"
-              : "Patch";
+        : writeType.endsWith("Insert")
+          ? "Insert"
+          : writeType.endsWith("Upsert")
+            ? "Upsert"
+            : "Patch";
     return `repositories/${lowerFirst(writeType.slice(0, -kind.length))}${kind}Schema.ts`;
 }
 
@@ -580,132 +577,12 @@ export function deleteStatement(table: Table): DeleteStatement {
 
 /** Render `delete<Entity>`: one multi-row delete matching on the primary key alone. */
 export function generateDelete(table: Table): string {
-    return generateByKey(table, "delete", deleteStatement(table));
-}
-
-/** The soft-delete column of a table whose entity declares trash or restore; the linter guarantees the tag. */
-function requireDeletedAt(table: Table, operation: string): Column {
-    const column = deletedAtColumn(table);
-    if (column === undefined) {
-        throw new Error(`${table.interfaceName}: ${operation} needs a @deletedAt field`);
-    }
-    return column;
-}
-
-/** The state change trash or restore makes: the assignment, and the state a live-only or trashed-only match keeps to. */
-function stateChange(
-    table: Table,
-    operation: "trash" | "restore",
-    versioned: boolean,
-): { assignment: string; guard: string } {
-    const column = quote(requireDeletedAt(table, operation).name);
-    const target = `${quote(table.name)}.${column}`;
-    if (operation === "trash") {
-        // With a version claimed there is no state guard, so a repeat keeps the first moment instead of being skipped.
-        const assignment = versioned ? `${column} = coalesce(${target}, now())` : `${column} = now()`;
-        return { assignment, guard: `${target} is null` };
-    }
-    return { assignment: `${column} = null`, guard: `${target} is not null` };
-}
-
-/**
- * The statement a trash or restore runs, planned from the table alone. An unversioned table matches the key and
- * the state, so a repeat writes nothing. A versioned one matches the key and the version the caller claims, and
- * returns the keys it wrote so a miss can be rejected. See docs/soft-delete.md.
- */
-function stateStatement(table: Table, operation: "trash" | "restore"): DeleteStatement {
-    const version = versionColumn(table);
-    const { assignment, guard } = stateChange(table, operation, version !== undefined);
-    const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    const claimed = version === undefined ? primaryKeys : [...primaryKeys, version];
-    const names = claimed.map((column) => quote(column.name)).join(", ");
-    const before = `update ${quote(table.name)} set ${assignment} from (values `;
-    if (version === undefined) {
-        return { before, after: `) as data(${names}) where ${keyMatch(table, primaryKeys)} and ${guard}` };
-    }
-    const match = claimed.map((column) => aliasMatch(column, quote(table.name), "data")).join(" and ");
-    const returned = primaryKeys.map((column) => `${quote(table.name)}.${quote(column.name)}`).join(", ");
-    return { before, after: `) as data(${names}) where ${match} returning ${returned}` };
-}
-
-/** The trash an entity runs: sets the moment on live rows, or on the rows at the claimed version. */
-export function trashStatement(table: Table): DeleteStatement {
-    return stateStatement(table, "trash");
-}
-
-/** The restore an entity runs: clears the moment on trashed rows, or on the rows at the claimed version. */
-export function restoreStatement(table: Table): DeleteStatement {
-    return stateStatement(table, "restore");
-}
-
-/** Render `trash<Entity>`: one multi-row update that marks the rows named by key as deleted. See docs/soft-delete.md. */
-export function generateTrash(table: Table): string {
-    return generateStateChange(table, "trash");
-}
-
-/** Render `restore<Entity>`: one multi-row update that clears the mark on the rows named by key. See docs/soft-delete.md. */
-export function generateRestore(table: Table): string {
-    return generateStateChange(table, "restore");
-}
-
-/** Render a trash or restore: the keys, and the version they claim when the table has one. */
-function generateStateChange(table: Table, operation: "trash" | "restore"): string {
     const entity = table.interfaceName;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    const version = versionColumn(table);
-    const { before, after } = stateStatement(table, operation);
-    const type = `${entity}TrashKey`;
-    const lines = modulePrologue(
-        type,
-        version === undefined ? undefined : 'import { resultRows, type SqlExecutor } from "../sql-executor.ts";',
-    );
-    const claimed = version === undefined ? primaryKeys : [...primaryKeys, version];
-
-    lines.push(`export async function ${operation}${entity}(db: SqlExecutor, rows: ${type}[]): Promise<void> {`);
-    lines.push("    if (rows.length === 0) {");
-    lines.push("        return;");
-    lines.push("    }");
-    if (version === undefined) {
-        lines.push(...collectValues(claimed.map(readEntry), { indent: "    ", source: "rows" }));
-        lines.push(`    await db.query('${before}' + tuples.join(", ") + '${after}', parameters);`);
-        lines.push("}");
-        return lines.join("\n") + "\n";
-    }
-
-    // The statement writes every row it matches and returns their keys, so a row left out was stale or missing.
-    lines.push("    const write = async (tx: SqlExecutor): Promise<void> => {");
-    lines.push(...collectValues(claimed.map(readEntry), { indent: "        ", source: "rows" }));
-    lines.push(`        const result = await tx.query('${before}' + tuples.join(", ") + '${after}', parameters);`);
-    lines.push(`        const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`);
-    lines.push("        if (written.size !== rows.length) {");
-    lines.push(`            const keyOf = (row: ${type}): string => String(${keyExpression(primaryKeys)});`);
-    lines.push("            const missed = rows.filter((row) => !written.has(keyOf(row)));");
-    // A call naming one key twice writes fewer rows than it carries, and has no single row to blame.
-    lines.push("            const named = missed.length > 0 ? missed : rows;");
-    lines.push(
-        `            throw Object.assign(new Error('no row of ${table.name} is at the version this ${operation} supplied for ' + named.map(keyOf).join(", ")), { code: "40001" });`,
-    );
-    lines.push("        }");
-    lines.push("    };");
-    // One row is one atomic statement; a longer call rejects after it has written, so it opens a boundary.
-    lines.push("    if (rows.length === 1) {");
-    lines.push("        await write(db);");
-    lines.push("        return;");
-    lines.push("    }");
-    lines.push("    await db.transaction(write);");
-    lines.push("}");
-
-    return lines.join("\n") + "\n";
-}
-
-/** Render an operation that takes keys alone: one statement over every key, matching on the primary key. */
-function generateByKey(table: Table, operation: "delete", statement: DeleteStatement): string {
-    const entity = table.interfaceName;
-    const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    const { before, after } = statement;
+    const { before, after } = deleteStatement(table);
     const lines = modulePrologue(`${entity}PrimaryKey`);
 
-    lines.push(`export async function ${operation}${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
+    lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
     lines.push("        return;");
     lines.push("    }");
@@ -722,8 +599,6 @@ const OPERATION_GENERATORS: Record<WriteOperation, (table: Table) => string> = {
     upsert: generateUpsert,
     update: generateUpdate,
     delete: generateDelete,
-    trash: generateTrash,
-    restore: generateRestore,
 };
 
 /** Render the barrel that re-exports every operation module, grouped by entity. */

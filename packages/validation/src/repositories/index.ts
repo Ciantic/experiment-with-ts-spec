@@ -15,7 +15,6 @@ export * from "./invoiceInsertSchema.ts";
 export * from "./invoiceUpsertSchema.ts";
 export * from "./invoicePatchSchema.ts";
 export * from "./invoicePrimaryKeySchema.ts";
-export * from "./invoiceTrashKeySchema.ts";
 export * from "./invoiceRowInsertSchema.ts";
 export * from "./invoiceRowUpsertSchema.ts";
 export * from "./invoiceRowPatchSchema.ts";

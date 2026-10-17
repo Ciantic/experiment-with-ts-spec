@@ -64,25 +64,6 @@ export interface Marker {
 }
 `.trim();
 
-/** A soft-deletable entity: trash and restore are exposed, and a read may name `trashed`. */
-const NOTE = `
-/**
- * @pgTable note
- * @repository create trash restore
- * @restRepository create trash restore
- * @queries query
- * @restQueries query
- * @entity
- */
-export interface Note {
-    /** @primaryKey */
-    id: string;
-
-    /** @deletedAt */
-    removedAt?: Date;
-}
-`.trim();
-
 /** An entity keyed by two fields, so a write addresses it by both. */
 const TRANSLATION = `
 /**
@@ -246,26 +227,6 @@ describe("renderClientModule", () => {
         expect(code).toContain('import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";');
         expect(code).not.toContain("Pick<Translation,");
         expect(code).toContain("keyed on `languageCode`, `key`");
-    });
-
-    it("trashes and restores by the key, and lets a read name `trashed`", () => {
-        const entity = build({ Note: NOTE }).entities[0];
-        if (!entity) {
-            throw new Error("fixture is missing the note entity");
-        }
-
-        const code = renderClientModule(entity);
-
-        expect(code).toContain('call<void>("trashNote", "POST", "/note/trash", rows)');
-        expect(code).toContain('call<void>("restoreNote", "POST", "/note/restore", rows)');
-        expect(code).toContain("export function trashNote(rows: NoteTrashKey[]): Call<void>");
-        expect(code).toContain('import type { NoteTrashKey } from "validation/repositories/noteTrashKeySchema.ts";');
-        expect(code).toContain('import type { Filters, Selected, Selection, Trashed } from "validation/selection.ts";');
-        expect(code).toContain("trashed?: Trashed;");
-    });
-
-    it("offers no `trashed` on an entity without @deletedAt", () => {
-        expect(widgetModule()).not.toContain("Trashed");
     });
 
     it("types a create with the validation insert type, not the whole entity", () => {

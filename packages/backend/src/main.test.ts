@@ -1,4 +1,4 @@
-/** End-to-end smoke test: the generated client talks to a live server. Never name a domain type here; a check that needs the spec belongs in a generator test over an in-memory spec. See docs/testing.md and docs/mockdata.md. */
+/** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import { createHttpClient, exec, transactionWith } from "sdk/index.ts";
@@ -11,7 +11,7 @@ import { createDatabase, parseArgs, startServer, type StartedServer } from "./ma
 type Builder = (argument: unknown) => Call<unknown>;
 
 /** The prefixes the generator gives its builders. Narrow, so no hand-written export is probed. */
-const GENERATED = /^(?:query|create|upsert|update|delete|trash|restore)[A-Z]/;
+const GENERATED = /^(?:query|create|upsert|update|delete)[A-Z]/;
 
 /** The hand-written exports; probing `createHttpClient` would call it, as it shares the `create` prefix. */
 const HAND_WRITTEN = new Set([

@@ -29,7 +29,6 @@ export const FIELD_TAGS = [
     "computed",
     "createdAt",
     "updatedAt",
-    "deletedAt",
     "pgVirtual",
     "pgTrigger",
     "relation",
@@ -168,7 +167,7 @@ export function isCompareOperator(value: string): value is CompareOperator {
 }
 
 /** The write operations `@repository` and `@restRepository` may name, in canonical order. */
-export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete", "trash", "restore"] as const;
+export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
 export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
 
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
@@ -248,8 +247,6 @@ export interface Tags {
     createdAt: boolean;
     /** The field holds the row's last-write moment; the database maintains it. See docs/timestamps.md. */
     updatedAt: boolean;
-    /** The field holds the moment the row was trashed, null while it is live; only `trash` and `restore` write it. See docs/soft-delete.md. */
-    deletedAt: boolean;
     /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
     pgVirtual?: string;
     /** The row trigger that maintains a `@computed` field: its attachment, timing, events, and statement. */
@@ -395,8 +392,8 @@ export function isInsertable(property: SpecProperty): boolean {
     if (tags.version && tags.pgDefault !== undefined) {
         return false;
     }
-    // The clock tags, the trash marker, an identity column, and a virtual generated column are not written by a create.
-    if (tags.createdAt || tags.updatedAt || tags.deletedAt || tags.pgAutoIncrement || tags.pgVirtual !== undefined) {
+    // The clock tags, an identity column, and a virtual generated column are the database's entirely.
+    if (tags.createdAt || tags.updatedAt || tags.pgAutoIncrement || tags.pgVirtual !== undefined) {
         return false;
     }
     // A nullable computation is filled in later by its mechanism; a required one must be carried by the create.
@@ -459,11 +456,6 @@ export function nullablePatchProperties(spec: SpecInterface): SpecProperty[] {
 /** An interface's primary key fields, in declaration order, which is the key's column order. */
 export function primaryKeyProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.primaryKey);
-}
-
-/** The `@deletedAt` field, which marks an entity soft-deletable; the linter allows one per interface. */
-export function deletedAtProperty(spec: SpecInterface): SpecProperty | undefined {
-    return spec.properties.find((property) => property.tags.deletedAt);
 }
 
 /** The `@pgAutoIncrement` fields: key columns the database assigns, which a create never carries. */
@@ -648,7 +640,6 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         computed: false,
         createdAt: false,
         updatedAt: false,
-        deletedAt: false,
         relation: false,
         children: false,
         inlined: false,
@@ -774,9 +765,6 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "updatedAt":
                     tags.updatedAt = true;
-                    break;
-                case "deletedAt":
-                    tags.deletedAt = true;
                     break;
                 case "pgVirtual":
                     if (value !== undefined) tags.pgVirtual ??= value;

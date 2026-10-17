@@ -25,7 +25,6 @@ export const queryInvoiceSelectSchema = z.lazy(() =>
         notes: z.literal(true).optional(),
         createdAt: z.literal(true).optional(),
         updatedAt: z.literal(true).optional(),
-        deletedAt: z.literal(true).optional(),
         version: z.literal(true).optional(),
     }),
 );
@@ -46,7 +45,6 @@ export const queryInvoiceSchema = z.strictObject({
             lte: z.date().optional(),
         }).optional(),
     }).optional(),
-    trashed: z.enum(["exclude", "include", "only"]).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     select: queryInvoiceSelectSchema,

@@ -14,7 +14,6 @@ export const invoiceUpsertSchema = invoiceSchema
         rows: true,
         createdAt: true,
         updatedAt: true,
-        deletedAt: true,
     })
     .extend({
         number: invoiceSchema.shape.number.nullable(),
@@ -28,4 +27,4 @@ export const invoiceUpsertSchema = invoiceSchema
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt" | "deletedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes", never>;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes", never>;

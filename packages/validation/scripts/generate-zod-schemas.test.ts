@@ -17,7 +17,6 @@ import {
     insertModuleName,
     patchModuleName,
     primaryKeyModuleName,
-    trashKeyModuleName,
     upsertModuleName,
 } from "./generate-zod-schemas.ts";
 
@@ -241,41 +240,6 @@ export interface Scoped {
      * @queryFilter required
      */
     tenantId: ScopedTenantId;
-}
-`.trim();
-
-/** A soft-deletable entity: its reads may name `trashed`, and no write carries the marker. */
-const TRASHABLE = `
-/**
- * @pgTable trashable
- * @entity
- */
-export interface Trashable {
-    /** @primaryKey */
-    id: string;
-
-    name: string;
-
-    /** @deletedAt */
-    removedAt?: Date;
-}
-`.trim();
-
-/** A soft-deletable entity with a version, so its trash key carries the version too. */
-const VERSIONED_TRASHABLE = `
-/**
- * @pgTable versioned_trashable
- * @entity
- */
-export interface VersionedTrashable {
-    /** @primaryKey */
-    id: string;
-
-    /** @deletedAt */
-    removedAt?: Date;
-
-    /** @version */
-    version: bigint;
 }
 `.trim();
 
@@ -670,37 +634,6 @@ describe("buildZodModel queries", () => {
 });
 
 describe("generateQueryFile", () => {
-    it("accepts `trashed` on a soft-deletable entity's read and on no other", () => {
-        const { files, model } = generate({ entities: { Thing: THING, Trashable: TRASHABLE } });
-
-        expect(files.get(join("queries", "queryTrashable.ts"))).toContain(
-            '    trashed: z.enum(["exclude", "include", "only"]).optional(),',
-        );
-        expect(files.get(join("queries", "queryThing.ts"))).not.toContain("trashed");
-        expect(model.queries.find((query) => query.entity === "Trashable")?.trashed).toBe(true);
-    });
-
-    it("keeps the soft-delete marker out of every write", () => {
-        const { files } = generate({ entities: { Trashable: TRASHABLE } });
-
-        expect(insertFile(files, "Trashable")).toContain("removedAt: true");
-        expect(patchFile(files, "Trashable")).toContain("removedAt: true");
-        expect(patchFile(files, "Trashable")).toContain('"removedAt"');
-        expect(domainFile(files, "Trashable")).toContain("removedAt:");
-    });
-
-    it("emits a trash key for a soft-deletable entity, claiming its version", () => {
-        const { files } = generate({ entities: { Trashable: TRASHABLE, VersionedTrashable: VERSIONED_TRASHABLE, Thing: THING } });
-        const trashFile = (entity: string) => files.get(join("repositories", trashKeyModuleName(entity))) ?? "";
-
-        expect(trashFile("Trashable")).toContain("export const trashableTrashKeySchema = trashableSchema.pick({ id: true }).strict();");
-        expect(trashFile("Trashable")).toContain('export type TrashableTrashKey = Pick<Trashable, "id">;');
-        expect(trashFile("VersionedTrashable")).toContain("pick({ id: true, version: true }).strict();");
-        expect(trashFile("VersionedTrashable")).toContain('Pick<VersionedTrashable, "id" | "version">');
-        expect(files.get(join("repositories", "index.ts"))).toContain('export * from "./versionedTrashableTrashKeySchema.ts";');
-        expect(files.has(join("repositories", trashKeyModuleName("Thing")))).toBe(false);
-    });
-
     it("emits the query-specific select schema and query args schema", () => {
         const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryThing.ts")) ?? "";

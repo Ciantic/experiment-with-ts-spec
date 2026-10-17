@@ -16,8 +16,8 @@ export type InvoiceId = BrandedId<"InvoiceId">;
  * @entity
  * @tenantOwned tenantId
  * @pgTable invoice
- * @repository create upsert update delete trash restore
- * @restRepository create upsert update delete trash restore
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
  */
@@ -179,15 +179,6 @@ export interface Invoice {
      * @widget date
      */
     updatedAt: Date;
-
-    /**
-     * The moment the invoice was trashed; absent while it is live.
-     * 
-     * @fieldName Deleted at
-     * @deletedAt
-     * @widget date
-     */
-    deletedAt?: Date;
 
     /**
      * The revision of the invoice, incremented on every write.
