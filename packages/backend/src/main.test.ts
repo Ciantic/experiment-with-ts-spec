@@ -1,4 +1,4 @@
-/** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
+/** End-to-end smoke test: the generated client talks to a live server. Never name a domain type here; a check that needs the spec belongs in a generator test over an in-memory spec. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
 import { createHttpClient, exec, transactionWith } from "sdk/index.ts";
@@ -108,42 +108,6 @@ describe("seeded server", () => {
 });
 
 describe("a live server", () => {
-    it("trashes and restores an invoice at its version, hiding it from a read until it comes back", async () => {
-        const rows = mockTables.find((table) => table.entity === "Invoice")?.rows as { id: string }[];
-        const filter = readFilter("Invoice");
-        const read = async (trashed?: "include" | "only") =>
-            exec(
-                http,
-                api.queryInvoice({ filter, ...(trashed ? { trashed } : {}), select: { id: true, version: true } }) as Executable<
-                    { id: string; version: bigint }[]
-                >,
-            );
-        const ids = async (trashed?: "include" | "only") => (await read(trashed)).map((row) => row.id);
-        const target = rows[0]!.id;
-        const versionOf = async () => (await read("include")).find((row) => row.id === target)!.version;
-        const key = async (version?: bigint) => [{ id: target as never, version: (version ?? (await versionOf())) as never }];
-
-        const stale = await versionOf();
-        await exec(http, api.trashInvoice(await key()));
-
-        expect(await ids()).not.toContain(target);
-        expect(await ids()).toHaveLength(rows.length - 1);
-        expect(await ids("only")).toEqual([target]);
-        expect(await ids("include")).toHaveLength(rows.length);
-
-        // The trash moved the version on, so a client still holding the old one is refused with a conflict.
-        const refused = (await exec(http, api.restoreInvoice(await key(stale))).catch((error: unknown) => error)) as {
-            status?: number;
-        };
-        expect(refused.status).toBe(409);
-        expect(await ids("only")).toEqual([target]);
-
-        await exec(http, api.restoreInvoice(await key()));
-
-        expect(await ids()).toContain(target);
-        expect(await ids("only")).toEqual([]);
-    });
-
     it("answers every generated query with an array", async () => {
         for (const [name, builder] of buildersNamed("query")) {
             const filter = readFilter(name.slice("query".length));
