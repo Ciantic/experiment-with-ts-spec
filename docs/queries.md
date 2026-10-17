@@ -162,7 +162,7 @@ points at declares that column with `@tenantOwned`. See `docs/tenancy.md`.
 
 ### Filters are sets, combined with `and`
 
-Every filter is an array and every clause is `in (…)`, so a single value is
+Every filter is an array and every clause is `= any($n)`, so a single value is
 written as a one-element array. An array matches any of its values, and an empty
 array matches nothing.
 
@@ -247,7 +247,7 @@ its own entity's fields.
 @queryWhere gte lte
 ```
 
-`@queryFilter` matches a **set** (`in (…)`). A comparison cannot be a set, so it
+`@queryFilter` matches a **set** (`= any($n)`). A comparison cannot be a set, so it
 has its own tag and its own option: `@queryWhere` on a scalar field whitelists the
 operators that field may be narrowed with, and the read's `where` key carries
 them.
@@ -275,7 +275,7 @@ export type Where<E, O extends Partial<Record<keyof E, PropertyKey>>> = {
 export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
 ```
 
-`filter` stays for membership: an `in (…)` is index-friendly and reads a whole
+`filter` stays for membership: an `= any($n)` is index-friendly and reads a whole
 set in one comparison, so a read may use both — `filter` to narrow cheaply, then
 `where` for the range. The two are independent and combine with `and`.
 
@@ -495,12 +495,12 @@ time from `queryModel` plus the selection:
 
 - **Scalars** — projected into the root query.
 - **`@inlined`** — projected from the same row, aliased per target field. No query.
-- **`@relation`** — one batched `where target.key in (…)` for every distinct
+- **`@relation`** — one batched `where target.key = any($n)` for every distinct
   foreign key, attached back by key.
-- **`@children`** — one batched `where child.fk in (…)`, grouped in memory.
+- **`@children`** — one batched `where child.fk = any($n)`, grouped in memory.
 
 A branch's own arguments join that statement: its `filter` narrows the batched
-`in (…)` set, its `where` adds comparisons on the target's columns, and its
+`= any($n)` set, its `where` adds comparisons on the target's columns, and its
 `order` sorts the batch before it is grouped. Its `limit`/`offset` bound each
 parent, which needs a ranked subquery rather than a plain `limit` — the resolver
 ranks the branch rows over the parent key and keeps each parent's window. A
@@ -526,7 +526,9 @@ silently dropping a clause, as does a non-array value, and a filter the spec mar
 `decimal` values pass through unchanged.
 
 A filter value is always an array, so a lookup names a one-element set and an
-empty set matches nothing. Multiple filters are ANDed. The linter rejects
+empty set matches nothing. Each set is bound as a single array parameter, so a
+batched branch over any number of parents still carries one parameter for its keys,
+and Postgres infers the array's element type from the column. Multiple filters are ANDed. The linter rejects
 `@queryFilter` on a branch field, so a filter always names a scalar column.
 
 Ordering, paging, and comparisons are applied the same way: the resolver reads
@@ -561,7 +563,7 @@ because the ranked window orders each parent's rows before they are grouped.
   projection; the `args` still read whatever they name, and so do `order` and
   `where`.
 - **Set membership, or the `@queryWhere` operators.** A `filter` is an array matched
-  with `in (…)`; an empty set matches nothing, and a non-array value throws. A
+  with `= any($n)`; an empty set matches nothing, and a non-array value throws. A
   comparison goes through `where`, whose operators are whitelisted per field.
   A range is `{ gte, lte }`, not a `between`.
 - **`eq` overlaps `filter`.** `where: { id: { eq } }` says what

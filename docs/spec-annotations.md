@@ -102,7 +102,7 @@ Field tags:
   it is exclusive with `@computed`. See `docs/versioning.md`.
 - `@queryFilter` — a bare marker that makes the field a filter of the entity's
   generated reads; `@queryFilter required` makes every read name it. A filter is a
-  set matched with `in (…)`; several are combined with `and`. Scalar fields only; a
+  set matched with `= any($n)`; several are combined with `and`. Scalar fields only; a
   branch field may not carry it, and it is redundant on the `@primaryKey` field,
   which is an optional filter by default — `required` is the one thing it can add.
   See `docs/queries.md`.

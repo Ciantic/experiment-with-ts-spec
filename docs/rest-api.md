@@ -104,7 +104,7 @@ What `GET` cannot do is carry the argument as a body, and the reads take a
 structured one:
 
 - **A filter is a set.** `Filters` maps a field to an array, and every clause is
-  `in (…)`. `?id=a&id=b` can spell one set; it cannot spell two independent ones
+  `= any($n)`. `?id=a&id=b` can spell one set; it cannot spell two independent ones
   without inventing an encoding.
 - **`select` is a nested object.** `{ number: true, rows: { select: { description: true } } }`
   survives a query string only with bracket encoding, and then the argument is

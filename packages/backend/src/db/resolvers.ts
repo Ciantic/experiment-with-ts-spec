@@ -154,7 +154,7 @@ function inlinedAlias(field: string, target: string): string {
     return `__in_${field}_${target}`;
 }
 
-/** The values, with nulls and duplicates dropped, as the keys of an `in (…)` list. */
+/** The values, with nulls and duplicates dropped, as the members of a set. */
 function distinct(values: unknown[]): unknown[] {
     const seen = new Set<unknown>();
     for (const value of values) {
@@ -247,14 +247,10 @@ interface ReadPlan {
     matchColumn: string | undefined;
 }
 
-/** Push values as positional parameters and return their `$n` placeholders. */
-function placeholders(params: unknown[], values: unknown[]): string {
-    return values
-        .map((value) => {
-            params.push(value);
-            return `$${params.length}`;
-        })
-        .join(", ");
+/** A set clause binding the values as one array parameter, so the statement's parameter count does not grow with the set; Postgres infers the array type from the column. */
+function inSet(column: string, values: unknown[], params: unknown[]): string {
+    params.push(values);
+    return `${TABLE_ALIAS}.${quote(column)} = any($${params.length})`;
 }
 
 /** Split a selection into the select list, the scalars, the inlined columns, and the branches. */
@@ -332,7 +328,7 @@ function outputAliases({ projection, matchColumn }: ReadPlan): string[] {
     return aliases;
 }
 
-/** One argument's clause: a set, `column in (…)`. See docs/queries.md. */
+/** One argument's clause: a set, `column = any($n)`. See docs/queries.md. */
 function argumentClause(
     table: string,
     meta: QueryTable,
@@ -351,7 +347,7 @@ function argumentClause(
     if (values.length === 0) {
         return "false";
     }
-    return `${TABLE_ALIAS}.${quote(column)} in (${placeholders(params, values)})`;
+    return inSet(column, values, params);
 }
 
 /** The comparison clauses for a read, one `column <op> $n` per whitelisted operator. See docs/queries.md. */
@@ -406,7 +402,7 @@ function buildClauses(table: string, meta: QueryTable, read: FetchRead): Clauses
         if (read.match.values.length === 0) {
             return undefined;
         }
-        filters.push(`${TABLE_ALIAS}.${quote(read.match.column)} in (${placeholders(params, read.match.values)})`);
+        filters.push(inSet(read.match.column, read.match.values, params));
     }
 
     // A required filter is an invariant: a read that omits one throws instead of scanning unscoped.

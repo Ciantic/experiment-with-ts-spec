@@ -375,6 +375,22 @@ describe("resolveMany ordering", () => {
     });
 });
 
+describe("resolveMany sets", () => {
+    it("binds a set as one array parameter, so its size is not bounded by the parameter limit", async () => {
+        const select = { id: true } as const;
+        const ids = Array.from({ length: 40000 }, (_, index) => `w${String(index + 1).padStart(5, "0")}`);
+        const counted = counting(db);
+
+        const rows = await resolver.resolveMany<{ id: string }, typeof select>(counted, "widget", { id: ids }, {
+            select,
+            limit: 2000,
+        });
+
+        expect(rows).toHaveLength(1500);
+        expect(counted.count()).toBe(1);
+    });
+});
+
 describe("resolveMany paging", () => {
     const select = { id: true } as const;
     const ids = (rows: { id?: string }[]) => rows.map((row) => row.id);
