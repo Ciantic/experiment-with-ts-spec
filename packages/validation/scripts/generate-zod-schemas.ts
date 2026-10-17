@@ -159,6 +159,10 @@ export function generateQueryFile(
             }
             lines.push("    }).optional(),");
         }
+        // A soft-deletable entity's read names which rows it wants; the default is the live ones.
+        if (query.trashed) {
+            lines.push('    trashed: z.enum(["exclude", "include", "only"]).optional(),');
+        }
         lines.push(...PAGING_FIELDS);
         lines.push(`    select: ${entitySchema ? entitySchema.querySelectName : "z.never()"},`);
         lines.push("});");

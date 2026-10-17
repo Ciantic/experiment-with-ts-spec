@@ -435,6 +435,50 @@ describe("generateSchema output", () => {
         expect(sql).toContain('"code" text not null unique');
     });
 
+    it("limits @unique to live rows on a table with a @deletedAt column", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/** @entity */\nexport interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @unique */
+                    code: string;
+                    /** @deletedAt */
+                    removedAt?: Date;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"removedAt" timestamptz,');
+        expect(sql).toContain('"code" text not null,');
+        expect(sql).not.toContain('"code" text not null unique');
+        expect(sql).toContain('create unique index "thing_code_key" on "thing" ("code") where "removedAt" is null;');
+    });
+
+    it("runs the live-only uniqueness in Postgres", async () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/** @entity */\nexport interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                    /** @unique */
+                    code: string;
+                    /** @deletedAt */
+                    removedAt?: Date;
+                }`,
+            },
+        });
+        const db = new PGlite();
+        await db.exec(sql);
+        await db.exec(`insert into "thing" ("id", "code") values ('${PARENT}', 'a')`);
+        await db.exec(`update "thing" set "removedAt" = now() where "id" = '${PARENT}'`);
+
+        await db.exec(`insert into "thing" ("id", "code") values ('${CHILD_A}', 'a')`);
+
+        await expect(db.exec(`insert into "thing" ("id", "code") values ('${CHILD_B}', 'a')`)).rejects.toThrow();
+        await db.close();
+    });
+
     it("derives the table name from the interface in snake_case", () => {
         const { sql } = generate({
             entities: { LineItem: "/** @entity */\nexport interface LineItem {\n    /** @primaryKey */\n    id: GUID; }" },

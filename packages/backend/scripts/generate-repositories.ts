@@ -5,6 +5,7 @@ import { loadSpec, lowerFirst, type SpecModel, type WriteOperation } from "spec/
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
+    deletedAtColumn,
     quote,
     type Column,
     type Table,
@@ -577,12 +578,56 @@ export function deleteStatement(table: Table): DeleteStatement {
 
 /** Render `delete<Entity>`: one multi-row delete matching on the primary key alone. */
 export function generateDelete(table: Table): string {
+    return generateByKey(table, "delete", deleteStatement(table));
+}
+
+/** The soft-delete column of a table whose entity declares trash or restore; the linter guarantees the tag. */
+function requireDeletedAt(table: Table, operation: string): Column {
+    const column = deletedAtColumn(table);
+    if (column === undefined) {
+        throw new Error(`${table.interfaceName}: ${operation} needs a @deletedAt field`);
+    }
+    return column;
+}
+
+/** The trash an entity runs: the same key-matching shape as a delete, setting the moment on live rows only. */
+export function trashStatement(table: Table): DeleteStatement {
+    const deletedAt = quote(requireDeletedAt(table, "trash").name);
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    return {
+        before: `update ${quote(table.name)} set ${deletedAt} = now() from (values `,
+        after: `) as data(${primaryKeys.map((column) => quote(column.name)).join(", ")}) where ${keyMatch(table, primaryKeys)} and ${quote(table.name)}.${deletedAt} is null`,
+    };
+}
+
+/** The restore an entity runs: the same shape, clearing the moment on trashed rows only. */
+export function restoreStatement(table: Table): DeleteStatement {
+    const deletedAt = quote(requireDeletedAt(table, "restore").name);
+    const primaryKeys = table.columns.filter((column) => column.primaryKey);
+    return {
+        before: `update ${quote(table.name)} set ${deletedAt} = null from (values `,
+        after: `) as data(${primaryKeys.map((column) => quote(column.name)).join(", ")}) where ${keyMatch(table, primaryKeys)} and ${quote(table.name)}.${deletedAt} is not null`,
+    };
+}
+
+/** Render `trash<Entity>`: one multi-row update that marks the rows named by key as deleted. See docs/soft-delete.md. */
+export function generateTrash(table: Table): string {
+    return generateByKey(table, "trash", trashStatement(table));
+}
+
+/** Render `restore<Entity>`: one multi-row update that clears the mark on the rows named by key. See docs/soft-delete.md. */
+export function generateRestore(table: Table): string {
+    return generateByKey(table, "restore", restoreStatement(table));
+}
+
+/** Render an operation that takes keys alone: one statement over every key, matching on the primary key. */
+function generateByKey(table: Table, operation: "delete" | "trash" | "restore", statement: DeleteStatement): string {
     const entity = table.interfaceName;
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    const { before, after } = deleteStatement(table);
+    const { before, after } = statement;
     const lines = modulePrologue(`${entity}PrimaryKey`);
 
-    lines.push(`export async function delete${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
+    lines.push(`export async function ${operation}${entity}(db: SqlExecutor, rows: ${entity}PrimaryKey[]): Promise<void> {`);
     lines.push("    if (rows.length === 0) {");
     lines.push("        return;");
     lines.push("    }");
@@ -599,6 +644,8 @@ const OPERATION_GENERATORS: Record<WriteOperation, (table: Table) => string> = {
     upsert: generateUpsert,
     update: generateUpdate,
     delete: generateDelete,
+    trash: generateTrash,
+    restore: generateRestore,
 };
 
 /** Render the barrel that re-exports every operation module, grouped by entity. */

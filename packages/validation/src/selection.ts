@@ -36,12 +36,16 @@ export type ScalarKeys<E> = {
     [K in keyof E]-?: Scalar<E[K]> extends true ? K : never;
 }[keyof E];
 
+/** Which rows of a soft-deletable entity a read returns: the live ones (the default), both, or the trashed ones. See docs/soft-delete.md. */
+export type Trashed = "exclude" | "include" | "only";
+
 /** The arguments of a read over `E`, as a branch carries them: the same shape a root read takes. See docs/queries.md. */
 export type QueryArgs<E> = {
     select: Selection<E>;
     filter?: { [K in ScalarKeys<E>]?: readonly NonNullable<E[K]>[] };
     order?: readonly (readonly [field: ScalarKeys<E>, direction: Direction])[];
     where?: { [K in ScalarKeys<E>]?: { [P in CompareOp]?: NonNullable<E[K]> } };
+    trashed?: Trashed;
     limit?: number;
     offset?: number;
 };

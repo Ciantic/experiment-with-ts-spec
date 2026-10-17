@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { loadSpec, parseInMemorySpec } from "./spec-model.ts";
 import { lintSourceText, lintSpec, type Diagnostic } from "./lint-spec.ts";
+import { WRITE_OPERATIONS } from "./spec-model.ts";
+
+const WRITES = WRITE_OPERATIONS.join(", ");
 
 /** Format findings as `field: message` for concise assertions. */
 function messages(findings: Diagnostic[]): string[] {
@@ -1912,6 +1915,136 @@ export interface Thing {
     });
 });
 
+describe("@deletedAt", () => {
+    it("accepts @deletedAt on an optional Date field", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget date
+     * @deletedAt
+     */
+    deletedAt?: Date;
+}`);
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("rejects @deletedAt on a required field", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget date
+     * @deletedAt
+     */
+    deletedAt: Date;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt is null while the row is live, so the field must be optional; add the `?`",
+        ]);
+    });
+
+    it("rejects @deletedAt on a field that is not a Date, and with a value", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget text
+     * @deletedAt now
+     */
+    deletedAt?: string;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt takes no value",
+            "`deletedAt`: @deletedAt must be on a `Date` field, found `string`",
+        ]);
+    });
+
+    it("rejects @deletedAt beside the tags that give the column a value", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget date
+     * @deletedAt
+     * @pgDefault now()
+     * @updatedAt
+     */
+    deletedAt?: Date;
+}`);
+
+        expect(messages(findings)).toContain("`deletedAt`: @deletedAt and @pgDefault are mutually exclusive");
+        expect(messages(findings)).toContain("`deletedAt`: @deletedAt and @updatedAt are mutually exclusive");
+    });
+
+    it("rejects @queryFilter on the field, since the exclusion is implied", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget date
+     * @deletedAt
+     * @queryFilter
+     */
+    deletedAt?: Date;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt already hides trashed rows from a read, which names them with `trashed`; drop @queryFilter",
+        ]);
+    });
+
+    it("rejects a second @deletedAt field", () => {
+        const findings = lintSourceText(`/** @entity */
+export interface Doc {
+    /**
+     * @fieldName Deleted at
+     * @widget date
+     * @deletedAt
+     */
+    deletedAt?: Date;
+
+    /**
+     * @fieldName Removed at
+     * @widget date
+     * @deletedAt
+     */
+    removedAt?: Date;
+}`);
+
+        expect(messages(findings)).toEqual(["`Doc`: @deletedAt may appear on at most one field"]);
+    });
+
+    it("requires @deletedAt for a trash or restore operation", () => {
+        const spec = parseInMemorySpec([
+            {
+                filePath: "/src/domain/Doc.ts",
+                sourceFileText: `/**
+ * @entity
+ * @repository create trash restore
+ * @restRepository create
+ */
+export interface Doc {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}`,
+            },
+        ]);
+
+        expect(messages(lintSpec(spec).findings)).toEqual([
+            "`Doc`: @repository `trash` needs a field tagged @deletedAt",
+            "`Doc`: @repository `restore` needs a field tagged @deletedAt",
+        ]);
+    });
+});
+
 describe("retired @formula", () => {
     it("points a field-level @formula at the mechanism tags", () => {
         const findings = lintSourceText(
@@ -1960,8 +2093,8 @@ describe("lintSpec over a project", () => {
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
-            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+            `\`Invoice\`: missing @repository, naming at least one of: ${WRITES}`,
+            `\`Invoice\`: missing @restRepository, naming at least one of: ${WRITES}`,
             "`label`: missing @fieldName",
             "`label`: missing @widget",
         ]);
@@ -1985,8 +2118,8 @@ describe("lintSpec over a project", () => {
 
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
-            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+            `\`Invoice\`: missing @repository, naming at least one of: ${WRITES}`,
+            `\`Invoice\`: missing @restRepository, naming at least one of: ${WRITES}`,
             "`label`: missing @fieldName",
             "`label`: missing @widget",
         ]);
@@ -2086,8 +2219,8 @@ export interface Invoice {
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
+            `\`Invoice\`: missing @repository, naming at least one of: ${WRITES}`,
+            `\`Invoice\`: missing @restRepository, naming at least one of: ${WRITES}`,
         ]);
     });
 
@@ -2099,8 +2232,8 @@ export interface Invoice {
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @repository `creat` is not one of: create, upsert, update, delete",
-            "`Invoice`: @restRepository `creat` is not one of: create, upsert, update, delete",
+            `\`Invoice\`: @repository \`creat\` is not one of: ${WRITES}`,
+            `\`Invoice\`: @restRepository \`creat\` is not one of: ${WRITES}`,
         ]);
     });
 
@@ -2152,8 +2285,8 @@ export interface Invoice {
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @repository requires at least one of: create, upsert, update, delete",
-            "`Invoice`: @restRepository requires at least one of: create, upsert, update, delete",
+            `\`Invoice\`: @repository requires at least one of: ${WRITES}`,
+            `\`Invoice\`: @restRepository requires at least one of: ${WRITES}`,
         ]);
     });
 

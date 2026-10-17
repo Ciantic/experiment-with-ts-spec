@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
+    deletedAtColumn,
     quote,
     type Column,
     type Diagnostic,
@@ -61,6 +62,7 @@ function orderTables(tables: Map<string, Table>, diagnostics: Diagnostic[], sour
 export function renderCreateTable(table: Table): string[] {
     const lines: string[] = [`create table ${quote(table.name)} (`];
     const parts: string[] = [];
+    const deletedAt = deletedAtColumn(table);
 
     for (const column of table.columns) {
         let part = `    ${quote(column.name)} ${column.sqlType}`;
@@ -87,7 +89,8 @@ export function renderCreateTable(table: Table): string[] {
                 part += ` on update ${REFERENTIAL_ACTION_SQL[column.references.onUpdate]}`;
             }
         }
-        if (column.unique) {
+        // A trashed row keeps its values, so on a soft-deletable table uniqueness covers live rows only: see below.
+        if (column.unique && deletedAt === undefined) {
             part += " unique";
         }
         parts.push(part);
@@ -136,6 +139,14 @@ export function renderCreateTable(table: Table): string[] {
 
     lines.push(parts.join(",\n"));
     lines.push(");");
+    // A partial index lets a trashed row's value be reused, which a plain `unique` would forbid.
+    if (deletedAt !== undefined) {
+        for (const column of table.columns.filter((candidate) => candidate.unique)) {
+            lines.push(
+                `create unique index ${quote(`${table.name}_${column.name}_key`)} on ${quote(table.name)} (${quote(column.name)}) where ${quote(deletedAt.name)} is null;`,
+            );
+        }
+    }
     return lines;
 }
 

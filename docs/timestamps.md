@@ -155,14 +155,14 @@ from `@inlined`.
   load leaves `updatedAt` at its default rather than the write time. That is the
   case the default is there to keep sane, but the value will not be per-write.
 - **Deleting a row does not touch anything.** There is no parent to notify, so a
-  delete does not bump any `updatedAt`.
+  delete does not bump any `updatedAt`. A trash is an update, so it does
+  (`docs/soft-delete.md`).
 - **`now()` is transaction time.** Every statement in one transaction sees the
   same value, so two writes in a single transaction get identical timestamps.
   Use `clock_timestamp()` if wall-clock ordering within a transaction matters.
 
 ## Deliberately not implemented
 
-- **Soft delete (`deletedAt`).** Deletion is a real `delete`.
 - **Optimistic locking via `updatedAt`.** Not this column: `now()` is transaction
   time, so two writes in one transaction share a value and a stale read could
   still match. A separate monotonic counter fills that role; see

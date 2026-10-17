@@ -12,6 +12,8 @@ export * from "./createInvoice.ts";
 export * from "./upsertInvoice.ts";
 export * from "./updateInvoice.ts";
 export * from "./deleteInvoice.ts";
+export * from "./trashInvoice.ts";
+export * from "./restoreInvoice.ts";
 export * from "./createInvoiceRow.ts";
 export * from "./upsertInvoiceRow.ts";
 export * from "./updateInvoiceRow.ts";

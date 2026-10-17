@@ -243,6 +243,23 @@ export interface Scoped {
 }
 `.trim();
 
+/** A soft-deletable entity: its reads may name `trashed`, and no write carries the marker. */
+const TRASHABLE = `
+/**
+ * @pgTable trashable
+ * @entity
+ */
+export interface Trashable {
+    /** @primaryKey */
+    id: string;
+
+    name: string;
+
+    /** @deletedAt */
+    removedAt?: Date;
+}
+`.trim();
+
 /** The Zod surface the stub needs, so the functional tests stay typed. */
 interface ZodStub {
     string: () => { optional: () => unknown };
@@ -634,6 +651,25 @@ describe("buildZodModel queries", () => {
 });
 
 describe("generateQueryFile", () => {
+    it("accepts `trashed` on a soft-deletable entity's read and on no other", () => {
+        const { files, model } = generate({ entities: { Thing: THING, Trashable: TRASHABLE } });
+
+        expect(files.get(join("queries", "queryTrashable.ts"))).toContain(
+            '    trashed: z.enum(["exclude", "include", "only"]).optional(),',
+        );
+        expect(files.get(join("queries", "queryThing.ts"))).not.toContain("trashed");
+        expect(model.queries.find((query) => query.entity === "Trashable")?.trashed).toBe(true);
+    });
+
+    it("keeps the soft-delete marker out of every write", () => {
+        const { files } = generate({ entities: { Trashable: TRASHABLE } });
+
+        expect(insertFile(files, "Trashable")).toContain("removedAt: true");
+        expect(patchFile(files, "Trashable")).toContain("removedAt: true");
+        expect(patchFile(files, "Trashable")).toContain('"removedAt"');
+        expect(domainFile(files, "Trashable")).toContain("removedAt:");
+    });
+
     it("emits the query-specific select schema and query args schema", () => {
         const { files } = generate({ entities: { Thing: THING } });
         const code = files.get(join("queries", "queryThing.ts")) ?? "";

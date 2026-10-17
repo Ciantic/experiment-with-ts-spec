@@ -11,7 +11,7 @@ import { createDatabase, parseArgs, startServer, type StartedServer } from "./ma
 type Builder = (argument: unknown) => Call<unknown>;
 
 /** The prefixes the generator gives its builders. Narrow, so no hand-written export is probed. */
-const GENERATED = /^(?:query|create|upsert|update|delete)[A-Z]/;
+const GENERATED = /^(?:query|create|upsert|update|delete|trash|restore)[A-Z]/;
 
 /** The hand-written exports; probing `createHttpClient` would call it, as it shares the `create` prefix. */
 const HAND_WRITTEN = new Set([
@@ -108,6 +108,31 @@ describe("seeded server", () => {
 });
 
 describe("a live server", () => {
+    it("trashes and restores an invoice, hiding it from a read until it comes back", async () => {
+        const rows = mockTables.find((table) => table.entity === "Invoice")?.rows as { id: string }[];
+        const filter = readFilter("Invoice");
+        const ids = async (trashed?: "include" | "only") =>
+            (
+                await exec(
+                    http,
+                    api.queryInvoice({ filter, ...(trashed ? { trashed } : {}), select: { id: true } }) as Executable<{ id: string }[]>,
+                )
+            ).map((row) => row.id);
+        const target = rows[0]!.id;
+
+        await exec(http, api.trashInvoice([{ id: target as never }]));
+
+        expect(await ids()).not.toContain(target);
+        expect(await ids()).toHaveLength(rows.length - 1);
+        expect(await ids("only")).toEqual([target]);
+        expect(await ids("include")).toHaveLength(rows.length);
+
+        await exec(http, api.restoreInvoice([{ id: target as never }]));
+
+        expect(await ids()).toContain(target);
+        expect(await ids("only")).toEqual([]);
+    });
+
     it("answers every generated query with an array", async () => {
         for (const [name, builder] of buildersNamed("query")) {
             const filter = readFilter(name.slice("query".length));

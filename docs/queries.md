@@ -184,6 +184,14 @@ The third parameter is `never` for an entity whose filters are all optional, so
 `queryTenant(db, { select })` lists every row, and a one-element array names a
 single value.
 
+## `trashed`
+
+An entity with a `@deletedAt` field reads live rows only, and its `query` takes
+`trashed: "exclude" | "include" | "only"` to say otherwise. It is not a
+`@queryFilter`, since a set cannot match null; the resolver reads the column from
+`queryModel` (`deletedAt`) and adds `is null` or `is not null`. A branch hides
+trashed rows by default as well. See `docs/soft-delete.md`.
+
 ## `@queryOrderBy`
 
 ```

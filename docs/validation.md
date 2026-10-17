@@ -369,7 +369,9 @@ the resolver. Each `where` field is a `z.strictObject` of **only** the operators
 field's own schema types each operator's value. `limit` is a positive integer
 and `offset` a non-negative integer, so a bad page is a 400. An entity with no
 `@queryOrderBy` field gets no `order` key and an entity with no `@queryWhere` field no
-`where` key; every read gets `limit` and `offset`.
+`where` key; every read gets `limit` and `offset`. An entity with a `@deletedAt`
+field also gets `trashed`, a `z.enum` of `exclude`, `include`, and `only`
+(`docs/soft-delete.md`).
 
 The module is separate from the entities so a caller can validate a read without
 pulling in a write schema, and `--out` still writes below the given directory.

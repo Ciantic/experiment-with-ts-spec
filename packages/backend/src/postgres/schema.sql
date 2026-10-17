@@ -77,7 +77,7 @@ create table "seller" (
 create table "invoice" (
     "id" uuid not null,
     "tenantId" uuid not null references "tenant"("id"),
-    "number" text unique,
+    "number" text,
     "customerId" uuid,
     "sellerId" uuid,
     "language" text,
@@ -89,12 +89,14 @@ create table "invoice" (
     "notes" text,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
+    "deletedAt" timestamptz,
     "version" int8 not null default 0,
     constraint "invoice_pkey" primary key ("id"),
     constraint "invoice_tenantId_customerId_fkey" foreign key ("tenantId", "customerId") references "customer" ("tenantId", "id"),
     constraint "invoice_tenantId_sellerId_fkey" foreign key ("tenantId", "sellerId") references "seller" ("tenantId", "id"),
     constraint "invoice_tenantId_id_key" unique ("tenantId", "id")
 );
+create unique index "invoice_number_key" on "invoice" ("number") where "deletedAt" is null;
 
 create table "invoice_row" (
     "id" uuid not null,

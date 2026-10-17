@@ -52,8 +52,10 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
             return `${entity.module}InsertSchema`;
         case "upsert":
             return `${entity.module}UpsertSchema`;
-        // A delete carries only the key, so it validates against the key schema, not the whole entity.
+        // A delete, trash, or restore carries only the key, so it validates against the key schema, not the whole entity.
         case "delete":
+        case "trash":
+        case "restore":
             return `${entity.module}PrimaryKeySchema`;
         case "update":
             return `${entity.module}PatchSchema`;

@@ -52,6 +52,8 @@ carries it in the body.
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
+| trash | `trash<Entity>` | `POST` | `/<table>/trash` | `[{ id }]` in the body |
+| restore | `restore<Entity>` | `POST` | `/<table>/restore` | `[{ id }]` in the body |
 | group | — | `POST` | `/$group` | a tree of the calls above, in the body |
 
 The id is the call's name: the generated client function is it, and a group entry
@@ -77,7 +79,9 @@ A read pages, orders, and compares: it returns at most `limit` matching rows
 `filter` sets and `where` comparisons. A filter the entity marks `@queryFilter
 required` has to be named, so a read of a tenant-scoped entity that omits its
 `tenantId` is a 400 rather than the whole table. A caller that wants a single row
-takes the first result (`docs/queries.md`).
+takes the first result (`docs/queries.md`). A soft-deletable entity's read also
+takes `trashed`, and the trash and restore calls are the `POST` action paths in
+the table above (`docs/soft-delete.md`).
 
 A create takes `<entity>InsertSchema`, the columns the database does not own, and
 a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly

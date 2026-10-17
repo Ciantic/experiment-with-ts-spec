@@ -119,6 +119,8 @@ export interface ZodQuery {
     orderFields: string[];
     /** The comparable fields, from `@queryWhere`; the renderer validates `where` against them. */
     whereFields: ZodWhereField[];
+    /** True when the entity is soft-deletable, so a read may name `trashed`. See docs/soft-delete.md. */
+    trashed: boolean;
     /** Entity names the filters reference, so the file imports their schemas. */
     dependencies: string[];
     /** True when a filter resolves through a primitive schema. */
@@ -514,6 +516,7 @@ function buildQueries(
             requiredFilterFields,
             orderFields,
             whereFields,
+            trashed: spec.properties.some((property) => property.tags.deletedAt),
             dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
             usesPrimitives: context.usesPrimitives,
         });

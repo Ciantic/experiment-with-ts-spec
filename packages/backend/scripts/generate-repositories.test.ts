@@ -11,9 +11,13 @@ import {
     generateDelete,
     generateIndex,
     generateRepositories,
+    generateRestore,
+    generateTrash,
     generateUpdate,
     generateUpsert,
+    restoreStatement,
     statementSql,
+    trashStatement,
     updateStatement,
     upsertStatement,
 } from "./generate-repositories.ts";
@@ -41,7 +45,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         columns,
         relations: new Map(),
         triggers: [],
-        repositoryOperations: [...WRITE_OPERATIONS],
+        repositoryOperations: ["create", "upsert", "update", "delete"],
         queries: ["query"],
     };
 }
@@ -1495,5 +1499,146 @@ describe("generated repositories against PGlite", () => {
         await expect(gates.create(db, rows)).rejects.toThrow(
             "the insert wrote 1 of the 2 gate rows this create supplied",
         );
+    });
+});
+
+/** A soft-deletable entity: a unique code, the trash marker, and the version a write bumps. */
+const trashable = table("note", "Note", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("code", { unique: true }),
+    column("deletedAt", { sqlType: "timestamptz", notNull: false, insertable: false, deletedAt: true }),
+    column("version", { sqlType: "int8", default: "0", version: true }),
+]);
+
+describe("trashStatement and restoreStatement", () => {
+    it("marks live rows by key, around the tuple list the runtime builds", () => {
+        expect(trashStatement(trashable)).toEqual({
+            before: 'update "note" set "deletedAt" = now() from (values ',
+            after: ') as data("id") where "note"."id" = data."id" and "note"."deletedAt" is null',
+        });
+    });
+
+    it("clears the mark on trashed rows by key", () => {
+        expect(restoreStatement(trashable)).toEqual({
+            before: 'update "note" set "deletedAt" = null from (values ',
+            after: ') as data("id") where "note"."id" = data."id" and "note"."deletedAt" is not null',
+        });
+    });
+
+    it("matches every column of a composite key", () => {
+        const composite = table("note", "Note", [
+            column("a", { primaryKey: true }),
+            column("b", { primaryKey: true }),
+            column("deletedAt", { sqlType: "timestamptz", notNull: false, insertable: false, deletedAt: true }),
+        ]);
+
+        expect(trashStatement(composite).after).toBe(
+            ') as data("a", "b") where "note"."a" = data."a" and "note"."b" = data."b" and "note"."deletedAt" is null',
+        );
+    });
+
+    it("refuses a table with no soft-delete column", () => {
+        expect(() => trashStatement(customer)).toThrow("Customer: trash needs a @deletedAt field");
+        expect(() => restoreStatement(customer)).toThrow("Customer: restore needs a @deletedAt field");
+    });
+
+    it("takes the keys alone, like a delete", () => {
+        expect(generateTrash(trashable)).toContain("const values = [row.id];");
+        expect(generateRestore(trashable)).toContain(
+            "export async function restoreNote(db: SqlExecutor, rows: NotePrimaryKey[]): Promise<void> {",
+        );
+    });
+});
+
+describe("a soft-deletable table against PGlite", () => {
+    let driver: ReturnType<typeof createPglite>;
+    let db: SqlExecutor;
+    let notes: GeneratedRepository & {
+        trash: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+        restore: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+    };
+    const first = "00000000-0000-0000-0000-0000000000a1";
+    const second = "00000000-0000-0000-0000-0000000000a2";
+
+    const state = async () =>
+        (await driver.query<{ id: string; trashed: boolean; version: bigint }>(
+            'select "id", "deletedAt" is not null as trashed, "version" from "note" order by "id"',
+        )).rows;
+
+    beforeAll(async () => {
+        driver = createPglite();
+        db = createTransactionalDb(createPglitePool(driver));
+        await driver.exec(fixtureDdl(trashable));
+        const pick = (prefix: string, code: string) => loadModule(code)[`${prefix}Note`] as (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+        notes = {
+            ...loadRepository(trashable),
+            trash: pick("trash", generateTrash(trashable)),
+            restore: pick("restore", generateRestore(trashable)),
+        };
+    });
+
+    afterAll(async () => {
+        await driver.close();
+    });
+
+    beforeEach(async () => {
+        await db.query('delete from "note"');
+        await notes.create(db, [
+            { id: first, code: "a" },
+            { id: second, code: "b" },
+        ]);
+    });
+
+    it("trashes the rows it is given and leaves the others", async () => {
+        await notes.trash(db, [{ id: first }]);
+
+        expect(await state()).toEqual([
+            { id: first, trashed: true, version: 1n },
+            { id: second, trashed: false, version: 0n },
+        ]);
+    });
+
+    it("restores a trashed row", async () => {
+        await notes.trash(db, [{ id: first }, { id: second }]);
+        await notes.restore(db, [{ id: first }]);
+
+        expect((await state()).map((row) => row.trashed)).toEqual([false, true]);
+    });
+
+    it("leaves a row that is already in the requested state untouched", async () => {
+        await notes.trash(db, [{ id: first }]);
+        const { rows: before } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
+
+        await notes.trash(db, [{ id: first }]);
+        await notes.restore(db, [{ id: second }]);
+
+        const { rows: after } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
+        expect(after).toEqual(before);
+        expect(await state()).toEqual([
+            { id: first, trashed: true, version: 1n },
+            { id: second, trashed: false, version: 0n },
+        ]);
+    });
+
+    it("does nothing for an empty list and for a key that is not there", async () => {
+        await notes.trash(db, []);
+        await notes.trash(db, [{ id: "00000000-0000-0000-0000-0000000000ff" }]);
+
+        expect((await state()).every((row) => !row.trashed)).toBe(true);
+    });
+
+    it("lets a trashed row's unique value be reused, and refuses a duplicate among live rows", async () => {
+        await notes.trash(db, [{ id: first }]);
+
+        await notes.create(db, [{ id: "00000000-0000-0000-0000-0000000000a3", code: "a" }]);
+
+        await expect(notes.create(db, [{ id: "00000000-0000-0000-0000-0000000000a4", code: "a" }])).rejects.toThrow();
+    });
+
+    it("refuses to restore a row into a value a live row has taken", async () => {
+        await notes.trash(db, [{ id: first }]);
+        await notes.create(db, [{ id: "00000000-0000-0000-0000-0000000000a3", code: "a" }]);
+
+        await expect(notes.restore(db, [{ id: first }])).rejects.toThrow();
     });
 });

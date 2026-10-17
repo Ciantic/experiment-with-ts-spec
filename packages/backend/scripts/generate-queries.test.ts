@@ -76,6 +76,36 @@ const tables = new Map([
     ["Seller", seller],
 ]);
 
+/** An entity with a soft-delete column, whose reads hide trashed rows unless they say otherwise. */
+const trashable = table("note", "Note", [
+    column("id", { primaryKey: true, queryFilter: { required: false } }),
+    column("deletedAt", { notNull: false, insertable: false, deletedAt: true }),
+]);
+
+describe("soft-deletable reads", () => {
+    it("names the soft-delete column in the model, and omits it for other tables", () => {
+        const model = buildQueryModel(new Map([["Note", trashable], ["Seller", seller]]));
+
+        expect(model.tables.note?.deletedAt).toBe("deletedAt");
+        expect(model.tables.seller).not.toHaveProperty("deletedAt");
+    });
+
+    it("accepts `trashed` and passes it to the resolver", () => {
+        const code = renderQueryModule("Note", trashable);
+
+        expect(code).toContain('import type { Filters, Selected, Selection, Trashed } from "validation/selection.ts";');
+        expect(code).toContain('opts: { filter?: Filters<Note, "id">; trashed?: Trashed; limit?: number;');
+        expect(code).toContain("{ select: opts.select, trashed: opts.trashed, limit: opts.limit, offset: opts.offset }");
+    });
+
+    it("offers no `trashed` on an entity without the column", () => {
+        const code = renderQueryModule("Invoice", invoice);
+
+        expect(code).not.toContain("Trashed");
+        expect(code).not.toContain("trashed");
+    });
+});
+
 describe("buildQueryModel", () => {
     it("keeps scalar fields and drops inlined columns", () => {
         const model = buildQueryModel(tables);
