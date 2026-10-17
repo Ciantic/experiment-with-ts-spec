@@ -29,6 +29,7 @@ export const FIELD_TAGS = [
     "computed",
     "createdAt",
     "updatedAt",
+    "deletedAt",
     "pgVirtual",
     "pgTrigger",
     "relation",
@@ -253,6 +254,8 @@ export interface Tags {
     createdAt: boolean;
     /** The field holds the row's last-write moment; the database maintains it. See docs/timestamps.md. */
     updatedAt: boolean;
+    /** The field holds the row's deletion moment; it must be a nullable `Date` with `@queryFilter default=null`. See docs/soft-delete.md. */
+    deletedAt: boolean;
     /** The generated-column expression that materializes a `@computed` field, without `NEW.`. */
     pgVirtual?: string;
     /** The row trigger that maintains a `@computed` field: its attachment, timing, events, and statement. */
@@ -734,6 +737,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         computed: false,
         createdAt: false,
         updatedAt: false,
+        deletedAt: false,
         relation: false,
         children: false,
         inlined: false,
@@ -867,6 +871,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "updatedAt":
                     tags.updatedAt = true;
+                    break;
+                case "deletedAt":
+                    tags.deletedAt = true;
                     break;
                 case "pgVirtual":
                     if (value !== undefined) tags.pgVirtual ??= value;

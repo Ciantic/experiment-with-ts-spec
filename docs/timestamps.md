@@ -169,4 +169,5 @@ from `@inlined`.
 - **Timestamps on the snapshots.** Above.
 - **An actor column.** Who made the change (`updatedBy`) is not modelled.
 - **A trash marker tag.** A row's deletion moment is an ordinary nullable
-  `deletedAt` field with `@queryFilter default=null`; see `docs/soft-delete.md`.
+  `deletedAt` field with `@queryFilter default=null`; `@deletedAt` marks it but
+  changes no generation of its own. See `docs/soft-delete.md`.

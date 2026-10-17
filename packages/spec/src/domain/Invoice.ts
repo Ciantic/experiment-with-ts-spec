@@ -184,6 +184,7 @@ export interface Invoice {
      * The moment the invoice was trashed; null while it is live.
      *
      * @fieldName Deleted at
+     * @deletedAt
      * @queryFilter default=null
      * @queryWhere gte
      * @widget date

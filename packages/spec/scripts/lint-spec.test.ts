@@ -1357,6 +1357,83 @@ export interface Thing {
     });
 });
 
+describe("@deletedAt", () => {
+    const field = (type: string, tags: string[], optional = true) =>
+        `/** @entity */
+export interface Thing {
+            /**
+             * @fieldName Deleted at
+             * @widget date
+             ${tags.map((tag) => `* ${tag}`).join("\n             ")}
+             */
+            deletedAt${optional ? "?" : ""}: ${type};
+        }`;
+
+    it("accepts @deletedAt on a nullable Date with a null filter default", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=null"]));
+
+        expect(findings).toEqual([]);
+    });
+
+    it("rejects @deletedAt on a field whose type is not Date", () => {
+        const findings = lintSourceText(field("string", ["@deletedAt", "@queryFilter default=null"]));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt must be on a `Date` field, found `string`",
+        ]);
+    });
+
+    it("rejects @deletedAt on a required field, whose column would be not null", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=null"], false));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt is null while the row is live, so the field must be optional; add the `?`",
+            "`deletedAt`: @queryFilter default=null needs an optional field, whose column is nullable",
+        ]);
+    });
+
+    it("rejects @deletedAt without a filter", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt"]));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows",
+        ]);
+    });
+
+    it("rejects @deletedAt whose filter defaults to another value", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt", "@queryFilter default=2024-01-01"]));
+
+        expect(messages(findings)).toEqual([
+            "`deletedAt`: @deletedAt needs @queryFilter default=null on the same field, so a read hides deleted rows",
+        ]);
+    });
+
+    it("rejects @deletedAt with a value", () => {
+        const findings = lintSourceText(field("Date", ["@deletedAt trashed", "@queryFilter default=null"]));
+
+        expect(messages(findings)).toEqual(["`deletedAt`: @deletedAt takes no value"]);
+    });
+
+    it("rejects @deletedAt on a branch field", () => {
+        const findings = lintSourceText(
+            `/** @entity */
+export interface Thing {
+                /**
+                 * @fieldName Owner
+                 * @widget select
+                 * @relation
+                 * @deletedAt
+                 */
+                owner?: Owner;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`owner`: @deletedAt must be on a scalar field, not a @relation field",
+        ]);
+    });
+});
+
 describe("@primaryKey and @foreignKey", () => {
     it("accepts @primaryKey on a scalar field", () => {
         const findings = lintSourceText(

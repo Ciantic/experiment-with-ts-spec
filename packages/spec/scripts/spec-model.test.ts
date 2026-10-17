@@ -195,6 +195,22 @@ describe("parseSpec tags", () => {
         expect(byName?.get("unique")).toHaveLength(2);
     });
 
+    it("decodes @deletedAt as a bare marker", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @deletedAt\n     */", "deletedAt?: Date;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.deletedAt).toBe(true);
+    });
+
+    it("leaves a field without @deletedAt unflagged", () => {
+        const { interfaces } = parse({
+            "Thing.ts": thing("    /**\n     * @fieldName Label\n     */", "label: string;"),
+        });
+
+        expect(interfaces.get("Thing")?.properties[0]?.tags.deletedAt).toBe(false);
+    });
+
     it("decodes @queryFilter as an optional filter", () => {
         const { interfaces } = parse({
             "Thing.ts": thing("    /**\n     * @queryFilter\n     */", "code: string;"),

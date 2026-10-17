@@ -11,6 +11,7 @@ read that does not ask for them.
  * The moment the invoice was trashed; null while it is live.
  *
  * @fieldName Deleted at
+ * @deletedAt
  * @queryFilter default=null
  * @queryWhere gte
  * @widget date
@@ -24,6 +25,21 @@ The field is optional, so the column is a plain nullable `timestamptz` with no
 default and no trigger. It is an ordinary field in every other respect: a create
 may set it, a patch may set it to a moment or back to `null`, and a read may
 select it. No special operation exists for it — there is no `trash` or `restore`.
+
+## The marker
+
+`@deletedAt` changes no generation. It records which field is the deletion
+moment and makes the linter check the shape a reader depends on:
+
+- the field is optional, so the column is nullable;
+- its type is `Date`;
+- it carries `@queryFilter default=null`, so a read that omits the filter sees
+  live rows only;
+- it is a scalar field, not a branch, and the tag takes no value.
+
+The tag is reserved for a future mechanism. Until then removing it changes
+nothing but the lint finding, and `@queryFilter default=null` alone provides the
+behaviour.
 
 ## Reads default to live rows
 
