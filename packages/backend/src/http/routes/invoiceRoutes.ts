@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createInvoice, deleteInvoice, restoreInvoice, trashInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
 import { queryInvoice } from "../../db/queries/index.ts";
-import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "validation/index.ts";
+import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceTrashKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "validation/index.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
 export const invoiceRoutes: Route[] = [
@@ -52,7 +52,7 @@ export const invoiceRoutes: Route[] = [
         method: "POST",
         path: "/invoice/trash",
         source: "body",
-        input: z.array(invoicePrimaryKeySchema),
+        input: z.array(invoiceTrashKeySchema),
         handler: (db, body) => trashInvoice(db, body as never),
     },
     {
@@ -60,7 +60,7 @@ export const invoiceRoutes: Route[] = [
         method: "POST",
         path: "/invoice/restore",
         source: "body",
-        input: z.array(invoicePrimaryKeySchema),
+        input: z.array(invoiceTrashKeySchema),
         handler: (db, body) => restoreInvoice(db, body as never),
     },
 ];

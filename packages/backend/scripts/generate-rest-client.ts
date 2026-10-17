@@ -105,9 +105,9 @@ function comment(entity: RestEntity, kind: RestKind): string {
         case "delete":
             return `/** Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. */`;
         case "trash":
-            return `/** Trash \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}: reads stop returning them until restored. See docs/soft-delete.md. */`;
+            return `/** Trash \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}${entity.versionFields.length > 0 ? ` at the version claimed; a stale one rejects the call` : ""}: reads stop returning them until restored. See docs/soft-delete.md. */`;
         case "restore":
-            return `/** Restore trashed \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. See docs/soft-delete.md. */`;
+            return `/** Restore trashed \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}${entity.versionFields.length > 0 ? ` at the version claimed; a stale one rejects the call` : ""}. See docs/soft-delete.md. */`;
     }
 }
 
@@ -156,9 +156,13 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         validationTypes.push(`${name}Insert`);
     }
-    // Create, upsert, delete, trash, and restore all name the key, so the type follows whichever of them exists.
-    if (create || upsert || remove || trash || restore) {
+    // Create, upsert, and delete name the key, so the type follows whichever of them exists.
+    if (create || upsert || remove) {
         validationTypes.push(keyType(entity));
+    }
+    // Trash and restore claim the version too, so they share a type of their own.
+    if (trash || restore) {
+        validationTypes.push(`${name}TrashKey`);
     }
     if (upsert) {
         validationTypes.push(`${name}Upsert`);
@@ -230,7 +234,7 @@ export function renderClientModule(entity: RestEntity): string {
         if (action) {
             lines.push("");
             lines.push(comment(entity, action.kind));
-            lines.push(`export function ${action.id}(rows: ${keyType(entity)}[]): Call<void> {`);
+            lines.push(`export function ${action.id}(rows: ${name}TrashKey[]): Call<void> {`);
             lines.push(`    return call<void>("${action.id}", "${action.method}", "${action.path}", rows);`);
             lines.push("}");
         }

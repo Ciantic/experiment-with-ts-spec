@@ -4,10 +4,11 @@ import type { Filters, Order, Selected, Selection, Trashed, Where } from "valida
 import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
 import type { InvoicePatch } from "validation/repositories/invoicePatchSchema.ts";
 import type { InvoicePrimaryKey } from "validation/repositories/invoicePrimaryKeySchema.ts";
+import type { InvoiceTrashKey } from "validation/repositories/invoiceTrashKeySchema.ts";
 import type { InvoiceUpsert } from "validation/repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 
-export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
+export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceTrashKey, InvoiceUpsert };
 
 /** Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and. */
 export function queryInvoice<S extends Selection<Invoice>>(
@@ -36,12 +37,12 @@ export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void> {
     return call<void>("deleteInvoice", "DELETE", "/invoice", rows);
 }
 
-/** Trash `Invoice` rows, keyed on `id`: reads stop returning them until restored. See docs/soft-delete.md. */
-export function trashInvoice(rows: InvoicePrimaryKey[]): Call<void> {
+/** Trash `Invoice` rows, keyed on `id` at the version claimed; a stale one rejects the call: reads stop returning them until restored. See docs/soft-delete.md. */
+export function trashInvoice(rows: InvoiceTrashKey[]): Call<void> {
     return call<void>("trashInvoice", "POST", "/invoice/trash", rows);
 }
 
-/** Restore trashed `Invoice` rows, keyed on `id`. See docs/soft-delete.md. */
-export function restoreInvoice(rows: InvoicePrimaryKey[]): Call<void> {
+/** Restore trashed `Invoice` rows, keyed on `id` at the version claimed; a stale one rejects the call. See docs/soft-delete.md. */
+export function restoreInvoice(rows: InvoiceTrashKey[]): Call<void> {
     return call<void>("restoreInvoice", "POST", "/invoice/restore", rows);
 }

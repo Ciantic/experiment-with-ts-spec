@@ -84,41 +84,78 @@ linter checks.
 
 ```ts
 // trashInvoice.ts
-trashInvoice(db: SqlExecutor, rows: InvoicePrimaryKey[]): Promise<void>
+trashInvoice(db: SqlExecutor, rows: InvoiceTrashKey[]): Promise<void>
 // restoreInvoice.ts
-restoreInvoice(db: SqlExecutor, rows: InvoicePrimaryKey[]): Promise<void>
+restoreInvoice(db: SqlExecutor, rows: InvoiceTrashKey[]): Promise<void>
 ```
 
-Each takes primary keys alone, as `delete` does, and runs one statement:
+`<Entity>TrashKey` is the primary key, plus the `@version` field when the entity
+has one: `{ id, version }` for `Invoice`, `{ id }` for an entity without a
+version. It is declared in `packages/validation`, beside the schema that
+validates it (`<entity>TrashKeySchema`).
+
+## Trash and restore claim the version
+
+A trash is a state change a user acts on from a copy they read earlier, so on an
+entity with `@version` it carries the version the caller holds, exactly as an
+`update` does (`docs/versioning.md`). The statement matches the key *and* the
+version, writes the rows it matches, and returns their keys:
 
 ```sql
-update "invoice" set "deletedAt" = now() from (values ($1::uuid), …) as data("id")
-    where "invoice"."id" = data."id" and "invoice"."deletedAt" is null
+update "invoice" set "deletedAt" = coalesce("invoice"."deletedAt", now())
+    from (values ($1::uuid, $2::int8), …) as data("id", "version")
+    where "invoice"."id" = data."id" and "invoice"."version" = data."version"
+    returning "invoice"."id"
 ```
 
 ```sql
-update "invoice" set "deletedAt" = null from (values ($1::uuid), …) as data("id")
-    where "invoice"."id" = data."id" and "invoice"."deletedAt" is not null
+update "invoice" set "deletedAt" = null
+    from (values ($1::uuid, $2::int8), …) as data("id", "version")
+    where "invoice"."id" = data."id" and "invoice"."version" = data."version"
+    returning "invoice"."id"
 ```
 
-- **Idempotent.** The state predicate means trashing a trashed row, restoring a
-  live one, and naming a key that is not there all match nothing and write
-  nothing. That keeps the original `deletedAt` when a row is trashed twice, and
-  nothing is reported as missing, which is also how `delete` behaves.
-- **An ordinary update as far as the database cares.** The statement sends no
-  version, so `NEW."version"` equals `OLD."version"` and the check passes; the
-  trigger then bumps `version`, and `updatedAt` is refreshed. A trashed row counts
-  as changed (`docs/versioning.md`, `docs/timestamps.md`).
+- **A stale version rejects the call.** A row the statement did not write, whether
+  its version has moved on or the key is not there, fails the call with the
+  `40001` conflict `update` raises (a `409` over REST). A call carrying several
+  rows runs in one boundary, so a rejection writes none of them.
+- **The trigger moves the version on.** The statement sends the caller's version,
+  so the check passes and the trigger increments it, and `updatedAt` is
+  refreshed. After a trash the caller holds a stale version, and a restore needs
+  the one the trash produced: read it again, or take it from the next read with
+  `trashed: "only"`.
+- **A repeat at the current version is harmless.** Trashing an already-trashed row
+  at its current version keeps the first `deletedAt` (the `coalesce`), though it
+  still bumps the version.
 - **A restore can fail.** Restoring a row whose `@unique` value a live row has
   since taken violates the unique index, and the statement raises it.
 
-Over REST each is a `POST` to an action path with the keys in the body, validated
-against the same `<entity>PrimaryKeySchema` a delete uses:
+### An entity without a version
+
+With no `@version` there is nothing to claim, so each takes the key alone and
+matches the state instead:
+
+```sql
+update "memo" set "deletedAt" = now() from (values ($1::uuid), …) as data("id")
+    where "memo"."id" = data."id" and "memo"."deletedAt" is null
+```
+
+```sql
+update "memo" set "deletedAt" = null from (values ($1::uuid), …) as data("id")
+    where "memo"."id" = data."id" and "memo"."deletedAt" is not null
+```
+
+That is **idempotent**: trashing a trashed row, restoring a live one, and naming
+a key that is not there all match nothing, write nothing, and report nothing
+missing, which is how `delete` behaves.
+
+Over REST each is a `POST` to an action path with the rows in the body, validated
+against `<entity>TrashKeySchema`:
 
 | Call | Id | Method | Path | Argument |
 | --- | --- | --- | --- | --- |
-| trash | `trash<Entity>` | `POST` | `/<table>/trash` | `[{ id }]` in the body |
-| restore | `restore<Entity>` | `POST` | `/<table>/restore` | `[{ id }]` in the body |
+| trash | `trash<Entity>` | `POST` | `/<table>/trash` | `[{ id, version }]` in the body |
+| restore | `restore<Entity>` | `POST` | `/<table>/restore` | `[{ id, version }]` in the body |
 
 They are not a `DELETE` or a `PATCH`, because neither verb says "change one state
 column by key", and they are not under `q` because they are state changes, not

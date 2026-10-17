@@ -65,6 +65,11 @@ export function primaryKeyModuleName(entity: string): string {
     return `${lowerFirst(entity)}PrimaryKeySchema.ts`;
 }
 
+/** Invoice -> invoiceTrashKeySchema.ts, the module holding the trash and restore schema and its type. */
+export function trashKeyModuleName(entity: string): string {
+    return `${lowerFirst(entity)}TrashKeySchema.ts`;
+}
+
 /** The directory holding the generated query schemas, under the output root. */
 const QUERIES_DIR = "queries";
 
@@ -442,6 +447,29 @@ export function generatePrimaryKeySchema(entity: ZodEntity): string {
     return lines.join("\n") + "\n";
 }
 
+/** Render one entity's trash module: `<name>TrashKeySchema` and `<Entity>TrashKey`. See docs/soft-delete.md. */
+export function generateTrashKeySchema(entity: ZodEntity): string {
+    const lines: string[] = [HEADER];
+    lines.push(`import type { ${entity.name} } from "${entity.importSpecifier}";`);
+    lines.push(
+        `import { ${entity.schemaName} } from "../${join(DOMAIN_DIR, domainModuleName(entity.name))}";`,
+    );
+
+    // Trash and restore are state changes, so they claim the version a patch does; an entity without one takes the key alone.
+    const fields = [...entity.keys, ...entity.versionFields];
+    lines.push("");
+    lines.push("/** The key of one stored row, plus the version it claims: what a trash or restore sends. */");
+    lines.push(
+        `export const ${entity.trashKeyName} = ${entity.schemaName}.pick({ ${fields.map((name) => `${name}: true`).join(", ")} }).strict();`,
+    );
+
+    lines.push("");
+    lines.push("/** The key of one stored row, plus the version it claims: what a trash or restore addresses. */");
+    lines.push(`export type ${entity.name}TrashKey = Pick<${entity.name}, ${fields.map(quote).join(" | ")}>;`);
+
+    return lines.join("\n") + "\n";
+}
+
 /** The one-line doc a patch schema and its type share. */
 function patchComment(versioned: boolean): string {
     return versioned
@@ -478,6 +506,9 @@ export function generateRepositoriesIndex(entities: ZodEntity[]): string {
         if (entity.keys.length > 0) {
             lines.push(`export * from "./${primaryKeyModuleName(entity.name)}";`);
         }
+        if (entity.trashable && entity.keys.length > 0) {
+            lines.push(`export * from "./${trashKeyModuleName(entity.name)}";`);
+        }
     }
     return lines.join("\n") + "\n";
 }
@@ -509,6 +540,12 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
             files.set(
                 join(REPOSITORIES_DIR, primaryKeyModuleName(entity.name)),
                 generatePrimaryKeySchema(entity),
+            );
+        }
+        if (entity.trashable && entity.keys.length > 0) {
+            files.set(
+                join(REPOSITORIES_DIR, trashKeyModuleName(entity.name)),
+                generateTrashKeySchema(entity),
             );
         }
     }

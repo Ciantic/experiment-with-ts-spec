@@ -1510,18 +1510,34 @@ const trashable = table("note", "Note", [
     column("version", { sqlType: "int8", default: "0", version: true }),
 ]);
 
+/** The same entity with no version, so trash and restore take the key alone. */
+const plainTrashable = table("memo", "Memo", [
+    column("id", { sqlType: "uuid", primaryKey: true }),
+    column("deletedAt", { sqlType: "timestamptz", notNull: false, insertable: false, deletedAt: true }),
+]);
+
 describe("trashStatement and restoreStatement", () => {
-    it("marks live rows by key, around the tuple list the runtime builds", () => {
+    it("claims the version beside the key, and returns the keys it wrote, on a versioned table", () => {
         expect(trashStatement(trashable)).toEqual({
-            before: 'update "note" set "deletedAt" = now() from (values ',
-            after: ') as data("id") where "note"."id" = data."id" and "note"."deletedAt" is null',
+            before: 'update "note" set "deletedAt" = coalesce("note"."deletedAt", now()) from (values ',
+            after:
+                ') as data("id", "version") where "note"."id" = data."id" and "note"."version" = data."version" returning "note"."id"',
+        });
+        expect(restoreStatement(trashable)).toEqual({
+            before: 'update "note" set "deletedAt" = null from (values ',
+            after:
+                ') as data("id", "version") where "note"."id" = data."id" and "note"."version" = data."version" returning "note"."id"',
         });
     });
 
-    it("clears the mark on trashed rows by key", () => {
-        expect(restoreStatement(trashable)).toEqual({
-            before: 'update "note" set "deletedAt" = null from (values ',
-            after: ') as data("id") where "note"."id" = data."id" and "note"."deletedAt" is not null',
+    it("marks live rows by key alone on an unversioned table, so a repeat writes nothing", () => {
+        expect(trashStatement(plainTrashable)).toEqual({
+            before: 'update "memo" set "deletedAt" = now() from (values ',
+            after: ') as data("id") where "memo"."id" = data."id" and "memo"."deletedAt" is null',
+        });
+        expect(restoreStatement(plainTrashable)).toEqual({
+            before: 'update "memo" set "deletedAt" = null from (values ',
+            after: ') as data("id") where "memo"."id" = data."id" and "memo"."deletedAt" is not null',
         });
     });
 
@@ -1542,11 +1558,24 @@ describe("trashStatement and restoreStatement", () => {
         expect(() => restoreStatement(customer)).toThrow("Customer: restore needs a @deletedAt field");
     });
 
-    it("takes the keys alone, like a delete", () => {
-        expect(generateTrash(trashable)).toContain("const values = [row.id];");
+    it("takes the key and the claimed version, typed as the entity's trash key", () => {
+        const code = generateTrash(trashable);
+
+        expect(code).toContain("const values = [row.id, row.version];");
+        expect(code).toContain("rows: NoteTrashKey[]");
+        expect(code).toContain('import type { NoteTrashKey } from "validation/repositories/noteTrashKeySchema.ts";');
+        expect(code).toContain("{ code: \"40001\" }");
         expect(generateRestore(trashable)).toContain(
-            "export async function restoreNote(db: SqlExecutor, rows: NotePrimaryKey[]): Promise<void> {",
+            "export async function restoreNote(db: SqlExecutor, rows: NoteTrashKey[]): Promise<void> {",
         );
+    });
+
+    it("takes the key alone, like a delete, when the table has no version", () => {
+        const code = generateTrash(plainTrashable);
+
+        expect(code).toContain("const values = [row.id];");
+        expect(code).toContain("rows: MemoTrashKey[]");
+        expect(code).not.toContain("40001");
     });
 });
 
@@ -1589,8 +1618,8 @@ describe("a soft-deletable table against PGlite", () => {
         ]);
     });
 
-    it("trashes the rows it is given and leaves the others", async () => {
-        await notes.trash(db, [{ id: first }]);
+    it("trashes the rows it is given at their version, and leaves the others", async () => {
+        await notes.trash(db, [{ id: first, version: 0n }]);
 
         expect(await state()).toEqual([
             { id: first, trashed: true, version: 1n },
@@ -1598,37 +1627,59 @@ describe("a soft-deletable table against PGlite", () => {
         ]);
     });
 
-    it("restores a trashed row", async () => {
-        await notes.trash(db, [{ id: first }, { id: second }]);
-        await notes.restore(db, [{ id: first }]);
+    it("rejects a trash of a stale version, leaving the row live", async () => {
+        await notes.trash(db, [{ id: first, version: 0n }]);
+        await notes.restore(db, [{ id: first, version: 1n }]);
+
+        // The row is now at version 2, so a client still holding 0 or 1 must not trash it.
+        const stale = await notes.trash(db, [{ id: first, version: 0n }]).catch((error: unknown) => error);
+
+        expect(stale).toMatchObject({ code: "40001" });
+        expect((stale as Error).message).toBe(`no row of note is at the version this trash supplied for ${first}`);
+        expect((await state())[0]).toEqual({ id: first, trashed: false, version: 2n });
+    });
+
+    it("restores a trashed row at its version, and rejects a stale one", async () => {
+        await notes.trash(db, [{ id: first, version: 0n }, { id: second, version: 0n }]);
+
+        await expect(notes.restore(db, [{ id: first, version: 0n }])).rejects.toMatchObject({ code: "40001" });
+        await notes.restore(db, [{ id: first, version: 1n }]);
 
         expect((await state()).map((row) => row.trashed)).toEqual([false, true]);
     });
 
-    it("leaves a row that is already in the requested state untouched", async () => {
-        await notes.trash(db, [{ id: first }]);
-        const { rows: before } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
-
-        await notes.trash(db, [{ id: first }]);
-        await notes.restore(db, [{ id: second }]);
-
-        const { rows: after } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
-        expect(after).toEqual(before);
-        expect(await state()).toEqual([
-            { id: first, trashed: true, version: 1n },
-            { id: second, trashed: false, version: 0n },
-        ]);
-    });
-
-    it("does nothing for an empty list and for a key that is not there", async () => {
-        await notes.trash(db, []);
-        await notes.trash(db, [{ id: "00000000-0000-0000-0000-0000000000ff" }]);
+    it("rejects a whole call when one row is stale, writing none of them", async () => {
+        await expect(
+            notes.trash(db, [{ id: first, version: 0n }, { id: second, version: 5n }]),
+        ).rejects.toThrow(`no row of note is at the version this trash supplied for ${second}`);
 
         expect((await state()).every((row) => !row.trashed)).toBe(true);
     });
 
+    it("rejects a key that is not there", async () => {
+        await expect(
+            notes.trash(db, [{ id: "00000000-0000-0000-0000-0000000000ff", version: 0n }]),
+        ).rejects.toMatchObject({ code: "40001" });
+    });
+
+    it("does nothing for an empty list", async () => {
+        await notes.trash(db, []);
+
+        expect((await state()).every((row) => !row.trashed)).toBe(true);
+    });
+
+    it("keeps the first trash moment when a matching claim trashes a trashed row again", async () => {
+        await notes.trash(db, [{ id: first, version: 0n }]);
+        const { rows: before } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
+
+        await notes.trash(db, [{ id: first, version: 1n }]);
+
+        const { rows: after } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "note" where "id" = $1', [first]);
+        expect(after).toEqual(before);
+    });
+
     it("lets a trashed row's unique value be reused, and refuses a duplicate among live rows", async () => {
-        await notes.trash(db, [{ id: first }]);
+        await notes.trash(db, [{ id: first, version: 0n }]);
 
         await notes.create(db, [{ id: "00000000-0000-0000-0000-0000000000a3", code: "a" }]);
 
@@ -1636,9 +1687,60 @@ describe("a soft-deletable table against PGlite", () => {
     });
 
     it("refuses to restore a row into a value a live row has taken", async () => {
-        await notes.trash(db, [{ id: first }]);
+        await notes.trash(db, [{ id: first, version: 0n }]);
         await notes.create(db, [{ id: "00000000-0000-0000-0000-0000000000a3", code: "a" }]);
 
-        await expect(notes.restore(db, [{ id: first }])).rejects.toThrow();
+        await expect(notes.restore(db, [{ id: first, version: 1n }])).rejects.toThrow();
+    });
+});
+
+describe("an unversioned soft-deletable table against PGlite", () => {
+    let driver: ReturnType<typeof createPglite>;
+    let db: SqlExecutor;
+    let trash: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+    let restore: (db: SqlExecutor, rows: unknown[]) => Promise<unknown>;
+    const first = "00000000-0000-0000-0000-0000000000b1";
+    const second = "00000000-0000-0000-0000-0000000000b2";
+
+    const trashed = async () =>
+        (await driver.query<{ trashed: boolean }>('select "deletedAt" is not null as trashed from "memo" order by "id"')).rows.map(
+            (row) => row.trashed,
+        );
+
+    beforeAll(async () => {
+        driver = createPglite();
+        db = createTransactionalDb(createPglitePool(driver));
+        await driver.exec(fixtureDdl(plainTrashable));
+        trash = loadModule(generateTrash(plainTrashable)).trashMemo as typeof trash;
+        restore = loadModule(generateRestore(plainTrashable)).restoreMemo as typeof restore;
+    });
+
+    afterAll(async () => {
+        await driver.close();
+    });
+
+    beforeEach(async () => {
+        await db.query('delete from "memo"');
+        await db.query(`insert into "memo" ("id") values ('${first}'), ('${second}')`);
+    });
+
+    it("trashes and restores by key alone", async () => {
+        await trash(db, [{ id: first }]);
+        expect(await trashed()).toEqual([true, false]);
+
+        await restore(db, [{ id: first }]);
+        expect(await trashed()).toEqual([false, false]);
+    });
+
+    it("writes nothing for a repeat or for a key that is not there", async () => {
+        await trash(db, [{ id: first }]);
+        const { rows: before } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "memo" where "id" = $1', [first]);
+
+        await trash(db, [{ id: first }, { id: "00000000-0000-0000-0000-0000000000ff" }]);
+        await restore(db, [{ id: second }]);
+
+        const { rows: after } = await driver.query<{ deletedAt: Date }>('select "deletedAt" from "memo" where "id" = $1', [first]);
+        expect(after).toEqual(before);
+        expect(await trashed()).toEqual([true, false]);
     });
 });

@@ -17,6 +17,7 @@ import {
     insertModuleName,
     patchModuleName,
     primaryKeyModuleName,
+    trashKeyModuleName,
     upsertModuleName,
 } from "./generate-zod-schemas.ts";
 
@@ -257,6 +258,24 @@ export interface Trashable {
 
     /** @deletedAt */
     removedAt?: Date;
+}
+`.trim();
+
+/** A soft-deletable entity with a version, so its trash key carries the version too. */
+const VERSIONED_TRASHABLE = `
+/**
+ * @pgTable versioned_trashable
+ * @entity
+ */
+export interface VersionedTrashable {
+    /** @primaryKey */
+    id: string;
+
+    /** @deletedAt */
+    removedAt?: Date;
+
+    /** @version */
+    version: bigint;
 }
 `.trim();
 
@@ -668,6 +687,18 @@ describe("generateQueryFile", () => {
         expect(patchFile(files, "Trashable")).toContain("removedAt: true");
         expect(patchFile(files, "Trashable")).toContain('"removedAt"');
         expect(domainFile(files, "Trashable")).toContain("removedAt:");
+    });
+
+    it("emits a trash key for a soft-deletable entity, claiming its version", () => {
+        const { files } = generate({ entities: { Trashable: TRASHABLE, VersionedTrashable: VERSIONED_TRASHABLE, Thing: THING } });
+        const trashFile = (entity: string) => files.get(join("repositories", trashKeyModuleName(entity))) ?? "";
+
+        expect(trashFile("Trashable")).toContain("export const trashableTrashKeySchema = trashableSchema.pick({ id: true }).strict();");
+        expect(trashFile("Trashable")).toContain('export type TrashableTrashKey = Pick<Trashable, "id">;');
+        expect(trashFile("VersionedTrashable")).toContain("pick({ id: true, version: true }).strict();");
+        expect(trashFile("VersionedTrashable")).toContain('Pick<VersionedTrashable, "id" | "version">');
+        expect(files.get(join("repositories", "index.ts"))).toContain('export * from "./versionedTrashableTrashKeySchema.ts";');
+        expect(files.has(join("repositories", trashKeyModuleName("Thing")))).toBe(false);
     });
 
     it("emits the query-specific select schema and query args schema", () => {

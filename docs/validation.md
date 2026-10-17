@@ -27,6 +27,10 @@ schema uses, so the backend repositories, the REST API, the generated client, an
 - `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
   schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
   only when the entity declares a `@primaryKey`.
+- `packages/validation/src/repositories/<entity>TrashKeySchema.ts` — the schema and
+  type (`<name>TrashKeySchema`, `<Entity>TrashKey`) a trash or restore takes: the
+  key plus the `@version` field when there is one. Written only for an entity that
+  declares `@deletedAt` (`docs/soft-delete.md`).
 - `packages/validation/src/domain/index.ts`,
   `packages/validation/src/repositories/index.ts` — the barrels re-exporting their
   own directory.

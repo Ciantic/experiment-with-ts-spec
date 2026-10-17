@@ -108,26 +108,37 @@ describe("seeded server", () => {
 });
 
 describe("a live server", () => {
-    it("trashes and restores an invoice, hiding it from a read until it comes back", async () => {
+    it("trashes and restores an invoice at its version, hiding it from a read until it comes back", async () => {
         const rows = mockTables.find((table) => table.entity === "Invoice")?.rows as { id: string }[];
         const filter = readFilter("Invoice");
-        const ids = async (trashed?: "include" | "only") =>
-            (
-                await exec(
-                    http,
-                    api.queryInvoice({ filter, ...(trashed ? { trashed } : {}), select: { id: true } }) as Executable<{ id: string }[]>,
-                )
-            ).map((row) => row.id);
+        const read = async (trashed?: "include" | "only") =>
+            exec(
+                http,
+                api.queryInvoice({ filter, ...(trashed ? { trashed } : {}), select: { id: true, version: true } }) as Executable<
+                    { id: string; version: bigint }[]
+                >,
+            );
+        const ids = async (trashed?: "include" | "only") => (await read(trashed)).map((row) => row.id);
         const target = rows[0]!.id;
+        const versionOf = async () => (await read("include")).find((row) => row.id === target)!.version;
+        const key = async (version?: bigint) => [{ id: target as never, version: (version ?? (await versionOf())) as never }];
 
-        await exec(http, api.trashInvoice([{ id: target as never }]));
+        const stale = await versionOf();
+        await exec(http, api.trashInvoice(await key()));
 
         expect(await ids()).not.toContain(target);
         expect(await ids()).toHaveLength(rows.length - 1);
         expect(await ids("only")).toEqual([target]);
         expect(await ids("include")).toHaveLength(rows.length);
 
-        await exec(http, api.restoreInvoice([{ id: target as never }]));
+        // The trash moved the version on, so a client still holding the old one is refused with a conflict.
+        const refused = (await exec(http, api.restoreInvoice(await key(stale))).catch((error: unknown) => error)) as {
+            status?: number;
+        };
+        expect(refused.status).toBe(409);
+        expect(await ids("only")).toEqual([target]);
+
+        await exec(http, api.restoreInvoice(await key()));
 
         expect(await ids()).toContain(target);
         expect(await ids("only")).toEqual([]);

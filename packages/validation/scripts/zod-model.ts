@@ -43,6 +43,10 @@ export interface ZodEntity {
     insertName: string;
     /** The schema validating a by-key write: the entity projected to its `@primaryKey`. */
     primaryKeyName: string;
+    /** The schema validating a trash or restore: the key, plus the `@version` it claims. See docs/soft-delete.md. */
+    trashKeyName: string;
+    /** True when the entity carries `@deletedAt`, so it has trash and restore writes. */
+    trashable: boolean;
     /** The schema validating an upsert: what a create carries, plus the `@version` it claims. */
     upsertName: string;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
@@ -171,6 +175,11 @@ export function insertSchemaName(name: string): string {
 /** Invoice -> invoicePrimaryKeySchema. */
 export function primaryKeySchemaName(name: string): string {
     return `${lowerFirst(name)}PrimaryKeySchema`;
+}
+
+/** Invoice -> invoiceTrashKeySchema. */
+export function trashKeySchemaName(name: string): string {
+    return `${lowerFirst(name)}TrashKeySchema`;
 }
 
 /** Invoice -> invoiceUpsertSchema. */
@@ -426,6 +435,8 @@ function buildEntities(
             querySelectName: querySelectSchemaName(spec.name),
             insertName: insertSchemaName(spec.name),
             primaryKeyName: primaryKeySchemaName(spec.name),
+            trashKeyName: trashKeySchemaName(spec.name),
+            trashable: spec.properties.some((property) => property.tags.deletedAt),
             upsertName: upsertSchemaName(spec.name),
             importSpecifier: spec.importSpecifier,
             fields,

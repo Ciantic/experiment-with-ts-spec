@@ -258,7 +258,8 @@ describe("renderClientModule", () => {
 
         expect(code).toContain('call<void>("trashNote", "POST", "/note/trash", rows)');
         expect(code).toContain('call<void>("restoreNote", "POST", "/note/restore", rows)');
-        expect(code).toContain("export function trashNote(rows: NotePrimaryKey[]): Call<void>");
+        expect(code).toContain("export function trashNote(rows: NoteTrashKey[]): Call<void>");
+        expect(code).toContain('import type { NoteTrashKey } from "validation/repositories/noteTrashKeySchema.ts";');
         expect(code).toContain('import type { Filters, Selected, Selection, Trashed } from "validation/selection.ts";');
         expect(code).toContain("trashed?: Trashed;");
     });

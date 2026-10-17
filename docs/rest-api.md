@@ -52,8 +52,8 @@ carries it in the body.
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
-| trash | `trash<Entity>` | `POST` | `/<table>/trash` | `[{ id }]` in the body |
-| restore | `restore<Entity>` | `POST` | `/<table>/restore` | `[{ id }]` in the body |
+| trash | `trash<Entity>` | `POST` | `/<table>/trash` | `[<entity>TrashKeySchema]` in the body: the key, plus the version when the entity has one |
+| restore | `restore<Entity>` | `POST` | `/<table>/restore` | `[<entity>TrashKeySchema]` in the body |
 | group | — | `POST` | `/$group` | a tree of the calls above, in the body |
 
 The id is the call's name: the generated client function is it, and a group entry

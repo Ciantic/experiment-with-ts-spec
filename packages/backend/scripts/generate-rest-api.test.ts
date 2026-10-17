@@ -114,7 +114,8 @@ export interface Note {
         expect(code).toContain('path: "/note/trash"');
         expect(code).toContain('path: "/note/restore"');
         expect(code).toContain('method: "POST"');
-        expect(code).toContain("input: z.array(notePrimaryKeySchema)");
+        expect(code).toContain("input: z.array(noteTrashKeySchema)");
+        expect(code).not.toContain("notePrimaryKeySchema");
         expect(code).toContain("handler: (db, body) => trashNote(db, body as never)");
     });
 
