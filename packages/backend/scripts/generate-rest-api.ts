@@ -10,9 +10,10 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
-import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
+// The REST model is shared with the client generator, and both live in the SDK it describes.
+import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "../../sdk/scripts/rest-model.ts";
 
-export type { Diagnostic } from "./rest-model.ts";
+export type { Diagnostic } from "../../sdk/scripts/rest-model.ts";
 
 /** This package's root, so paths do not depend on the current working directory. */
 const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);

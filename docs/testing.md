@@ -37,6 +37,13 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/sdk/scripts/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
+- `packages/sdk/scripts/rest-model.test.ts` — drives `buildRestModel` with
+  in-memory fixtures, asserting the paths, operation ids, filters, and exposed
+  operations both REST generators render.
+- `packages/sdk/scripts/generate-rest-client.test.ts` — drives the client
+  renderer with fixtures and asserts the invariant that makes it worth
+  generating: the emitted modules import `spec`, the type-only schema types, and
+  their own modules, and nothing else.
 - `packages/sdk/scripts/errors.test.ts` — the shared error contract:
   `apiErrorBody` names the wire kind, `apiErrorFromBody` rebuilds every kind with
   the response's status, and an unknown kind or an unclassified body stays
@@ -49,6 +56,9 @@ values, all of which are domain decisions rather than code behaviour.
   and asserts it reaches only the transport and the error contract, so a schema
   module added to the entry fails the test instead of pulling `zod` into the
   client runtime.
+- `packages/backend/scripts/generate-rest-api.test.ts` — drives the route
+  renderer with fixtures, and drives the client renderer from the same model to
+  assert both expose exactly the same calls, so the pair cannot drift.
 - `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
   domain. A second group transpiles the generated module, builds a matching

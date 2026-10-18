@@ -11,6 +11,7 @@
   },
   "scripts": {
     "generate:validation": "node scripts/generate-zod-schemas.ts",
+    "generate:rest-client": "node scripts/generate-rest-client.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

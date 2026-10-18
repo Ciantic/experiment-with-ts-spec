@@ -557,7 +557,7 @@ the client imports nothing from the backend.
   written twice, in `sdk/src/client.ts` and in `src/http/group-handler.ts`, because
   the client may not import the backend. No generated artifact keeps them in step, so
   the end-to-end test is what does: a group is the only call whose path is not
-  derived from `rest-model.ts`.
+  derived from `sdk/scripts/rest-model.ts`.
 - **A void write answers `null`; a create and an upsert answer their keys.** A
   group follows the single-call codec rule: `update` and `delete` encode as
   `null`, which the generated signature types `void`, while a create or an upsert

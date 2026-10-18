@@ -52,7 +52,7 @@ spec through that same model: the schema, repository, and
 query generators map it to columns in
 `packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
 Zod schemas in `packages/sdk/scripts/zod-model.ts`, and the REST pair maps
-it to the HTTP surface in `packages/backend/scripts/rest-model.ts`. The API
+it to the HTTP surface in `packages/sdk/scripts/rest-model.ts`. The API
 generator references the validation schemas by name, which is why it runs after
 them. None reads another's
 output, so the
@@ -60,12 +60,14 @@ order between them is presentational — it mirrors the order the artifacts appe
 in the repository. A step that reports a finding or a diagnostic returns a
 failing exit code, and the driver stops rather than running the steps after it.
 
-The validation generator lives in the package it writes,
-`packages/sdk/scripts`. The other generators stay in `packages/backend/scripts`:
-the schema, repository, and query generators share the table model, and the two
-REST generators share `rest-model.ts`. The REST client generator draws only on the spec and that model,
-yet it stays with the API generator so the two cannot drift; its output still
-lands in `packages/sdk`.
+A generator lives in the package that owns its artifact. The schema,
+repository, and query generators stay in `packages/backend/scripts`, because
+they share `postgres-model.ts` and write the backend's own tables and modules.
+The Zod generator and the REST client generator live in `packages/sdk/scripts`,
+with the client artifact they render and, for the REST pair, the `rest-model.ts`
+both read; the server generator imports that model from the SDK rather than
+owning a second copy. The drift check drives both generators, so it stays in
+`packages/backend/scripts` beside the route renderer.
 
 ## Adding a generator
 

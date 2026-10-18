@@ -19,9 +19,10 @@
   generator, its model, and the linter read the parsed `SpecModel` — including
   each field's `SpecType`, `location`, and tags — and never walk a syntax tree
   themselves.
-- A generator lives in the package that owns its artifact. Most of them are in
-  `packages/backend/scripts` because they share the table model;
-  `packages/sdk/scripts` owns the Zod generator.
+- A generator lives in the package that owns its artifact: the schema,
+  repository, and query generators in `packages/backend/scripts` because they
+  share the table model, the Zod and REST client generators in
+  `packages/sdk/scripts` because they write the SDK.
 - Each generator exports `run(spec, argv)`, so the root `scripts/generate.ts` can
   load the spec once and pass the same `SpecModel` to every step. That driver
   owns no artifact and holds no domain knowledge; it lints first, then orders

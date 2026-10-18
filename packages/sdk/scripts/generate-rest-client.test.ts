@@ -2,17 +2,16 @@
  * Unit tests for the client renderer, driven by self-contained fixtures.
  * See docs/testing.md.
  *
- * The last group is the invariant that makes the client worth generating: it may
- * import `spec`, the shared schema types, and its own modules, and nothing
- * else. Both generators are then driven from one model and the calls they expose
- * are compared, so the two cannot disagree about the wire.
+ * The invariant that makes the client worth generating is here: it may import
+ * `spec`, the shared schema types, and its own modules, and nothing else. The
+ * drift check against the server's route table lives with that generator, in
+ * `packages/backend/scripts/generate-rest-api.test.ts`.
  */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
-import { renderRoutes } from "./generate-rest-api.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
@@ -354,18 +353,5 @@ describe("generateRestClient", () => {
                 }
             }
         }
-    });
-
-    it("exposes exactly the calls the server exposes", () => {
-        // Every route module, barrel included; the barrel names no id, so it adds nothing.
-        const exposed = [...renderRoutes(model).values()].flatMap((content) =>
-            [...content.matchAll(/id: "(\w+)",/g)].map((match) => match[1]),
-        );
-        const called = [...generateRestClient(model).values()].flatMap((content) =>
-            [...content.matchAll(/call<.*?>\("(\w+)",/g)].map((match) => match[1]),
-        );
-
-        expect(exposed.length).toBeGreaterThan(0);
-        expect([...called].sort()).toEqual([...exposed].sort());
     });
 });

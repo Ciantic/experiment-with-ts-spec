@@ -65,6 +65,18 @@ export function primaryKeyModuleName(entity: string): string {
     return `${lowerFirst(entity)}PrimaryKeySchema.ts`;
 }
 
+/** CustomerInsert -> repositories/customerInsertSchema.ts: the module holding one write type and its schema. */
+export function writeTypeFileName(writeType: string): string {
+    const kind = writeType.endsWith("PrimaryKey")
+        ? "PrimaryKey"
+        : writeType.endsWith("Insert")
+          ? "Insert"
+          : writeType.endsWith("Upsert")
+            ? "Upsert"
+            : "Patch";
+    return `repositories/${lowerFirst(writeType.slice(0, -kind.length))}${kind}Schema.ts`;
+}
+
 /** The directory holding the generated query schemas, under the output root. */
 const QUERIES_DIR = "queries";
 

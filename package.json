@@ -16,7 +16,7 @@
     "generate:queries": "pnpm --filter backend run generate:queries",
     "generate:validation": "pnpm --filter sdk run generate:validation",
     "generate:rest-api": "pnpm --filter backend run generate:rest-api",
-    "generate:rest-client": "pnpm --filter backend run generate:rest-client",
+    "generate:rest-client": "pnpm --filter sdk run generate:rest-client",
     "build": "pnpm -r --if-present run build",
     "check": "pnpm run generate && pnpm run build"
   },

@@ -27,6 +27,7 @@ flowchart TD
         direction TB
         subgraph sdkPkg["sdk"]
             zod["<b>Zod schema generator</b><br/>Validation schemas and Insert/Patch types<br/>Error types"]
+            restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
             sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
         subgraph backendPkg["backend"]
@@ -34,7 +35,6 @@ flowchart TD
             repositories["<b>Repository generator</b><br/>Create, update and delete functions"]
             queries["<b>Query generator</b><br/>Typed query functions and query metadata"]
             restApi["<b>REST API generator</b><br/>Server route table"]
-            restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
         end
     end
 

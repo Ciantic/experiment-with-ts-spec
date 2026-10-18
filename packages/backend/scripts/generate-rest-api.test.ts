@@ -2,8 +2,10 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
-import { buildRestModel, type RestEntity, type RestModel } from "./rest-model.ts";
+import { buildRestModel, type RestEntity, type RestModel } from "../../sdk/scripts/rest-model.ts";
 import { renderEntityRoutes, renderRoutes, renderRoutesIndex } from "./generate-rest-api.ts";
+// The drift check drives both generators from one model, so it lives here with the server's renderer.
+import { generateRestClient } from "../../sdk/scripts/generate-rest-client.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
@@ -234,5 +236,21 @@ describe("renderRoutesIndex", () => {
 
         expect([...files.keys()]).toEqual(["markerRoutes.ts", "widgetRoutes.ts", "index.ts"]);
         expect(files.get("widgetRoutes.ts")).toBe(renderEntityRoutes(widgetEntity()));
+    });
+});
+
+describe("the pair", () => {
+    it("exposes exactly the calls the server exposes", () => {
+        const model = build({ Widget: WIDGET, Marker: MARKER });
+        // Every route module, barrel included; the barrel names no id, so it adds nothing.
+        const exposed = [...renderRoutes(model).values()].flatMap((content) =>
+            [...content.matchAll(/id: "(\w+)",/g)].map((match) => match[1]),
+        );
+        const called = [...generateRestClient(model).values()].flatMap((content) =>
+            [...content.matchAll(/call<.*?>\("(\w+)",/g)].map((match) => match[1]),
+        );
+
+        expect(exposed.length).toBeGreaterThan(0);
+        expect([...called].sort()).toEqual([...exposed].sort());
     });
 });
