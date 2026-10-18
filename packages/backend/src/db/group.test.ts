@@ -346,8 +346,7 @@ describe("the statements the boundaries put on the driver", () => {
             });
         });
 
-        // One savepoint per nested boundary: the first released, the second rolled back and released,
-        // the third released. The savepoint names count from one per database, so they read the same every run.
+        // One savepoint per nested boundary: released, rolled back, released; names count from one per database.
         expect(trace).toEqual([
             "begin",
             "savepoint sp_1",

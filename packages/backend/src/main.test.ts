@@ -42,10 +42,7 @@ function buildersNamed(prefix: string): [string, Builder][] {
     return builders().filter(([name]) => name.startsWith(prefix));
 }
 
-/**
- * The filter a read of `entity` names: every mock row's identity, plus the tenant a tenant-scoped
- * entity requires. Derived from the rows so a new table needs no edit here.
- */
+/** The filter a read of `entity` names, derived from the rows: their identity plus any tenant. */
 function readFilter(entity: string): Record<string, unknown> {
     const rows = (mockTables.find((table) => table.entity === entity)?.rows ?? []) as Record<string, unknown>[];
     const fields = ["id", "tenantId"].filter((field) => rows[0]?.[field] !== undefined);

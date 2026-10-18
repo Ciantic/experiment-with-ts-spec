@@ -194,8 +194,7 @@ interface ValueLoop {
 function collectValues(entries: ValueEntry[], loop: ValueLoop): string[] {
     const { indent, source } = loop;
     const values = entries.map((entry) => entry.expression).join(", ");
-    // The `values` alias is otherwise untyped text; casting each placeholder keeps keys and
-    // assignments matching the column type (a bare text value would not compare to a uuid key).
+    // `values` is untyped text, so each placeholder is cast to compare against the column's type.
     const tuple = entries
         .map((entry, index) => `"$" + (offset + ${index + 1}) + "::${entry.sqlType}"`)
         .join(' + ", " + ');
@@ -244,11 +243,7 @@ function patchColumns(table: Table): Column[] {
     return table.columns.filter((column) => !column.primaryKey && column.updatable !== false);
 }
 
-/**
- * The optimistic-lock column, which a write claims instead of assigning. It is always patchable, since
- * `isUpdatable` accepts a `@version` field whatever else it carries, so a patch finds it here too.
- * See docs/versioning.md.
- */
+/** The optimistic-lock column, which a write claims instead of assigning. See docs/versioning.md. */
 function versionColumn(table: Table): Column | undefined {
     return table.columns.find((column) => column.version);
 }
@@ -445,15 +440,13 @@ export function generateUpdate(table: Table): string {
 /** The insert and replacement an upsert runs, planned from the table alone: the fragments and the arrays it binds. */
 export function upsertStatement(table: Table): ChunkStatement {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
-    // An upsert writes the fields a create writes, plus the version an existing row is claimed at.
-    // The conflict path cannot see the values alias, so `excluded` carries every column it stores.
+    // An upsert writes a create's fields plus the claimed version; the conflict path reads `excluded`.
     const insertColumns = table.columns.filter((column) => column.insertable !== false);
     // An identity key is the database's on a create, but an upsert names it: the key is what the conflict matches.
     const identityKeys = table.columns.filter((column) => column.identity);
     const version = versionColumn(table);
     const writeColumns = [...insertColumns, ...identityKeys, ...(version === undefined ? [] : [version])];
-    // A defaulted column may be absent from a row, so it binds a flag and falls back to its default.
-    // The identity key and the version are always claimed, so they carry no flag.
+    // A defaulted column binds a flag and falls back to its default; an identity key and version never do.
     const arrays = [
         ...insertColumns.flatMap((column) => columnArrays(column, column.default !== undefined)),
         ...identityKeys.flatMap((column) => columnArrays(column, false)),
@@ -467,10 +460,7 @@ export function upsertStatement(table: Table): ChunkStatement {
         ...identityKeys.map((column) => `${VALUES_ALIAS}.${quote(column.name)}`),
         ...(version === undefined ? [] : [`${VALUES_ALIAS}.${quote(version.name)}`]),
     ];
-    // The key is what the conflict matches on; the version is compared, never assigned, because the
-    // trigger owns the increment and rejects a statement that names the column. See docs/versioning.md.
-    // A keyless or versionless write has nothing to compare, so the target stays unnamed and `stored`
-    // is the table itself.
+    // The conflict matches on the key; the trigger owns the version, so the write only compares it.
     const stored = version === undefined ? quote(table.name) : TARGET_ALIAS;
     const target = version === undefined ? quote(table.name) : `${quote(table.name)} as ${TARGET_ALIAS}`;
     const assigned = writeColumns
@@ -493,10 +483,7 @@ export function upsertStatement(table: Table): ChunkStatement {
     };
 }
 
-/**
- * Render `upsert<Entity>`: a chunk of rows per statement, each inserted, or replacing the row at the
- * version it claims. See docs/repositories.md and docs/versioning.md.
- */
+/** Render `upsert<Entity>`: a chunk of rows per statement, each inserted or replaced at its version. See docs/repositories.md. */
 export function generateUpsert(table: Table): string {
     const entity = table.interfaceName;
     const statement = upsertStatement(table);

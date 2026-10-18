@@ -1,8 +1,4 @@
-/**
- * Map the parsed spec to the Zod schema model the generator renders.
- * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the Zod mapping.
- * See docs/validation.md.
- */
+/** Map the parsed spec to the Zod schema model the generator renders. See docs/validation.md. */
 import {
     autoIncrementProperties,
     defaultedInsertProperties,
@@ -325,10 +321,7 @@ function resolveTypeNode(type: SpecType, context: ResolveContext): string | unde
     return undefined;
 }
 
-/**
- * The entity a field selects into: its type resolves to an interface, directly or as an
- * array element. The branch tags only say *how* it is stored; the value shape is the type's.
- */
+/** The entity a field selects into: its type resolves to an interface, directly or as an array element. The branch tags only say how it is stored. */
 function entityNameOf(type: SpecType, interfaces: Map<string, SpecInterface>): string | undefined {
     const element = type.kind === "array" ? type.element : type;
     if (element.kind !== "reference") {
@@ -408,8 +401,7 @@ function buildEntities(
 
         // A self-reference is not imported; the schema is in the same module.
         context.dependencies.delete(spec.name);
-        // A create and a patch write the same fields; a patch only adds the version back, since the
-        // optimistic-lock precondition is not part of what a create writes. See docs/validation.md.
+        // A create and a patch write the same fields; a patch adds the version as its precondition. See docs/validation.md.
         const insertOmit = omittedFromInsert(spec).map((property) => property.name);
         // Only a required field needs relaxing; an optional one is already omittable.
         const insertOptional = defaultedInsertProperties(spec)

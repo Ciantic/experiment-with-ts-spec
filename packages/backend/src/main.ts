@@ -1,9 +1,4 @@
-/**
- * The backend entry point: run an API server, optionally seeded with mock data.
- * See docs/mockdata.md.
- *
- * Usage: `node src/main.ts [--port <n>] [--seed] [--log-sql]`.
- */
+/** The backend entry point: run an API server, optionally seeded with mock data. See docs/mockdata.md. */
 import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";

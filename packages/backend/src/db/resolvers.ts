@@ -262,7 +262,7 @@ interface ReadPlan {
     matchColumn: string | undefined;
 }
 
-/** A set clause binding the values as one array parameter, so the statement's parameter count does not grow with the set; Postgres infers the array type from the column. */
+/** Bind the values as one array parameter, so the parameter count stays fixed; Postgres infers its type. */
 function inSet(column: string, values: unknown[], params: unknown[]): string {
     params.push(values);
     return `${TABLE_ALIAS}.${quote(column)} = any($${params.length})`;

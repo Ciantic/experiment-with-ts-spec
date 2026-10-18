@@ -1,7 +1,4 @@
-/**
- * Lint the spec, then run every generator from that one parse. See docs/spec-annotations.md.
- * A single generator lives in the package that owns its artifact; this driver only orders them.
- */
+/** Lint the spec, then run every generator from one parse; this driver only orders the steps. See docs/spec-annotations.md. */
 import { loadSpec, type SpecModel } from "../packages/spec/scripts/spec-model.ts";
 import { run as runLint } from "../packages/spec/scripts/lint-spec.ts";
 // A generator package keeps its scripts/ off its exports map, so the driver imports them by path. See docs/tasks.md.

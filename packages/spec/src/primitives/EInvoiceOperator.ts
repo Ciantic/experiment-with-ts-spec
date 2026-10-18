@@ -1,8 +1,5 @@
 /**
- * An e-invoice operator (välittäjätunnus): the intermediary that routes an
- * invoice on the network, one of these known operators plus any other string.
- * See docs/invoice-sending.md.
- *
+ * An e-invoice operator (välittäjätunnus) that routes an invoice on the network. See docs/invoice-sending.md.
  * @primitive
  * @pgType text
  * @zod z.enum(["maventa", "apix", "op", "basware"]).or(z.string())

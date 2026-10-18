@@ -1,7 +1,4 @@
-/**
- * The errors the API reports, and the classes the SDK re-raises from a response.
- * Hand-written, and outside the barrels: import it by path. See docs/errors.md.
- */
+/** The errors the API reports and the SDK re-raises; hand-written and outside the barrels. See docs/errors.md. */
 
 /** What an error carries beyond its message; a client fills these from the response it received. */
 export interface AppErrorOptions {

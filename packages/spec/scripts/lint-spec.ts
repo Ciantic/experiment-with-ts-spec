@@ -157,11 +157,7 @@ function lintInterfaceTags(spec: SpecInterface, findings: Diagnostic[]): void {
     }
 }
 
-/**
- * Check an interface carrying no `@entity`, which the generators ignore as a contract.
- * A tag that describes an entity on one is a forgotten marker rather than a contract, so it is
- * reported instead of silently generating nothing.
- */
+/** Check an interface without `@entity`: an entity tag on it is a forgotten marker, reported rather than ignored. */
 function lintContract(spec: SpecInterface, findings: Diagnostic[]): void {
     lintInterfaceTags(spec, findings);
     const entityTag = spec.tags.written.all.find(
@@ -259,8 +255,7 @@ function lintEntity(
         });
     }
 
-    // A scoped reference names a required field of this interface. The target's half is checked when
-    // the tables are built, since that needs the other interface. See docs/tenancy.md.
+    // A scoped reference names a required field here; the target's half is checked when the tables are built. See docs/tenancy.md.
     for (const property of spec.properties) {
         const scope = property.tags.foreignKey?.scope;
         if (scope === undefined) {
@@ -609,10 +604,7 @@ function lintClocks(tags: FieldTags, report: Report): void {
     }
 }
 
-/**
- * `@deletedAt` marks a row's deletion moment; it changes no generation, so the whole rule is its shape.
- * See docs/soft-delete.md.
- */
+/** `@deletedAt` marks a row's deletion moment; it changes no generation, so the whole rule is its shape. See docs/soft-delete.md. */
 function lintDeletedAt(tags: FieldTags, report: Report): void {
     const tag = tags.deletedAt;
     if (!tag) {
@@ -782,15 +774,14 @@ function lintForeignKey(tag: SpecTag, report: Report): void {
         actions.set(key, action);
     }
 
-    // A scoped reference matches on the scope column too, so `set null` would have to null a required
-    // column; the delete could never succeed. See docs/tenancy.md.
+    // A scoped reference matches the scope column too, so `set null` would null a required column. See docs/tenancy.md.
     const scope = parseForeignKey(tag.value ?? "").scope;
     if (scope !== undefined && actions.get("onDelete") === "setNull") {
         report("@foreignKey scope cannot combine with onDelete=setNull, which would null the scope column", tag);
     }
 }
 
-/** `@queryFilter` makes a scalar column a filter of the entity's generated reads; `required` makes every read name it, `default=<value>` fills it in when omitted. */
+/** `@queryFilter` makes a scalar column a filter; `required` forces it and `default=<value>` fills it in. */
 function lintQueryFilter(tags: FieldTags, report: Report): void {
     const tag = tags.queryFilter;
     if (!tag) {
@@ -955,10 +946,7 @@ function lintSurface(spec: SpecInterface, findings: Diagnostic[]): void {
     });
 }
 
-/**
- * Check the tenancy graph: one root, an owned interface whose column links to it, and every
- * reference that has to agree with the scope its target declares. See docs/tenancy.md.
- */
+/** Check the tenancy graph: one root, its owned interfaces, and references that agree with the target's scope. See docs/tenancy.md. */
 function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
     const reportEntity = (entity: SpecInterface, message: string, tag?: SpecTag) => {
         findings.push({
@@ -1102,11 +1090,7 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
     }
 }
 
-/**
- * Lint a model's aliases and entities. A snippet is not a whole model: it has no surface, since the
- * `@repository` rules are about an entity the spec declares, and no second interface for the rules
- * that read one, so those find nothing to judge.
- */
+/** Lint a model's aliases and entities; a snippet has no surface or second interface, so surface rules find nothing. */
 function lintModel(spec: SpecModel, whole: boolean): { findings: Diagnostic[]; properties: number } {
     const findings: Diagnostic[] = [];
     let properties = 0;

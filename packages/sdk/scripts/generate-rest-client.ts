@@ -1,19 +1,4 @@
-/**
- * Generate the type-safe client from the REST model. See docs/rest-api.md.
- *
- * Writes `packages/sdk/src/api`: one module per entity plus a barrel re-exporting
- * them. The package entry, `packages/sdk/src/index.ts`, is hand-written and names
- * the call model and the transport; the barrel is imported by name. The output may
- * import `spec`, the type-only write types the schemas share, and the hand-written
- * `../client.ts` — no backend module, no `zod`. A test asserts that invariant.
- *
- * A generated function builds a call and returns it; it does not send one. So the
- * signature is the generated read without `db` and without a client, the caller
- * passes the result to `exec`, and the narrowing is unchanged because the
- * selection is fixed when the builder is called. The call carries its operation
- * id as well as its verb and path: a single request uses the route, and a group
- * entry names the id. See docs/transactions.md.
- */
+/** Generate the type-safe client from the REST model; a builder returns a call the caller passes to `exec`. See docs/rest-api.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
@@ -130,15 +115,12 @@ export function renderClientModule(entity: RestEntity): string {
     selectionTypes.sort((a, b) => a.localeCompare(b));
 
     const lines: string[] = [HEADER];
-    // The entity type and the selection types are what the read's signature is made of, so only a
-    // read carries them. See docs/queries.md.
+    // The entity type and the selection types are what the read's signature is made of, so only a read carries them. See docs/queries.md.
     if (query) {
         lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
         lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
     }
-    // The write types and the key projection live in this package's schema modules, so the client,
-    // the wire schema, and the server all name one definition. A type-only import keeps `zod` out
-    // of the client's runtime. See docs/validation.md.
+    // The write types come from this package's schema modules; a type-only import keeps `zod` out of the runtime.
     const writeTypes: string[] = [];
     if (create) {
         writeTypes.push(`${name}Insert`);

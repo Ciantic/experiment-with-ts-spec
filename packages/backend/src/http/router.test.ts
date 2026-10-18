@@ -17,10 +17,7 @@ const rejects: RouteInput = {
     safeParse: () => ({ success: false, error: { issues: ["bad"] } }),
 };
 
-/**
- * A `SqlExecutor` over no database, recording the boundary a handler's own `transaction`
- * opens.
- */
+/** A `SqlExecutor` over no database, recording the boundary a handler's own `transaction` opens. */
 function createDb() {
     const boundaries: string[] = [];
     const handle = (): SqlExecutor => ({

@@ -32,7 +32,7 @@
 
 - Only single-line comments in code. If you need more than one line of
   explanation, put it in `docs/` instead and leave a one-line pointer where the
-  code needs it.
+  code needs it. `pnpm lint` enforces this (`docs/comments.md`).
 - Errors are `AppError` subclasses from `packages/sdk/src/errors.ts`, the one
   contract the backend and the client share; only errors that never reach the
   wire stay in the backend (`docs/errors.md`). Every `throw new X` documents

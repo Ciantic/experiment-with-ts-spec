@@ -1,7 +1,4 @@
-/**
- * Generate Zod schemas and their write types from the spec entities, into this package's `src`.
- * See docs/validation.md.
- */
+/** Generate Zod schemas and their write types from the spec entities, into this package's `src`. See docs/validation.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isNullOperator, loadSpec, lowerFirst, type SpecModel } from "spec/scripts/spec-model.ts";
@@ -271,8 +268,7 @@ export function generatePatchSchema(entity: ZodEntity): string {
     lines.push("    })");
     lines.push("    .strict();");
 
-    // The write types are the spec's, narrowed by the same omit lists the schemas use, so the type
-    // a caller passes and the value the schema accepts name one field set. See docs/validation.md.
+    // The write types use the schemas' omit lists, so the caller's type and the accepted value name one field set.
     lines.push("");
     lines.push(patchComment(versioned));
     lines.push(
@@ -314,11 +310,7 @@ function insertShape(entity: ZodEntity): WriteShape {
     };
 }
 
-/**
- * The shape an upsert writes. It is the create's field set plus everything a create leaves to the
- * database that the caller has to name: the `@version` it claims, and an `@pgAutoIncrement` key.
- * See docs/versioning.md and docs/auto-increment.md.
- */
+/** The shape an upsert writes: a create's fields plus the claimed version and an auto-increment key. See docs/versioning.md. */
 function upsertShape(entity: ZodEntity): WriteShape {
     // The version and an assigned key are the fields a create leaves out that an upsert has to carry.
     const claimed = [...entity.versionFields, ...entity.autoIncrementFields];
@@ -359,8 +351,7 @@ export function generateUpsertSchema(entity: ZodEntity, byName: Map<string, ZodE
 /** Render one entity's write module: a schema derived from the entity's own, and the type beside it. */
 function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, shape: WriteShape): string {
     const lines: string[] = [HEADER];
-    // Every write schema derives from the entity's own schema, so `z` is needed only for the
-    // `z.never()` an `@inlined` branch falls back to when its target is missing.
+    // Every write schema derives from the entity's, so `z` is needed only for an `@inlined` branch's fallback.
     if (entity.insertInlined.some((branch) => !byName.has(branch.target))) {
         lines.push('import { z } from "zod";');
     }
@@ -436,8 +427,7 @@ export function generatePrimaryKeySchema(entity: ZodEntity): string {
         `import { ${entity.schemaName} } from "../${join(DOMAIN_DIR, domainModuleName(entity.name))}";`,
     );
 
-    // The key alone addresses a stored row, so a by-key write names it rather than the whole entity.
-    // The schema is strict, like a patch or an insert, so a field the write ignores is a 400.
+    // The key alone addresses a stored row; the schema is strict, so a field the write ignores is a 400.
     lines.push("");
     lines.push("/** The key of one stored row: the shape a delete or other by-key write sends. */");
     const picked = entity.keys.map((name) => `${name}: true`).join(", ");
@@ -545,12 +535,7 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     return files;
 }
 
-/**
- * Remove the schemas the spec no longer declares, so a dropped entity leaves no module behind.
- * The walk descends, because the output root holds `domain/`, `repositories/`, and `queries/`,
- * and touches a file only when its first line is this generator's header — `insert.ts` and the
- * other hand-written modules share the root.
- */
+/** Remove the schemas the spec no longer declares, matching a file by this generator's header. */
 function pruneStale(outDir: string, keep: Set<string>): void {
     const directories = [""];
     while (directories.length > 0) {

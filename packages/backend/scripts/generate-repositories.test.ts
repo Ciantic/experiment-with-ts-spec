@@ -128,11 +128,7 @@ function moduleCodes(table: Table): string[] {
     return [generateCreate(table), generateUpsert(table), generateUpdate(table), generateDelete(table)];
 }
 
-/**
- * A db that records the SQL it is handed, and answers as a one-row write would: a statement that reads
- * its rows back matches them on the keys it was handed, so the answer echoes those keys. A delete binds
- * a flat parameter list and reads nothing back, so it has no rows to echo.
- */
+/** A db that records the SQL it is handed and echoes the keys a one-row write reads back. */
 function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlExecutor {
     const handle: SqlExecutor = {
         query: async (sql, parameters) => {
@@ -1190,8 +1186,7 @@ describe("generated repositories against PGlite", () => {
     });
 
     it("reports a versionless upsert the database would not write every row of", async () => {
-        // The `gate` fixture drops a row it is handed, which no statement can write. One statement
-        // carries this call, so the rows it did write stand: the create behaves the same way.
+        // `gate` drops one row, so the statement writes the rest; the create behaves the same way.
         await expect(
             gates.upsert(db, [
                 { id: WIDGET_ID, label: "kept" },

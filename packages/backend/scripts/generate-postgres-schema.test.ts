@@ -1242,8 +1242,7 @@ export interface Invoice {
         expect(sql).toContain('create trigger "invoice_after_insert_statement" after insert on "invoice"');
         expect(sql).toContain("for each statement execute function");
 
-        // Statement level means one row per statement, not per row: NEW is null there, so the
-        // statement cannot name a row of the table it fires on.
+        // Statement level means one row per statement, not per row: NEW is null there, so the statement cannot name a row of the table it fires on.
         const db = new PGlite();
         await db.exec(sql);
         await db.exec(

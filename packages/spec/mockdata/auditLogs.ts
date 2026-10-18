@@ -1,11 +1,6 @@
 import type { AuditLog, AuditLogId } from "../src/domain/AuditLog.ts";
 
-/**
- * Sample audit entries for a seeded development database. See docs/mockdata.md.
- *
- * The `id` is declared because the entity requires it, but the repository leaves the
- * column to its identity sequence, which assigns 1, 2, 3 in the order the rows are seeded.
- */
+/** Sample audit entries for a seeded development database; the identity sequence assigns the ids. See docs/mockdata.md. */
 export const auditLogs: AuditLog[] = [
     {
         id: 1 as AuditLogId,

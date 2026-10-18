@@ -1,10 +1,7 @@
 import type { Brand } from "./Brand.ts";
 
 /**
- * A Finnish e-invoice address (verkkolaskuosoite / OVT): a routing address such
- * as `003712345678`, the operator scheme prefix followed by the business id.
- * See docs/invoice-sending.md.
- *
+ * A Finnish e-invoice address (verkkolaskuosoite / OVT): the operator prefix followed by the business id. See docs/invoice-sending.md.
  * @primitive
  * @pgType text
  * @zod z.string().brand<"EInvoiceAddress">()

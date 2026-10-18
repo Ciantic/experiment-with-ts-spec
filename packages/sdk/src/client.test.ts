@@ -53,10 +53,7 @@ type SelectionOf<E> = { [K in keyof E]?: boolean };
 /** What a selection produces, mirroring the generated `Selected<E, S>`. */
 type SelectedOf<E, S> = Pick<E, Extract<keyof S, keyof E>>;
 
-/**
- * A stand-in for a generated builder. The real ones are generic in what they
- * select, and that is the shape the group result has to preserve.
- */
+/** A stand-in for a generated builder. The real ones are generic in what they select, and that is the shape the group result has to preserve. */
 function selectWidget<S extends SelectionOf<Widget>>(opts: { select: S }): Call<SelectedOf<Widget, S>[]> {
     return call<SelectedOf<Widget, S>[]>("queryWidget", "GET", "/widget/query", opts);
 }
@@ -361,8 +358,7 @@ describe("the result type", () => {
             attemptWith({ accessMode: "read only" }, row, write),
         );
 
-        // A generated builder is generic in what it selects, so its result must still
-        // narrow by position once it is inside a group.
+        // A generated builder is generic in what it selects, so its result must still narrow by position once it is inside a group.
         const selected: Promise<[void, Pick<Widget, "id">[]]> = exec(
             http,
             transaction(write, selectWidget({ select: { id: true } })),

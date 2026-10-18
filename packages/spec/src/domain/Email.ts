@@ -74,11 +74,7 @@ export interface Email {
     body: string;
 
     /**
-     * Where the email is in its delivery lifecycle.
-     * 
-     * A row cannot go back to `pending` once `attempts` reaches `maxAttempts`, so
-     * `failed` is terminal.
-     * 
+     * Where the email is in its delivery lifecycle. A row cannot go back to `pending` once `attempts` reaches `maxAttempts`, so `failed` is terminal.
      * @fieldName Status
      * @queryFilter
      * @pgDefault 'pending'

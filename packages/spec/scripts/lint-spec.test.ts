@@ -1737,8 +1737,7 @@ export interface Thing {
     });
 
     it("leaves the self-scope check to the table model, which resolves the target", () => {
-        // The field is required, so the rule the linter owns is satisfied; that a scope cannot name
-        // the referencing field itself is reported when the tables are built.
+        // The field is required, so the linter's rule is satisfied; the self-reference is reported when tables are built.
         const findings = lintSourceText(
             `/** @entity */
 export interface Thing {

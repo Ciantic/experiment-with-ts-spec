@@ -1,7 +1,4 @@
-/**
- * Parse `spec/src` into the model shared by the generators and the linter.
- * See docs/spec-annotations.md.
- */
+/** Parse `spec/src` into the model shared by the generators and the linter. See docs/spec-annotations.md. */
 import { dirname, join, relative as relativePath } from "node:path";
 import {
     Node,
@@ -151,10 +148,7 @@ export interface ForeignKey {
     onDelete?: ReferentialAction;
     /** The `on update` action, when the field declares one. */
     onUpdate?: ReferentialAction;
-    /**
-     * A field of this interface that the target also declares, making the reference composite so the
-     * two must agree; `scope=tenantId` is how a link cannot cross tenants. See docs/tenancy.md.
-     */
+    /** A field the target also declares, making the reference composite so the two must agree. See docs/tenancy.md. */
     scope?: string;
 }
 
@@ -176,11 +170,7 @@ export function isNullOperator(value: string): value is NullOperator {
     return (NULL_OPERATORS as readonly string[]).includes(value);
 }
 
-/**
- * The value a filter matches when a read omits it: a literal of the column's type, or a null test.
- * `isNull` and `isNotNull` are keywords, so a *string* with that text is written quoted.
- * See docs/queries.md.
- */
+/** The value a filter matches when a read omits it: a literal, or a null test such as `isNull`. See docs/queries.md. */
 export type FilterDefault =
     | { kind: "isNull" }
     | { kind: "isNotNull" }
@@ -197,10 +187,7 @@ export type ReadOperation = (typeof READ_OPERATIONS)[number];
 /** The JavaScript type a spec value has at the boundary, whatever its storage type spells. */
 export type JsType = "string" | "number" | "bigint" | "boolean" | "Date" | "Uint8Array" | "object";
 
-/**
- * The JavaScript type a TypeScript type denotes by its own name rather than through an alias the spec declares:
- * a keyword (`string`, `bigint`) or a built-in the spec names (`Date`, `Record`).
- */
+/** The JavaScript type a TypeScript type denotes by name: a keyword or a built-in the spec names. */
 export const JS_TYPES: Record<string, JsType> = {
     string: "string",
     number: "number",
@@ -252,10 +239,7 @@ export interface WrittenTags {
     byName: Map<string, SpecTag[]>;
 }
 
-/**
- * The tags on a declaration: the decoded flags a generator maps from, and the tags as written.
- * `written` holds the declared tags alone, so a rule about a missing tag does not see a default in.
- */
+/** A declaration's tags: the decoded flags a generator maps from and the tags as written. */
 export interface Tags {
     /** For linting only; a generator reads a decoded flag instead. */
     written: WrittenTags;
@@ -309,7 +293,7 @@ export interface Tags {
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
     pgType?: string;
-    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<value>` fills it in when a read omits it. See docs/queries.md. */
+    /** An equality filter of the generated `query` read; `required` forces it and `default=<value>` fills it in. See docs/queries.md. */
     queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field may be an ordering key of its entity's generated `query` read. See docs/queries.md. */
     queryOrderBy?: { default?: OrderDirection };
@@ -461,14 +445,7 @@ export function omittedFromPatch(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => !isUpdatable(property));
 }
 
-/**
- * The updatable fields whose column is nullable, so a write may set one back to `null`.
- * `?` mirrors the column's nullability, so the field's own optionality is the test. A create, an
- * upsert, and a patch all widen with the set: omitting the field and sending `null` are one request
- * for a create and an upsert, and a patch reads `null` as clearing the column. The key and the
- * version stay out — a patch cannot clear the row it addresses, nor the precondition it carries.
- * See `docs/optionality.md` and `docs/repositories.md`.
- */
+/** The updatable fields whose column is nullable, so a write may set one back to `null`. See docs/optionality.md. */
 export function nullablePatchProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter(
         (property) => isUpdatable(property) && property.optional && !property.tags.version && !property.tags.primaryKey,
@@ -586,10 +563,7 @@ export function parseTriggerHeader(header: string): TriggerHeader {
     return header2;
 }
 
-/**
- * Split a `@pgTrigger` value into the trigger it declares.
- * Without a header the trigger is the field's own table, `before insert or update`.
- */
+/** Split a `@pgTrigger` value into the trigger it declares. Without a header the trigger is the field's own table, `before insert or update`. */
 export function parseTrigger(value: string): PgTrigger {
     const text = value.trim();
     if (!TRIGGER_HEADER.test(text)) {
@@ -674,12 +648,7 @@ function splitTagTokens(value: string): string[] {
     return tokens;
 }
 
-/**
- * Parse the value after `default=`: the keywords `isNull` and `isNotNull`, a boolean, a number, or
- * a string. A quoted string is always a literal; a bare token is read as a string too, which is how
- * a date or an enum value is written. Returns undefined for an empty or malformed value, and for the
- * retired `null` spelling, which the linter reports.
- */
+/** Parse a `default=` value: a keyword, boolean, number, or string; undefined when malformed or retired. */
 export function parseFilterDefault(text: string): FilterDefault | undefined {
     if (text === "isNull") {
         return { kind: "isNull" };
@@ -1078,10 +1047,7 @@ export function resolveType(
     return NOTHING;
 }
 
-/**
- * Fill each alias's `pgType`, so a consumer reads the alias rather than walking its type again.
- * A union, an array, or an entity names more than a storage type, so it stays unresolved. See docs/schema-generation.md.
- */
+/** Fill each alias's `pgType`; a union, array, or entity name stays unresolved. See docs/schema-generation.md. */
 function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
     for (const alias of aliases.values()) {
         if (alias.tags.pgType) {
@@ -1094,11 +1060,7 @@ function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
     }
 }
 
-/**
- * Parse the spec into entities and aliases.
- * An interface is an entity when it carries `@entity`; one without the tag is a contract, so no
- * directory decides what is generated. Every alias is read, and `@primitive` selects the scalars.
- */
+/** Parse the spec into entities and aliases; `@entity` and `@primitive` decide what is generated. */
 export function parseSpec(project: Project, options: ParseOptions = {}): SpecModel {
     const sourceGlob = options.sourceGlob ?? SPEC_GLOB;
     const interfaces = new Map<string, SpecInterface>();
@@ -1127,8 +1089,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
                     const typeNode = property.getTypeNode();
-                    // The primary key is an optional filter every entity has. `required` is the one
-                    // thing the default cannot say, so a bare tag on a key is lint's to report.
+                    // The primary key is an optional filter every entity has; a bare tag on a key is lint's to report.
                     if (tags.primaryKey && tags.queryFilter === undefined) {
                         tags.queryFilter = { required: false };
                     }
@@ -1187,10 +1148,7 @@ export interface InMemorySpecFile {
     sourceFileText: string;
 }
 
-/**
- * Parse sources held in memory into the model, for tests and one-off checks such as linting a snippet.
- * A relative path stays relative to the in-memory root, which is how its glob is matched.
- */
+/** Parse sources held in memory into the model, for tests and snippet checks. */
 export function parseInMemorySpec(files: InMemorySpecFile[], options: ParseOptions = {}): SpecModel {
     const project = new Project({ useInMemoryFileSystem: true });
     for (const file of files) {

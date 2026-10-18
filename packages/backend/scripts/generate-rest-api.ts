@@ -1,12 +1,4 @@
-/**
- * Generate the server's route table from the REST model. See docs/rest-api.md.
- *
- * Emits `packages/backend/src/http/routes`: one module per entity holding that
- * collection's `Route[]`, plus a barrel concatenating them into the table the
- * hand-written router matches a request on and the group handler resolves an
- * operation id in. The generator emits the contract and the wiring, never
- * request handling — the router owns parsing, validation, and status mapping.
- */
+/** Generate `packages/backend/src/http/routes` from the REST model: one `Route[]` module per entity plus a barrel. See docs/rest-api.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";

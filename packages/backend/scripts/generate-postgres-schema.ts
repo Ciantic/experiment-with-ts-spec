@@ -194,8 +194,7 @@ export function renderVersionTrigger(table: Table): string[] {
     }
     const functionName = `${table.name}_version`;
     const keys = table.columns.filter((column) => column.primaryKey);
-    // `is distinct from` is null-safe, so a caller that omits the version conflicts rather than passing.
-    // The message names the row by its key; a composite key reads as one row value.
+    // `is distinct from` is null-safe, so an omitted version conflicts; the message names the row by its key.
     const target =
         keys.length === 0
             ? `NEW.${quote(version.name)}`

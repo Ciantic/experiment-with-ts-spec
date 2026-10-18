@@ -4,11 +4,7 @@ import type { AutoIncrement } from "../primitives/AutoIncrement.ts";
 export type AuditLogId = AutoIncrement<"AuditLogId">;
 
 /**
- * One line in the audit log.
- *
- * Append-only: a row records what happened and is never changed, so it carries
- * no `@version` and no `@updatedAt`.
- *
+ * One line in the audit log. Append-only: a row records what happened and is never changed, so it carries no `@version` and no `@updatedAt`.
  * @entity
  * @pgTable audit_log
  * @repository create

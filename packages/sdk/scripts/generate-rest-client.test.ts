@@ -1,12 +1,4 @@
-/**
- * Unit tests for the client renderer, driven by self-contained fixtures.
- * See docs/testing.md.
- *
- * The invariant that makes the client worth generating is here: it may import
- * `spec`, the shared schema types, and its own modules, and nothing else. The
- * drift check against the server's route table lives with that generator, in
- * `packages/backend/scripts/generate-rest-api.test.ts`.
- */
+/** Unit tests for the client renderer, driven by fixtures; the emitted imports are the invariant. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";

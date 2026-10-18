@@ -125,8 +125,7 @@ describe("createTransactionalDb", () => {
 
         await db.transaction(async (tx) => {
             await tx.query("insert into widget (id) values ($1)", ["taken"]);
-            // A real constraint failure aborts the whole transaction as `25P02`; only
-            // rolling back to the savepoint makes the outer boundary usable again.
+            // A real constraint failure aborts the whole transaction as `25P02`; only rolling back to the savepoint makes the outer boundary usable again.
             await expect(
                 tx.transaction(async (inner) => {
                     await inner.query("insert into widget (id) values ($1)", ["taken"]);

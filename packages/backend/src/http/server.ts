@@ -1,9 +1,4 @@
-/**
- * A `node:http` server over the generated route table. See docs/rest-api.md.
- *
- * Deliberately thin: it reads a capped body and hands it to the router. Every
- * decision about a call lives in the router or in the generated table.
- */
+/** A `node:http` server over the generated route table; the router owns every decision. See docs/rest-api.md. */
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { PayloadTooLargeError } from "sdk/errors.ts";

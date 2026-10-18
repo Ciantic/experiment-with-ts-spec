@@ -1,9 +1,10 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "jsPlugins": ["./scripts/oxlint/errors.js"],
+    "jsPlugins": ["./scripts/oxlint/errors.js", "./scripts/oxlint/comments.js"],
     "rules": {
         "errors/throws-jsdoc": "error",
-        "errors/no-plain-error": "error"
+        "errors/no-plain-error": "error",
+        "comments/single-line": ["error", { "maxWidth": 150 }]
     },
     "overrides": [
         {

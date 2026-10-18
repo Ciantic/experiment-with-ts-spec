@@ -1,16 +1,11 @@
-/**
- * Asserts that `pg`'s pool reaches the port with no wrapper of its own, that `createPgPool` applies
- * the spec's result mapping, and that the driver's own types back the structural one. See
- * docs/transactions.md and docs/schema-generation.md.
- */
+/** Asserts the pg pool reaches the port, applies the spec's result mapping, and matches the structural type. See docs/schema-generation.md. */
 import * as realPg from "pg";
 import { describe, expect, it } from "vitest";
 import { createTransactionalDb, type SqlExecutor } from "../db/sql-executor.ts";
 import type { SqlPool, SqlSession } from "../db/sql-pool.ts";
 import { createPgMapperTypes, createPgPool, type PgMapperOptions, type PgModule, type PgPoolModule } from "./pg-setup.ts";
 
-// `@types/pg` still describes `arrayParser` as the pre-v3 callable, while the runtime exports `{ create }`.
-// Only that member needs the cast, so the rest of the structural fit is checked by assignment.
+// `@types/pg` describes the pre-v3 `arrayParser`; only that member needs a cast, and the rest fits by assignment.
 const pgModule: PgPoolModule = {
     Pool: realPg.Pool,
     types: {

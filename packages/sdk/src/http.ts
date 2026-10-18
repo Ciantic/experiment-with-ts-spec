@@ -1,11 +1,4 @@
-/**
- * The hand-written half of the client: the transport and the codec.
- * See docs/rest-api.md.
- *
- * Every generated module calls through {@link HttpClient}, so the codec lives in
- * one place. `devalue` round-trips `Date` and `bigint` as themselves, which is
- * why a client call and the server call it reaches share one TypeScript type.
- */
+/** The hand-written transport and codec; every generated module calls through {@link HttpClient}. See docs/rest-api.md. */
 import { parse as decode, stringify as encode } from "devalue";
 import { AppError, apiErrorFromBody } from "./errors.ts";
 

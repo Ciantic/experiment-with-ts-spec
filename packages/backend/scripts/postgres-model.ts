@@ -1,8 +1,4 @@
-/**
- * Map the parsed spec to the Postgres table model shared by the generators.
- * The parsing lives in `spec/scripts/spec-model.ts`; this file adds the SQL mapping.
- * See docs/schema-generation.md.
- */
+/** Map the parsed spec to the Postgres table model shared by the generators. See docs/schema-generation.md. */
 import { dirname } from "node:path";
 import {
     isCompareOperator,
@@ -51,10 +47,7 @@ export interface Column {
     references?: {
         table: string;
         column: string;
-        /**
-         * A column of this table that the reference also matches, making the constraint composite:
-         * the pair `(scope, column)` must exist on the target. See docs/tenancy.md.
-         */
+        /** A column the reference also matches, making the constraint composite; it must exist on the target. See docs/tenancy.md. */
         scope?: string;
         /** The `on delete` action, absent when the constraint takes the database default. */
         onDelete?: ReferentialAction;
@@ -69,7 +62,7 @@ export interface Column {
     generatedExpression?: string;
     /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
     version?: boolean;
-    /** The field is an equality filter of its entity's generated `query` read; `required` makes every read name it, `default=<value>` fills it in when omitted. See docs/queries.md. */
+    /** An equality filter of the generated `query` read; `required` forces it and `default=<value>` fills it in. See docs/queries.md. */
     queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
     queryOrder?: { default?: OrderDirection };
@@ -80,13 +73,7 @@ export interface Column {
     /** False when a patch never writes the column: a branch, a default, or a nullable computation. */
     updatable: boolean;
     read?: string;
-    /**
-     * The JS test for whether a patch supplied this column, e.g. `row.notes !== undefined`. A patch
-     * writes only the columns its row supplies, so an omitted field is not named in the statement at
-     * all; the columns an `@inlined` field expands share the outer field's test, since supplying the
-     * object replaces the whole snapshot. `null` is a supplied value, and writes a null.
-     * See `docs/repositories.md`.
-     */
+    /** The JS test for whether a patch supplied this column, e.g. `row.notes !== undefined`; `null` counts. See docs/repositories.md. */
     supplied?: string;
 }
 
@@ -237,14 +224,12 @@ function addProperty(context: BuildContext, table: Table, property: SpecProperty
         return;
     }
 
-    // A primary key column and a foreign key column are told apart by their tags, not their
-    // names: `@primaryKey` is the table's key, `@foreignKey Customer` points at another table.
+    // Tags, not names, tell a primary key column from a foreign key: `@primaryKey` versus `@foreignKey`.
     const isPrimaryKey = tags.primaryKey;
     const foreignKey = isPrimaryKey ? undefined : tags.foreignKey;
     const foreignKeyTarget = foreignKey?.entity;
 
-    // A foreign key's storage type comes from the table it points at, so its own type node
-    // is documentation and may be an alias this model cannot resolve.
+    // A foreign key's storage type comes from the table it points at, so its own type node is documentation and may be an alias this model cannot resolve.
     const foreignKeyTable = foreignKeyTarget ? entityTableName(context, foreignKeyTarget) : undefined;
     if (foreignKeyTarget && !foreignKeyTable) {
         context.report(
@@ -339,8 +324,7 @@ function addBranch(
             context.report(property.location, `\`${fieldName}\`: @relation has no interface for \`${resolved.entity}\``);
             return true;
         }
-        // @relation navigates through the `@foreignKey <entity>` field the interface declares;
-        // it adds no column of its own. The pair is joined once every table's columns exist.
+        // @relation navigates through the declared `@foreignKey <entity>` field and adds no column of its own.
         table.relations.set(fieldName, { kind: "relation", table: targetTable });
         return true;
     }
@@ -362,8 +346,7 @@ function addScalarColumn(
     const notNull = !property.optional;
     const tags = property.tags;
 
-    // A default makes the column not null even when the field is optional: the database fills it.
-    // The clock tags supply their own default, so they make the column not null the same way.
+    // A default makes the column not null even when the field is optional; the clock tags supply one.
     const defaultValue = tags.pgDefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
     const nullable = !(notNull || isPrimaryKey || defaultValue !== undefined);
     const updatable = isUpdatable(property);
@@ -387,8 +370,7 @@ function addScalarColumn(
     if (tags.queryOrderBy !== undefined) {
         column.queryOrder = tags.queryOrderBy;
     }
-    // Only known operators reach the model; the linter reports an unknown one, and a
-    // generator run without lint should not emit a comparison it cannot build.
+    // Only known operators reach the model; the linter reports an unknown one instead.
     const operators = tags.queryWhere?.filter(isCompareOperator);
     if (operators && operators.length > 0) {
         column.where = operators;
@@ -452,8 +434,7 @@ function addScalarColumn(
 
     table.columns.push(column);
 
-    // A trigger statement maintains the field on every write; the clock tag contributes its own.
-    // A trigger that names another table is attached after every table exists. See attachTriggers.
+    // A trigger maintains the field on every write; one naming another table is attached after all tables exist.
     const trigger = tags.pgTrigger;
     if (trigger !== undefined && trigger.table === undefined) {
         if (triggerLevel(trigger, "field") === "statement") {
@@ -677,11 +658,7 @@ function statementReadsTable(statement: string, table: Table): boolean {
     return statement.includes(quote(table.name));
 }
 
-/**
- * Check each scoped reference and record the unique constraint it needs on its target: the pair a
- * composite constraint matches must be unique there, or the reference cannot be created at all.
- * See docs/tenancy.md.
- */
+/** Record the unique constraint each scoped reference needs on its target. See docs/tenancy.md. */
 function attachScopedKeys(tables: Map<string, Table>, context: BuildContext): void {
     const byTableName = new Map<string, Table>();
     for (const table of tables.values()) {
@@ -698,8 +675,7 @@ function attachScopedKeys(tables: Map<string, Table>, context: BuildContext): vo
                 context.reportField(table, column.name, "@foreignKey scope is the field itself");
                 continue;
             }
-            // A nullable scope would let the row skip the check entirely, since a composite reference
-            // with a null in it is not matched at all. See docs/tenancy.md.
+            // A nullable scope would let the row skip the check entirely, since a composite reference with a null in it is not matched at all. See docs/tenancy.md.
             const own = table.columns.find((candidate) => candidate.name === scope);
             if (own === undefined) {
                 context.reportField(

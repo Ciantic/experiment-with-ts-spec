@@ -1,12 +1,4 @@
-/**
- * Map the parsed spec to the REST surface both generators render: the paths, the
- * methods, the operation ids, the filter fields, and the operations each entity
- * exposes.
- *
- * The model is the shared half. `generate-rest-api.ts` renders it into the
- * server's route table and `generate-rest-client.ts` into the SDK, so neither
- * generator may re-derive a path or an id. See docs/rest-api.md.
- */
+/** Map the parsed spec to the REST surface both generators render, so neither re-derives a path or an id. See docs/rest-api.md. */
 import {
     READ_OPERATIONS,
     WRITE_OPERATIONS,
@@ -33,10 +25,7 @@ export type RestSource = "query" | "body";
 
 /** One exposed call. */
 export interface RestOperation {
-    /**
-     * The name the call goes by: the generated builder's name, and what a group
-     * entry names instead of a method and a path. See docs/transactions.md.
-     */
+    /** The name the call goes by: the generated builder's name, and what a group entry names instead of a method and a path. See docs/transactions.md. */
     id: string;
     kind: RestKind;
     method: RestMethod;

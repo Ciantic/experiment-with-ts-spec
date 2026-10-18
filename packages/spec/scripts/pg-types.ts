@@ -1,7 +1,4 @@
-/**
- * The Postgres types `@pgType` may name and the JavaScript type each one selects as.
- * Mirrors pg-unified-mapping, which the drivers' result parsers already implement. See docs/schema-generation.md.
- */
+/** The Postgres types `@pgType` may name and the JavaScript type each selects as. See docs/schema-generation.md. */
 import type { JsType } from "./spec-model.ts";
 
 /** The type each Postgres type selects as, keyed by the name pg-unified-mapping uses. */

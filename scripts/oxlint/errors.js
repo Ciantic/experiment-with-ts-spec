@@ -1,7 +1,4 @@
-/**
- * Oxlint rules for the error contract: a throw names an error its JSDoc documents, and source code
- * throws specific errors rather than the base `Error`. See docs/errors.md.
- */
+/** Oxlint rules for the error contract: a throw names its error in JSDoc, and never the base `Error`. See docs/errors.md. */
 
 const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 

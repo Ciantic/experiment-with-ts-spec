@@ -1,10 +1,4 @@
-/**
- * Generate the per-entity `query` functions and the query metadata module from
- * the spec entities. See docs/queries.md. The resolver itself is hand-written:
- * this emits the model it reads and the typed `query` function each entity
- * carrying `@queries query` gets.
- * There is no `get`: a caller that wants one row takes the first of a `query`.
- */
+/** Generate the per-entity `query` functions and the query metadata module from the spec entities. See docs/queries.md. */
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadSpec, type FilterDefault, type SpecModel } from "spec/scripts/spec-model.ts";
@@ -53,8 +47,7 @@ function queryFileName(entity: string): string {
 export function buildQueryModel(tables: Map<string, Table>): QueryModelData {
     const out: Record<string, QueryTableData> = {};
     for (const table of tables.values()) {
-        // Inlined columns are reached through their branch, not as selectable fields. A relation's
-        // foreign key is an ordinary field the interface declares, so it stays selectable.
+        // Inlined columns are reached through their branch; a relation's foreign key stays selectable.
         const branchColumns = new Set<string>();
         for (const relation of table.relations.values()) {
             if (relation.kind === "inlined") {

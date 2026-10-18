@@ -17,11 +17,7 @@ const rejects: RouteInput = {
     safeParse: () => ({ success: false, error: { issues: ["bad"] } }),
 };
 
-/**
- * A `SqlExecutor` over no database, recording the boundary each group opens and the SQL
- * each handler runs. It nests the way the real port does, one level deeper per
- * boundary, so a test can tell a top-level transaction from a savepoint.
- */
+/** A `SqlExecutor` over no database that records each boundary and SQL, nesting like the real port. */
 function createDb() {
     const boundaries: string[] = [];
     const statements: string[] = [];

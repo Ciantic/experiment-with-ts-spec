@@ -1,7 +1,5 @@
 /**
- * A language an invoice is rendered in: these known languages plus any other
- * string. See docs/invoice-sending.md.
- *
+ * A language an invoice is rendered in: these known languages plus any other string. See docs/invoice-sending.md.
  * @primitive
  * @pgType text
  * @zod z.enum(["fi", "sv", "en"]).or(z.string())
