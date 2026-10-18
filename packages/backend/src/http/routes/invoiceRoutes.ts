@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
 import { queryInvoice } from "../../db/queries/index.ts";
-import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "validation/index.ts";
+import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
 export const invoiceRoutes: Route[] = [

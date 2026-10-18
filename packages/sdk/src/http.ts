@@ -7,9 +7,9 @@
  * why a client call and the server call it reaches share one TypeScript type.
  */
 import { parse as decode, stringify as encode } from "devalue";
-import { AppError, apiErrorFromBody } from "validation/errors.ts";
+import { AppError, apiErrorFromBody } from "./errors.ts";
 
-export * from "validation/errors.ts";
+export * from "./errors.ts";
 
 /** The verbs that carry their argument in the `q` query parameter. */
 export type QueryMethod = "GET" | "DELETE";

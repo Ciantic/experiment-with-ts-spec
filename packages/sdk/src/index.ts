@@ -1,3 +1,3 @@
-// The hand-written call model and transport. The generated builders stay in `./api/index.ts`, imported by name.
+/** The hand-written call model and transport; the schemas are imported by path from `./schemas.ts`. */
 export * from "./client.ts";
 export * from "./http.ts";

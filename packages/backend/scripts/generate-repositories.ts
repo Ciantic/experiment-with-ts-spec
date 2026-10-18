@@ -226,8 +226,8 @@ function modulePrologue(writeTypes: string | string[], executorImport?: string, 
     const types = typeof writeTypes === "string" ? [writeTypes] : writeTypes;
     return [
         HEADER,
-        // The repository, the wire schema, and the client all name the one type validation declares.
-        ...types.map((writeType) => `import type { ${writeType} } from "validation/${validationFileName(writeType)}";`),
+        // The repository, the wire schema, and the client all name the one type the SDK declares.
+        ...types.map((writeType) => `import type { ${writeType} } from "sdk/${validationFileName(writeType)}";`),
         executorImport ?? 'import type { SqlExecutor } from "../sql-executor.ts";',
         ...(errorImport === undefined ? [] : [errorImport]),
         "",
@@ -296,7 +296,7 @@ export function generateCreate(table: Table): string {
     const lines = modulePrologue(
         [`${entity}Insert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        'import { ShortWriteError } from "validation/errors.ts";',
+        'import { ShortWriteError } from "sdk/errors.ts";',
     );
 
     lines.push("/** The key a written row was given, as the insert returned it. */");
@@ -396,7 +396,7 @@ export function generateUpdate(table: Table): string {
     const lines = modulePrologue(
         `${entity}Patch`,
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        `import { ${conflict} } from "validation/errors.ts";`,
+        `import { ${conflict} } from "sdk/errors.ts";`,
     );
 
     lines.push("/** The key a patch addresses, as the statement returns it, so a rejected chunk names its rows. */");
@@ -517,7 +517,7 @@ export function generateUpsert(table: Table): string {
     const lines = modulePrologue(
         [`${entity}Upsert`, `${entity}PrimaryKey`],
         'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
-        `import { ${conflict} } from "validation/errors.ts";`,
+        `import { ${conflict} } from "sdk/errors.ts";`,
     );
 
     lines.push("/** The key a written row carries, as the upsert returned it. */");

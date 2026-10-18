@@ -2,11 +2,11 @@
 
 ## The hierarchy
 
-The error classes are hand-written in `packages/validation/src/errors.ts`, outside
-the generated barrels, and imported by path. A class is shared because the same
-failure has to be catchable in the backend and in the SDK: the code that throws
-it and the code that re-raises it from a response name one class, not two
-mirrors. `AppError` is the base of both the errors the server raises and the
+The error classes are hand-written in `packages/sdk/src/errors.ts`, outside
+the generated schema barrel; the transport re-exports them and the backend
+imports them by path. A class is shared because the same failure has to be
+catchable in the backend and in the client: the code that throws it and the code
+that re-raises it from a response name one class, not two mirrors. `AppError` is the base of both the errors the server raises and the
 error the client raises when it cannot classify a response.
 
 | Class | Wire kind | Status | Raised when |
@@ -60,7 +60,7 @@ SQLSTATE — has no `kind`, so the client keeps it as an `HttpError`.
 
 `kind` is deliberately not the class name. It is the wire contract, so renaming
 a class does not change what a client sends or expects. `ERROR_CLASSES` in
-`packages/validation/src/errors.ts` is the one table mapping a kind to a class;
+`packages/sdk/src/errors.ts` is the one table mapping a kind to a class;
 a new kind needs an entry there and a class that accepts the same
 `(message, options)` constructor.
 
@@ -147,5 +147,5 @@ their throws are fixtures and tooling failures rather than API contract.
 A generated operation declares the errors it raises directly. A create and a
 snapshot upsert raise `ShortWriteError`; a versioned update or upsert raises
 `VersionConflictError`; a versionless update raises `NoMatchingRowError`. The
-error classes are imported from `validation/errors.ts`, so a repository module
+error classes are imported from `sdk/errors.ts`, so a repository module
 names the type it throws rather than assembling an error with `Object.assign`.

@@ -7,7 +7,7 @@ import {
     type SqlExecutor,
     type TransactionOptions,
 } from "../db/sql-executor.ts";
-import { AppError, BadGroupError, RequestError } from "validation/errors.ts";
+import { AppError, BadGroupError, RequestError } from "sdk/errors.ts";
 import { errorFrom, statusFor, type HttpResponse } from "./http-response.ts";
 import type { Route } from "./router.ts";
 

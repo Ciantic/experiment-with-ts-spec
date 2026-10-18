@@ -219,12 +219,12 @@ importers:
       devalue:
         specifier: ^5.3.2
         version: 5.9.4
+      sdk:
+        specifier: workspace:*
+        version: link:../sdk
       spec:
         specifier: workspace:*
         version: link:../spec
-      validation:
-        specifier: workspace:*
-        version: link:../validation
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -241,9 +241,6 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
-      sdk:
-        specifier: workspace:*
-        version: link:../sdk
       ts-morph:
         specifier: ^28.0.0
         version: 28.0.0
@@ -259,19 +256,6 @@ importers:
       spec:
         specifier: workspace:*
         version: link:../spec
-      validation:
-        specifier: workspace:*
-        version: link:../validation
-    devDependencies:
-      '@types/node':
-        specifier: ^26.6.2
-        version: 26.6.2
-      vitest:
-        specifier: ^5.0.2
-        version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
-
-  packages/spec:
-    dependencies:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -286,11 +270,8 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
 
-  packages/validation:
+  packages/spec:
     dependencies:
-      spec:
-        specifier: workspace:*
-        version: link:../spec
       zod:
         specifier: ^4.6.5
         version: 4.6.5

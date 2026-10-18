@@ -6,7 +6,7 @@
  */
 import { Buffer } from "node:buffer";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { PayloadTooLargeError } from "validation/errors.ts";
+import { PayloadTooLargeError } from "sdk/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { errorFrom } from "./http-response.ts";
 import { routes } from "./routes/index.ts";

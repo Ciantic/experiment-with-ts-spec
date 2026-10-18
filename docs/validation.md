@@ -1,9 +1,9 @@
 # Validation
 
-`packages/validation/scripts/generate-zod-schemas.ts` turns the entities in
+`packages/sdk/scripts/generate-zod-schemas.ts` turns the entities in
 `packages/spec/src` into Zod schemas and the matching write types, written
-to `packages/validation/src`. The generator lives in the package that owns its
-artifact, so `pnpm --filter validation run generate:validation` regenerates the
+to `packages/sdk/src`. The generator lives in the package that owns its
+artifact, so `pnpm --filter sdk run generate:validation` regenerates the
 schemas without the backend. A schema is what validates a value at the boundary
 — an HTTP body, a job payload — against the same annotations the database schema
 and the repositories are generated from; the write types are what a caller passes
@@ -14,32 +14,35 @@ schema uses, so the backend repositories, the REST API, the generated client, an
 
 ## Output
 
-- `packages/validation/src/primitives.ts` — one schema per `@primitive` alias,
+- `packages/sdk/src/primitives.ts` — one schema per `@primitive` alias,
   from its `@zod` tag.
-- `packages/validation/src/domain/<entity>Schema.ts` — one module per domain
+- `packages/sdk/src/domain/<entity>Schema.ts` — one module per domain
   interface, exporting the entity's 1:1 schema alone (`<name>Schema`). It is the
   whole entity, with every field the spec declares.
-- `packages/validation/src/repositories/<entity>InsertSchema.ts` — the create
+- `packages/sdk/src/repositories/<entity>InsertSchema.ts` — the create
   schema and its type (`<name>InsertSchema`, `<Entity>Insert`).
-- `packages/validation/src/repositories/<entity>UpsertSchema.ts` — the upsert
-  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).- `packages/validation/src/repositories/<entity>PatchSchema.ts` — the update
+- `packages/sdk/src/repositories/<entity>UpsertSchema.ts` — the upsert
+  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).- `packages/sdk/src/repositories/<entity>PatchSchema.ts` — the update
   schema and its type (`<name>PatchSchema`, `<Entity>Patch`).
-- `packages/validation/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
+- `packages/sdk/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
   schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
   only when the entity declares a `@primaryKey`.
-- `packages/validation/src/domain/index.ts`,
-  `packages/validation/src/repositories/index.ts` — the barrels re-exporting their
+- `packages/sdk/src/domain/index.ts`,
+  `packages/sdk/src/repositories/index.ts` — the barrels re-exporting their
   own directory.
-- `packages/validation/src/queries/query<Entity>.ts` — one module per entity,
+- `packages/sdk/src/queries/query<Entity>.ts` — one module per entity,
   exporting `query<Entity>SelectSchema` and `query<Entity>Schema` for its `query`
   read.
-- `packages/validation/src/queries/index.ts` — the barrel re-exporting every
+- `packages/sdk/src/queries/index.ts` — the barrel re-exporting every
   query module.
-- `packages/validation/src/index.ts` — the barrel re-exporting the primitives and
-  the three directories.
-- `packages/validation/src/errors.ts` — hand-written, not generated: the shared
-  error classes and the wire helpers. It is outside the barrel, like
-  `selection.ts`, so the SDK imports it by path (`docs/errors.md`).
+- `packages/sdk/src/schemas.ts` — the generated schema barrel re-exporting the
+  primitives and the three directories. The package entry,
+  `packages/sdk/src/index.ts`, is hand-written and schema-free, so importing the
+  client's transport never loads `zod`.
+- `packages/sdk/src/errors.ts` — hand-written, not generated: the shared
+  error classes and the wire helpers. It is outside the schema barrel, like
+  `selection.ts`; the backend imports it by path and the client entry re-exports
+  it (`docs/errors.md`).
 
 A regeneration removes the modules the spec no longer declares, so a dropped entity
 leaves no schema, write, or query module behind. The walk descends into the three
@@ -57,26 +60,28 @@ another entity's insert shape, so the insert module has to exist even for an
 entity that names no create of its own. The repository generator and the REST
 table select from this set; see `docs/repositories.md` and `docs/rest-api.md`.
 
-The package is consumed as TypeScript through its `exports` map, like every other
-package here. `packages/backend` and `packages/sdk` depend on it: a repository
-imports one write type from its `repositories/<entity><Kind>Schema.ts` module,
-the route table validates with the schemas through the barrel, and the client
-imports its write types type-only, so `zod` never enters the client runtime. Not
-everything here is generated: the read types (`Selection`, `Selected`, `Filters`,
-`Order`, `Where`) are hand-written in `packages/validation/src/selection.ts`,
+The schemas live in `packages/sdk` beside the client and are consumed as
+TypeScript through the package's `exports` map, like every other package here.
+`packages/backend` depends on `packages/sdk`: a repository imports one write type
+from its `repositories/<entity><Kind>Schema.ts` module, the route table validates
+with the schemas through `schemas.ts`, and the generated client imports the same
+write types type-only, so `zod` never enters the client runtime. The frontend
+imports those schema modules for form validation. Not everything here is
+generated: the read types (`Selection`, `Selected`, `Filters`,
+`Order`, `Where`) are hand-written in `packages/sdk/src/selection.ts`,
 outside the barrels, and imported by path. See `docs/queries.md`. The write types
-are hand-written too, in `packages/validation/src/insert.ts`,
-`packages/validation/src/patch.ts`, and `packages/validation/src/upsert.ts`, and
+are hand-written too, in `packages/sdk/src/insert.ts`,
+`packages/sdk/src/patch.ts`, and `packages/sdk/src/upsert.ts`, and
 the generated modules import them the same way: they express a shape a mapped type
 cannot, and they are what keeps the type and the schema on one field set.
 
-`packages/validation/src/errors.ts` is hand-written for the same reason: the
+`packages/sdk/src/errors.ts` is hand-written for the same reason: the
 error classes and the wire `kind` that names them are the contract between the
-backend and the SDK, so both import the one module rather than keeping mirrored
-classes. The backend re-raises with `apiErrorBody`, the SDK rebuilds with
-`apiErrorFromBody`, and an unclassified body becomes the SDK's `HttpError`. See
-`docs/errors.md`. The module imports nothing, so the client still loads no
-`zod`.
+backend and the client, so the repository and the transport import the one
+module rather than keeping mirrored classes. The backend re-raises with
+`apiErrorBody`, the transport rebuilds with `apiErrorFromBody`, and an
+unclassified body becomes `HttpError`. See `docs/errors.md`. The module imports
+nothing, so importing it still loads no `zod`.
 
 ```typescript
 export const invoiceSchema = z.object({
@@ -179,7 +184,7 @@ The lists are `omittedFromPatch` and `nullablePatchProperties`
 (`packages/spec/scripts/spec-model.ts`), and the `<Entity>Patch` type is rendered
 from them into the same module as the patch schema, so the repository type taking
 it, the client sending it, and the wire schema accepting it all permit exactly
-the same fields. The type is built by `Patch` (`packages/validation/src/patch.ts`),
+the same fields. The type is built by `Patch` (`packages/sdk/src/patch.ts`),
 which makes `null` legal for the nullable fields alone. A nullable `@computed`
 value is on the omit list because its mechanism fills it in later, and a
 `@pgVirtual` value is on it whether nullable or not because Postgres refuses the
@@ -252,7 +257,7 @@ either writes a null.
 The repository's `create` takes the same field set, as the `<Entity>Insert` type
 imported from this package, and its `insert` names exactly those columns
 (`docs/repositories.md`). The type is built by `Insert`
-(`packages/validation/src/insert.ts`), which relaxes the create's `@pgDefault`
+(`packages/sdk/src/insert.ts`), which relaxes the create's `@pgDefault`
 fields and widens its nullable ones, so the type a caller passes, the schema that
 validates it, and the statement that runs all carry one set of fields, and a field
 added to the spec narrows all three at once.
@@ -297,7 +302,7 @@ The one thing the upsert adds is the version: every other field set is the
 create's, including the nullable set `nullablePatchProperties` widens. A nullable
 column therefore accepts `null` exactly where a patch and a create do — the key and
 the version stay locked, and a column that cannot hold a null is not widened. The
-type is built by `Upsert` (`packages/validation/src/upsert.ts`), which is `Patch`'s
+type is built by `Upsert` (`packages/sdk/src/upsert.ts`), which is `Patch`'s
 sibling and not `Patch` itself: a patch makes every field optional, while an
 upsert must still require the fields a create requires, so the helper relaxes
 only the create's `@pgDefault` fields.
@@ -343,7 +348,7 @@ keywords, and `Date` mapping) and always validated as a set: `z.array(…)`. The
 ordering keys come from the entity's `@queryOrderBy` fields, and the comparison
 fields and their operators from `@queryWhere`. The schema is named after the read:
 `Invoice` yields `queryInvoiceSchema` in
-`packages/validation/src/queries/queryInvoice.ts`.
+`packages/sdk/src/queries/queryInvoice.ts`.
 ```typescript
 export const queryInvoiceSchema = z.strictObject({
     filter: z.strictObject({
@@ -396,7 +401,7 @@ pulling in a write schema, and `--out` still writes below the given directory.
 `select` is not a fixed shape: a caller picks any subset of fields and nests
 into branches. So it is validated against a generated per-query schema,
 `query<name>SelectSchema`, that mirrors `Selection<E>` in
-`packages/validation/src/selection.ts`:
+`packages/sdk/src/selection.ts`:
 
 ```typescript
 export const queryInvoiceSelectSchema = z.lazy(() =>
@@ -443,14 +448,14 @@ reported as a diagnostic.
 
 ## Commands
 
-- `pnpm generate:validation` — writes `packages/validation/src`. It runs in the
-  `validation` package, which owns the generator (`scripts/generate-zod-schemas.ts`).
+- `pnpm generate:validation` — writes `packages/sdk/src`. It runs in the
+  `sdk` package, which owns the generator (`scripts/generate-zod-schemas.ts`).
 - `pnpm generate:validation --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm run generate` — runs it after the schema, repository, and query generators.
 
 ## Validation
 
-- `packages/validation/scripts/generate-zod-schemas.test.ts` drives the mapper
+- `packages/sdk/scripts/generate-zod-schemas.test.ts` drives the mapper
   and the renderer with self-contained fixtures, never the real spec. It also
   evaluates `primitives.ts` against Zod to prove the emitted schemas parse.
 - `pnpm run typecheck` compiles the generated `src`, so a schema that does not

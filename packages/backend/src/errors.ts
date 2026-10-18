@@ -1,5 +1,5 @@
 /** The errors the server raises itself that never reach the wire. See docs/errors.md. */
-import { AppError } from "validation/errors.ts";
+import { AppError } from "sdk/errors.ts";
 
 /** A command line the entry point cannot interpret; it never reaches an HTTP response. */
 export class UsageError extends AppError {

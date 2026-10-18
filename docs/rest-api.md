@@ -146,17 +146,18 @@ have different import rules:
 
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `validation/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `validation/*`, and its own `../client.ts` |
+| May import | `sdk/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `../selection.ts` and `../repositories/*`, and its own `../client.ts` |
 | Emits | `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from the backend.** It cannot reach a table
-name, a column, a driver, or `zod`. Its cross-package imports are type-only: the
-read types (`Selection`, `Selected`, `Filters`, `Order`, `Where`) and the write
-types (`<Entity>Patch`, `<Entity>Insert`) come from `packages/validation`, the
-same definitions the resolver and the route table use, and a type-only import
-keeps `zod` (and every schema) out of the client's runtime. Everything else it
-agrees with the server on is what `packages/spec` declares.
+name, a column, a driver, or `zod`. Its imports of the schema modules are
+type-only: the read types (`Selection`, `Selected`, `Filters`, `Order`, `Where`)
+come from `../selection.ts` and the write types (`<Entity>Patch`,
+`<Entity>Insert`) from `../repositories/*`, the same definitions the resolver and
+the route table use, so `zod` (and every schema) stays out of the client's
+runtime. Everything else it agrees with the server on is what `packages/spec`
+declares.
 
 A drift check is the second assertion: both generators are driven from one model
 and the `(method, path)` sets they render are compared, so a route added on the
@@ -199,14 +200,14 @@ This is why the client is generated from the spec rather than derived from an
 OpenAPI document: `Selected<E, S>` is a conditional type, and conditional types
 do not survive a round trip through a document format.
 
-`update` takes the `<Entity>Patch` type from `packages/validation` — the same
+`update` takes the `<Entity>Patch` type from the SDK's schema modules — the same
 definition the repository takes and the route table validates with — so the
 client cannot drift from the server:
 
 ```typescript
-import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
-import type { InvoicePatch } from "validation/repositories/invoicePatchSchema.ts";
-import type { InvoicePrimaryKey } from "validation/repositories/invoicePrimaryKeySchema.ts";
+import type { InvoiceInsert } from "../repositories/invoiceInsertSchema.ts";
+import type { InvoicePatch } from "../repositories/invoicePatchSchema.ts";
+import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.ts";
 
 export function updateInvoice(rows: InvoicePatch[]): Call<void>
 export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void>

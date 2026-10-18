@@ -31,7 +31,7 @@ const ROUTER_IMPORT = "../router.ts";
 /** The module specifiers of the generated pieces the routes call into. */
 const QUERIES_IMPORT = "../../db/queries/index.ts";
 const REPOSITORIES_IMPORT = "../../db/repositories/index.ts";
-const VALIDATION_IMPORT = "validation/index.ts";
+const SCHEMAS_IMPORT = "sdk/schemas.ts";
 
 /** Invoice -> invoiceRoutes.ts, the module holding that entity's exposed calls. */
 export function routesModuleName(entity: RestEntity): string {
@@ -107,7 +107,7 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`import { ${queries.join(", ")} } from "${QUERIES_IMPORT}";`);
     }
     if (schemas.length > 0) {
-        lines.push(`import { ${schemas.join(", ")} } from "${VALIDATION_IMPORT}";`);
+        lines.push(`import { ${schemas.join(", ")} } from "${SCHEMAS_IMPORT}";`);
     }
 
     lines.push("");

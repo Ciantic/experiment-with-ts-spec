@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createCustomer, deleteCustomer, updateCustomer, upsertCustomer } from "../../db/repositories/index.ts";
 import { queryCustomer } from "../../db/queries/index.ts";
-import { customerInsertSchema, customerPatchSchema, customerPrimaryKeySchema, customerUpsertSchema, queryCustomerSchema } from "validation/index.ts";
+import { customerInsertSchema, customerPatchSchema, customerPrimaryKeySchema, customerUpsertSchema, queryCustomerSchema } from "sdk/schemas.ts";
 
 /** The calls `/customer` exposes: each under its id, its verb, and its path. */
 export const customerRoutes: Route[] = [

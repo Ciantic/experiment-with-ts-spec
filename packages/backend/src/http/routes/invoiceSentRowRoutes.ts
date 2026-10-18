@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createInvoiceSentRow, deleteInvoiceSentRow, updateInvoiceSentRow, upsertInvoiceSentRow } from "../../db/repositories/index.ts";
 import { queryInvoiceSentRow } from "../../db/queries/index.ts";
-import { invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowPrimaryKeySchema, invoiceSentRowUpsertSchema, queryInvoiceSentRowSchema } from "validation/index.ts";
+import { invoiceSentRowInsertSchema, invoiceSentRowPatchSchema, invoiceSentRowPrimaryKeySchema, invoiceSentRowUpsertSchema, queryInvoiceSentRowSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice_sent_row` exposes: each under its id, its verb, and its path. */
 export const invoiceSentRowRoutes: Route[] = [

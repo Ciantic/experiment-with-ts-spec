@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createEmail, deleteEmail, updateEmail, upsertEmail } from "../../db/repositories/index.ts";
 import { queryEmail } from "../../db/queries/index.ts";
-import { emailInsertSchema, emailPatchSchema, emailPrimaryKeySchema, emailUpsertSchema, queryEmailSchema } from "validation/index.ts";
+import { emailInsertSchema, emailPatchSchema, emailPrimaryKeySchema, emailUpsertSchema, queryEmailSchema } from "sdk/schemas.ts";
 
 /** The calls `/email` exposes: each under its id, its verb, and its path. */
 export const emailRoutes: Route[] = [

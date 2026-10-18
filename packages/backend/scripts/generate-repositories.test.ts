@@ -1,6 +1,6 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import * as sharedErrors from "validation/errors.ts";
+import * as sharedErrors from "sdk/errors.ts";
 import { createPglite, createPglitePool } from "../src/postgres/pglite-setup.ts";
 import * as sqlExecutor from "../src/db/sql-executor.ts";
 import type { SqlExecutor } from "../src/db/sql-executor.ts";
@@ -102,7 +102,7 @@ interface GeneratedRepository {
 function loadModule(code: string): Record<string, unknown> {
     return tsLoadGeneratedModule(
         code,
-        tsStubImports({ "../sql-executor.ts": sqlExecutor, "validation/errors.ts": sharedErrors }),
+        tsStubImports({ "../sql-executor.ts": sqlExecutor, "sdk/errors.ts": sharedErrors }),
     );
 }
 
@@ -408,20 +408,20 @@ describe("generateCreate", () => {
 
     it("imports the write types for its operation and the executor interface", () => {
         expect(generateCreate(customer)).toContain(
-            'import type { CustomerInsert } from "validation/repositories/customerInsertSchema.ts";',
+            'import type { CustomerInsert } from "sdk/repositories/customerInsertSchema.ts";',
         );
         expect(generateUpdate(customer)).toContain(
-            'import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";',
+            'import type { CustomerPatch } from "sdk/repositories/customerPatchSchema.ts";',
         );
         expect(generateDelete(customer)).toContain(
-            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
+            'import type { CustomerPrimaryKey } from "sdk/repositories/customerPrimaryKeySchema.ts";',
         );
         // A create reports the keys it wrote, so it names the key type the delete also takes.
         expect(generateCreate(customer)).toContain(
-            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
+            'import type { CustomerPrimaryKey } from "sdk/repositories/customerPrimaryKeySchema.ts";',
         );
         expect(generateUpsert(customer)).toContain(
-            'import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";',
+            'import type { CustomerPrimaryKey } from "sdk/repositories/customerPrimaryKeySchema.ts";',
         );
         for (const code of [generateCreate(customer), generateDelete(customer)]) {
             expect(code).not.toContain("spec/");
@@ -453,7 +453,7 @@ describe("generateCreate", () => {
         );
     });
 
-    it("imports the write type from the validation package rather than declaring it", () => {
+    it("imports the write type from the SDK rather than declaring it", () => {
         const limited = table("limited", "Limited", [
             column("id", { sqlType: "uuid", primaryKey: true }),
             column("label"),
@@ -461,7 +461,7 @@ describe("generateCreate", () => {
         const code = generateCreate(limited);
 
         expect(code).toContain(
-            'import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";',
+            'import type { LimitedInsert } from "sdk/repositories/limitedInsertSchema.ts";',
         );
         expect(code).toContain("export async function createLimited(db: SqlExecutor, rows: LimitedInsert[])");
         expect(code).not.toContain("export type LimitedInsert");
@@ -750,7 +750,7 @@ describe("generateUpsert", () => {
         const code = generateUpsert(customer);
 
         expect(code).toContain(
-            'import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";',
+            'import type { CustomerUpsert } from "sdk/repositories/customerUpsertSchema.ts";',
         );
         expect(code).toContain(
             "export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<CustomerPrimaryKey[]> {",

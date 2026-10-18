@@ -1,7 +1,7 @@
 /** Checks that the port nests with savepoints, over a real driver. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
-import { DriverResultError } from "validation/errors.ts";
+import { DriverResultError } from "sdk/errors.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { affectedRows, createTransactionalDb, resultRows } from "./sql-executor.ts";
 import type { SqlPool } from "./sql-pool.ts";

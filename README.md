@@ -25,8 +25,9 @@ flowchart TD
 
     subgraph packages["Packages"]
         direction TB
-        subgraph validationPkg["validation"]
+        subgraph sdkPkg["sdk"]
             zod["<b>Zod schema generator</b><br/>Validation schemas and Insert/Patch types<br/>Error types"]
+            sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
         subgraph backendPkg["backend"]
             pgSchema["<b>Postgres schema generator</b><br/>Tables, columns, constraints and triggers"]
@@ -34,9 +35,6 @@ flowchart TD
             queries["<b>Query generator</b><br/>Typed query functions and query metadata"]
             restApi["<b>REST API generator</b><br/>Server route table"]
             restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
-        end
-        subgraph sdkPkg["sdk"]
-            sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
     end
 
@@ -47,26 +45,19 @@ flowchart TD
 ### Packages
 
 - `backend` - Implementation with REST API,  database repositories etc
-- `validation` - Shared validation, and other types with backend and frontend
-- `sdk` - Type-safe REST API SDK
+- `sdk` - Type-safe REST API SDK, shared validation schemas, and shared types
 - `spec` - Domain models
-
-I will probably rename validation to `shared` or `common` at one point. 
 
 Also backend is kind of big, maybe breaking it to infra and services or something like that would be warranted.
 
 ```mermaid
 flowchart LR
     spec["<b>spec</b><br/>Domain interfaces and primitives"]
-    validation["<b>validation</b><br/>Zod schemas and shared write types"]
     backend["<b>backend</b><br/>Postgres schema, repositories, routes"]
-    sdk["<b>sdk</b><br/>Generated REST client"]
+    sdk["<b>sdk</b><br/>Generated REST client, Zod schemas,<br/>shared write and read types"]
 
-    validation --> spec
     sdk --> spec
-    sdk --> validation
     backend --> spec
-    backend --> validation
-    backend -.->|tests only| sdk
+    backend --> sdk
 ```
 

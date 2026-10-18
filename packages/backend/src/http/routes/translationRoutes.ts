@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createTranslation, deleteTranslation, updateTranslation, upsertTranslation } from "../../db/repositories/index.ts";
 import { queryTranslation } from "../../db/queries/index.ts";
-import { queryTranslationSchema, translationInsertSchema, translationPatchSchema, translationPrimaryKeySchema, translationUpsertSchema } from "validation/index.ts";
+import { queryTranslationSchema, translationInsertSchema, translationPatchSchema, translationPrimaryKeySchema, translationUpsertSchema } from "sdk/schemas.ts";
 
 /** The calls `/translation` exposes: each under its id, its verb, and its path. */
 export const translationRoutes: Route[] = [

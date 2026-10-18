@@ -90,11 +90,11 @@ guard.
 ## Inserting
 
 `create` takes an insert rather than the whole entity. The type lives in
-`packages/validation`, in the module that also exports the schema accepting the
+`packages/sdk`, in the module that also exports the schema accepting the
 same fields, and the repository imports it:
 
 ```ts
-import type { InvoiceInsert } from "validation/repositories/invoiceInsertSchema.ts";
+import type { InvoiceInsert } from "sdk/repositories/invoiceInsertSchema.ts";
 
 export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<InvoicePrimaryKey[]>
 ```
@@ -105,7 +105,7 @@ holding one can pass it unchanged. What the type rules out is a field that would
 be read and then dropped — a branch, a clock field, a `@pgVirtual` column, or a
 derivable value — which is the same set `<entity>InsertSchema` accepts
 (`docs/validation.md`). The type is built by `Insert`
-(`packages/validation/src/insert.ts`), so an entity with no field to omit, relax,
+(`packages/sdk/src/insert.ts`), so an entity with no field to omit, relax,
 or widen still gets an `Insert<…, never, never, never>`, which resolves to the
 entity type itself.
 
@@ -164,11 +164,11 @@ and the return value are the same read.
 ## Patching
 
 `update` takes a patch rather than a whole entity. The type lives in
-`packages/validation`, narrowed to the columns the statement writes, and the
+`packages/sdk`, narrowed to the columns the statement writes, and the
 repository imports it:
 
 ```ts
-import type { CustomerPatch } from "validation/repositories/customerPatchSchema.ts";
+import type { CustomerPatch } from "sdk/repositories/customerPatchSchema.ts";
 
 export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
 ```
@@ -238,7 +238,7 @@ raised. See `docs/transactions.md`.
 
 `<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
 `omittedFromPatch` and `nullablePatchProperties` (`packages/spec/scripts/spec-model.ts`)
-into one `packages/validation` module, so the repository type and the wire schema
+into one `packages/sdk` module, so the repository type and the wire schema
 cannot drift apart. A field neither writes is a 400 on the wire and a type error
 in process, rather than a field that quietly does nothing (`docs/validation.md`).
 
@@ -249,7 +249,7 @@ and a replacement of the stored row if it is not**. It takes `<Entity>Upsert`,
 the insert's field set with the `@version` column put back:
 
 ```ts
-import type { CustomerUpsert } from "validation/repositories/customerUpsertSchema.ts";
+import type { CustomerUpsert } from "sdk/repositories/customerUpsertSchema.ts";
 
 export type CustomerUpsert = Omit<Customer, "createdAt" | "updatedAt">;
 ```
@@ -330,10 +330,10 @@ rejection is raised.
 `delete` takes an entity's **primary key**, `<Entity>PrimaryKey`, the key alone
 rather than the whole entity, because the key is the only thing its statement
 reads. The type and its matching `<name>PrimaryKeySchema` are generated from the
-`@primaryKey` fields in `packages/validation`, in the by-key module:
+`@primaryKey` fields in `packages/sdk`, in the by-key module:
 
 ```ts
-import type { CustomerPrimaryKey } from "validation/repositories/customerPrimaryKeySchema.ts";
+import type { CustomerPrimaryKey } from "sdk/repositories/customerPrimaryKeySchema.ts";
 
 export type CustomerPrimaryKey = Pick<Customer, "id">;
 ```

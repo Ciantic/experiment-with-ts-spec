@@ -132,7 +132,7 @@ describe("renderEntityRoutes", () => {
 
         expect(code).toContain('from "../../db/queries/index.ts"');
         expect(code).toContain('from "../../db/repositories/index.ts"');
-        expect(code).toContain('from "validation/index.ts"');
+        expect(code).toContain('from "sdk/schemas.ts"');
     });
 
     it("emits no get route", () => {

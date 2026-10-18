@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createAuditLog } from "../../db/repositories/index.ts";
 import { queryAuditLog } from "../../db/queries/index.ts";
-import { auditLogInsertSchema, queryAuditLogSchema } from "validation/index.ts";
+import { auditLogInsertSchema, queryAuditLogSchema } from "sdk/schemas.ts";
 
 /** The calls `/audit_log` exposes: each under its id, its verb, and its path. */
 export const auditLogRoutes: Route[] = [

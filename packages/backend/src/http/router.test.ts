@@ -1,7 +1,7 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import { QueryError, ShortWriteError, VersionConflictError } from "validation/errors.ts";
+import { QueryError, ShortWriteError, VersionConflictError } from "sdk/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { statusFor } from "./http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";

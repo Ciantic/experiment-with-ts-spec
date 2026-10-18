@@ -6,7 +6,7 @@ wants a single row takes the first result. A generator emits the typed functions
 and the physical model; one hand-written resolver turns a selection into SQL.
 See "Why the resolver is hand-written".
 
-- `packages/validation/src/selection.ts` — `Selection`/`Selected` (the
+- `packages/sdk/src/selection.ts` — `Selection`/`Selected` (the
   column-limiting types), `Filters` (the filter arguments), and the `Order` and
   `Where` clauses. Hand-written; the resolver and the generated REST client
   import their types from it, so the read contract has one definition. See
@@ -15,7 +15,7 @@ See "Why the resolver is hand-written".
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per `@queries` entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
-- `packages/validation/src/queries/` — generated read argument
+- `packages/sdk/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.
 
 - `pnpm generate:queries` — writes the generated modules.
@@ -705,7 +705,7 @@ because the ranked window orders each parent's rows before they are grouped.
   cursor, which is not implemented.
 - **The read types are shared, the reader is not.** `Selection`, `Selected`,
   `QueryArgs`, `Filters`, `Order`, and `Where` are pure types with no query in
-  them, so they live in `packages/validation/src/selection.ts` and both the
+  them, so they live in `packages/sdk/src/selection.ts` and both the
   backend and the generated REST client import them from there. The SQL, the
   resolver, and the metadata stay in the backend.
 

@@ -34,10 +34,10 @@ values, all of which are domain decisions rather than code behaviour.
   `Parent`/`ChildA`/`ChildB` fixtures, asserting which child drives which parent
   column: the SQL text cannot show a trigger attached to the wrong table, because
   that trigger is still valid and still runs.
-- `packages/validation/scripts/generate-zod-schemas.test.ts` — drives the schema
+- `packages/sdk/scripts/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
-- `packages/validation/scripts/errors.test.ts` — the shared error contract:
+- `packages/sdk/scripts/errors.test.ts` — the shared error contract:
   `apiErrorBody` names the wire kind, `apiErrorFromBody` rebuilds every kind with
   the response's status, and an unknown kind or an unclassified body stays
   undefined. The class list is a fixture, so a new kind is added there once.
@@ -45,6 +45,10 @@ values, all of which are domain decisions rather than code behaviour.
   that class with its path and issues, one with no kind or an unknown kind stays
   an `HttpError`, and `client.test.ts` asserts the group path survives the
   rebuild.
+- `packages/sdk/src/index.test.ts` — walks the package entry's relative imports
+  and asserts it reaches only the transport and the error contract, so a schema
+  module added to the entry fails the test instead of pulling `zod` into the
+  client runtime.
 - `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
   domain. A second group transpiles the generated module, builds a matching

@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
-import type { FilterDefault } from "validation/selection.ts";
+import type { FilterDefault } from "sdk/selection.ts";
 import { createResolver, type QueryModel } from "./resolvers.ts";
 
 /** Fixture entities, so the tests do not read the real spec. */

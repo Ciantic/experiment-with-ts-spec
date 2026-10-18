@@ -3,7 +3,7 @@
  * See docs/testing.md.
  *
  * The last group is the invariant that makes the client worth generating: it may
- * import `spec`, the shared `validation` types, and its own modules, and nothing
+ * import `spec`, the shared schema types, and its own modules, and nothing
  * else. Both generators are then driven from one model and the calls they expose
  * are compared, so the two cannot disagree about the wire.
  */
@@ -85,7 +85,7 @@ export interface Translation {
 }
 `.trim();
 
-/** An entity whose module name differs from its validation file, which is lower-cased. */
+/** An entity whose module name differs from its schema file, which is lower-cased. */
 const LIMITED = `
 /**
  * @pgTable limited
@@ -168,25 +168,25 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain('where?: Where<Widget, { amount: "gte" | "lte" }>');
-        expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "validation/selection.ts";');
+        expect(code).toContain('import type { Filters, Order, Selected, Selection, Where } from "../selection.ts";');
     });
 
-    it("imports and re-exports the write types and the key from the validation package", () => {
+    it("imports and re-exports the write types and the key from the schema modules", () => {
         const code = widgetModule();
 
-        expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
+        expect(code).toContain('import type { WidgetInsert } from "../repositories/widgetInsertSchema.ts";' +
             '\n' +
-            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";' +
+            'import type { WidgetPatch } from "../repositories/widgetPatchSchema.ts";' +
             '\n' +
-            'import type { WidgetPrimaryKey } from "validation/repositories/widgetPrimaryKeySchema.ts";' +
+            'import type { WidgetPrimaryKey } from "../repositories/widgetPrimaryKeySchema.ts";' +
             '\n' +
-            'import type { WidgetUpsert } from "validation/repositories/widgetUpsertSchema.ts";');
+            'import type { WidgetUpsert } from "../repositories/widgetUpsertSchema.ts";');
         expect(code).toContain("export type { WidgetInsert, WidgetPatch, WidgetPrimaryKey, WidgetUpsert };");
         expect(code).toContain("rows: WidgetPatch[]");
         expect(code).not.toContain("export type WidgetPatch =");
     });
 
-    it("upserts with the validation upsert type, which carries the version a create omits", () => {
+    it("upserts with the schema upsert type, which carries the version a create omits", () => {
         const code = widgetModule();
 
         expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<WidgetPrimaryKey[]> {");
@@ -197,13 +197,13 @@ describe("renderClientModule", () => {
         const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
         const code = renderClientModule(markerEntity!);
 
-        expect(code).toContain('import type { MarkerInsert } from "validation/repositories/markerInsertSchema.ts";' +
+        expect(code).toContain('import type { MarkerInsert } from "../repositories/markerInsertSchema.ts";' +
             '\n' +
-            'import type { MarkerPatch } from "validation/repositories/markerPatchSchema.ts";' +
+            'import type { MarkerPatch } from "../repositories/markerPatchSchema.ts";' +
             '\n' +
-            'import type { MarkerPrimaryKey } from "validation/repositories/markerPrimaryKeySchema.ts";' +
+            'import type { MarkerPrimaryKey } from "../repositories/markerPrimaryKeySchema.ts";' +
             '\n' +
-            'import type { MarkerUpsert } from "validation/repositories/markerUpsertSchema.ts";');
+            'import type { MarkerUpsert } from "../repositories/markerUpsertSchema.ts";');
         expect(code).not.toContain("and the version");
     });
 
@@ -222,35 +222,35 @@ describe("renderClientModule", () => {
 
         const code = renderClientModule(entity);
 
-        // The key projection is the one validation declares, not a second one written here.
+        // The key projection is the one the schema declares, not a second one written here.
         expect(code).toContain("rows: TranslationPrimaryKey[]");
-        expect(code).toContain('import type { TranslationPrimaryKey } from "validation/repositories/translationPrimaryKeySchema.ts";');
+        expect(code).toContain('import type { TranslationPrimaryKey } from "../repositories/translationPrimaryKeySchema.ts";');
         expect(code).not.toContain("Pick<Translation,");
         expect(code).toContain("keyed on `languageCode`, `key`");
     });
 
-    it("types a create with the validation insert type, not the whole entity", () => {
+    it("types a create with the schema insert type, not the whole entity", () => {
         const code = widgetModule();
 
-        expect(code).toContain('import type { WidgetInsert } from "validation/repositories/widgetInsertSchema.ts";' +
+        expect(code).toContain('import type { WidgetInsert } from "../repositories/widgetInsertSchema.ts";' +
             '\n' +
-            'import type { WidgetPatch } from "validation/repositories/widgetPatchSchema.ts";');
+            'import type { WidgetPatch } from "../repositories/widgetPatchSchema.ts";');
         expect(code).toContain(
             "export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[]> {",
         );
         expect(code).not.toContain("export type WidgetInsert =");
     });
 
-    it("names the validation module after the entity", () => {
+    it("names the schema module after the entity", () => {
         const code = renderClientModule(build({ Limited: LIMITED }).entities[0]!);
 
-        expect(code).toContain('import type { LimitedInsert } from "validation/repositories/limitedInsertSchema.ts";' +
+        expect(code).toContain('import type { LimitedInsert } from "../repositories/limitedInsertSchema.ts";' +
             '\n' +
-            'import type { LimitedPatch } from "validation/repositories/limitedPatchSchema.ts";' +
+            'import type { LimitedPatch } from "../repositories/limitedPatchSchema.ts";' +
             '\n' +
-            'import type { LimitedPrimaryKey } from "validation/repositories/limitedPrimaryKeySchema.ts";' +
+            'import type { LimitedPrimaryKey } from "../repositories/limitedPrimaryKeySchema.ts";' +
             '\n' +
-            'import type { LimitedUpsert } from "validation/repositories/limitedUpsertSchema.ts";');
+            'import type { LimitedUpsert } from "../repositories/limitedUpsertSchema.ts";');
     });
 
     it("emits no getter", () => {
@@ -323,7 +323,7 @@ describe("generateRestClient", () => {
         expect(files.has("widget.ts")).toBe(true);
     });
 
-    it("imports nothing but spec, the shared validation types, and its own modules", () => {
+    it("imports nothing but spec, the shared schema types, and its own modules", () => {
         const files = generateRestClient(model);
         const specifiers: string[] = [];
         for (const content of files.values()) {
@@ -338,19 +338,18 @@ describe("generateRestClient", () => {
         for (const specifier of specifiers) {
             expect(
                 specifier.startsWith("spec/") ||
-                    specifier.startsWith("validation/") ||
                     specifier.startsWith("./") ||
                     specifier.startsWith("../"),
             ).toBe(true);
         }
     });
 
-    it("reaches the validation types without pulling zod into the client", () => {
+    it("reaches the schema types without pulling zod into the client", () => {
         const files = generateRestClient(model);
         for (const content of files.values()) {
             expect(content).not.toContain('from "zod"');
             for (const line of content.split("\n")) {
-                if (line.includes("validation/")) {
+                if (line.includes("../repositories/") || line.includes("../selection.ts")) {
                     expect(line.startsWith("import type ") || line.startsWith("export type ")).toBe(true);
                 }
             }

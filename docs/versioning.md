@@ -299,7 +299,7 @@ matched before the generated code rejects the call
    `renderVersionTrigger`.
 4. `packages/backend/scripts/generate-repositories.ts` omits the column on
    insert, writes the claimed one on upsert, and predicates on it on update.
-5. `packages/validation/scripts/generate-zod-schemas.ts` omits the column from
+5. `packages/sdk/scripts/generate-zod-schemas.ts` omits the column from
    the create's field set and puts it back, required, for the upsert and the
    patch.
 6. `packages/spec/scripts/lint-spec.ts` requires `@version` on a `Version` field,

@@ -4,7 +4,7 @@
  * Writes `packages/sdk/src/api`: one module per entity plus a barrel re-exporting
  * them. The package entry, `packages/sdk/src/index.ts`, is hand-written and names
  * the call model and the transport; the barrel is imported by name. The output may
- * import `spec`, the type-only write types `validation` shares, and the hand-written
+ * import `spec`, the type-only write types the schemas share, and the hand-written
  * `../client.ts` — no backend module, no `zod`. A test asserts that invariant.
  *
  * A generated function builds a call and returns it; it does not send one. So the
@@ -37,10 +37,10 @@ const CLIENT_MODULE = "client.ts";
 const INDEX_FILE = "index.ts";
 
 /** The package specifier the read types are imported from. */
-const SELECTION_IMPORT = "validation/selection.ts";
+const SELECTION_IMPORT = "../selection.ts";
 
-/** The package the shared write types (`<Entity>Patch`, `<Entity>Insert`) are imported from. */
-const VALIDATION_PACKAGE = "validation";
+/** The directory the shared write types (`<Entity>Patch`, `<Entity>Insert`) are imported from, relative to `api/`. */
+const WRITE_TYPES_DIR = "..";
 
 /** `"id" | "customerId"`. */
 function filterKeys(filters: string[]): string {
@@ -103,7 +103,7 @@ function comment(entity: RestEntity, kind: RestKind): string {
     }
 }
 
-/** The key projection validation declares for the entity, e.g. `InvoicePrimaryKey`. */
+/** The key projection the write schemas declare for the entity, e.g. `InvoicePrimaryKey`. */
 function keyType(entity: RestEntity): string {
     return `${entity.entity}PrimaryKey`;
 }
@@ -136,39 +136,39 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
         lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
     }
-    // The write types and the key projection live in the validation package, so the client, the wire
-    // schema, and the server all name one definition. A type-only import keeps `zod` out of the
-    // client's runtime. See docs/validation.md.
-    const validationTypes: string[] = [];
+    // The write types and the key projection live in this package's schema modules, so the client,
+    // the wire schema, and the server all name one definition. A type-only import keeps `zod` out
+    // of the client's runtime. See docs/validation.md.
+    const writeTypes: string[] = [];
     if (create) {
-        validationTypes.push(`${name}Insert`);
+        writeTypes.push(`${name}Insert`);
     }
     // Create, upsert, and delete all name the key, so the type follows whichever of them exists.
     if (create || upsert || remove) {
-        validationTypes.push(keyType(entity));
+        writeTypes.push(keyType(entity));
     }
     if (upsert) {
-        validationTypes.push(`${name}Upsert`);
+        writeTypes.push(`${name}Upsert`);
     }
     if (update) {
-        validationTypes.push(`${name}Patch`);
+        writeTypes.push(`${name}Patch`);
     }
-    validationTypes.sort((a, b) => a.localeCompare(b));
-    if (validationTypes.length > 0) {
+    writeTypes.sort((a, b) => a.localeCompare(b));
+    if (writeTypes.length > 0) {
         // Each type lives in its own module, so the imports group by module rather than by entity.
         const byModule = new Map<string, string[]>();
-        for (const validationType of validationTypes) {
-            const module = validationFileName(validationType);
-            byModule.set(module, [...(byModule.get(module) ?? []), validationType]);
+        for (const writeType of writeTypes) {
+            const module = validationFileName(writeType);
+            byModule.set(module, [...(byModule.get(module) ?? []), writeType]);
         }
         for (const [module, names] of [...byModule].sort(([a], [b]) => a.localeCompare(b))) {
-            lines.push(`import type { ${names.join(", ")} } from "${VALIDATION_PACKAGE}/${module}";`);
+            lines.push(`import type { ${names.join(", ")} } from "${WRITE_TYPES_DIR}/${module}";`);
         }
     }
     lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
-    if (validationTypes.length > 0) {
+    if (writeTypes.length > 0) {
         lines.push("");
-        lines.push(`export type { ${validationTypes.join(", ")} };`);
+        lines.push(`export type { ${writeTypes.join(", ")} };`);
     }
 
     if (query) {

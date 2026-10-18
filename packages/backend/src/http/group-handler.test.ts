@@ -1,7 +1,7 @@
 /** Unit tests for the group entry point, over fixture routes it resolves by operation id. See docs/testing.md and docs/transactions.md. */
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import { VersionConflictError } from "validation/errors.ts";
+import { VersionConflictError } from "sdk/errors.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { HttpResponse } from "./http-response.ts";

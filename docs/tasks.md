@@ -16,7 +16,7 @@ runs, in order:
    then writes every generated artifact: `generate:schema`,
    `generate:repositories`, `generate:queries`, `generate:rest-api`, and
    `generate:rest-client` in `packages/backend`, plus `generate:validation` in
-   `packages/validation`, which owns the generator for its own schemas.
+   `packages/sdk`, which owns the generator for its own schemas.
 2. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -34,7 +34,7 @@ The order is load-bearing:
   stops the run before a generator writes an artifact from a spec it rejects,
   and it validates the whole spec rather than the subset the generators read.
 - **Generate before build.** Generated `.sql`, repository modules, and the
-  `packages/validation` schemas are committed artifacts; anything that compiles
+  `packages/sdk` schemas are committed artifacts; anything that compiles
   or checks them must run after they
   are written, or it validates the previous generation.
 - **Build last.** It is the only step that consumes the generated output as
@@ -51,7 +51,7 @@ the linter alone. All of them read the
 spec through that same model: the schema, repository, and
 query generators map it to columns in
 `packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
-Zod schemas in `packages/validation/scripts/zod-model.ts`, and the REST pair maps
+Zod schemas in `packages/sdk/scripts/zod-model.ts`, and the REST pair maps
 it to the HTTP surface in `packages/backend/scripts/rest-model.ts`. The API
 generator references the validation schemas by name, which is why it runs after
 them. None reads another's
@@ -60,10 +60,10 @@ order between them is presentational — it mirrors the order the artifacts appe
 in the repository. A step that reports a finding or a diagnostic returns a
 failing exit code, and the driver stops rather than running the steps after it.
 
-The validation generator is the one that lives in the package it writes. The
-other generators stay in `packages/backend/scripts`: the schema, repository, and
-query generators share the table model, and the two REST generators share
-`rest-model.ts`. The REST client generator draws only on the spec and that model,
+The validation generator lives in the package it writes,
+`packages/sdk/scripts`. The other generators stay in `packages/backend/scripts`:
+the schema, repository, and query generators share the table model, and the two
+REST generators share `rest-model.ts`. The REST client generator draws only on the spec and that model,
 yet it stays with the API generator so the two cannot drift; its output still
 lands in `packages/sdk`.
 
@@ -78,7 +78,7 @@ in the driver's list. The driver passes no `argv`, so a generator's flags never
 reach the whole-pipeline run.
 
 The driver is the only consumer of another package's generator, so `backend` and
-`validation` do not export `scripts/`: it imports those two by relative path.
+`sdk` do not export `scripts/`: it imports those two by relative path.
 `spec` keeps its `scripts/` export, because the driver and the generators in both
 of those packages read `spec/scripts/spec-model.ts` through it.
 

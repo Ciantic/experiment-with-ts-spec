@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createInvoiceSent, deleteInvoiceSent, updateInvoiceSent, upsertInvoiceSent } from "../../db/repositories/index.ts";
 import { queryInvoiceSent } from "../../db/queries/index.ts";
-import { invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentPrimaryKeySchema, invoiceSentUpsertSchema, queryInvoiceSentSchema } from "validation/index.ts";
+import { invoiceSentInsertSchema, invoiceSentPatchSchema, invoiceSentPrimaryKeySchema, invoiceSentUpsertSchema, queryInvoiceSentSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice_sent` exposes: each under its id, its verb, and its path. */
 export const invoiceSentRoutes: Route[] = [

@@ -1,5 +1,5 @@
 /** The HTTP result shape and the plain-JSON failures both handlers answer with. See docs/rest-api.md. */
-import { AppError, apiErrorBody } from "validation/errors.ts";
+import { AppError, apiErrorBody } from "sdk/errors.ts";
 
 /** One response. Success bodies are `devalue`; error bodies are plain JSON. */
 export interface HttpResponse {

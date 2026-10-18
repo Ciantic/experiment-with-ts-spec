@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createSeller, deleteSeller, updateSeller, upsertSeller } from "../../db/repositories/index.ts";
 import { querySeller } from "../../db/queries/index.ts";
-import { querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerPrimaryKeySchema, sellerUpsertSchema } from "validation/index.ts";
+import { querySellerSchema, sellerInsertSchema, sellerPatchSchema, sellerPrimaryKeySchema, sellerUpsertSchema } from "sdk/schemas.ts";
 
 /** The calls `/seller` exposes: each under its id, its verb, and its path. */
 export const sellerRoutes: Route[] = [

@@ -10,7 +10,7 @@ import { run as runRepositories } from "../packages/backend/scripts/generate-rep
 import { run as runQueries } from "../packages/backend/scripts/generate-queries.ts";
 import { run as runRestApi } from "../packages/backend/scripts/generate-rest-api.ts";
 import { run as runRestClient } from "../packages/backend/scripts/generate-rest-client.ts";
-import { run as runValidation } from "../packages/validation/scripts/generate-zod-schemas.ts";
+import { run as runValidation } from "../packages/sdk/scripts/generate-zod-schemas.ts";
 
 /** One step of the run: read the spec, do its job, and report the exit code. */
 type Step = (spec: SpecModel, argv: readonly string[]) => number;

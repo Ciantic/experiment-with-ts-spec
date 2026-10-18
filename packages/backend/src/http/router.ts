@@ -1,6 +1,6 @@
 /** The hand-written request handler: match one request to its route, decode, check, run, and encode. See docs/rest-api.md. */
 import { parse as decode, stringify as encode } from "devalue";
-import { NotFoundError, RequestError, ValidationError } from "validation/errors.ts";
+import { NotFoundError, RequestError, ValidationError } from "sdk/errors.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { GROUP_PATH, handleGroup } from "./group-handler.ts";
 import { errorFrom, type HttpResponse } from "./http-response.ts";

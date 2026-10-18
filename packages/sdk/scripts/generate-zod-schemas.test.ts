@@ -538,10 +538,10 @@ describe("generateRepositoryEntity", () => {
     });
 });
 
-describe("generateIndex", () => {
+describe("generateSchemaBarrel", () => {
     it("re-exports the primitives and every generated directory", () => {
         const { files } = generate({ entities: { Thing: THING } });
-        const code = files.get("index.ts") ?? "";
+        const code = files.get("schemas.ts") ?? "";
 
         expect(code).toContain('export * from "./primitives.ts";');
         expect(code).toContain('export * from "./domain/index.ts";');
@@ -826,9 +826,9 @@ describe("generateQueryFile", () => {
         expect(code).toContain('export * from "./queryThing.ts";');
     });
 
-    it("re-exports the queries barrel from the root index", () => {
+    it("re-exports the queries barrel from the schema barrel", () => {
         const { files } = generate({ entities: { Thing: THING } });
-        const code = files.get("index.ts") ?? "";
+        const code = files.get("schemas.ts") ?? "";
 
         expect(code).toContain('export * from "./queries/index.ts";');
     });

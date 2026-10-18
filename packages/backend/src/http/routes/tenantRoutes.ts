@@ -3,7 +3,7 @@ import type { Route } from "../router.ts";
 import { z } from "zod";
 import { createTenant, deleteTenant, updateTenant, upsertTenant } from "../../db/repositories/index.ts";
 import { queryTenant } from "../../db/queries/index.ts";
-import { queryTenantSchema, tenantInsertSchema, tenantPatchSchema, tenantPrimaryKeySchema, tenantUpsertSchema } from "validation/index.ts";
+import { queryTenantSchema, tenantInsertSchema, tenantPatchSchema, tenantPrimaryKeySchema, tenantUpsertSchema } from "sdk/schemas.ts";
 
 /** The calls `/tenant` exposes: each under its id, its verb, and its path. */
 export const tenantRoutes: Route[] = [
