@@ -10,8 +10,8 @@ import { invoiceSentRows } from "./invoiceSentRows.ts";
 
 /** The customer as frozen onto the sent invoice, not the live record. */
 const acmeSnapshot: Customer = {
-    id: "11111111-1111-4111-8111-111111111111" as CustomerId,
-    tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+    id: "11111111-1111-7111-8111-111111111111" as CustomerId,
+    tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
     name: "Acme Oy",
     email: "billing@acme.example",
     address: "Mannerheimintie 1, 00100 Helsinki",
@@ -26,8 +26,8 @@ const acmeSnapshot: Customer = {
 
 /** The seller as frozen onto the sent invoice, not the live record. */
 const firmaSnapshot: Seller = {
-    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as SellerId,
-    tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+    id: "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa" as SellerId,
+    tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
     name: "Firma Oy",
     businessId: "9876543-2",
     eInvoiceAddress: "003798765432" as EInvoiceAddress,
@@ -41,9 +41,9 @@ const firmaSnapshot: Seller = {
 /** Sample sent invoices for a seeded development database. See docs/mockdata.md. */
 export const invoicesSent: InvoiceSent[] = [
     {
-        id: "00000000-0000-4000-8000-000000000301" as InvoiceSentId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
-        invoiceId: "00000000-0000-4000-8000-000000000101" as InvoiceId,
+        id: "00000000-0000-7000-8000-000000000301" as InvoiceSentId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
+        invoiceId: "00000000-0000-7000-8000-000000000101" as InvoiceId,
         sentAt: new Date("2026-01-06T09:15:00.000Z"),
         number: "2026-0001",
         customer: acmeSnapshot,

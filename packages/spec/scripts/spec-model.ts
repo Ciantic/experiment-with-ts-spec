@@ -465,8 +465,13 @@ export function autoIncrementProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.pgAutoIncrement);
 }
 
-/** Invoice -> invoice, GUID -> guid, EInvoiceAddress -> eInvoiceAddress. */
+/** Invoice -> invoice, UUIDv7 -> uuidv7, EInvoiceAddress -> eInvoiceAddress. */
 export function lowerFirst(name: string): string {
+    // A leading acronym followed by a version token is one word: lowercase all of it.
+    const versioned = name.match(/^([A-Z]+)([a-z]\d+)$/);
+    if (versioned?.[1] !== undefined && versioned[2] !== undefined) {
+        return versioned[1].toLowerCase() + versioned[2];
+    }
     // A leading run of capitals is an acronym: lowercase all of it, not just the first letter.
     const acronym = name.match(/^[A-Z]+(?=[A-Z][a-z]|$)/);
     if (acronym) {

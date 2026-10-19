@@ -6,7 +6,7 @@ export function autoIncrementSchema<Name extends string>() {
 }
 
 export function brandedIdSchema<Name extends string>() {
-    return z.uuid().brand<Name>();
+    return z.uuidv7().brand<Name>();
 }
 
 export const currencySchema = z.enum(["EUR", "USD", "GBP", "SEK"]).or(z.string());
@@ -19,8 +19,6 @@ export const eInvoiceOperatorSchema = z.enum(["maventa", "apix", "op", "basware"
 
 export const emailAddressSchema = z.email().brand<"EmailAddress">();
 
-export const guidSchema = z.uuid();
-
 export const languageSchema = z.enum(["fi", "sv", "en"]).or(z.string());
 
 export const moneySchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"Money">();
@@ -30,5 +28,7 @@ export const quantitySchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal
 export const taxRateSchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"TaxRate">();
 
 export const unitSchema = z.enum(["hours", "pieces", "kg", "liters", "meters"]).or(z.string());
+
+export const uuidv7Schema = z.uuidv7();
 
 export const versionSchema = z.bigint().brand<"Version">();

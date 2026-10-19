@@ -8,9 +8,9 @@ import type { TaxRate } from "../src/primitives/TaxRate.ts";
 /** Sample sent invoice rows for a seeded development database. See docs/mockdata.md. */
 export const invoiceSentRows: InvoiceSentRow[] = [
     {
-        id: "00000000-0000-4000-8000-000000000401" as InvoiceSentRowId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
-        invoiceSentId: "00000000-0000-4000-8000-000000000301" as InvoiceSentId,
+        id: "00000000-0000-7000-8000-000000000401" as InvoiceSentRowId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
+        invoiceSentId: "00000000-0000-7000-8000-000000000301" as InvoiceSentId,
         description: "Consulting",
         quantity: "10" as Quantity,
         unit: "hours",

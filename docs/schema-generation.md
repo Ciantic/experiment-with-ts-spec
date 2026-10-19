@@ -45,7 +45,7 @@ below, which is where their CHECK, cardinality, and relation are decided.
 
 Everything else resolves through the alias tree:
 
-- A `@primitive` alias (`GUID`, `Decimal`, `Money`, `Version`, and so on) → the
+- A `@primitive` alias (`UUIDv7`, `Decimal`, `Money`, `Version`, and so on) → the
   type its `@pgType` names.
 - `BrandedId<...>` and any `<Entity>Id` alias → `uuid`.
 - A union of string literals (such as `"draft" | "sent"`) → `text` plus a CHECK

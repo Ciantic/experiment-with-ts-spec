@@ -169,8 +169,8 @@ Type tags:
   `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
   `@zod` and `@pgType`; the marker itself takes no value. See `docs/primitives.md`.
 - `@zod <expression>` — the type's Zod schema, written verbatim and never
-  evaluated by the spec, such as `z.uuid()` or
-  `z.uuid().brand<"Something">()`. It is what gives a primitive a runtime
+  evaluated by the spec, such as `z.uuidv7()` or
+  `z.uuidv7().brand<"Something">()`. It is what gives a primitive a runtime
   counterpart to its compile-time brand. At most one per type alias.
 - `@pgType <sql-type>` — the storage type a generator maps the alias to, such as
   `uuid` or `decimal`. The spec declares *what* the value is stored as; a

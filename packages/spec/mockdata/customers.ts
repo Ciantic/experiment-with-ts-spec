@@ -6,8 +6,8 @@ import type { Version } from "../src/primitives/Version.ts";
 /** Sample customers for a seeded development database. See docs/mockdata.md. */
 export const customers: Customer[] = [
     {
-        id: "11111111-1111-4111-8111-111111111111" as CustomerId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "11111111-1111-7111-8111-111111111111" as CustomerId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         name: "Acme Oy",
         email: "billing@acme.example",
         address: "Mannerheimintie 1, 00100 Helsinki",
@@ -20,8 +20,8 @@ export const customers: Customer[] = [
         version: 0n as Version,
     },
     {
-        id: "22222222-2222-4222-8222-222222222222" as CustomerId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "22222222-2222-7222-8222-222222222222" as CustomerId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         name: "Beta Ab",
         email: "invoices@beta.example",
         address: "Storgatan 2, 00100 Helsingfors",
@@ -33,8 +33,8 @@ export const customers: Customer[] = [
         version: 0n as Version,
     },
     {
-        id: "33333333-3333-4333-8333-333333333333" as CustomerId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "33333333-3333-7333-8333-333333333333" as CustomerId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         name: "Gamma GmbH",
         email: "rechnung@gamma.example",
         address: "Hauptstrasse 3, 10115 Berlin",

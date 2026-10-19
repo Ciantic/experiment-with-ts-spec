@@ -6,8 +6,8 @@ import type { Version } from "../src/primitives/Version.ts";
 /** Sample queued emails for a seeded development database. See docs/mockdata.md. */
 export const emails: Email[] = [
     {
-        id: "00000000-0000-4000-8000-000000000201" as EmailId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "00000000-0000-7000-8000-000000000201" as EmailId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@acme.example" as EmailAddress,
         to: "invoices@acme.example" as EmailAddress,
         subject: "Invoice 2026-0001",
@@ -20,8 +20,8 @@ export const emails: Email[] = [
         version: 0n as Version,
     },
     {
-        id: "00000000-0000-4000-8000-000000000202" as EmailId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "00000000-0000-7000-8000-000000000202" as EmailId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@beta.example" as EmailAddress,
         to: "invoices@beta.example" as EmailAddress,
         subject: "Invoice 2026-0002",
@@ -35,8 +35,8 @@ export const emails: Email[] = [
         version: 0n as Version,
     },
     {
-        id: "00000000-0000-4000-8000-000000000203" as EmailId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "00000000-0000-7000-8000-000000000203" as EmailId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         from: "billing@gamma.example" as EmailAddress,
         to: "rechnung@gamma.example" as EmailAddress,
         subject: "Invoice 2026-0003",

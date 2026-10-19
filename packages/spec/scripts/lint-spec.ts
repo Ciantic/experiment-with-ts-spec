@@ -67,7 +67,7 @@ const TENANT_OWNED_TAG = "tenantOwned";
 /** The marker tag that identifies a primitive type alias. See docs/primitives.md. */
 const PRIMITIVE_TAG = "primitive";
 
-/** The tag that carries a type's Zod schema expression, e.g. `z.uuid().brand<"InvoiceId">`. */
+/** The tag that carries a type's Zod schema expression, e.g. `z.uuidv7().brand<"InvoiceId">`. */
 const ZOD_TAG = "zod";
 
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */

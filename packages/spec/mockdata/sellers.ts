@@ -6,8 +6,8 @@ import type { Version } from "../src/primitives/Version.ts";
 /** Sample sellers for a seeded development database. See docs/mockdata.md. */
 export const sellers: Seller[] = [
     {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as SellerId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa" as SellerId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         name: "Firma Oy",
         businessId: "9876543-2",
         eInvoiceAddress: "003798765432" as EInvoiceAddress,
@@ -18,8 +18,8 @@ export const sellers: Seller[] = [
         version: 0n as Version,
     },
     {
-        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as SellerId,
-        tenantId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as TenantId,
+        id: "bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb" as SellerId,
+        tenantId: "cccccccc-cccc-7ccc-8ccc-cccccccccccc" as TenantId,
         name: "Nordic Ab",
         businessId: "8765432-1",
         eInvoiceOperator: "basware",

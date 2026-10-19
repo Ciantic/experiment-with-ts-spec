@@ -13,9 +13,9 @@ described in `docs/spec-annotations.md`:
 /**
  * @primitive
  * @pgType uuid
- * @zod z.uuid().brand<Name>()
+ * @zod z.uuidv7().brand<Name>()
  */
-export type BrandedId<Name extends string> = GUID & Brand<Name>;
+export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;
 ```
 
 - `@primitive` marks the alias as a scalar value type, not an entity. It is a
@@ -68,7 +68,7 @@ property:
 ```typescript
 export type Brand<Name extends string> = $brand<Name>;
 
-export type BrandedId<Name extends string> = GUID & Brand<Name>;
+export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;
 ```
 
 `Brand<T>` (Zod's `$brand<T>`) is a phantom property keyed by a module-private
@@ -77,7 +77,7 @@ collide with a real property. It is the single place the spec reaches for Zod's
 brand; every branded primitive imports it from
 `packages/spec/src/primitives/Brand.ts` rather than `$brand` directly. It is what
 separates `InvoiceId` from `InvoiceRowId`. A plain alias
-(`type InvoiceId = GUID`) would not: aliases are structurally interchangeable, so
+(`type InvoiceId = UUIDv7`) would not: aliases are structurally interchangeable, so
 the compiler could not catch an invoice id passed where a row id was expected.
 `Decimal` brands `string` the same way.
 

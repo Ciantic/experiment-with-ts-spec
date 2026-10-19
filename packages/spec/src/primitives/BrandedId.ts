@@ -1,11 +1,11 @@
 import type { Brand } from "./Brand.ts";
-import type { GUID } from "./GUID.ts";
+import type { UUIDv7 } from "./UUIDv7.ts";
 
 /**
- * A GUID that is nominally distinct for each `Name`. See docs/primitives.md.
+ * A UUIDv7 that is nominally distinct for each `Name`. See docs/primitives.md.
  *
  * @primitive
  * @pgType uuid
- * @zod z.uuid().brand<Name>()
+ * @zod z.uuidv7().brand<Name>()
  */
-export type BrandedId<Name extends string> = GUID & Brand<Name>;
+export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;

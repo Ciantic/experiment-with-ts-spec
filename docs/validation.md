@@ -128,12 +128,12 @@ runtime counterpart of the alias's brand, so `moneySchema` carries the
 reason `docs/primitives.md` gives for the tag existing.
 
 A **generic** primitive becomes a factory rather than a constant. `BrandedId`
-declares `@zod z.uuid().brand<Name>()` over its type parameter, so the generator
+declares `@zod z.uuidv7().brand<Name>()` over its type parameter, so the generator
 emits:
 
 ```typescript
 export function brandedIdSchema<Name extends string>() {
-    return z.uuid().brand<Name>();
+    return z.uuidv7().brand<Name>();
 }
 ```
 
