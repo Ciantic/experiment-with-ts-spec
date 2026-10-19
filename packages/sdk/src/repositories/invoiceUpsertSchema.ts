@@ -14,6 +14,7 @@ export const invoiceUpsertSchema = invoiceSchema
         rows: true,
     })
     .partial({
+        id: true,
         createdAt: true,
         updatedAt: true,
     })
@@ -30,4 +31,4 @@ export const invoiceUpsertSchema = invoiceSchema
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "createdAt" | "updatedAt">;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "id" | "createdAt" | "updatedAt">;

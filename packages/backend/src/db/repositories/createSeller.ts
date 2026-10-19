@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): SellerPrimaryKey => ({ id: row["id"] as SellerPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 13;
+const PARAMETERS_PER_ROW = 14;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -26,6 +26,7 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const idPresent: boolean[] = [];
             const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const businessIdValues: Array<unknown> = [];
@@ -40,6 +41,7 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
             const versionPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                idPresent.push(row.id !== undefined);
                 tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 businessIdValues.push(row.businessId ?? null);
@@ -55,7 +57,7 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
             }
             const result = await tx.query(
                 'insert into "seller" ("id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "updatedAt", "version") select ' +
-                    'v."id", ' +
+                    'case when v."id#present" then v."id" else uuidv7() end, ' +
                     'v."tenantId", ' +
                     'v."name", ' +
                     'v."businessId", ' +
@@ -65,10 +67,10 @@ export async function createSeller(db: SqlExecutor, rows: SellerInsert[]): Promi
                     'case when v."createdAt#present" then v."createdAt" else now() end, ' +
                     'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'case when v."version#present" then v."version" else 0 end ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::timestamptz[], $9::bool[], $10::timestamptz[], $11::bool[], $12::int8[], $13::bool[]) as v(' +
-                    '"id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version", "version#present") ' +
+                    'from unnest($1::uuid[], $2::bool[], $3::uuid[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::timestamptz[], $10::bool[], $11::timestamptz[], $12::bool[], $13::int8[], $14::bool[]) as v(' +
+                    '"id", "id#present", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version", "version#present") ' +
                     'returning "seller"."id"',
-                [idValues, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues, versionPresent],
+                [idValues, idPresent, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues, versionPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

@@ -6,6 +6,7 @@ import { emailSchema } from "../domain/emailSchema.ts";
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const emailUpsertSchema = emailSchema
     .partial({
+        id: true,
         status: true,
         attempts: true,
         maxAttempts: true,
@@ -19,4 +20,4 @@ export const emailUpsertSchema = emailSchema
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type EmailUpsert = Upsert<Email, never, "id" | "version", "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;
+export type EmailUpsert = Upsert<Email, never, "id" | "version", "lastError" | "sentAt", "id" | "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;

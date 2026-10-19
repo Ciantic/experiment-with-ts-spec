@@ -8,7 +8,7 @@ create table "audit_log" (
 );
 
 create table "tenant" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "name" text not null,
     "createdAt" timestamptz not null default now(),
     "updatedAt" timestamptz not null default now(),
@@ -24,7 +24,7 @@ create table "translation" (
 );
 
 create table "customer" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "name" text not null,
     "email" text not null,
@@ -41,7 +41,7 @@ create table "customer" (
 );
 
 create table "email" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "from" text not null,
     "to" text not null,
@@ -60,7 +60,7 @@ create table "email" (
 );
 
 create table "seller" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "name" text not null,
     "businessId" text not null,
@@ -75,7 +75,7 @@ create table "seller" (
 );
 
 create table "invoice" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "number" text unique,
     "customerId" uuid,
@@ -98,7 +98,7 @@ create table "invoice" (
 );
 
 create table "invoice_row" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "invoiceId" uuid not null,
     "description" text,
@@ -117,7 +117,7 @@ create table "invoice_row" (
 );
 
 create table "invoice_sent" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "invoiceId" uuid not null,
     "sentAt" timestamptz not null,
@@ -157,7 +157,7 @@ create table "invoice_sent" (
 );
 
 create table "invoice_sent_row" (
-    "id" uuid not null,
+    "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),
     "invoiceSentId" uuid not null,
     "description" text not null,

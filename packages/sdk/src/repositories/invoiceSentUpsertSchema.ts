@@ -14,7 +14,10 @@ export const invoiceSentUpsertSchema = invoiceSentSchema
         customer: customerInsertSchema.nullable().optional(),
         seller: sellerInsertSchema.nullable().optional(),
     })
+    .partial({
+        id: true,
+    })
     .strict();
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */
-export type InvoiceSentUpsert = Upsert<InvoiceSent, "rows", "id", "customer" | "seller", never>;
+export type InvoiceSentUpsert = Upsert<InvoiceSent, "rows", "id", "customer" | "seller", "id">;

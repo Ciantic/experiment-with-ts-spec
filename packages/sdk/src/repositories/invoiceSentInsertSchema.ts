@@ -14,7 +14,10 @@ export const invoiceSentInsertSchema = invoiceSentSchema
         customer: customerInsertSchema.nullable().optional(),
         seller: sellerInsertSchema.nullable().optional(),
     })
+    .partial({
+        id: true,
+    })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceSentInsert = Insert<InvoiceSent, "rows", "customer" | "seller", never>;
+export type InvoiceSentInsert = Insert<InvoiceSent, "rows", "customer" | "seller", "id">;

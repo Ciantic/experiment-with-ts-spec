@@ -350,8 +350,10 @@ function addScalarColumn(
     const notNull = !property.optional;
     const tags = property.tags;
 
-    // A default makes the column not null even when the field is optional; the clock tags supply one.
-    const defaultValue = tags.pgDefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
+    // A default makes the column not null even when optional; the clock tags supply one, and an identity column owns its value.
+    const defaultValue = tags.pgAutoIncrement
+        ? undefined
+        : tags.pgDefault ?? (tags.createdAt || tags.updatedAt ? "now()" : undefined);
     const nullable = !(notNull || isPrimaryKey || defaultValue !== undefined);
     const updatable = isUpdatable(property);
     const column: Column = {

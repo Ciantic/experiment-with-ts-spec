@@ -57,7 +57,7 @@ export const INTERFACE_TAGS = [
 ] as const;
 
 /** Tags a type alias may carry. */
-export const TYPE_TAGS = ["primitive", "zod", "pgType"] as const;
+export const TYPE_TAGS = ["primitive", "zod", "pgType", "pgDefault"] as const;
 
 /** Every tag this model recognises. */
 export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
@@ -1055,6 +1055,49 @@ export function resolveType(
     return NOTHING;
 }
 
+/** The `@pgDefault` a type inherits through its alias, which a field overrides or clears; a foreign key never inherits. */
+export function inheritedDefault(
+    type: SpecType,
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
+    path: Set<string> = new Set(),
+): string | undefined {
+    if (type.kind === "reference") {
+        const alias = aliases.get(type.name);
+        if (!alias || path.has(type.name)) {
+            return undefined;
+        }
+        const written = alias.tags.written.byName.get("pgDefault")?.[0];
+        if (written) {
+            const value = (written.value ?? "").trim();
+            return value === "" ? undefined : value;
+        }
+        return inheritedDefault(alias.type, aliases, new Set([...path, type.name]));
+    }
+    // A brand is an alternative name for the same value, so the first member that carries a default decides.
+    if (type.kind === "intersection") {
+        for (const member of type.members) {
+            const value = inheritedDefault(member, aliases, path);
+            if (value !== undefined) {
+                return value;
+            }
+        }
+    }
+    return undefined;
+}
+
+/** Fill each alias's `pgDefault` from the alias it names, unless it declares one itself, even an empty one. */
+function fillAliasDefaults(aliases: Map<string, SpecTypeAlias>): void {
+    for (const alias of aliases.values()) {
+        if (alias.tags.written.byName.has("pgDefault")) {
+            continue;
+        }
+        const inherited = inheritedDefault(alias.type, aliases, new Set([alias.name]));
+        if (inherited !== undefined) {
+            alias.tags.pgDefault = inherited;
+        }
+    }
+}
+
 /** Fill each alias's `pgType`; a union, array, or entity name stays unresolved. See docs/schema-generation.md. */
 function fillAliasStorageTypes(aliases: Map<string, SpecTypeAlias>): void {
     for (const alias of aliases.values()) {
@@ -1080,6 +1123,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
         aliases.set(name, alias);
     }
     fillAliasStorageTypes(aliases);
+    fillAliasDefaults(aliases);
 
     for (const sourceFile of project.getSourceFiles(sourceGlob)) {
         const filePath = sourceFile.getFilePath();
@@ -1097,15 +1141,23 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
                     const typeNode = property.getTypeNode();
+                    const type: SpecType = typeNode ? readType(typeNode) : { kind: "missing" };
                     // The primary key is an optional filter every entity has; a bare tag on a key is lint's to report.
                     if (tags.primaryKey && tags.queryFilter === undefined) {
                         tags.queryFilter = { required: false };
+                    }
+                    // An alias supplies the column default; a field tag overrides it, and a written empty one clears it.
+                    if (!tags.written.byName.has("pgDefault") && tags.foreignKey === undefined) {
+                        const inherited = inheritedDefault(type, aliases);
+                        if (inherited !== undefined) {
+                            tags.pgDefault = inherited;
+                        }
                     }
                     return {
                         name: property.getName(),
                         optional: property.hasQuestionToken(),
                         typeText: typeNode?.getText() ?? "",
-                        type: typeNode ? readType(typeNode) : { kind: "missing" },
+                        type,
                         location: locationOf(property),
                         tags,
                     };

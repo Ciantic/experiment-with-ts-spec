@@ -41,6 +41,14 @@ export type GUID = string;
 /**
  * @primitive
  * @pgType uuid
+ * @pgDefault uuidv7()
+ * @zod z.uuidv7()
+ */
+export type UUIDv7 = string;
+
+/**
+ * @primitive
+ * @pgType uuid
  * @zod z.uuid().brand<Name>()
  */
 export type BrandedId<Name extends string> = GUID & $brand<Name>;
@@ -1183,6 +1191,27 @@ export interface Thing {
 
         expect(code).toContain("    .partial({\n        source: true,\n    })");
         expect(code).toContain('export type ThingInsert = Insert<Thing, never, never, "source">;');
+    });
+
+    it("relaxes a key whose type supplies a default, so a create may omit it", () => {
+        const entity = `
+/**\n * @entity\n * A token.\n */
+export interface Thing {
+    /**
+     * The identifier.
+     *
+     * @primaryKey
+     */
+    id: UUIDv7;
+    /** A label. */
+    label: string;
+}
+`.trim();
+        const { files } = generate({ entities: { Thing: entity } });
+        const code = insertFile(files, "Thing");
+
+        expect(code).toContain("    .partial({\n        id: true,\n    })");
+        expect(code).toContain('export type ThingInsert = Insert<Thing, never, never, "id">;');
     });
 
     it("nests an `@inlined` branch as the target's insert schema", () => {

@@ -11,7 +11,7 @@ const keyOf = (row: Record<string, unknown>): SellerPrimaryKey => ({ id: row["id
 const keyName = (row: SellerUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 12;
+const PARAMETERS_PER_ROW = 13;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -29,6 +29,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const idPresent: boolean[] = [];
             const tenantIdValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const businessIdValues: Array<unknown> = [];
@@ -42,6 +43,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                idPresent.push(row.id !== undefined);
                 tenantIdValues.push(row.tenantId ?? null);
                 nameValues.push(row.name ?? null);
                 businessIdValues.push(row.businessId ?? null);
@@ -56,7 +58,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
             }
             const result = await tx.query(
                 'insert into "seller" as u ("id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "updatedAt", "version") select ' +
-                    'v."id", ' +
+                    'case when v."id#present" then v."id" else uuidv7() end, ' +
                     'v."tenantId", ' +
                     'v."name", ' +
                     'v."businessId", ' +
@@ -66,8 +68,8 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
                     'case when v."createdAt#present" then v."createdAt" else now() end, ' +
                     'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::timestamptz[], $9::bool[], $10::timestamptz[], $11::bool[], $12::int8[]) as v(' +
-                    '"id", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
+                    'from unnest($1::uuid[], $2::bool[], $3::uuid[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::timestamptz[], $10::bool[], $11::timestamptz[], $12::bool[], $13::int8[]) as v(' +
+                    '"id", "id#present", "tenantId", "name", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
                     'on conflict ("id") do update set ' +
                     '"tenantId" = excluded."tenantId", ' +
                     '"name" = excluded."name", ' +
@@ -79,7 +81,7 @@ export async function upsertSeller(db: SqlExecutor, rows: SellerUpsert[]): Promi
                     '"version" = u."version" + 1 ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
+                [idValues, idPresent, tenantIdValues, nameValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

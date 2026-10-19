@@ -1010,6 +1010,76 @@ describe("type-level tags", () => {
         expect(findings).toEqual([]);
     });
 
+    it("accepts a @pgDefault on a primitive, which every field of the type inherits", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType uuid
+             * @pgDefault uuidv7()
+             * @zod z.uuidv7()
+             */
+            export type UUIDv7 = string;`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("accepts an empty field @pgDefault that clears the type's default", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType uuid
+             * @pgDefault uuidv7()
+             * @zod z.uuidv7()
+             */
+            export type UUIDv7 = string;
+
+            /** @entity */
+            export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 * @pgDefault
+                 */
+                id: UUIDv7;
+            }`,
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports an optional field whose type supplies a default", () => {
+        const findings = lintSourceText(
+            `/**
+             * @primitive
+             * @pgType uuid
+             * @pgDefault uuidv7()
+             * @zod z.uuidv7()
+             */
+            export type UUIDv7 = string;
+
+            /** @entity */
+            export interface Thing {
+                /**
+                 * @fieldName ID
+                 * @widget text
+                 * @primaryKey
+                 */
+                id: UUIDv7;
+                /**
+                 * @fieldName Token
+                 * @widget text
+                 */
+                token?: UUIDv7;
+            }`,
+        );
+
+        expect(messages(findings)).toEqual([
+            "`token`: its type's @pgDefault makes its column `not null`, so the field is required; drop the `?`",
+        ]);
+    });
+
     it("reports a value on the @primitive marker", () => {
         const findings = lintSourceText(
             `/**

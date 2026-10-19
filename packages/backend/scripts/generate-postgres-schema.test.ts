@@ -27,6 +27,14 @@ export type GUID = string;
 
 /**
  * @primitive
+ * @pgType uuid
+ * @pgDefault uuidv7()
+ * @zod z.uuidv7()
+ */
+export type UUIDv7 = string;
+
+/**
+ * @primitive
  * @pgType decimal
  * @zod z.string()
  */
@@ -1581,6 +1589,72 @@ describe("generateSchema defaults", () => {
         const { sql } = generate({ entities: { Thing: "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: GUID; at: Date; }" } });
 
         expect(sql).not.toContain("default");
+    });
+
+    it("inherits a default from the field's type", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/** @entity */\nexport interface Thing {
+                    /** @primaryKey */
+                    id: UUIDv7;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"id" uuid not null default uuidv7()');
+    });
+
+    it("lets a field override the default its type supplies", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/** @entity */\nexport interface Thing {
+                    /**
+                     * @primaryKey
+                     * @pgDefault gen_random_uuid()
+                     */
+                    id: UUIDv7;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"id" uuid not null default gen_random_uuid()');
+    });
+
+    it("lets an empty field @pgDefault clear the default its type supplies", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/** @entity */\nexport interface Thing {
+                    /**
+                     * @primaryKey
+                     * @pgDefault
+                     */
+                    id: UUIDv7;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"id" uuid not null,');
+        expect(sql).not.toContain('"id" uuid not null default');
+    });
+
+    it("keeps a type's default off a foreign key, whose value comes from the row it references", () => {
+        const { sql } = generate({
+            entities: {
+                Owner: `/** @entity */\nexport interface Owner {
+                    /** @primaryKey */
+                    id: UUIDv7;
+                }`,
+                Thing: `/** @entity */\nexport interface Thing {
+                    /** @primaryKey */
+                    id: UUIDv7;
+                    /** @foreignKey Owner */
+                    ownerId: UUIDv7;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('"ownerId" uuid not null references "owner"("id")');
+        expect(sql).not.toContain('"ownerId" uuid not null default');
     });
 
     it("emits a default for @updatedAt and no trigger", () => {

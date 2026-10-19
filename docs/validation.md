@@ -238,7 +238,8 @@ A field is omitted when the database owns it, from either annotation:
   `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
   not a default.
 
-A `@pgDefault` column is deliberately absent from the omit list. A create may
+A `@pgDefault` column is deliberately absent from the omit list, whether the
+expression sits on the field or comes from its type. A create may
 supply it or leave it out; an omitted one writes the declared default, so the row
 gets the value the database would have filled. A *required* defaulted field is
 relaxed with `.partial()` so the schema agrees that omitting it is allowed. The

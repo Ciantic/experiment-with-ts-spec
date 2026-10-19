@@ -3,6 +3,7 @@
  *
  * @primitive
  * @pgType uuid
+ * @pgDefault uuidv7()
  * @zod z.uuidv7()
  */
 export type UUIDv7 = string;

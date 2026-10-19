@@ -906,6 +906,70 @@ export type AutoIncrement<Name extends string> = number & $brand<Name>;`,
     });
 });
 
+describe("alias defaults", () => {
+    /** A primitive that names the expression the database applies when a column of it is omitted. */
+    const UUIDV7 = `/**
+ * @primitive
+ * @pgType uuid
+ * @pgDefault uuidv7()
+ * @zod z.uuidv7()
+ */
+export type UUIDv7 = string;`;
+
+    /** The effective `pgDefault` of one field, through the aliases in the fixture. */
+    function fieldDefault(files: Record<string, string>, entity = "Thing", field = "id") {
+        const { interfaces } = parse(files);
+        return interfaces.get(entity)?.properties.find((property) => property.name === field)?.tags.pgDefault;
+    }
+
+    it("inherits a primitive's default through an intersection and an alias", () => {
+        expect(
+            fieldDefault({
+                "primitives.ts": `${UUIDV7}\nexport type ThingId = UUIDv7 & $brand<"ThingId">;`,
+                "Thing.ts": "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: ThingId;\n}",
+            }),
+        ).toBe("uuidv7()");
+    });
+
+    it("fills the default on the alias itself", () => {
+        const { aliases } = parse({
+            "primitives.ts": `${UUIDV7}\nexport type ThingId = UUIDv7 & $brand<"ThingId">;`,
+        });
+
+        expect(aliases.get("ThingId")?.tags.pgDefault).toBe("uuidv7()");
+    });
+
+    it("lets a field override the default its type supplies", () => {
+        expect(
+            fieldDefault({
+                "primitives.ts": UUIDV7,
+                "Thing.ts":
+                    "/** @entity */\nexport interface Thing {\n    /** @pgDefault gen_random_uuid() */\n    id: UUIDv7;\n}",
+            }),
+        ).toBe("gen_random_uuid()");
+    });
+
+    it("lets an empty field tag clear the default its type supplies", () => {
+        expect(
+            fieldDefault({
+                "primitives.ts": UUIDV7,
+                "Thing.ts": "/** @entity */\nexport interface Thing {\n    /** @pgDefault */\n    id: UUIDv7;\n}",
+            }),
+        ).toBeUndefined();
+    });
+
+    it("never inherits onto a foreign key, whose value is copied from another row", () => {
+        const files = {
+            "primitives.ts": UUIDV7,
+            "Thing.ts":
+                "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: UUIDv7;\n    /** @foreignKey Owner */\n    ownerId: UUIDv7;\n}",
+        };
+
+        expect(fieldDefault(files)).toBe("uuidv7()");
+        expect(fieldDefault(files, "Thing", "ownerId")).toBeUndefined();
+    });
+});
+
 describe("resolveType", () => {
     /** What the `Target` alias resolves to, with its siblings as the alias graph. */
     function resolution(text: string): TypeResolution {

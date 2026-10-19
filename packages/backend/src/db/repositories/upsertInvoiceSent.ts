@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): InvoiceSentPrimaryKey => ({ id: row["id"] as InvoiceSentPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 34;
+const PARAMETERS_PER_ROW = 35;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -26,6 +26,7 @@ export async function upsertInvoiceSent(db: SqlExecutor, rows: InvoiceSentUpsert
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const idPresent: boolean[] = [];
             const tenantIdValues: Array<unknown> = [];
             const invoiceIdValues: Array<unknown> = [];
             const sentAtValues: Array<unknown> = [];
@@ -61,6 +62,7 @@ export async function upsertInvoiceSent(db: SqlExecutor, rows: InvoiceSentUpsert
             const totalAmountValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                idPresent.push(row.id !== undefined);
                 tenantIdValues.push(row.tenantId ?? null);
                 invoiceIdValues.push(row.invoiceId ?? null);
                 sentAtValues.push(row.sentAt ?? null);
@@ -97,7 +99,7 @@ export async function upsertInvoiceSent(db: SqlExecutor, rows: InvoiceSentUpsert
             }
             const result = await tx.query(
                 'insert into "invoice_sent" ("id", "tenantId", "invoiceId", "sentAt", "number", "customerId", "customerTenantId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerTenantId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") select ' +
-                    'v."id", ' +
+                    'case when v."id#present" then v."id" else uuidv7() end, ' +
                     'v."tenantId", ' +
                     'v."invoiceId", ' +
                     'v."sentAt", ' +
@@ -131,8 +133,8 @@ export async function upsertInvoiceSent(db: SqlExecutor, rows: InvoiceSentUpsert
                     'v."netAmount", ' +
                     'v."taxAmount", ' +
                     'v."totalAmount" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::timestamptz[], $5::text[], $6::uuid[], $7::uuid[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::timestamptz[], $16::timestamptz[], $17::int8[], $18::uuid[], $19::uuid[], $20::text[], $21::text[], $22::text[], $23::text[], $24::text[], $25::timestamptz[], $26::timestamptz[], $27::int8[], $28::text[], $29::timestamptz[], $30::timestamptz[], $31::text[], $32::decimal[], $33::decimal[], $34::decimal[]) as v(' +
-                    '"id", "tenantId", "invoiceId", "sentAt", "number", "customerId", "customerTenantId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerTenantId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") ' +
+                    'from unnest($1::uuid[], $2::bool[], $3::uuid[], $4::uuid[], $5::timestamptz[], $6::text[], $7::uuid[], $8::uuid[], $9::text[], $10::text[], $11::text[], $12::text[], $13::text[], $14::text[], $15::text[], $16::timestamptz[], $17::timestamptz[], $18::int8[], $19::uuid[], $20::uuid[], $21::text[], $22::text[], $23::text[], $24::text[], $25::text[], $26::timestamptz[], $27::timestamptz[], $28::int8[], $29::text[], $30::timestamptz[], $31::timestamptz[], $32::text[], $33::decimal[], $34::decimal[], $35::decimal[]) as v(' +
+                    '"id", "id#present", "tenantId", "invoiceId", "sentAt", "number", "customerId", "customerTenantId", "customerName", "customerEmail", "customerAddress", "customerBusinessId", "customerEInvoiceAddress", "customerEInvoiceOperator", "customerLanguage", "customerCreatedAt", "customerUpdatedAt", "customerVersion", "sellerId", "sellerTenantId", "sellerName", "sellerBusinessId", "sellerEInvoiceAddress", "sellerEInvoiceOperator", "sellerLanguage", "sellerCreatedAt", "sellerUpdatedAt", "sellerVersion", "language", "issueDate", "dueDate", "notes", "netAmount", "taxAmount", "totalAmount") ' +
                     'on conflict ("id") do update set ' +
                     '"tenantId" = excluded."tenantId", ' +
                     '"invoiceId" = excluded."invoiceId", ' +
@@ -168,7 +170,7 @@ export async function upsertInvoiceSent(db: SqlExecutor, rows: InvoiceSentUpsert
                     '"taxAmount" = excluded."taxAmount", ' +
                     '"totalAmount" = excluded."totalAmount" ' +
                     'returning "invoice_sent"."id"',
-                [idValues, tenantIdValues, invoiceIdValues, sentAtValues, numberValues, customerIdValues, customerTenantIdValues, customerNameValues, customerEmailValues, customerAddressValues, customerBusinessIdValues, customerEInvoiceAddressValues, customerEInvoiceOperatorValues, customerLanguageValues, customerCreatedAtValues, customerUpdatedAtValues, customerVersionValues, sellerIdValues, sellerTenantIdValues, sellerNameValues, sellerBusinessIdValues, sellerEInvoiceAddressValues, sellerEInvoiceOperatorValues, sellerLanguageValues, sellerCreatedAtValues, sellerUpdatedAtValues, sellerVersionValues, languageValues, issueDateValues, dueDateValues, notesValues, netAmountValues, taxAmountValues, totalAmountValues],
+                [idValues, idPresent, tenantIdValues, invoiceIdValues, sentAtValues, numberValues, customerIdValues, customerTenantIdValues, customerNameValues, customerEmailValues, customerAddressValues, customerBusinessIdValues, customerEInvoiceAddressValues, customerEInvoiceOperatorValues, customerLanguageValues, customerCreatedAtValues, customerUpdatedAtValues, customerVersionValues, sellerIdValues, sellerTenantIdValues, sellerNameValues, sellerBusinessIdValues, sellerEInvoiceAddressValues, sellerEInvoiceOperatorValues, sellerLanguageValues, sellerCreatedAtValues, sellerUpdatedAtValues, sellerVersionValues, languageValues, issueDateValues, dueDateValues, notesValues, netAmountValues, taxAmountValues, totalAmountValues],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

@@ -5,7 +5,10 @@ import { invoiceSentRowSchema } from "../domain/invoiceSentRowSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const invoiceSentRowInsertSchema = invoiceSentRowSchema
+    .partial({
+        id: true,
+    })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceSentRowInsert = Insert<InvoiceSentRow, never, never, never>;
+export type InvoiceSentRowInsert = Insert<InvoiceSentRow, never, never, "id">;

@@ -11,6 +11,7 @@ export const invoiceRowInsertSchema = invoiceRowSchema
         totalAmount: true,
     })
     .partial({
+        id: true,
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -25,4 +26,4 @@ export const invoiceRowInsertSchema = invoiceRowSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceRowInsert = Insert<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount", "description" | "quantity" | "unit" | "unitPrice" | "taxRate", "createdAt" | "updatedAt" | "version">;
+export type InvoiceRowInsert = Insert<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount", "description" | "quantity" | "unit" | "unitPrice" | "taxRate", "id" | "createdAt" | "updatedAt" | "version">;

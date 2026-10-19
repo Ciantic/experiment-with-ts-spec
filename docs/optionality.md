@@ -18,6 +18,8 @@ the field:
 - `@createdAt` and `@updatedAt` — `default now()`, and a generated write falls
   back to it. See `docs/timestamps.md`.
 - `@pgDefault` — the expression fills the column when a statement omits it.
+  The expression may come from the field's type, so every `UUIDv7` column has a
+  default unless its field overrides or clears it. See `docs/primitives.md`.
 - `@version` — `default 0` supplies the first revision. See `docs/versioning.md`.
 
 The column is `not null` because a value is guaranteed, so the field is

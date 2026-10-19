@@ -14,6 +14,7 @@ export const invoiceInsertSchema = invoiceSchema
         rows: true,
     })
     .partial({
+        id: true,
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -31,4 +32,4 @@ export const invoiceInsertSchema = invoiceSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceInsert = Insert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "createdAt" | "updatedAt" | "version">;
+export type InvoiceInsert = Insert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "id" | "createdAt" | "updatedAt" | "version">;

@@ -6,6 +6,7 @@ import { emailSchema } from "../domain/emailSchema.ts";
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const emailInsertSchema = emailSchema
     .partial({
+        id: true,
         status: true,
         attempts: true,
         maxAttempts: true,
@@ -20,4 +21,4 @@ export const emailInsertSchema = emailSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type EmailInsert = Insert<Email, never, "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt" | "version">;
+export type EmailInsert = Insert<Email, never, "lastError" | "sentAt", "id" | "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt" | "version">;

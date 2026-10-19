@@ -84,10 +84,13 @@ Unresolvable types are reported as diagnostics and no SQL is produced.
 - `@pgDefault <expression>` appends `default <expression>`. The column is `not null`,
   so the field is required. The repository generators name the column in
   their statements, and a row that omits it writes the declared default, so that
-  row gets the value the database would have filled. It may accompany `@computed`,
-  where the default applies to the insert path and the trigger to every write.
-  A defaulted `@version` behaves the same way: a create may claim one or take
-  `0`. See `docs/optionality.md`.
+  row gets the value the database would have filled. A field inherits the
+  expression from its type's `@pgDefault` unless it declares its own; a field
+  tag overrides it, and an empty one clears it. A `@foreignKey` field never
+  inherits, because its value is copied from another row. It may accompany
+  `@computed`, where the default applies to the insert path and the trigger to
+  every write. A defaulted `@version` behaves the same way: a create may claim
+  one or take `0`. See `docs/optionality.md`.
 - `@createdAt`/`@updatedAt` append `default now()`. A generated write supplies a
   value or falls back to the default; no trigger assigns either clock. See
   `docs/timestamps.md`.

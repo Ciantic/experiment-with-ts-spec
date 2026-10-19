@@ -7,7 +7,7 @@ file under `packages/spec/src/`. See "Discovery" in `docs/spec-annotations.md`.
 ## Annotations
 
 Every alias in `packages/spec/src/primitives/` carries three type-level tags,
-described in `docs/spec-annotations.md`:
+described in `docs/spec-annotations.md`, and may carry a fourth:
 
 ```typescript
 /**
@@ -31,6 +31,10 @@ export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;
   consumes; the schema is never evaluated in this package. It is what gives a
   brand that exists only in the type system a runtime counterpart that can
   validate a value at the boundary.
+- `@pgDefault` is optional. It names the expression the database uses when a
+  column of this type is omitted, so a field does not repeat `uuidv7()` on every
+  identifier. A field's own `@pgDefault` overrides it, an empty one clears it, and
+  a `@foreignKey` field never inherits it. See `docs/spec-annotations.md`.
 
 Zod is a **type-only** dependency: `Brand` — the spec's alias for Zod's `$brand`
 — is imported with `import type`, so it is erased at runtime and `packages/spec/`

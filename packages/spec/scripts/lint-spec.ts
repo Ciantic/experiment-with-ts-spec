@@ -24,6 +24,7 @@ import {
     resolveType,
     assignsColumn,
     hasTriggerHeader,
+    inheritedDefault,
     parseTrigger,
     parseTriggerHeader,
     triggerHeaderText,
@@ -373,6 +374,10 @@ interface FieldTags {
     updatedAt: SpecTag | undefined;
     deletedAt: SpecTag | undefined;
     pgDefault: SpecTag | undefined;
+    /** The default the field's type supplies through an alias, before any field tag. */
+    inheritedDefault: string | undefined;
+    /** The default the column gets: the field's tag, else the inherited one; undefined when the field clears it. */
+    effectiveDefault: string | undefined;
     pgAutoIncrement: SpecTag | undefined;
     branches: BranchTag[];
     primaryKey: SpecTag | undefined;
@@ -389,7 +394,10 @@ interface FieldTags {
 }
 
 /** Resolve the tags a field's rules share: the first occurrence of each, plus the type shape. */
-function resolveFieldTags(property: SpecProperty): FieldTags {
+function resolveFieldTags(
+    property: SpecProperty,
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
+): FieldTags {
     const byName = property.tags.written.byName;
     const first = (name: string) => (byName.get(name) ?? [])[0];
     const branch = (name: string): BranchTag[] => {
@@ -409,6 +417,8 @@ function resolveFieldTags(property: SpecProperty): FieldTags {
         updatedAt: first("updatedAt"),
         deletedAt: first("deletedAt"),
         pgDefault: first("pgDefault"),
+        inheritedDefault: first("foreignKey") === undefined ? inheritedDefault(property.type, aliases) : undefined,
+        effectiveDefault: property.tags.pgDefault,
         pgAutoIncrement: first("pgAutoIncrement"),
         branches: [...branch("relation"), ...branch("children"), ...branch("inlined")],
         primaryKey: first("primaryKey"),
@@ -633,8 +643,13 @@ function lintDeletedAt(tags: FieldTags, report: Report): void {
 
 /** `@pgDefault` carries the expression the database applies when the column is omitted. */
 function lintDefaultTag(tags: FieldTags, report: Report): void {
-    if (tags.pgDefault && !(tags.pgDefault.value ?? "")) {
-        report("@pgDefault is missing its expression", tags.pgDefault);
+    const tag = tags.pgDefault;
+    if (!tag) {
+        return;
+    }
+    // An empty tag clears the default the field's type supplies; with nothing to clear it says nothing.
+    if (!(tag.value ?? "").trim() && tags.inheritedDefault === undefined) {
+        report("@pgDefault is missing its expression", tag);
     }
 }
 
@@ -658,7 +673,7 @@ function lintAutoIncrement(tags: FieldTags, report: Report): void {
     // Every one of these also owns the column's insert value, and two owners cannot agree.
     for (const [name, owner] of [
         ["computed", tags.computed],
-        ["pgDefault", tags.pgDefault],
+        ["pgDefault", tags.pgDefault ?? (tags.effectiveDefault !== undefined ? tag : undefined)],
         ["version", tags.version],
         ["createdAt", tags.createdAt],
         ["updatedAt", tags.updatedAt],
@@ -852,6 +867,10 @@ function lintForcedNotNull(tags: FieldTags, report: Report): void {
             return;
         }
     }
+    // A default the field's type supplies makes the column `not null` just as a written tag does.
+    if (tags.effectiveDefault !== undefined) {
+        report("its type's @pgDefault makes its column `not null`, so the field is required; drop the `?`");
+    }
 }
 
 /** `@queryOrderBy` whitelists an ordering key; `default asc|desc` also names the default. */
@@ -897,6 +916,7 @@ function lintWhere(tags: FieldTags, report: Report): void {
 /** Check one field: its tag vocabulary, then each tag family's rules. */
 function lintProperty(
     property: SpecProperty,
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
     findings: Diagnostic[],
 ): void {
     const fieldName = property.name;
@@ -905,7 +925,7 @@ function lintProperty(
         findings.push({ filePath, line: tag?.line ?? property.location.line, message: `\`${fieldName}\`: ${message}` });
     };
 
-    const tags = resolveFieldTags(property);
+    const tags = resolveFieldTags(property, aliases);
 
     // The call order is the order the findings are emitted in.
     lintKnownTags(tags, report);
@@ -929,9 +949,13 @@ function lintProperty(
 }
 
 /** Lint each field of an entity. */
-function lintFields(spec: SpecInterface, findings: Diagnostic[]): void {
+function lintFields(
+    spec: SpecInterface,
+    aliases: ReadonlyMap<string, SpecTypeAlias>,
+    findings: Diagnostic[],
+): void {
     for (const property of spec.properties) {
-        lintProperty(property, findings);
+        lintProperty(property, aliases, findings);
     }
 }
 
@@ -1106,7 +1130,7 @@ function lintModel(spec: SpecModel, whole: boolean): { findings: Diagnostic[]; p
         if (whole) {
             lintSurface(entity, findings);
         }
-        lintFields(entity, findings);
+        lintFields(entity, spec.aliases, findings);
         properties += entity.properties.length;
     }
 

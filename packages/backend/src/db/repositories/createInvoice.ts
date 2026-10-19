@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 16;
+const PARAMETERS_PER_ROW = 17;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -26,6 +26,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
+            const idPresent: boolean[] = [];
             const tenantIdValues: Array<unknown> = [];
             const numberValues: Array<unknown> = [];
             const customerIdValues: Array<unknown> = [];
@@ -43,6 +44,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
             const versionPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
+                idPresent.push(row.id !== undefined);
                 tenantIdValues.push(row.tenantId ?? null);
                 numberValues.push(row.number ?? null);
                 customerIdValues.push(row.customerId ?? null);
@@ -61,7 +63,7 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
             }
             const result = await tx.query(
                 'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "createdAt", "updatedAt", "deletedAt", "version") select ' +
-                    'v."id", ' +
+                    'case when v."id#present" then v."id" else uuidv7() end, ' +
                     'v."tenantId", ' +
                     'v."number", ' +
                     'v."customerId", ' +
@@ -74,10 +76,10 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                     'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."deletedAt", ' +
                     'case when v."version#present" then v."version" else 0 end ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[], $10::timestamptz[], $11::bool[], $12::timestamptz[], $13::bool[], $14::timestamptz[], $15::int8[], $16::bool[]) as v(' +
-                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "deletedAt", "version", "version#present") ' +
+                    'from unnest($1::uuid[], $2::bool[], $3::uuid[], $4::text[], $5::uuid[], $6::uuid[], $7::text[], $8::timestamptz[], $9::timestamptz[], $10::text[], $11::timestamptz[], $12::bool[], $13::timestamptz[], $14::bool[], $15::timestamptz[], $16::int8[], $17::bool[]) as v(' +
+                    '"id", "id#present", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "deletedAt", "version", "version#present") ' +
                     'returning "invoice"."id"',
-                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, deletedAtValues, versionValues, versionPresent],
+                [idValues, idPresent, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, deletedAtValues, versionValues, versionPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {
