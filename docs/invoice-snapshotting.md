@@ -45,8 +45,8 @@ not have yet is optional.
 
 Optionality is nullability, so the optional draft columns are nullable in
 `invoice` and `invoice_row`; `id` stays `not null` as the primary key, and
-`createdAt`/`updatedAt`/`version` stay `not null` because the database fills them
-even though no write carries them.
+`createdAt`/`updatedAt`/`version` stay `not null` because a write always supplies
+them, falling back to the column default when it omits one.
 
 Two consequences worth naming:
 

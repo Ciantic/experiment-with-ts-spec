@@ -11,7 +11,7 @@ const keyOf = (row: Record<string, unknown>): EmailPrimaryKey => ({ id: row["id"
 const keyName = (row: EmailUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 15;
+const PARAMETERS_PER_ROW = 19;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -42,6 +42,10 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
             const maxAttemptsPresent: boolean[] = [];
             const lastErrorValues: Array<unknown> = [];
             const sentAtValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
@@ -58,10 +62,14 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                 maxAttemptsPresent.push(row.maxAttempts !== undefined);
                 lastErrorValues.push(row.lastError ?? null);
                 sentAtValues.push(row.sentAt ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "email" as u ("id", "tenantId", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt", "version") select ' +
+                'insert into "email" as u ("id", "tenantId", "from", "to", "subject", "body", "status", "attempts", "maxAttempts", "lastError", "sentAt", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."from", ' +
@@ -73,9 +81,11 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                     'case when v."maxAttempts#present" then v."maxAttempts" else 5 end, ' +
                     'v."lastError", ' +
                     'v."sentAt", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bool[], $9::int8[], $10::bool[], $11::int8[], $12::bool[], $13::text[], $14::timestamptz[], $15::int8[]) as v(' +
-                    '"id", "tenantId", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bool[], $9::int8[], $10::bool[], $11::int8[], $12::bool[], $13::text[], $14::timestamptz[], $15::timestamptz[], $16::bool[], $17::timestamptz[], $18::bool[], $19::int8[]) as v(' +
+                    '"id", "tenantId", "from", "to", "subject", "body", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "sentAt", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
                     'on conflict ("id") do update set ' +
                     '"tenantId" = excluded."tenantId", ' +
                     '"from" = excluded."from", ' +
@@ -86,10 +96,12 @@ export async function upsertEmail(db: SqlExecutor, rows: EmailUpsert[]): Promise
                     '"attempts" = excluded."attempts", ' +
                     '"maxAttempts" = excluded."maxAttempts", ' +
                     '"lastError" = excluded."lastError", ' +
-                    '"sentAt" = excluded."sentAt" ' +
+                    '"sentAt" = excluded."sentAt", ' +
+                    '"updatedAt" = excluded."updatedAt", ' +
+                    '"version" = u."version" + 1 ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, tenantIdValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues, versionValues],
+                [idValues, tenantIdValues, fromValues, toValues, subjectValues, bodyValues, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, sentAtValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

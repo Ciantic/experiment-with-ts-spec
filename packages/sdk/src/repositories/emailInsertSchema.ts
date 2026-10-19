@@ -5,15 +5,13 @@ import { emailSchema } from "../domain/emailSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const emailInsertSchema = emailSchema
-    .omit({
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .partial({
         status: true,
         attempts: true,
         maxAttempts: true,
+        createdAt: true,
+        updatedAt: true,
+        version: true,
     })
     .extend({
         lastError: emailSchema.shape.lastError.nullable(),
@@ -22,4 +20,4 @@ export const emailInsertSchema = emailSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type EmailInsert = Insert<Email, "createdAt" | "updatedAt" | "version", "lastError" | "sentAt", "status" | "attempts" | "maxAttempts">;
+export type EmailInsert = Insert<Email, never, "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt" | "version">;

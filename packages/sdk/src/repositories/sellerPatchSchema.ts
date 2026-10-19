@@ -7,7 +7,6 @@ import { sellerSchema } from "../domain/sellerSchema.ts";
 export const sellerPatchSchema = sellerSchema
     .omit({
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -22,4 +21,4 @@ export const sellerPatchSchema = sellerSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type SellerPatch = Patch<Seller, "createdAt" | "updatedAt", "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language">;
+export type SellerPatch = Patch<Seller, "createdAt", "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language">;

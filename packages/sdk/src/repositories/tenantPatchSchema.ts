@@ -7,7 +7,6 @@ import { tenantSchema } from "../domain/tenantSchema.ts";
 export const tenantPatchSchema = tenantSchema
     .omit({
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .required({
@@ -17,4 +16,4 @@ export const tenantPatchSchema = tenantSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type TenantPatch = Patch<Tenant, "createdAt" | "updatedAt", "id" | "version", never>;
+export type TenantPatch = Patch<Tenant, "createdAt", "id" | "version", never>;

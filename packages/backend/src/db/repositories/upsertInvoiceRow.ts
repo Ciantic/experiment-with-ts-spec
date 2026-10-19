@@ -11,7 +11,7 @@ const keyOf = (row: Record<string, unknown>): InvoiceRowPrimaryKey => ({ id: row
 const keyName = (row: InvoiceRowUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 9;
+const PARAMETERS_PER_ROW = 13;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -36,6 +36,10 @@ export async function upsertInvoiceRow(db: SqlExecutor, rows: InvoiceRowUpsert[]
             const unitValues: Array<unknown> = [];
             const unitPriceValues: Array<unknown> = [];
             const taxRateValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
@@ -46,10 +50,14 @@ export async function upsertInvoiceRow(db: SqlExecutor, rows: InvoiceRowUpsert[]
                 unitValues.push(row.unit ?? null);
                 unitPriceValues.push(row.unitPrice ?? null);
                 taxRateValues.push(row.taxRate ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "invoice_row" as u ("id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "version") select ' +
+                'insert into "invoice_row" as u ("id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."invoiceId", ' +
@@ -58,9 +66,11 @@ export async function upsertInvoiceRow(db: SqlExecutor, rows: InvoiceRowUpsert[]
                     'v."unit", ' +
                     'v."unitPrice", ' +
                     'v."taxRate", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::decimal[], $6::text[], $7::decimal[], $8::decimal[], $9::int8[]) as v(' +
-                    '"id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::decimal[], $6::text[], $7::decimal[], $8::decimal[], $9::timestamptz[], $10::bool[], $11::timestamptz[], $12::bool[], $13::int8[]) as v(' +
+                    '"id", "tenantId", "invoiceId", "description", "quantity", "unit", "unitPrice", "taxRate", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
                     'on conflict ("id") do update set ' +
                     '"tenantId" = excluded."tenantId", ' +
                     '"invoiceId" = excluded."invoiceId", ' +
@@ -68,10 +78,12 @@ export async function upsertInvoiceRow(db: SqlExecutor, rows: InvoiceRowUpsert[]
                     '"quantity" = excluded."quantity", ' +
                     '"unit" = excluded."unit", ' +
                     '"unitPrice" = excluded."unitPrice", ' +
-                    '"taxRate" = excluded."taxRate" ' +
+                    '"taxRate" = excluded."taxRate", ' +
+                    '"updatedAt" = excluded."updatedAt", ' +
+                    '"version" = u."version" + 1 ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, tenantIdValues, invoiceIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues, versionValues],
+                [idValues, tenantIdValues, invoiceIdValues, descriptionValues, quantityValues, unitValues, unitPriceValues, taxRateValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

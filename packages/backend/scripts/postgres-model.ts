@@ -60,8 +60,12 @@ export interface Column {
     identity?: boolean;
     /** A virtual generated column's expression, written verbatim without `NEW.`; the database owns the value. */
     generatedExpression?: string;
-    /** An optimistic-lock column: omitted on insert, written on update as the precondition. See docs/versioning.md. */
+    /** An optimistic-lock column: written on insert, compared on update, and incremented by the statement. See docs/versioning.md. */
     version?: boolean;
+    /** A creation clock: written on insert, and never assigned by a patch or an upsert's conflict path. */
+    setOnce?: boolean;
+    /** What a patch falls back to when it omits the column, e.g. `now()` for an update clock. */
+    refresh?: string;
     /** An equality filter of the generated `query` read; `required` forces it and `default=<value>` fills it in. See docs/queries.md. */
     queryFilter?: { required: boolean; default?: FilterDefault };
     /** The field is an ordering key; `default` makes it the entity's default ordering. See docs/queries.md. */
@@ -400,6 +404,12 @@ function addScalarColumn(
     if (tags.version) {
         column.version = true;
     }
+    if (tags.createdAt) {
+        column.setOnce = true;
+    }
+    if (tags.updatedAt) {
+        column.refresh = "now()";
+    }
 
     if (foreignKey !== undefined && foreignKeyTable !== undefined) {
         const targetKey = context.primaryKeyFields(foreignKey.entity);
@@ -449,9 +459,6 @@ function addScalarColumn(
                 stripSemicolon(trigger.statement) + ";",
             );
         }
-    }
-    if (tags.updatedAt) {
-        triggerOn(table, "before", ["insert", "update"], "row").statements.push(`NEW.${quote(fieldName)} := now();`);
     }
 }
 

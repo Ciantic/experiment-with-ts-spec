@@ -463,17 +463,17 @@ describe("generateRepositoryEntity", () => {
         expect(files.get(join("repositories", "index.ts"))).not.toContain("keylessPrimaryKeySchema");
     });
 
-    it("keeps the version a create omits, and keeps the create's relaxed fields relaxed", () => {
+    it("relaxes the version a create may omit, while an upsert requires it", () => {
         const { files } = generate({ entities: { Revision: REVISION } });
         const insert = insertFile(files, "Revision");
         const upsert = upsertFile(files, "Revision");
 
-        // A create leaves the version and the status to their defaults.
-        expect(insert).toContain("    .omit({\n        version: true,\n    })");
-        expect(insert).toContain('export type RevisionInsert = Insert<Revision, "version", never, "status">;');
+        // A create writes the version when supplied and falls back to its default.
+        expect(insert).toContain("    .partial({\n        status: true,\n        version: true,\n    })");
+        expect(insert).toContain('export type RevisionInsert = Insert<Revision, never, never, "status" | "version">;');
         // An upsert claims the version, and still lets a caller omit the field the database defaults.
-        expect(upsert).not.toContain("        version: true,");
         expect(upsert).toContain("    .partial({\n        status: true,\n    })");
+        expect(upsert).not.toContain("        version: true,");
         expect(upsert).toContain('export type RevisionUpsert = Upsert<Revision, never, "id" | "version", never, "status">;');
         expect(upsert).toContain('import type { Upsert } from "../upsert.ts";');
         expect(upsert).toContain("plus the `@version` it claims");
@@ -1382,10 +1382,11 @@ describe("insert schemas over a nullable column", () => {
         expect(noteInsert()?.safeParse({ id: "n1", text: "kept" }).success).toBe(true);
     });
 
-    it("refuses null for a column that cannot hold one, and a field a create does not write", () => {
+    it("refuses null for a column that cannot hold one, and accepts a supplied version", () => {
         // `status` is required with a default, so it is relaxed but not nullable.
         expect(noteInsert()?.safeParse({ id: "n1", status: null }).success).toBe(false);
-        // The version is the create's to leave out, so the schema never accepts it.
-        expect(noteInsert()?.safeParse({ id: "n1", version: 0n }).success).toBe(false);
+        // The version is the create's to leave out or claim, so both requests are valid.
+        expect(noteInsert()?.safeParse({ id: "n1" }).success).toBe(true);
+        expect(noteInsert()?.safeParse({ id: "n1", version: 0n }).success).toBe(true);
     });
 });

@@ -161,7 +161,6 @@ export const invoicePatchSchema = invoiceSchema
         totalAmount: true,
         rows: true,
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -175,10 +174,12 @@ export const invoicePatchSchema = invoiceSchema
     .strict();
 ```
 
-The omit list is a create's, less the version. That one exception is the whole
-difference: a create must not carry the precondition, a patch must. So a patch
-rejects the same branches, clock fields, and derivable values a create does, and
-`.strict()` turns a key the update would silently ignore into a 400.
+The omit list is a create's, less the version and plus `createdAt`. The version
+is the whole exception: a create carries the precondition only when it supplies
+one, a patch must carry it. `createdAt` is absent from the patch because a patch
+never writes a creation clock; `updatedAt` is present, so a patch may override
+the refresh. So a patch rejects the same branches and derivable values a create
+does, and `.strict()` turns a key the update would silently ignore into a 400.
 
 The lists are `omittedFromPatch` and `nullablePatchProperties`
 (`packages/spec/scripts/spec-model.ts`), and the `<Entity>Patch` type is rendered
@@ -195,11 +196,11 @@ the list: a patch may override a default, exactly as a create may.
 ## Insert schemas
 
 `<name>InsertSchema` is the schema's `.omit()` of everything a create does not
-write, `.partial()` for the defaulted fields it may leave out, and `.extend()` for
-the nullable columns it may send as `null`, made `.strict()`. It mirrors the
-repository's insert contract (`docs/repositories.md`): a `create` writes the
-columns the database does not own, and a key the schema rejects is a 400 rather
-than a field that is silently dropped on the way to the SQL.
+write, `.partial()` for the fields that fall back to a column default, and
+`.extend()` for the nullable columns it may send as `null`, made `.strict()`. It
+mirrors the repository's insert contract (`docs/repositories.md`): a `create`
+writes the columns the database does not own, and a key the schema rejects is a
+400 rather than a field that is silently dropped on the way to the SQL.
 
 ```typescript
 export const invoiceInsertSchema = invoiceSchema
@@ -210,6 +211,8 @@ export const invoiceInsertSchema = invoiceSchema
         taxAmount: true,
         totalAmount: true,
         rows: true,
+    })
+    .partial({
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -225,11 +228,10 @@ A field is omitted when the database owns it, from either annotation:
 
 - **A branch** — a `@relation` or a `@children` collection — is not a column, so
   a create cannot write it. `customer`, `seller`, and `rows` are omitted.
-- **A clock field, a virtual generated column, an `@pgAutoIncrement` key, and a
-  defaulted `@version`** are the database's own on insert: the two timestamps
-  carry `default now()`, `@pgVirtual` is generated always, the identity column is
-  filled by its sequence, and a version's default *is* its first revision. The
-  assigned key is the one a create answers with (`docs/auto-increment.md`).
+- **A virtual generated column and an `@pgAutoIncrement` key** are the
+  database's own: `@pgVirtual` is generated always, and the identity column is
+  filled by its sequence. The assigned key is the one a create answers with
+  (`docs/auto-increment.md`). `@pgVirtual` is omitted whether nullable or not.
 - **A stored computation** is left to its mechanism to derive, but only while the
   column is optional. A required one has no default and no nullable column, so the
   insert has to carry it: `InvoiceSentRow.netAmount` and its siblings stay, while
@@ -239,7 +241,9 @@ A field is omitted when the database owns it, from either annotation:
 A `@pgDefault` column is deliberately absent from the omit list. A create may
 supply it or leave it out; an omitted one writes the declared default, so the row
 gets the value the database would have filled. A *required* defaulted field is
-relaxed with `.partial()` so the schema agrees that omitting it is allowed.
+relaxed with `.partial()` so the schema agrees that omitting it is allowed. The
+clock tags and a defaulted `@version` follow the same rule: a create may claim a
+historical value, or omit the field and take `now()` / `0`.
 
 An `@inlined` field is the exception: it is a snapshot of another entity, so a
 create still writes it, nested as that entity's own insert schema. `InvoiceSent`
@@ -249,16 +253,16 @@ columns.
 
 A nullable column also accepts `null`, from `nullablePatchProperties`, so the
 schema widens exactly where a patch and an upsert do. The key is not a nullable
-field, and a version is left out of a create entirely, so neither is widened; nor
-is a column that cannot hold a null. Omitting the field and sending `null` are one
-request for a create, since a nullable column has no default to fall back on and
-either writes a null.
+field, and neither a version nor a clock is widened, so none of them takes
+`null`; nor is a column that cannot hold a null. Omitting the field and sending
+`null` are one request for a create, since a nullable column has no default to
+fall back on and either writes a null.
 
 The repository's `create` takes the same field set, as the `<Entity>Insert` type
 imported from this package, and its `insert` names exactly those columns
 (`docs/repositories.md`). The type is built by `Insert`
-(`packages/sdk/src/insert.ts`), which relaxes the create's `@pgDefault`
-fields and widens its nullable ones, so the type a caller passes, the schema that
+(`packages/sdk/src/insert.ts`), which relaxes the fields with a column default
+and widens its nullable ones, so the type a caller passes, the schema that
 validates it, and the statement that runs all carry one set of fields, and a field
 added to the spec narrows all three at once.
 
@@ -273,8 +277,11 @@ export const invoiceUpsertSchema = invoiceSchema
         customer: true,
         seller: true,
         netAmount: true,
+        taxAmount: true,
         totalAmount: true,
         rows: true,
+    })
+    .partial({
         createdAt: true,
         updatedAt: true,
     })
@@ -284,28 +291,30 @@ export const invoiceUpsertSchema = invoiceSchema
     })
     .strict();
 
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | …, "id" | "version", "number" | "notes" | …, never>;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | …, "id" | "version", "number" | "notes" | …, "createdAt" | "updatedAt">;
 ```
 
 The omit list is the create's, less everything a create leaves to the database
 that the caller has to name: the `@version` field, and an `@pgAutoIncrement` key
 (`docs/repositories.md`, `docs/versioning.md`, `docs/auto-increment.md`).
 Everything else follows the
-create: the same branches, clock fields, and derivable values are absent, the
-same `@inlined` branches nest as the target's own insert schema, and a required
-`@pgDefault` field is relaxed with the same `.partial()`.
+create: the same branches and derivable values are absent, the same `@inlined`
+branches nest as the target's own insert schema, and a defaulted field is relaxed
+with the same `.partial()` — except the version, which the upsert always claims
+and therefore requires.
 
 An entity with neither a version nor an assigned key therefore has two identical
 field sets, and the modules differ only in the doc their schema and type carry.
 
 The one thing the upsert adds is the version: every other field set is the
-create's, including the nullable set `nullablePatchProperties` widens. A nullable
-column therefore accepts `null` exactly where a patch and a create do — the key and
-the version stay locked, and a column that cannot hold a null is not widened. The
-type is built by `Upsert` (`packages/sdk/src/upsert.ts`), which is `Patch`'s
-sibling and not `Patch` itself: a patch makes every field optional, while an
-upsert must still require the fields a create requires, so the helper relaxes
-only the create's `@pgDefault` fields.
+create's, including the relaxed set `defaultedInsertProperties` names and the
+nullable set `nullablePatchProperties` widens. A nullable column therefore accepts
+`null` exactly where a patch and a create do — the key and the version stay
+locked, and a column that cannot hold a null is not widened. The type is built by
+`Upsert` (`packages/sdk/src/upsert.ts`), which is `Patch`'s sibling and not
+`Patch` itself: a patch makes every field optional, while an upsert must still
+require the fields a create requires, so the helper relaxes only the create's
+defaulted fields and keeps the version required.
 
 ## Primary key schema and type
 

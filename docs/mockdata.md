@@ -31,10 +31,10 @@ with. A row must also satisfy the constraints it is inserted under: its
 foreign key refuses a pair that does not exist (`docs/tenancy.md`). Computed
 values — the invoice aggregates and the row amounts — are left
 out, because their fields are optional and the triggers fill them. The
-database-managed `createdAt`, `updatedAt`, and `version` are declared, since the
-entity requires them, but the repository omits those columns on insert and the
-defaults fill them. An `@pgAutoIncrement` key is declared the same way: the
-identity sequence assigns the stored value, not the row
+`createdAt`, `updatedAt`, and `version` values are declared and stored as
+written: the generated insert carries them, so a sample row seeds the instant
+and revision it names. An `@pgAutoIncrement` key is the exception: it is
+declared, but the identity sequence assigns the stored value, not the row
 (`docs/auto-increment.md`). See `docs/optionality.md`.
 
 ## Running the server

@@ -5,11 +5,11 @@ import { tenantSchema } from "../domain/tenantSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const tenantUpsertSchema = tenantSchema
-    .omit({
+    .partial({
         createdAt: true,
         updatedAt: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type TenantUpsert = Upsert<Tenant, "createdAt" | "updatedAt", "id" | "version", never, never>;
+export type TenantUpsert = Upsert<Tenant, never, "id" | "version", never, "createdAt" | "updatedAt">;

@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id"] as TenantPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 2;
+const PARAMETERS_PER_ROW = 8;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -27,18 +27,33 @@ export async function createTenant(db: SqlExecutor, rows: TenantInsert[]): Promi
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
+            const versionValues: Array<unknown> = [];
+            const versionPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 nameValues.push(row.name ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
+                versionValues.push(row.version ?? null);
+                versionPresent.push(row.version !== undefined);
             }
             const result = await tx.query(
-                'insert into "tenant" ("id", "name") select ' +
+                'insert into "tenant" ("id", "name", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
-                    'v."name" ' +
-                    'from unnest($1::uuid[], $2::text[]) as v(' +
-                    '"id", "name") ' +
+                    'v."name", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    'case when v."version#present" then v."version" else 0 end ' +
+                    'from unnest($1::uuid[], $2::text[], $3::timestamptz[], $4::bool[], $5::timestamptz[], $6::bool[], $7::int8[], $8::bool[]) as v(' +
+                    '"id", "name", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version", "version#present") ' +
                     'returning "tenant"."id"',
-                [idValues, nameValues],
+                [idValues, nameValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues, versionPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

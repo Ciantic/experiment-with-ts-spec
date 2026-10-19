@@ -26,8 +26,8 @@ error the client raises when it cannot classify a response.
 | `SavepointOptionsError` | `savepoint-options` | 400 | a nested boundary is asked for transaction options |
 | `HttpError` | `http` | response's status | the SDK cannot classify a non-2xx body |
 
-`ConflictError` carries the SQLSTATE `"40001"`, the code the version trigger
-raises, so a repository conflict and a driver conflict reach the router as the
+`ConflictError` carries the SQLSTATE `"40001"`, the code clients already treat as
+retriable, so a repository conflict and a driver conflict reach the router as the
 same `409`. `NoMatchingRowError` shares the code because both ways of matching no
 row take the same recovery: re-read, then retry (`docs/versioning.md`).
 `HttpError` lives in the SDK, not in the shared module: it is only what the

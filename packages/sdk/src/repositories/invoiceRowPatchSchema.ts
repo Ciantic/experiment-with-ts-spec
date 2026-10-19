@@ -10,7 +10,6 @@ export const invoiceRowPatchSchema = invoiceRowSchema
         taxAmount: true,
         totalAmount: true,
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -27,4 +26,4 @@ export const invoiceRowPatchSchema = invoiceRowSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type InvoiceRowPatch = Patch<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount" | "createdAt" | "updatedAt", "id" | "version", "description" | "quantity" | "unit" | "unitPrice" | "taxRate">;
+export type InvoiceRowPatch = Patch<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount" | "createdAt", "id" | "version", "description" | "quantity" | "unit" | "unitPrice" | "taxRate">;

@@ -92,7 +92,7 @@ export class QueryError extends AppError {
     }
 }
 
-/** A write that matched fewer rows than the call addressed; the same SQLSTATE the version trigger raises. */
+/** A write that matched fewer rows than the call addressed; the SQLSTATE clients already treat as retriable. */
 export class ConflictError extends AppError {
     protected constructor(kind: string, message: string, options: AppErrorOptions = {}) {
         super(message, { kind, status: 409, code: "40001" }, options);

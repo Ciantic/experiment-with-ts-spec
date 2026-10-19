@@ -88,7 +88,7 @@ a patch takes `<entity>PatchSchema`, mirroring the repository signatures exactly
 (`docs/repositories.md`). An upsert takes `<entity>UpsertSchema` — the create's
 field set plus the version it claims — and is a `PUT`, since replacing a row
 whole is idempotent: the same body sent twice leaves the row in the same state,
-except for the counter the trigger moves. A delete needs only the key, so it
+except for the counter the statement increments. A delete needs only the key, so it
 takes `<entity>PrimaryKeySchema`: the entity projected to its `@primaryKey`
 fields — one per column of a composite key — made strict so a key the statement
 ignores is a 400 (`docs/validation.md`).
@@ -306,11 +306,12 @@ No mode reaches the statement unvalidated.
   not implemented".
 - **A create takes only what it writes.** `<entity>InsertSchema` carries the
   columns the database does not own, so `id` and the `@computed` fields a client
-  must not choose are absent and a stray one is a 400; a `@pgDefault` field is
-  present but optional, since the database fills it when the client omits it, and
-  a field with a nullable column also takes `null`, which means the same as
-  omitting it (`docs/repositories.md`). The generated client types the same way,
-  as `<Entity>Insert`.
+  must not choose are absent and a stray one is a 400; a `@pgDefault` field, a
+  clock, and a defaulted `@version` are present but optional, since the column
+  default fills them when the client omits one, and a field with a nullable
+  column also takes `null`, which means the same as omitting it
+  (`docs/repositories.md`). The generated client types the same way, as
+  `<Entity>Insert`.
 - **A patch takes only what an update writes.** `<entity>PatchSchema` is the
   create's field set plus the version, so the same branches and derivable values
   are absent and a stray one is a 400 rather than a no-op; a defaulted column may

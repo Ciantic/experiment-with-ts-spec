@@ -12,30 +12,32 @@ there that was never absent.
 
 ## The database filling a column does not make the field optional
 
-Several tags make a column `not null` while keeping it out of every write:
+Several tags make a column `not null` and supply a fallback when a write omits
+the field:
 
-- `@createdAt` and `@updatedAt` — `default now()`, and the trigger assigns each
-  write. See `docs/timestamps.md`.
+- `@createdAt` and `@updatedAt` — `default now()`, and a generated write falls
+  back to it. See `docs/timestamps.md`.
 - `@pgDefault` — the expression fills the column when a statement omits it.
 - `@version` — `default 0` supplies the first revision. See `docs/versioning.md`.
 
 The column is `not null` because a value is guaranteed, so the field is
-required. The field says what the row has; the tags say who supplies it.
+required. The field says what the row has; the tags say what a write does when
+the field is absent.
 
 ## The create is a different shape
 
-Required in the spec does not mean required on the wire. A create carries the
-columns the database does not own:
+Required in the spec does not mean required on the wire. A create relaxes each
+field whose column has a fallback:
 
-- A clock column and a defaulted `@version` are dropped entirely
-  (`isInsertable`).
-- Another `@pgDefault` field stays, but relaxed: `<Entity>Insert` makes it
-  optional and its schema `.partial()`, and the statement writes the `default`
-  keyword in that row's slot when the caller omits it.
+- A clock column and a defaulted `@version` stay in `<Entity>Insert`, but
+  optional: the schema `.partial()`s them and the statement writes the supplied
+  value, or the column default when the row omits it.
+- A `@pgDefault` field is relaxed the same way.
 
 So `Email.status` is required and `EmailInsert["status"]` is optional, without
-one contradicting the other. See `docs/validation.md` and
-`docs/repositories.md`.
+one contradicting the other. The same applies to `createdAt`, `updatedAt`, and a
+defaulted `version`, which a seed or a backfill may supply. See
+`docs/validation.md` and `docs/repositories.md`.
 
 ## What stays optional
 
@@ -86,5 +88,5 @@ nullable column passes.
   drops a `null` scalar, so an optional field's value is missing rather than
   `null`; a required field's never is.
 - **Mock data declares the required fields anyway.** A row is typed as the
-  entity, so it carries `createdAt`, `updatedAt`, and `version` even though the
-  insert omits those columns. See `docs/mockdata.md`.
+  entity, so it carries `createdAt`, `updatedAt`, and `version`, and the
+  generated insert stores the declared values. See `docs/mockdata.md`.

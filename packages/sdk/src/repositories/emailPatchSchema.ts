@@ -7,7 +7,6 @@ import { emailSchema } from "../domain/emailSchema.ts";
 export const emailPatchSchema = emailSchema
     .omit({
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -21,4 +20,4 @@ export const emailPatchSchema = emailSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type EmailPatch = Patch<Email, "createdAt" | "updatedAt", "id" | "version", "lastError" | "sentAt">;
+export type EmailPatch = Patch<Email, "createdAt", "id" | "version", "lastError" | "sentAt">;

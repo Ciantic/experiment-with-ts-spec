@@ -5,7 +5,7 @@ import { sellerSchema } from "../domain/sellerSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const sellerInsertSchema = sellerSchema
-    .omit({
+    .partial({
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -18,4 +18,4 @@ export const sellerInsertSchema = sellerSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type SellerInsert = Insert<Seller, "createdAt" | "updatedAt" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", never>;
+export type SellerInsert = Insert<Seller, never, "eInvoiceAddress" | "eInvoiceOperator" | "language", "createdAt" | "updatedAt" | "version">;

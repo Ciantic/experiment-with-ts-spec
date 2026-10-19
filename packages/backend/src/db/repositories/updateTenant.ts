@@ -7,7 +7,7 @@ import { VersionConflictError } from "sdk/errors.ts";
 const keyOf = (row: TenantPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 4;
+const PARAMETERS_PER_ROW = 6;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -27,20 +27,26 @@ export async function updateTenant(db: SqlExecutor, rows: TenantPatch[]): Promis
             const versionValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
             const namePresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
                 nameValues.push(row.name ?? null);
                 namePresent.push(row.name !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
             }
             const result = await tx.query(
                 'update "tenant" as u set ' +
-                    '"name" = case when v."name#present" then v."name" else u."name" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[]) as v(' +
-                    '"id", "version", "name", "name#present") ' +
+                    '"name" = case when v."name#present" then v."name" else u."name" end, ' +
+                    '"updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    '"version" = u."version" + 1 ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[], $5::timestamptz[], $6::bool[]) as v(' +
+                    '"id", "version", "name", "name#present", "updatedAt", "updatedAt#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, nameValues, namePresent],
+                [idValues, versionValues, nameValues, namePresent, updatedAtValues, updatedAtPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

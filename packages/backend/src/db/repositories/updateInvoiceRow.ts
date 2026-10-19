@@ -7,7 +7,7 @@ import { VersionConflictError } from "sdk/errors.ts";
 const keyOf = (row: InvoiceRowPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 16;
+const PARAMETERS_PER_ROW = 18;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -39,6 +39,8 @@ export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRowPatch[])
             const unitPricePresent: boolean[] = [];
             const taxRateValues: Array<unknown> = [];
             const taxRatePresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
@@ -56,6 +58,8 @@ export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRowPatch[])
                 unitPricePresent.push(row.unitPrice !== undefined);
                 taxRateValues.push(row.taxRate ?? null);
                 taxRatePresent.push(row.taxRate !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
             }
             const result = await tx.query(
                 'update "invoice_row" as u set ' +
@@ -65,12 +69,14 @@ export async function updateInvoiceRow(db: SqlExecutor, rows: InvoiceRowPatch[])
                     '"quantity" = case when v."quantity#present" then v."quantity" else u."quantity" end, ' +
                     '"unit" = case when v."unit#present" then v."unit" else u."unit" end, ' +
                     '"unitPrice" = case when v."unitPrice#present" then v."unitPrice" else u."unitPrice" end, ' +
-                    '"taxRate" = case when v."taxRate#present" then v."taxRate" else u."taxRate" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::uuid[], $6::bool[], $7::text[], $8::bool[], $9::decimal[], $10::bool[], $11::text[], $12::bool[], $13::decimal[], $14::bool[], $15::decimal[], $16::bool[]) as v(' +
-                    '"id", "version", "tenantId", "tenantId#present", "invoiceId", "invoiceId#present", "description", "description#present", "quantity", "quantity#present", "unit", "unit#present", "unitPrice", "unitPrice#present", "taxRate", "taxRate#present") ' +
+                    '"taxRate" = case when v."taxRate#present" then v."taxRate" else u."taxRate" end, ' +
+                    '"updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    '"version" = u."version" + 1 ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::uuid[], $6::bool[], $7::text[], $8::bool[], $9::decimal[], $10::bool[], $11::text[], $12::bool[], $13::decimal[], $14::bool[], $15::decimal[], $16::bool[], $17::timestamptz[], $18::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "invoiceId", "invoiceId#present", "description", "description#present", "quantity", "quantity#present", "unit", "unit#present", "unitPrice", "unitPrice#present", "taxRate", "taxRate#present", "updatedAt", "updatedAt#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, tenantIdValues, tenantIdPresent, invoiceIdValues, invoiceIdPresent, descriptionValues, descriptionPresent, quantityValues, quantityPresent, unitValues, unitPresent, unitPriceValues, unitPricePresent, taxRateValues, taxRatePresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, invoiceIdValues, invoiceIdPresent, descriptionValues, descriptionPresent, quantityValues, quantityPresent, unitValues, unitPresent, unitPriceValues, unitPricePresent, taxRateValues, taxRatePresent, updatedAtValues, updatedAtPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

@@ -118,7 +118,7 @@ export interface Invoice {
      * 
      * @fieldName Net amount
      * @computed
-     * @pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId")
+     * @pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id"), "updatedAt" = now(), "version" = "version" + 1 where "id" in (OLD."invoiceId", NEW."invoiceId")
      * @widget number
      */
     netAmount?: Money;
@@ -128,7 +128,7 @@ export interface Invoice {
      * 
      * @fieldName Tax amount
      * @computed
-     * @pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId")
+     * @pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id"), "updatedAt" = now(), "version" = "version" + 1 where "id" in (OLD."invoiceId", NEW."invoiceId")
      * @widget number
      */
     taxAmount?: Money;

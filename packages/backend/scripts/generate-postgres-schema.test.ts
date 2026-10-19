@@ -1439,18 +1439,15 @@ describe("generateSchema @version", () => {
         expect(sql).toContain('"version" int8 not null default 0');
     });
 
-    it("emits a before-update guard that validates and increments the version", () => {
+    it("emits no trigger, since the generated writes increment the column", () => {
         const { sql } = generate({ entities: { Thing: thing } });
 
-        expect(sql).toContain('create function "thing_version"() returns trigger as $$');
-        expect(sql).toContain('before update on "thing"');
-        expect(sql).toContain('if NEW."version" is distinct from OLD."version" then');
-        expect(sql).toContain(`raise exception 'version conflict on thing %', OLD."id"`);
-        expect(sql).toContain("using errcode = '40001';");
-        expect(sql).toContain('NEW."version" := OLD."version" + 1;');
+        expect(sql).not.toContain("_version");
+        expect(sql).not.toContain("create trigger");
+        expect(sql).toContain('"version" int8 not null default 0');
     });
 
-    it("names a composite-key row as one row value in the conflict message", () => {
+    it("emits no trigger for a composite-key entity either", () => {
         const { sql } = generate({
             entities: {
                 Pair: `/** @entity */\nexport interface Pair {
@@ -1466,12 +1463,6 @@ describe("generateSchema @version", () => {
                 }`,
             },
         });
-
-        expect(sql).toContain(`raise exception 'version conflict on pair %', row(OLD."languageCode", OLD."key")`);
-    });
-
-    it("emits no version trigger when no field carries @version", () => {
-        const { sql } = generate({ entities: { Thing: "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: GUID; }" } });
 
         expect(sql).not.toContain("_version");
     });
@@ -1592,7 +1583,7 @@ describe("generateSchema defaults", () => {
         expect(sql).not.toContain("default");
     });
 
-    it("emits both a default and a trigger assignment for @updatedAt", () => {
+    it("emits a default for @updatedAt and no trigger", () => {
         const { sql } = generate({
             entities: {
                 Thing: `/** @entity */\nexport interface Thing {
@@ -1608,9 +1599,9 @@ describe("generateSchema defaults", () => {
             },
         });
 
-        // The default covers the insert path; the trigger refreshes on every write.
+        // The default fills an omitted value; a generated write supplies the column explicitly.
         expect(sql).toContain('"updatedAt" timestamptz not null default now()');
-        expect(sql).toContain('NEW."updatedAt" := now();');
+        expect(sql).not.toContain("_compute");
     });
 });
 
@@ -1639,12 +1630,13 @@ describe("generateSchema clock tags", () => {
         expect(sql).not.toContain('NEW."createdAt"');
     });
 
-    it("assigns @updatedAt in the table's before trigger", () => {
+    it("emits defaults for both clocks, with no trigger to overwrite a supplied value", () => {
         const { sql } = generate({ entities: { Thing: stamped } });
 
-        expect(sql).toContain('create function "thing_compute"() returns trigger as $$');
-        expect(sql).toContain('NEW."updatedAt" := now();');
-        expect(sql).toContain('before insert or update on "thing"');
+        expect(sql).toContain('"createdAt" timestamptz not null default now()');
+        expect(sql).toContain('"updatedAt" timestamptz not null default now()');
+        expect(sql).not.toContain("_compute");
+        expect(sql).not.toContain('NEW."updatedAt"');
     });
 
     it("emits no compute trigger for a table without a clock field", () => {

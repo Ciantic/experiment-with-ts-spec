@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): InvoicePrimaryKey => ({ id: row["id"] as InvoicePrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 10;
+const PARAMETERS_PER_ROW = 16;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -34,7 +34,13 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
             const issueDateValues: Array<unknown> = [];
             const dueDateValues: Array<unknown> = [];
             const notesValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const deletedAtValues: Array<unknown> = [];
+            const versionValues: Array<unknown> = [];
+            const versionPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 tenantIdValues.push(row.tenantId ?? null);
@@ -45,10 +51,16 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                 issueDateValues.push(row.issueDate ?? null);
                 dueDateValues.push(row.dueDate ?? null);
                 notesValues.push(row.notes ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 deletedAtValues.push(row.deletedAt ?? null);
+                versionValues.push(row.version ?? null);
+                versionPresent.push(row.version !== undefined);
             }
             const result = await tx.query(
-                'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "deletedAt") select ' +
+                'insert into "invoice" ("id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "createdAt", "updatedAt", "deletedAt", "version") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."number", ' +
@@ -58,11 +70,14 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
                     'v."issueDate", ' +
                     'v."dueDate", ' +
                     'v."notes", ' +
-                    'v."deletedAt" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[], $10::timestamptz[]) as v(' +
-                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "deletedAt") ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    'v."deletedAt", ' +
+                    'case when v."version#present" then v."version" else 0 end ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::uuid[], $5::uuid[], $6::text[], $7::timestamptz[], $8::timestamptz[], $9::text[], $10::timestamptz[], $11::bool[], $12::timestamptz[], $13::bool[], $14::timestamptz[], $15::int8[], $16::bool[]) as v(' +
+                    '"id", "tenantId", "number", "customerId", "sellerId", "language", "issueDate", "dueDate", "notes", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "deletedAt", "version", "version#present") ' +
                     'returning "invoice"."id"',
-                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, deletedAtValues],
+                [idValues, tenantIdValues, numberValues, customerIdValues, sellerIdValues, languageValues, issueDateValues, dueDateValues, notesValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, deletedAtValues, versionValues, versionPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

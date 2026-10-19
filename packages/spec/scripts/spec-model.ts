@@ -394,18 +394,15 @@ export function snakeCase(name: string): string {
 /** True when a create writes the field, rather than the database owning it. See docs/repositories.md. */
 export function isInsertable(property: SpecProperty): boolean {
     const tags = property.tags;
-    // A defaulted version's first revision comes from its default, so a create never carries it.
-    if (tags.version && tags.pgDefault !== undefined) {
-        return false;
-    }
-    // The clock tags, an identity column, and a virtual generated column are the database's entirely.
-    if (tags.createdAt || tags.updatedAt || tags.pgAutoIncrement || tags.pgVirtual !== undefined) {
+    // An identity column and a virtual generated column are the database's entirely.
+    if (tags.pgAutoIncrement || tags.pgVirtual !== undefined) {
         return false;
     }
     // A nullable computation is filled in later by its mechanism; a required one must be carried by the create.
     if (tags.computed) {
         return !property.optional;
     }
+    // A clock or a defaulted version is written when supplied, and its column default fills an omitted one.
     return true;
 }
 
@@ -416,12 +413,14 @@ export function omittedFromInsert(spec: SpecInterface): SpecProperty[] {
     );
 }
 
-/** The insertable scalar fields a create may omit, because the column's `@pgDefault` fills them in. */
+/** The insertable scalar fields a create may omit, because the column has a default that fills them in. */
 export function defaultedInsertProperties(spec: SpecInterface): SpecProperty[] {
     const omitted = new Set(omittedFromInsert(spec));
     return spec.properties.filter(
         (property) =>
-            !omitted.has(property) && !property.tags.inlined && property.tags.pgDefault !== undefined,
+            !omitted.has(property) &&
+            !property.tags.inlined &&
+            (property.tags.pgDefault !== undefined || property.tags.createdAt || property.tags.updatedAt),
     );
 }
 
@@ -435,6 +434,10 @@ export function isUpdatable(property: SpecProperty): boolean {
     // The key addresses the row a patch writes, so a patch carries it whatever a create writes.
     if (property.tags.primaryKey) {
         return true;
+    }
+    // A creation clock is written once, so no patch carries it.
+    if (property.tags.createdAt) {
+        return false;
     }
     // The version is the optimistic-lock precondition, so a patch always carries it.
     return Boolean(property.tags.version) || (isInsertable(property) && !property.tags.relation && !property.tags.children);

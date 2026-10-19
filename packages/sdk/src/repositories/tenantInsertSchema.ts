@@ -5,7 +5,7 @@ import { tenantSchema } from "../domain/tenantSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const tenantInsertSchema = tenantSchema
-    .omit({
+    .partial({
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -13,4 +13,4 @@ export const tenantInsertSchema = tenantSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type TenantInsert = Insert<Tenant, "createdAt" | "updatedAt" | "version", never, never>;
+export type TenantInsert = Insert<Tenant, never, never, "createdAt" | "updatedAt" | "version">;

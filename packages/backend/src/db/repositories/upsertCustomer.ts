@@ -11,7 +11,7 @@ const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["
 const keyName = (row: CustomerUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 10;
+const PARAMETERS_PER_ROW = 14;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -37,6 +37,10 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
             const eInvoiceAddressValues: Array<unknown> = [];
             const eInvoiceOperatorValues: Array<unknown> = [];
             const languageValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
@@ -48,10 +52,14 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                 eInvoiceAddressValues.push(row.eInvoiceAddress ?? null);
                 eInvoiceOperatorValues.push(row.eInvoiceOperator ?? null);
                 languageValues.push(row.language ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "customer" as u ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") select ' +
+                'insert into "customer" as u ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."name", ' +
@@ -61,9 +69,11 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                     'v."eInvoiceAddress", ' +
                     'v."eInvoiceOperator", ' +
                     'v."language", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::int8[]) as v(' +
-                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "version") ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::timestamptz[], $11::bool[], $12::timestamptz[], $13::bool[], $14::int8[]) as v(' +
+                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
                     'on conflict ("id") do update set ' +
                     '"tenantId" = excluded."tenantId", ' +
                     '"name" = excluded."name", ' +
@@ -72,10 +82,12 @@ export async function upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): P
                     '"businessId" = excluded."businessId", ' +
                     '"eInvoiceAddress" = excluded."eInvoiceAddress", ' +
                     '"eInvoiceOperator" = excluded."eInvoiceOperator", ' +
-                    '"language" = excluded."language" ' +
+                    '"language" = excluded."language", ' +
+                    '"updatedAt" = excluded."updatedAt", ' +
+                    '"version" = u."version" + 1 ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, versionValues],
+                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

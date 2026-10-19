@@ -5,10 +5,10 @@ import { auditLogSchema } from "../domain/auditLogSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the key it assigns. */
 export const auditLogUpsertSchema = auditLogSchema
-    .omit({
+    .partial({
         createdAt: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the key it assigns. */
-export type AuditLogUpsert = Upsert<AuditLog, "createdAt", "id", never, never>;
+export type AuditLogUpsert = Upsert<AuditLog, never, "id", never, "createdAt">;

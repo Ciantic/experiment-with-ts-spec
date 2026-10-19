@@ -10,11 +10,11 @@ Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
 - `Email` — `createdAt`, `updatedAt`
 - `Tenant` — `createdAt`, `updatedAt`
 
-Both are supplied by the database through a single tag each, rather than through
-`@computed` plus `@pgDefault`. The tags are self-contained because the
-pairing of default and trigger is fixed and easy to get wrong by hand.
+Both are declared through a single tag each, rather than through `@computed`
+plus `@pgDefault`. A tag supplies the column's default, and the generated writes
+use that default as the fallback for a row that omits the field.
 
-## `createdAt` — a database default
+## `createdAt` — written once
 
 ```ts
 /**
@@ -38,12 +38,14 @@ Three things follow:
 - **The field is required.** A row always has the column, since the default
   guarantees a value, so the field is required and the column `not null`. A
   nullable column would be a lie. See `docs/optionality.md`.
-- **The repository does not write it.** The tag excludes the column from the
-  generated `insert` and `update`, so no write carries it.
-- **It is set once.** A default only applies when a column is omitted, and the
-  repository always omits it, so `createdAt` is never rewritten by an update.
+- **A create writes it when supplied.** The insert carries the value, and falls
+  back to the column default when the row omits it. A supplied value is what a
+  backfill or a fixture needs.
+- **It is set once.** No patch writes it, and an upsert's conflict path leaves
+  the stored value alone. An insert may carry any value; a later write cannot
+  change it.
 
-## `updatedAt` — a default *and* a trigger
+## `updatedAt` — refreshed by every write
 
 ```ts
 /**
@@ -56,74 +58,54 @@ Three things follow:
 updatedAt: Date;
 ```
 
-`@updatedAt` emits both halves, because the two answer different questions:
-
-- **The column default is the insert path.** On insert there is no previous write
-  to preserve, so the value is simply now().
-- **The trigger is the update path.** Postgres has no
-  `ON UPDATE CURRENT_TIMESTAMP` (that is MySQL), so a column default cannot
-  express "refresh on every write" — it fires only on insert. The trigger does.
-
-The emitted DDL is both:
+The tag emits the same column default:
 
 ```sql
-"updatedAt" timestamptz not null default now(),
+"updatedAt" timestamptz not null default now()
 ```
 
-```sql
-create function "customer_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
+Every generated write refreshes it:
 
-create trigger "customer_compute" before insert or update on "customer"
-    for each row execute function "customer_compute"();
-```
+- **create** writes a supplied value, or `now()` when the row omits it.
+- **patch** writes a supplied value, or `now()` when the patch omits it.
+- **upsert** writes the value it carries on the insert path; its conflict path
+  writes a supplied value, or `now()` when the row omits it.
 
-## Why both, rather than either alone
+A supplied value therefore survives, and an omitted one moves the clock. That is
+what lets a test or a backfill restore a historical instant without disabling a
+trigger.
 
-A `before insert` trigger runs *after* defaults are applied, so on insert the
-trigger's assignment wins and the default is never read. It would be a mistake to
-conclude that the default is therefore redundant.
+## No clock triggers
 
-It is not, for two reasons:
+The generated DDL carries no trigger for either clock. A `BEFORE` row trigger
+runs after column defaults are applied, so on insert it cannot distinguish a
+value the caller supplied from a value the default filled in; assigning the clock
+there would overwrite both. Postgres also does not expose the `SET` list of an
+`UPDATE` to a trigger, so a trigger cannot tell an omitted column from one set to
+its stored value.
 
-- **The two cannot disagree.** `default now()` and `NEW."updatedAt" := now()` in
-  the same transaction both resolve to transaction time, so they produce the
-  identical instant. Verified against PGlite: an insert that omits the column
-  stores a value equal to `createdAt`, which the trigger filled the same way.
-- **The default covers paths where the trigger does not run.** Triggers can be
-  disabled for a bulk load or a migration (`ALTER TABLE ... DISABLE TRIGGER`), and
-  `ALTER TABLE ... ADD COLUMN ... DEFAULT now()` backfills existing rows. Without
-  the default, those paths would either fail `not null` or leave a stale value.
-
-The redundancy is cheap and self-consistent, so `@updatedAt` emits both. The
-default documents the column's guarantee at the schema level; the trigger
-maintains it.
+The generated statement knows which fields a row carries. It writes the value
+when the row supplies one and falls back to `now()` otherwise, which is the same
+choice the database would make, made where the information still exists.
 
 `now()` is written by the generator: the clock tags are the only place the spec
 declares a timestamp, so there is no expression to name and no registry to
 consult. See `docs/spec-annotations.md`.
 
-`updatedAt` is required for the same reason `createdAt` is: the column has a
-default and the trigger fills every write, so neither a caller nor the
-repository supplies it. Because the trigger fires on every write, it overwrites
-whatever a hand-written statement sent.
+## Cross-table writes
 
-## Why the trigger, and not the application
+The invoice's aggregate fields are maintained by `@pgTrigger` statements that run
+raw SQL when a child row changes:
 
-The invoice's cross-table triggers run `update "invoice" set "netAmount" = …`
-directly in SQL when a child row changes. An application-assigned `updatedAt`
-would not be part of those statements, so editing an `invoice_row` would change
-an invoice without touching its `updatedAt`.
+```sql
+update "invoice" set "netAmount" = …, "updatedAt" = now(), "version" = "version" + 1
+```
 
-The invoice's own `before update` trigger closes that hole: the trigger's `update`
-fires it, which refreshes `updatedAt`. The cross-table trigger and the clock tag
-chain, and the chain is load-bearing. (The invoice's `totalAmount` is a virtual
-generated column, so it needs no place in that trigger at all — it recomputes on
-read.)
+Those statements do not go through the generated `update`, so they maintain the
+clock and the version themselves. Any hand-written statement that changes a
+table carrying them must do the same; nothing in the database does it on the
+writer's behalf. (The invoice's `totalAmount` is a virtual generated column, so
+it needs no place in that trigger at all — it recomputes on read.)
 
 ## Why not the snapshots
 
@@ -147,13 +129,12 @@ from `@inlined`.
   `default now()`. It is SQL, not a formula name, so it is not validated and a
   typo surfaces when the DDL runs, not at lint time. The clock tags are the
   exception: their `now()` comes from the generator, not from a tag value.
-- **A clock column is invisible to the repository.** Excluding it is the
-  point, but it means the generated `insert` cannot set it even deliberately.
-  Writing one requires raw SQL. This applies to both timestamps; a plain
-  `@pgDefault` column is written when the caller supplies it.
-- **A trigger can be bypassed.** `ALTER TABLE ... DISABLE TRIGGER` during a bulk
-  load leaves `updatedAt` at its default rather than the write time. That is the
-  case the default is there to keep sane, but the value will not be per-write.
+- **A raw update does not refresh `updatedAt`.** Nothing in the database assigns
+  it, so a hand-written `update` that omits the column leaves the stored value
+  unchanged. The generated `update` and `upsert` do refresh it.
+- **A create may set both clocks.** They are ordinary insertable fields, so a
+  caller or a seed can supply a historical instant. An omitted one takes the
+  column default.
 - **Deleting a row does not touch anything.** There is no parent to notify, so a
   delete does not bump any `updatedAt`.
 - **`now()` is transaction time.** Every statement in one transaction sees the

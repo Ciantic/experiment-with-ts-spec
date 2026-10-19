@@ -290,6 +290,8 @@ interface WriteShape {
     omit: string[];
     /** The nullable field names the shape accepts `null` for, so a caller may clear one. */
     nullable: string[];
+    /** The required field names the shape relaxes to optional, because the column default fills them. */
+    relaxed: string[];
     /** The rendered type alias. */
     typeExpression: string;
     /** The import the type alias needs, when one of the shared write helpers builds it. */
@@ -305,6 +307,7 @@ function insertShape(entity: ZodEntity): WriteShape {
         omit: entity.insertOmit,
         // A create writes a nullable column as `null` whether the caller omits it or sends it, so the schema takes both.
         nullable: entity.patchNullable,
+        relaxed: entity.insertOptional,
         typeExpression: `Insert<${entity.name}, ${unionType(entity.insertOmit)}, ${unionType(entity.patchNullable)}, ${unionType(entity.insertOptional)}>`,
         helperImport: 'import type { Insert } from "../insert.ts";',
     };
@@ -316,6 +319,8 @@ function upsertShape(entity: ZodEntity): WriteShape {
     const claimed = [...entity.versionFields, ...entity.autoIncrementFields];
     const omit = entity.insertOmit.filter((name) => !claimed.includes(name));
     const locked = [...entity.keys, ...entity.versionFields];
+    // An upsert always claims the version, so it cannot also relax it to optional.
+    const relaxed = entity.insertOptional.filter((name) => !claimed.includes(name));
     const plus =
         entity.versionFields.length > 0 && entity.autoIncrementFields.length > 0
             ? "the `@version` it claims and the key it assigns"
@@ -333,7 +338,8 @@ function upsertShape(entity: ZodEntity): WriteShape {
         omit,
         // An upsert writes the row whole, so a nullable column takes `null` as a patch does.
         nullable: entity.patchNullable,
-        typeExpression: `Upsert<${entity.name}, ${unionType(omit)}, ${unionType(locked)}, ${unionType(entity.patchNullable)}, ${unionType(entity.insertOptional)}>`,
+        relaxed,
+        typeExpression: `Upsert<${entity.name}, ${unionType(omit)}, ${unionType(locked)}, ${unionType(entity.patchNullable)}, ${unionType(relaxed)}>`,
         helperImport: 'import type { Upsert } from "../upsert.ts";',
     };
 }
@@ -393,9 +399,9 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
         }
         lines.push("    })");
     }
-    if (entity.insertOptional.length > 0) {
+    if (shape.relaxed.length > 0) {
         lines.push("    .partial({");
-        for (const name of entity.insertOptional) {
+        for (const name of shape.relaxed) {
             lines.push(`        ${name}: true,`);
         }
         lines.push("    })");

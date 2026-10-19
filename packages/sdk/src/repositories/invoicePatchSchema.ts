@@ -13,7 +13,6 @@ export const invoicePatchSchema = invoiceSchema
         totalAmount: true,
         rows: true,
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -33,4 +32,4 @@ export const invoicePatchSchema = invoiceSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type InvoicePatch = Patch<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt" | "updatedAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt">;
+export type InvoicePatch = Patch<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows" | "createdAt", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt">;

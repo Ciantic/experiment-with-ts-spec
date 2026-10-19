@@ -7,7 +7,6 @@ import { customerSchema } from "../domain/customerSchema.ts";
 export const customerPatchSchema = customerSchema
     .omit({
         createdAt: true,
-        updatedAt: true,
     })
     .partial()
     .extend({
@@ -22,4 +21,4 @@ export const customerPatchSchema = customerSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type CustomerPatch = Patch<Customer, "createdAt" | "updatedAt", "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language">;
+export type CustomerPatch = Patch<Customer, "createdAt", "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language">;

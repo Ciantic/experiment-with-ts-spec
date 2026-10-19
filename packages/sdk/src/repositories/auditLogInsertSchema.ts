@@ -7,9 +7,11 @@ import { auditLogSchema } from "../domain/auditLogSchema.ts";
 export const auditLogInsertSchema = auditLogSchema
     .omit({
         id: true,
+    })
+    .partial({
         createdAt: true,
     })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type AuditLogInsert = Insert<AuditLog, "id" | "createdAt", never, never>;
+export type AuditLogInsert = Insert<AuditLog, "id", never, "createdAt">;

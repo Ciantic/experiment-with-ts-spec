@@ -585,9 +585,9 @@ describe("patch field rules", () => {
         expect(omitted('    /**\n     * @computed\n     * @pgVirtual "net" + "tax"\n     */', "total: Money;")).toEqual(["total"]);
     });
 
-    it("refuses the clock fields the database owns", () => {
+    it("refuses the creation clock but writes the update clock", () => {
         expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual(["madeAt"]);
-        expect(omitted("    /**\n     * @updatedAt\n     */", "changedAt?: Date;")).toEqual(["changedAt"]);
+        expect(omitted("    /**\n     * @updatedAt\n     */", "changedAt?: Date;")).toEqual([]);
     });
 
     it("keeps an assigned key patchable, because the key addresses the row a patch writes", () => {
@@ -621,18 +621,21 @@ describe("insert field rules", () => {
         ]);
     });
 
-    it("keeps a defaulted field out of the optional set when it is not insertable", () => {
+    it("relaxes a defaulted version, so a create may claim one or take the default", () => {
         const doc = "    /**\n     * @version\n     * @pgDefault 0\n     */";
-        expect(omitted(doc, "version?: number;")).toEqual(["version"]);
-        expect(defaultedInsertProperties(spec(doc, "version?: number;"))).toEqual([]);
+        expect(omitted(doc, "version?: number;")).toEqual([]);
+        expect(defaultedInsertProperties(spec(doc, "version?: number;")).map((property) => property.name)).toEqual([
+            "version",
+        ]);
     });
 
     it("writes a version that carries no default, since the database has nothing to fall back on", () => {
         expect(omitted("    /**\n     * @version\n     */", "version?: number;")).toEqual([]);
     });
 
-    it("refuses the clock fields and virtual columns the database owns outright", () => {
-        expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual(["madeAt"]);
+    it("writes both clock fields, and only a virtual column stays the database's", () => {
+        expect(omitted("    /**\n     * @createdAt\n     */", "madeAt?: Date;")).toEqual([]);
+        expect(omitted("    /**\n     * @updatedAt\n     */", "changedAt?: Date;")).toEqual([]);
         expect(omitted('    /**\n     * @computed\n     * @pgVirtual "net" + "tax"\n     */', "total: Money;")).toEqual([
             "total",
         ]);

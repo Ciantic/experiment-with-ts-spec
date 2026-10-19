@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): CustomerPrimaryKey => ({ id: row["id"] as CustomerPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 9;
+const PARAMETERS_PER_ROW = 15;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -34,6 +34,12 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
             const eInvoiceAddressValues: Array<unknown> = [];
             const eInvoiceOperatorValues: Array<unknown> = [];
             const languageValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
+            const versionValues: Array<unknown> = [];
+            const versionPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 tenantIdValues.push(row.tenantId ?? null);
@@ -44,9 +50,15 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
                 eInvoiceAddressValues.push(row.eInvoiceAddress ?? null);
                 eInvoiceOperatorValues.push(row.eInvoiceOperator ?? null);
                 languageValues.push(row.language ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
+                versionValues.push(row.version ?? null);
+                versionPresent.push(row.version !== undefined);
             }
             const result = await tx.query(
-                'insert into "customer" ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") select ' +
+                'insert into "customer" ("id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
                     'v."tenantId", ' +
                     'v."name", ' +
@@ -55,11 +67,14 @@ export async function createCustomer(db: SqlExecutor, rows: CustomerInsert[]): P
                     'v."businessId", ' +
                     'v."eInvoiceAddress", ' +
                     'v."eInvoiceOperator", ' +
-                    'v."language" ' +
-                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[]) as v(' +
-                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language") ' +
+                    'v."language", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    'case when v."version#present" then v."version" else 0 end ' +
+                    'from unnest($1::uuid[], $2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::timestamptz[], $11::bool[], $12::timestamptz[], $13::bool[], $14::int8[], $15::bool[]) as v(' +
+                    '"id", "tenantId", "name", "email", "address", "businessId", "eInvoiceAddress", "eInvoiceOperator", "language", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version", "version#present") ' +
                     'returning "customer"."id"',
-                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues],
+                [idValues, tenantIdValues, nameValues, emailValues, addressValues, businessIdValues, eInvoiceAddressValues, eInvoiceOperatorValues, languageValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues, versionPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

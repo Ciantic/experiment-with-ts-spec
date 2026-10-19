@@ -5,7 +5,7 @@ import { customerSchema } from "../domain/customerSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const customerInsertSchema = customerSchema
-    .omit({
+    .partial({
         createdAt: true,
         updatedAt: true,
         version: true,
@@ -18,4 +18,4 @@ export const customerInsertSchema = customerSchema
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type CustomerInsert = Insert<Customer, "createdAt" | "updatedAt" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", never>;
+export type CustomerInsert = Insert<Customer, never, "eInvoiceAddress" | "eInvoiceOperator" | "language", "createdAt" | "updatedAt" | "version">;

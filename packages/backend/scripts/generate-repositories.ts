@@ -54,9 +54,9 @@ function aliasMatch(column: Column, target: string, values: string): string {
     return `${target}.${quote(column.name)} = ${values}.${quote(column.name)}`;
 }
 
-/** The `set` entry that takes a supplied column from the values row and keeps the stored one otherwise. */
+/** The `set` entry that takes a supplied column from the values row and refreshes it otherwise. */
 function keptAssignment(column: Column): string {
-    return `${quote(column.name)} = ${suppliedValue(column, `${TARGET_ALIAS}.${quote(column.name)}`)}`;
+    return `${quote(column.name)} = ${suppliedValue(column, column.refresh ?? `${TARGET_ALIAS}.${quote(column.name)}`)}`;
 }
 
 /** The `set` entry of an entity with no writable column: its key to the key the stored row already holds. */
@@ -336,7 +336,7 @@ export function generateCreate(table: Table): string {
 export function updateStatement(table: Table): ChunkStatement {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     const patchable = patchColumns(table);
-    // The version is the optimistic-lock precondition, not an assignment; the trigger increments it.
+    // The version is the optimistic-lock precondition; a matched row is incremented by the statement.
     const version = versionColumn(table);
     const setColumns = patchable.filter((column): column is SuppliedColumn => column.supplied !== undefined);
     const arrays = [
@@ -344,10 +344,13 @@ export function updateStatement(table: Table): ChunkStatement {
         ...(version === undefined ? [] : columnArrays(version, false)),
         ...setColumns.flatMap((column) => columnArrays(column, true)),
     ];
-    const assignments =
-        setColumns.length === 0
-            ? [identityAssignment(primaryKeys[0] as Column, TARGET_ALIAS)]
-            : setColumns.map(keptAssignment);
+    const assignments = [
+        ...setColumns.map(keptAssignment),
+        ...(version === undefined ? [] : [`${quote(version.name)} = ${TARGET_ALIAS}.${quote(version.name)} + 1`]),
+    ];
+    if (assignments.length === 0) {
+        assignments.push(identityAssignment(primaryKeys[0] as Column, TARGET_ALIAS));
+    }
     // A patch addresses the row at the version the caller holds, so a stale one matches no row. See docs/versioning.md.
     const match = [
         ...primaryKeys.map((column) => aliasMatch(column, TARGET_ALIAS, VALUES_ALIAS)),
@@ -441,10 +444,12 @@ export function generateUpdate(table: Table): string {
 export function upsertStatement(table: Table): ChunkStatement {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     // An upsert writes a create's fields plus the claimed version; the conflict path reads `excluded`.
-    const insertColumns = table.columns.filter((column) => column.insertable !== false);
+    const version = versionColumn(table);
+    const insertColumns = table.columns.filter(
+        (column) => column.insertable !== false && column !== version,
+    );
     // An identity key is the database's on a create, but an upsert names it: the key is what the conflict matches.
     const identityKeys = table.columns.filter((column) => column.identity);
-    const version = versionColumn(table);
     const writeColumns = [...insertColumns, ...identityKeys, ...(version === undefined ? [] : [version])];
     // A defaulted column binds a flag and falls back to its default; an identity key and version never do.
     const arrays = [
@@ -460,13 +465,19 @@ export function upsertStatement(table: Table): ChunkStatement {
         ...identityKeys.map((column) => `${VALUES_ALIAS}.${quote(column.name)}`),
         ...(version === undefined ? [] : [`${VALUES_ALIAS}.${quote(version.name)}`]),
     ];
-    // The conflict matches on the key; the trigger owns the version, so the write only compares it.
+    // The conflict matches on the key; the write compares the claimed version and increments the stored one.
     const stored = version === undefined ? quote(table.name) : TARGET_ALIAS;
     const target = version === undefined ? quote(table.name) : `${quote(table.name)} as ${TARGET_ALIAS}`;
     const assigned = writeColumns
-        .filter((column) => !column.primaryKey && !column.version)
+        .filter((column) => !column.primaryKey && !column.version && !column.setOnce)
         .map((column) => `${quote(column.name)} = excluded.${quote(column.name)}`);
-    const assignments = assigned.length === 0 ? [identityAssignment(primaryKeys[0] as Column, stored)] : assigned;
+    const assignments = [
+        ...assigned,
+        ...(version === undefined ? [] : [`${quote(version.name)} = ${stored}.${quote(version.name)} + 1`]),
+    ];
+    if (assignments.length === 0) {
+        assignments.push(identityAssignment(primaryKeys[0] as Column, stored));
+    }
     return {
         fragments: [
             `insert into ${target} (${writeColumns.map((column) => quote(column.name)).join(", ")}) select `,

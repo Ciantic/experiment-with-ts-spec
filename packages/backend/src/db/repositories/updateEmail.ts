@@ -7,7 +7,7 @@ import { VersionConflictError } from "sdk/errors.ts";
 const keyOf = (row: EmailPatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 22;
+const PARAMETERS_PER_ROW = 24;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -45,6 +45,8 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
             const lastErrorPresent: boolean[] = [];
             const sentAtValues: Array<unknown> = [];
             const sentAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 versionValues.push(row.version ?? null);
@@ -68,6 +70,8 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
                 lastErrorPresent.push(row.lastError !== undefined);
                 sentAtValues.push(row.sentAt ?? null);
                 sentAtPresent.push(row.sentAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
             }
             const result = await tx.query(
                 'update "email" as u set ' +
@@ -80,12 +84,14 @@ export async function updateEmail(db: SqlExecutor, rows: EmailPatch[]): Promise<
                     '"attempts" = case when v."attempts#present" then v."attempts" else u."attempts" end, ' +
                     '"maxAttempts" = case when v."maxAttempts#present" then v."maxAttempts" else u."maxAttempts" end, ' +
                     '"lastError" = case when v."lastError#present" then v."lastError" else u."lastError" end, ' +
-                    '"sentAt" = case when v."sentAt#present" then v."sentAt" else u."sentAt" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[], $15::int8[], $16::bool[], $17::int8[], $18::bool[], $19::text[], $20::bool[], $21::timestamptz[], $22::bool[]) as v(' +
-                    '"id", "version", "tenantId", "tenantId#present", "from", "from#present", "to", "to#present", "subject", "subject#present", "body", "body#present", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "lastError#present", "sentAt", "sentAt#present") ' +
+                    '"sentAt" = case when v."sentAt#present" then v."sentAt" else u."sentAt" end, ' +
+                    '"updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    '"version" = u."version" + 1 ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::text[], $8::bool[], $9::text[], $10::bool[], $11::text[], $12::bool[], $13::text[], $14::bool[], $15::int8[], $16::bool[], $17::int8[], $18::bool[], $19::text[], $20::bool[], $21::timestamptz[], $22::bool[], $23::timestamptz[], $24::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "from", "from#present", "to", "to#present", "subject", "subject#present", "body", "body#present", "status", "status#present", "attempts", "attempts#present", "maxAttempts", "maxAttempts#present", "lastError", "lastError#present", "sentAt", "sentAt#present", "updatedAt", "updatedAt#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, tenantIdValues, tenantIdPresent, fromValues, fromPresent, toValues, toPresent, subjectValues, subjectPresent, bodyValues, bodyPresent, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, lastErrorPresent, sentAtValues, sentAtPresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, fromValues, fromPresent, toValues, toPresent, subjectValues, subjectPresent, bodyValues, bodyPresent, statusValues, statusPresent, attemptsValues, attemptsPresent, maxAttemptsValues, maxAttemptsPresent, lastErrorValues, lastErrorPresent, sentAtValues, sentAtPresent, updatedAtValues, updatedAtPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

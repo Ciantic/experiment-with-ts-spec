@@ -5,7 +5,6 @@ import {
     BACKEND_PACKAGE_ROOT,
     buildSpecTables,
     quote,
-    type Column,
     type Diagnostic,
     type Table,
     type Trigger,
@@ -186,39 +185,6 @@ function renderTriggers(table: Table): string[] {
     return lines;
 }
 
-/** The before-update guard for a @version column: validate the caller's revision, then increment it. */
-export function renderVersionTrigger(table: Table): string[] {
-    const version = table.columns.find((column) => column.version);
-    if (!version) {
-        return [];
-    }
-    const functionName = `${table.name}_version`;
-    const keys = table.columns.filter((column) => column.primaryKey);
-    // `is distinct from` is null-safe, so an omitted version conflicts; the message names the row by its key.
-    const target =
-        keys.length === 0
-            ? `NEW.${quote(version.name)}`
-            : keys.length === 1
-                ? `OLD.${quote((keys[0] as Column).name)}`
-                : `row(${keys.map((column) => `OLD.${quote(column.name)}`).join(", ")})`;
-    return [
-        `create function ${quote(functionName)}() returns trigger as $$`,
-        "begin",
-        `    if NEW.${quote(version.name)} is distinct from OLD.${quote(version.name)} then`,
-        `        raise exception 'version conflict on ${table.name} %', ${target}`,
-        "            using errcode = '40001';",
-        "    end if;",
-        `    NEW.${quote(version.name)} := OLD.${quote(version.name)} + 1;`,
-        "    return NEW;",
-        "end;",
-        "$$ language plpgsql;",
-        "",
-        `create trigger ${quote(functionName)} before update on ${quote(table.name)}`,
-        `    for each row execute function ${quote(functionName)}();`,
-        "",
-    ];
-}
-
 /** Render Postgres DDL from the spec. */
 export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Diagnostic[] } {
     const { tables, diagnostics } = buildSpecTables(spec);
@@ -235,10 +201,6 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
 
     for (const table of ordered) {
         lines.push(...renderTriggers(table));
-    }
-
-    for (const table of ordered) {
-        lines.push(...renderVersionTrigger(table));
     }
 
     return { sql: lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n", diagnostics };

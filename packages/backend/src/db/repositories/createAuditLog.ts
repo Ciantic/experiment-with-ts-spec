@@ -8,7 +8,7 @@ import { ShortWriteError } from "sdk/errors.ts";
 const keyOf = (row: Record<string, unknown>): AuditLogPrimaryKey => ({ id: row["id"] as AuditLogPrimaryKey["id"] });
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 1;
+const PARAMETERS_PER_ROW = 3;
 
 /** The rows one insert carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -26,16 +26,21 @@ export async function createAuditLog(db: SqlExecutor, rows: AuditLogInsert[]): P
         for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const messageValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
             for (const row of chunk) {
                 messageValues.push(row.message ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
             }
             const result = await tx.query(
-                'insert into "audit_log" ("message") select ' +
-                    'v."message" ' +
-                    'from unnest($1::text[]) as v(' +
-                    '"message") ' +
+                'insert into "audit_log" ("message", "createdAt") select ' +
+                    'v."message", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end ' +
+                    'from unnest($1::text[], $2::timestamptz[], $3::bool[]) as v(' +
+                    '"message", "createdAt", "createdAt#present") ' +
                     'returning "audit_log"."id"',
-                [messageValues],
+                [messageValues, createdAtValues, createdAtPresent],
             );
             const written = resultRows(result);
             if (written.length !== chunk.length) {

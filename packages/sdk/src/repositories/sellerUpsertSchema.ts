@@ -5,7 +5,7 @@ import { sellerSchema } from "../domain/sellerSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const sellerUpsertSchema = sellerSchema
-    .omit({
+    .partial({
         createdAt: true,
         updatedAt: true,
     })
@@ -17,4 +17,4 @@ export const sellerUpsertSchema = sellerSchema
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type SellerUpsert = Upsert<Seller, "createdAt" | "updatedAt", "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", never>;
+export type SellerUpsert = Upsert<Seller, never, "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", "createdAt" | "updatedAt">;

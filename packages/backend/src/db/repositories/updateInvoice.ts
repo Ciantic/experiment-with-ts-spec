@@ -7,7 +7,7 @@ import { VersionConflictError } from "sdk/errors.ts";
 const keyOf = (row: InvoicePatch): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 20;
+const PARAMETERS_PER_ROW = 22;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -41,6 +41,8 @@ export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Prom
             const dueDatePresent: boolean[] = [];
             const notesValues: Array<unknown> = [];
             const notesPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const deletedAtValues: Array<unknown> = [];
             const deletedAtPresent: boolean[] = [];
             for (const row of chunk) {
@@ -62,6 +64,8 @@ export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Prom
                 dueDatePresent.push(row.dueDate !== undefined);
                 notesValues.push(row.notes ?? null);
                 notesPresent.push(row.notes !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 deletedAtValues.push(row.deletedAt ?? null);
                 deletedAtPresent.push(row.deletedAt !== undefined);
             }
@@ -75,12 +79,14 @@ export async function updateInvoice(db: SqlExecutor, rows: InvoicePatch[]): Prom
                     '"issueDate" = case when v."issueDate#present" then v."issueDate" else u."issueDate" end, ' +
                     '"dueDate" = case when v."dueDate#present" then v."dueDate" else u."dueDate" end, ' +
                     '"notes" = case when v."notes#present" then v."notes" else u."notes" end, ' +
-                    '"deletedAt" = case when v."deletedAt#present" then v."deletedAt" else u."deletedAt" end ' +
-                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::uuid[], $8::bool[], $9::uuid[], $10::bool[], $11::text[], $12::bool[], $13::timestamptz[], $14::bool[], $15::timestamptz[], $16::bool[], $17::text[], $18::bool[], $19::timestamptz[], $20::bool[]) as v(' +
-                    '"id", "version", "tenantId", "tenantId#present", "number", "number#present", "customerId", "customerId#present", "sellerId", "sellerId#present", "language", "language#present", "issueDate", "issueDate#present", "dueDate", "dueDate#present", "notes", "notes#present", "deletedAt", "deletedAt#present") ' +
+                    '"updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
+                    '"deletedAt" = case when v."deletedAt#present" then v."deletedAt" else u."deletedAt" end, ' +
+                    '"version" = u."version" + 1 ' +
+                    'from unnest($1::uuid[], $2::int8[], $3::uuid[], $4::bool[], $5::text[], $6::bool[], $7::uuid[], $8::bool[], $9::uuid[], $10::bool[], $11::text[], $12::bool[], $13::timestamptz[], $14::bool[], $15::timestamptz[], $16::bool[], $17::text[], $18::bool[], $19::timestamptz[], $20::bool[], $21::timestamptz[], $22::bool[]) as v(' +
+                    '"id", "version", "tenantId", "tenantId#present", "number", "number#present", "customerId", "customerId#present", "sellerId", "sellerId#present", "language", "language#present", "issueDate", "issueDate#present", "dueDate", "dueDate#present", "notes", "notes#present", "updatedAt", "updatedAt#present", "deletedAt", "deletedAt#present") ' +
                     'where u."id" = v."id" and u."version" = v."version" ' +
                     'returning u."id"',
-                [idValues, versionValues, tenantIdValues, tenantIdPresent, numberValues, numberPresent, customerIdValues, customerIdPresent, sellerIdValues, sellerIdPresent, languageValues, languagePresent, issueDateValues, issueDatePresent, dueDateValues, dueDatePresent, notesValues, notesPresent, deletedAtValues, deletedAtPresent],
+                [idValues, versionValues, tenantIdValues, tenantIdPresent, numberValues, numberPresent, customerIdValues, customerIdPresent, sellerIdValues, sellerIdPresent, languageValues, languagePresent, issueDateValues, issueDatePresent, dueDateValues, dueDatePresent, notesValues, notesPresent, updatedAtValues, updatedAtPresent, deletedAtValues, deletedAtPresent],
             );
             const written = new Set(resultRows(result).map((row) => String(row["id"])));
             if (written.size !== chunk.length) {

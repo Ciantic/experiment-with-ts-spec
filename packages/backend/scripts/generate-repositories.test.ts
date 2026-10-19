@@ -18,13 +18,13 @@ import {
     updateStatement,
     upsertStatement,
 } from "./generate-repositories.ts";
-import { renderCreateTable, renderVersionTrigger } from "./generate-postgres-schema.ts";
+import { renderCreateTable } from "./generate-postgres-schema.ts";
 import type { Column, Table } from "./postgres-model.ts";
 import { tsLoadGeneratedModule, tsStubImports, WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
-    // A defaulted column is written when the row supplies it; the version is the database's on create.
-    const insertable = extras.insertable ?? extras.version !== true;
+    // A defaulted column is written when the row supplies it, and the version is no exception.
+    const insertable = extras.insertable ?? true;
     const column: Column = { name, sqlType: "text", notNull: true, primaryKey: false, unique: false, insertable, updatable: extras.version === true || insertable, ...extras };
     // The model records how a patch tells whether a row supplied a column; the fixture does the same.
     if (column.updatable && !column.primaryKey && !column.version && extras.supplied === undefined) {
@@ -85,9 +85,9 @@ const defaulted = table("email", "Email", [
     column("status", { default: "'pending'" }),
 ]);
 
-/** The DDL for a fixture: the table and its version trigger, rendered by the same generator that writes `schema.sql`. */
+/** The DDL for a fixture, rendered by the same generator that writes `schema.sql`. */
 function fixtureDdl(table: Table): string {
-    return [...renderCreateTable(table), ...renderVersionTrigger(table)].join("\n");
+    return renderCreateTable(table).join("\n");
 }
 
 /** The three generated CRUD functions, resolved from the three operation modules. */
@@ -199,10 +199,12 @@ describe("createStatement", () => {
         ]);
     });
 
-    it("leaves the version out of the insert, since a create takes it from its default", () => {
+    it("writes the version when supplied and falls back to its default otherwise", () => {
         expect(statementSql(createStatement(versioned))).toBe(
-            'insert into "customer" ("id", "name") select v."id", v."name" ' +
-                'from unnest($1::uuid[], $2::text[]) as v("id", "name") ' +
+            'insert into "customer" ("id", "name", "version") select v."id", v."name", ' +
+                'case when v."version#present" then v."version" else 0 end ' +
+                'from unnest($1::uuid[], $2::text[], $3::int8[], $4::bool[]) ' +
+                'as v("id", "name", "version", "version#present") ' +
                 'returning "customer"."id"',
         );
     });
@@ -261,23 +263,24 @@ describe("updateStatement", () => {
         );
     });
 
-    it("claims the version in the where instead of assigning it, leaving the counter to the trigger", () => {
+    it("claims the version in the where and increments the stored one", () => {
         const sql = statementSql(updateStatement(versioned));
 
         expect(sql).toBe(
-            'update "customer" as u set "name" = case when v."name#present" then v."name" else u."name" end ' +
+            'update "customer" as u set "name" = case when v."name#present" then v."name" else u."name" end, ' +
+                '"version" = u."version" + 1 ' +
                 'from unnest($1::uuid[], $2::int8[], $3::text[], $4::bool[]) ' +
                 'as v("id", "version", "name", "name#present") ' +
                 'where u."id" = v."id" and u."version" = v."version" returning u."id"',
         );
-        // The version rides along in the key arrays, and the `set` list never names it.
+        // The claim rides along in the key arrays, and the `set` list never takes it as a supplied value.
         expect(updateStatement(versioned).arrays.map((array) => array.alias)).toEqual([
             "id",
             "version",
             "name",
             "name#present",
         ]);
-        expect(/set (.*?) from unnest/.exec(sql)?.[1]).not.toContain("version");
+        expect(/set (.*?) from unnest/.exec(sql)?.[1]).not.toContain('"version" = case when');
     });
 
     it("sets the key to itself for an entity with no writable column, so the statement still writes a row", () => {
@@ -308,11 +311,11 @@ describe("upsertStatement", () => {
         );
     });
 
-    it("claims the version, writing it and comparing it instead of assigning it", () => {
+    it("claims the version on insert, compares it, and increments the stored one", () => {
         expect(statementSql(upsertStatement(versioned))).toBe(
             'insert into "customer" as u ("id", "name", "version") select v."id", v."name", v."version" ' +
                 'from unnest($1::uuid[], $2::text[], $3::int8[]) as v("id", "name", "version") ' +
-                'on conflict ("id") do update set "name" = excluded."name" ' +
+                'on conflict ("id") do update set "name" = excluded."name", "version" = u."version" + 1 ' +
                 'where u."version" = excluded."version" returning u."id"',
         );
         // The claim is always written, so it binds no flag.
@@ -519,7 +522,7 @@ describe("generateCreate", () => {
         expect(code).not.toContain("idPresent");
     });
 
-    it("omits a @version column from insert", () => {
+    it("writes a @version column, binding the claim beside a flag for an omitted one", () => {
         const code = generateCreate(
             table("customer", "Customer", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
@@ -530,7 +533,8 @@ describe("generateCreate", () => {
 
         expect(code).toContain("                idValues.push(row.id ?? null);");
         expect(code).toContain("                nameValues.push(row.name ?? null);");
-        expect(code).not.toContain("versionValues");
+        expect(code).toContain("                versionValues.push(row.version ?? null);");
+        expect(code).toContain("                versionPresent.push(row.version !== undefined);");
     });
 
     it("splits a create into chunks that each stay inside the parameter limit", () => {
@@ -631,20 +635,22 @@ describe("generateUpdate", () => {
         expect(generateUpdate(limited)).toContain("const PARAMETERS_PER_ROW = 3;");
     });
 
-    it("patches a defaulted column, since a caller may override the default", () => {
+    it("refreshes an update clock the patch omits, since a caller may also override it", () => {
         const limited = table("limited", "Limited", [
             column("id", { sqlType: "uuid", primaryKey: true }),
             column("label"),
-            column("createdAt", { sqlType: "timestamptz", default: "now()" }),
+            column("updatedAt", { sqlType: "timestamptz", default: "now()", refresh: "now()" }),
             column("version", { sqlType: "int8", default: "0", version: true }),
         ]);
 
-        expect(generateUpdate(limited)).toContain('"createdAt" = case when v."createdAt#present"');
-        expect(generateUpdate(limited)).toContain("                createdAtValues.push(row.createdAt ?? null);");
-        expect(generateUpdate(limited)).toContain("                createdAtPresent.push(row.createdAt !== undefined);");
+        expect(generateUpdate(limited)).toContain(
+            '"updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end',
+        );
+        expect(generateUpdate(limited)).toContain("                updatedAtValues.push(row.updatedAt ?? null);");
+        expect(generateUpdate(limited)).toContain("                updatedAtPresent.push(row.updatedAt !== undefined);");
     });
 
-    it("predicates on the version instead of assigning it, and rejects a row it did not match", () => {
+    it("predicates on the version and increments it, rejecting a row it did not match", () => {
         const code = generateUpdate(
             table("customer", "Customer", [
                 column("id", { sqlType: "uuid", primaryKey: true }),
@@ -655,7 +661,8 @@ describe("generateUpdate", () => {
 
         // The version travels among the values the `where` compares, so it is read unconditionally …
         expect(code).toContain("                versionValues.push(row.version ?? null);");
-        // … but it is the trigger that increments it, never the `set` clause, and a patch cannot omit it.
+        // … and the `set` clause increments the stored one, since a patch cannot assign it.
+        expect(code).toContain('"version" = u."version" + 1');
         expect(code).not.toContain('"version" = case when');
         expect(code).not.toContain("versionPresent");
         expect(code).toContain("no row of customer is at the version this patch supplied for ' + named.map(keyOf).join(\", \")");
@@ -756,13 +763,13 @@ describe("generateUpsert", () => {
         expect(code).not.toContain("excluded.\"id\"");
     });
 
-    it("claims the version a create leaves to its default, and compares it instead of assigning it", () => {
+    it("claims the version an upsert always writes, compares it, and increments the stored one", () => {
         const code = generateUpsert(versioned);
 
-        // The version is the one column a create omits and an upsert always writes.
         expect(code).toContain("                versionValues.push(row.version ?? null);");
         expect(code).toContain("const PARAMETERS_PER_ROW = 3;");
-        // The assignments end where the predicate begins, so the version is never one of them.
+        // The claim matches the stored row, and the replacement takes the next revision.
+        expect(code).toContain('"version" = u."version" + 1');
         expect(code).not.toContain('\'"version" = excluded."version"');
         // The claim is always present, so it carries no flag.
         expect(code).not.toContain("versionPresent");
@@ -1102,7 +1109,7 @@ describe("generated repositories against PGlite", () => {
         expect(rows).toEqual([{ name: "created", version: 0n }]);
     });
 
-    it("replaces the whole row it keys on when the claim matches, leaving the counter to the trigger", async () => {
+    it("replaces the whole row it keys on when the claim matches, leaving the increment to the statement", async () => {
         await widgets.create(db, [{ id: WIDGET_ID, name: "before", note: "carried", owner: { id: OWNER_ID } }]);
 
         // An upsert is a replacement, so a column the row states is overwritten whatever it held.
@@ -1216,7 +1223,7 @@ describe("generated repositories against PGlite", () => {
             'select "name", "note", "version" from "widget"',
         );
 
-        // The patch carries the version as a precondition, so the trigger still owns the counter.
+        // The patch carries the version as a precondition, and the statement increments the counter.
         expect(rows).toEqual([{ name: "after", note: "keep", version: 1n }]);
     });
 

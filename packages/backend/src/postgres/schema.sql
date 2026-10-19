@@ -172,29 +172,8 @@ create table "invoice_sent_row" (
     constraint "invoice_sent_row_tenantId_invoiceSentId_fkey" foreign key ("tenantId", "invoiceSentId") references "invoice_sent" ("tenantId", "id")
 );
 
-create function "tenant_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "tenant_compute" before insert or update on "tenant"
-    for each row execute function "tenant_compute"();
-
-create function "customer_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "customer_compute" before insert or update on "customer"
-    for each row execute function "customer_compute"();
-
 create function "email_compute"() returns trigger as $$
 begin
-    NEW."updatedAt" := now();
     if NEW."status" = 'pending' and NEW."attempts" >= NEW."maxAttempts" then raise exception 'email attempt limit reached on %', NEW."id" using errcode = '23514'; end if;
     return NEW;
 end;
@@ -203,32 +182,11 @@ $$ language plpgsql;
 create trigger "email_compute" before insert or update on "email"
     for each row execute function "email_compute"();
 
-create function "seller_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "seller_compute" before insert or update on "seller"
-    for each row execute function "seller_compute"();
-
-create function "invoice_compute"() returns trigger as $$
-begin
-    NEW."updatedAt" := now();
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_compute" before insert or update on "invoice"
-    for each row execute function "invoice_compute"();
-
 create function "invoice_row_compute"() returns trigger as $$
 begin
     NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2);
     NEW."taxAmount" := round(NEW."netAmount" * NEW."taxRate", 2);
     NEW."totalAmount" := NEW."netAmount" + NEW."taxAmount";
-    NEW."updatedAt" := now();
     return NEW;
 end;
 $$ language plpgsql;
@@ -238,8 +196,8 @@ create trigger "invoice_row_compute" before insert or update on "invoice_row"
 
 create function "invoice_row_after_insert_update_delete"() returns trigger as $$
 begin
-    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId");
-    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId");
+    update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id"), "updatedAt" = now(), "version" = "version" + 1 where "id" in (OLD."invoiceId", NEW."invoiceId");
+    update "invoice" set "taxAmount" = (select coalesce(sum("taxAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id"), "updatedAt" = now(), "version" = "version" + 1 where "id" in (OLD."invoiceId", NEW."invoiceId");
     return null;
 end;
 $$ language plpgsql;
@@ -258,87 +216,3 @@ $$ language plpgsql;
 
 create trigger "invoice_sent_row_compute" before insert or update on "invoice_sent_row"
     for each row execute function "invoice_sent_row_compute"();
-
-create function "tenant_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on tenant %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "tenant_version" before update on "tenant"
-    for each row execute function "tenant_version"();
-
-create function "customer_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on customer %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "customer_version" before update on "customer"
-    for each row execute function "customer_version"();
-
-create function "email_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on email %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "email_version" before update on "email"
-    for each row execute function "email_version"();
-
-create function "seller_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on seller %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "seller_version" before update on "seller"
-    for each row execute function "seller_version"();
-
-create function "invoice_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on invoice %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_version" before update on "invoice"
-    for each row execute function "invoice_version"();
-
-create function "invoice_row_version"() returns trigger as $$
-begin
-    if NEW."version" is distinct from OLD."version" then
-        raise exception 'version conflict on invoice_row %', OLD."id"
-            using errcode = '40001';
-    end if;
-    NEW."version" := OLD."version" + 1;
-    return NEW;
-end;
-$$ language plpgsql;
-
-create trigger "invoice_row_version" before update on "invoice_row"
-    for each row execute function "invoice_row_version"();

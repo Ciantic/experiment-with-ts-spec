@@ -11,7 +11,7 @@ const keyOf = (row: Record<string, unknown>): TenantPrimaryKey => ({ id: row["id
 const keyName = (row: TenantUpsert): string => String(row.id);
 
 /** The parameters one row costs: one per bound array, so a chunk stays inside the limit. */
-const PARAMETERS_PER_ROW = 3;
+const PARAMETERS_PER_ROW = 7;
 
 /** The rows one statement carries, so its parameters stay inside MAX_STATEMENT_PARAMETERS. */
 const ROWS_PER_STATEMENT = Math.floor(MAX_STATEMENT_PARAMETERS / PARAMETERS_PER_ROW);
@@ -30,24 +30,36 @@ export async function upsertTenant(db: SqlExecutor, rows: TenantUpsert[]): Promi
             const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
             const idValues: Array<unknown> = [];
             const nameValues: Array<unknown> = [];
+            const createdAtValues: Array<unknown> = [];
+            const createdAtPresent: boolean[] = [];
+            const updatedAtValues: Array<unknown> = [];
+            const updatedAtPresent: boolean[] = [];
             const versionValues: Array<unknown> = [];
             for (const row of chunk) {
                 idValues.push(row.id ?? null);
                 nameValues.push(row.name ?? null);
+                createdAtValues.push(row.createdAt ?? null);
+                createdAtPresent.push(row.createdAt !== undefined);
+                updatedAtValues.push(row.updatedAt ?? null);
+                updatedAtPresent.push(row.updatedAt !== undefined);
                 versionValues.push(row.version ?? null);
             }
             const result = await tx.query(
-                'insert into "tenant" as u ("id", "name", "version") select ' +
+                'insert into "tenant" as u ("id", "name", "createdAt", "updatedAt", "version") select ' +
                     'v."id", ' +
                     'v."name", ' +
+                    'case when v."createdAt#present" then v."createdAt" else now() end, ' +
+                    'case when v."updatedAt#present" then v."updatedAt" else now() end, ' +
                     'v."version" ' +
-                    'from unnest($1::uuid[], $2::text[], $3::int8[]) as v(' +
-                    '"id", "name", "version") ' +
+                    'from unnest($1::uuid[], $2::text[], $3::timestamptz[], $4::bool[], $5::timestamptz[], $6::bool[], $7::int8[]) as v(' +
+                    '"id", "name", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version") ' +
                     'on conflict ("id") do update set ' +
-                    '"name" = excluded."name" ' +
+                    '"name" = excluded."name", ' +
+                    '"updatedAt" = excluded."updatedAt", ' +
+                    '"version" = u."version" + 1 ' +
                     'where u."version" = excluded."version" ' +
                     'returning u."id"',
-                [idValues, nameValues, versionValues],
+                [idValues, nameValues, createdAtValues, createdAtPresent, updatedAtValues, updatedAtPresent, versionValues],
             );
             const written = resultRows(result);
             const writtenKeys = new Set(written.map((row) => String(row["id"])));

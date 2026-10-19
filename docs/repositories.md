@@ -102,8 +102,8 @@ export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Pro
 `InvoiceInsert` is the entity minus every field the statement does not write, so
 it mirrors the SQL exactly. A whole entity is still assignable to it, so a caller
 holding one can pass it unchanged. What the type rules out is a field that would
-be read and then dropped — a branch, a clock field, a `@pgVirtual` column, or a
-derivable value — which is the same set `<entity>InsertSchema` accepts
+be read and then dropped — a branch, a `@pgVirtual` column, or a derivable
+value — which is the same set `<entity>InsertSchema` accepts
 (`docs/validation.md`). The type is built by `Insert`
 (`packages/sdk/src/insert.ts`), so an entity with no field to omit, relax,
 or widen still gets an `Insert<…, never, never, never>`, which resolves to the
@@ -128,9 +128,8 @@ with a database default, and the statement writes the default the spec declares,
 since the `default` keyword is not allowed outside an `insert … values` list. A
 required field with a default is relaxed to optional in `<Entity>Insert`, and its
 schema is `.partial()`, so the type and the wire agree that omitting it is
-allowed. A `@version` field is the exception: a defaulted version is left out of
-a create entirely, because its default *is* the first revision
-(`docs/versioning.md`).
+allowed. A supplied value always wins, which is what lets a seed or a backfill
+carry a historical `createdAt`, `updatedAt`, or `version`.
 
 A nullable column accepts `null` as well as omission, since the two are one
 request for a create: the column has no default to fall back on, so either writes
@@ -170,7 +169,7 @@ repository imports it:
 ```ts
 import type { CustomerPatch } from "sdk/repositories/customerPatchSchema.ts";
 
-export type CustomerPatch = Omit<Partial<Customer>, "createdAt" | "updatedAt"> & Required<Pick<Customer, "id" | "version">>;
+export type CustomerPatch = Omit<Partial<Customer>, "createdAt"> & Required<Pick<Customer, "id" | "version">>;
 ```
 
 Every written column is optional except two, which are the keys the rest of the
@@ -187,10 +186,11 @@ design leans on:
 A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
 touches. That is a branch — a `@relation` or `@children` field, which has no
-column — a column the database owns outright: a clock field, a virtual generated
-column (`@pgVirtual`), or a nullable `@computed` field its mechanism fills in.
-A `@pgDefault` column is *not* on this list: a patch may override a default, the
-same way a create may.
+column — a column the database owns outright: a virtual generated column
+(`@pgVirtual`), or a nullable `@computed` field its mechanism fills in.
+`createdAt` is left out because it is set once; a `@pgDefault` column is *not* on
+this list, and neither is `updatedAt`: a patch may override either, the same way
+a create may.
 
 `update` writes one statement per chunk of rows, naming every column a patch may
 supply. Whether a row supplied one travels with the row as a presence flag, so a
@@ -199,8 +199,11 @@ field the caller omitted keeps its stored value while a field the caller sets to
 
 ```sql
 update "customer" as u
-    set "name" = case when v."name#present" then v."name" else u."name" end
-from unnest($1::uuid[], $2::text[], $3::bool[]) as v("id", "name", "name#present")
+    set "name" = case when v."name#present" then v."name" else u."name" end,
+        "updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end,
+        "version" = u."version" + 1
+from unnest($1::uuid[], $2::text[], $3::bool[], $4::timestamptz[], $5::bool[], $6::int8[])
+    as v("id", "name", "name#present", "updatedAt", "updatedAt#present", "version")
 where u."id" = v."id" and u."version" = v."version"
 returning u."id"
 ```
@@ -220,9 +223,9 @@ patch carries.
 
 The key columns and the version travel in the same arrays: the keys match each
 row to the one it addresses, and the version goes into the `where`, so a stale
-one matches no row. The version is never in the `set` clause: the trigger
-increments the column, and a statement that assigned it would make the trigger's
-own guard fire. See `docs/versioning.md`.
+one matches no row. The `set` clause increments the stored version rather than
+assigning the claim, so a matched row moves to the next revision
+(`docs/versioning.md`).
 
 A statement that writes fewer rows than its chunk carried is a rejected call
 rather than a no-op: the statement returns the keys it wrote, and the generated
@@ -251,19 +254,27 @@ the insert's field set with the `@version` column put back:
 ```ts
 import type { CustomerUpsert } from "sdk/repositories/customerUpsertSchema.ts";
 
-export type CustomerUpsert = Omit<Customer, "createdAt" | "updatedAt">;
+export type CustomerUpsert = Upsert<Customer, never, "id" | "version", "eInvoiceAddress" | …, "createdAt" | "updatedAt">;
 ```
 
-A create omits a defaulted version, because its default *is* the first revision
-(`docs/versioning.md`). An upsert cannot: it has to say which revision it
-believes the row is at, so the column is required and the statement writes what
-it carries:
+A create may take a defaulted version or claim one. An upsert must always claim
+it: it has to say which revision it believes the row is at, so the column is
+required and the statement writes what it carries. The clocks stay optional, and
+an omitted one falls back to `now()`:
 
 ```sql
-insert into "customer" as u ("id", "name", "email", "version") select
-    v."id", v."name", v."email", v."version"
-from unnest($1::uuid[], $2::text[], $3::text[], $4::int8[]) as v("id", "name", "email", "version")
-on conflict ("id") do update set "name" = excluded."name", "email" = excluded."email"
+insert into "customer" as u ("id", "name", "email", "createdAt", "updatedAt", "version") select
+    v."id", v."name", v."email",
+    case when v."createdAt#present" then v."createdAt" else now() end,
+    case when v."updatedAt#present" then v."updatedAt" else now() end,
+    v."version"
+from unnest($1::uuid[], $2::text[], $3::text[], $4::timestamptz[], $5::bool[], $6::timestamptz[], $7::bool[], $8::int8[])
+    as v("id", "name", "email", "createdAt", "createdAt#present", "updatedAt", "updatedAt#present", "version")
+on conflict ("id") do update set
+    "name" = excluded."name",
+    "email" = excluded."email",
+    "updatedAt" = excluded."updatedAt",
+    "version" = u."version" + 1
 where u."version" = excluded."version"
 returning u."id"
 ```
@@ -273,11 +284,11 @@ returning u."id"
   `@pgAutoIncrement` key is named in the insert even though a create leaves it
   out, because the claim on the key is what the conflict matches
   (`docs/auto-increment.md`).
-- **The version is compared, never assigned.** `do update` writes `excluded`
-  values, and the trigger owns the counter: a statement that assigned the
-  version would make the trigger's own guard fire. The claimed version is
-  therefore both what a new row is born at and what the stored row must hold for
-  the replacement to happen (`docs/versioning.md`).
+- **The version is compared, then incremented.** The `where` matches the stored
+  revision against the claim, and the `set` writes `u."version" + 1` rather than
+  the claimed value. The claim is therefore both what a new row is born at and
+  what the stored row must hold for the replacement to happen
+  (`docs/versioning.md`).
 - **A row at another version is left alone**, so the statement writes fewer rows
   than it carried, and the generated code rejects the call with a
   `VersionConflictError` naming those rows — the same rejection a stale patch
@@ -365,11 +376,10 @@ generator special-casing it. A relation contributes no column of its own: its
 `@foreignKey` field is an ordinary column, read as `row.customerId`.
 
 A column with a database default (`@pgDefault`) is written when the row supplies
-it, and its tuple carries the `default` keyword when the row omits it, so the
-database fills that row's value. The clock tags are the different case: they
-never appear in a generated `insert`, because the default fills `createdAt` and
-`updatedAt` on insert and the trigger refreshes `updatedAt` on every write; see
-`docs/timestamps.md`.
+it, and its tuple carries the default expression when the row omits it, so the
+row gets the value the database would have filled. The clock tags and a
+defaulted `@version` follow the same rule: a create writes a supplied value, or
+`now()` / `0`. See `docs/timestamps.md`.
 
 A `@computed` column the database can fill later is left out too, so the
 `insert` names exactly the insertable fields and nothing else. That is the whole
@@ -386,9 +396,9 @@ column from the fields it derives from, so naming it would write a value the
 trigger then overwrites. A *required* computed column stays in the patch, since
 it has no stored value to fall back on.
 
-The one exception is a `@version` column. It is defaulted, so it is omitted on
-insert, but a patch sends it into the `where` as the optimistic-lock
-precondition the trigger checks, and an upsert writes the revision it claims. The
+A `@version` column is the one field whose role differs by operation. A create
+and an upsert write it, a patch sends it into the `where` as the optimistic-lock
+precondition, and the statement increments the stored value on a match. The
 generator therefore builds the insert, upsert, and patch column sets separately;
 see `docs/versioning.md`.
 
@@ -422,17 +432,18 @@ it was handed with the planner's, so the two cannot drift.
 - **A defaulted column is written only when the caller supplies it.** A create
   that omits one writes the default the spec declares, so that row gets the same
   value the database would have; a patch that omits one keeps the stored value,
-  and an upsert that omits one resets it to the default. The clock fields are the
-  different case: `createdAt` and `updatedAt` are excluded from `insert` and
-  `update` outright, so writing one takes raw SQL. A `@version` column is
-  excluded from `insert` too, and on update it goes into the `where` rather than
-  the `set`, while an upsert writes the revision it carries.
-- **`update` enforces the version with a predicate, and the database raises it.**
-  The `@version` column is matched in the `where`, so a stale one matches no row
-  and the generated code rejects the call with the `40001` that maps to a `409`,
-  naming the rows the statement did not write. The increment stays in a database
-  trigger. A rejection does not say whether the version was stale or the row was
-  missing. See `docs/versioning.md`.
+  and an upsert that omits one resets it to the default. `createdAt` and
+  `updatedAt` are ordinary defaulted columns on a create, so a caller may supply
+  a historical instant. A patch never writes `createdAt`; it writes `updatedAt`
+  when supplied and refreshes it to `now()` when omitted. A `@version` column is
+  written on create and upsert, and on update it goes into the `where` while the
+  statement increments the stored value.
+- **`update` enforces the version with a predicate, then increments it.** The
+  `@version` column is matched in the `where`, so a stale one matches no row and
+  the generated code rejects the call with the `40001` that maps to a `409`,
+  naming the rows the statement did not write. The statement's `set` writes
+  `u."version" + 1`. A rejection does not say whether the version was stale or
+  the row was missing. See `docs/versioning.md`.
 - **A patch cannot set a non-nullable column to null.** Nullable columns are the
   exception: a patch sets one to `null` to clear it. `Invoice.notes`,
   `Invoice.number`, and the optional foreign keys are the ones in this model.
