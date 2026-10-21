@@ -7,6 +7,7 @@ import {
     ts,
     type JSDoc,
     type JSDocTag,
+    type MethodSignature,
 } from "ts-morph";
 import { DEFAULT_PG_TYPES } from "./pg-types.ts";
 
@@ -227,6 +228,8 @@ export interface SpecTag {
     name: string;
     /** The tag's comment text, trimmed, or undefined when it carries none. */
     value: string | undefined;
+    /** The tag as written, e.g. `@throws {InvoiceDetailsError} when details are missing`. */
+    text: string;
     /** The line the tag sits on. */
     line: number;
 }
@@ -344,6 +347,8 @@ export interface SpecInterface {
     location: SpecLocation;
     /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
     importSpecifier: string;
+    /** The interface's type parameters as written, e.g. `["T"]`; an operation contract takes its context here. */
+    typeParameters: string[];
     properties: SpecProperty[];
     /** The interface's own tags, as written: `@pgTable`, `@repository`, and friends. */
     tags: Tags;
@@ -357,6 +362,53 @@ export interface SpecInterface {
     queries: ReadOperation[];
     /** The read operations `@restQueries` exposes; empty when the tag is absent. See docs/rest-api.md. */
     restQueries: ReadOperation[];
+}
+
+/** One parameter of a contract method, as written. */
+export interface SpecOperationParameter {
+    name: string;
+    /** The parameter type as written, e.g. `T` or `{ invoice: Invoice }`. */
+    typeText: string;
+}
+
+/** One error a contract method declares with `@throws {Name} [status=…] reason`. */
+export interface SpecOperationError {
+    /** The class name the tag names, e.g. `InvoiceDetailsError`. */
+    name: string;
+    /** The reason the tag gives, which the generated doc comment carries. */
+    reason: string;
+    /** The `status=` parameter, when the tag names one; the error generator defaults an absent one. */
+    status?: number;
+    /** Every `key=value` parameter on the tag, so the linter can report one the tag does not take. */
+    parameters: TagParameters;
+    location: SpecLocation;
+}
+
+/** A method carrying `@operation`: a backend operation the generators scaffold and expose. See docs/operations.md. */
+export interface SpecOperation {
+    /** The contract interface that declares it, e.g. `InvoiceOperations`. */
+    interfaceName: string;
+    /** The module specifier that imports the contract, e.g. `spec/operations/InvoiceOperations.ts`. */
+    importSpecifier: string;
+    /** The contract's type parameters, which a generator fills with the context it supplies. */
+    interfaceTypeParameters: string[];
+    /** The method name, which is the operation id. */
+    name: string;
+    /** The prose above the tags, one line each, copied into the scaffold's doc comment. */
+    description: string[];
+    /** The parameters as written; the first is the context. */
+    parameters: SpecOperationParameter[];
+    /** The return type as written, e.g. `Promise<InvoiceSent>`. */
+    returnTypeText: string;
+    /** The return type as a shape. */
+    returnType: SpecType;
+    /** The errors the JSDoc declares, in the order written. */
+    throws: SpecOperationError[];
+    /** True when `@operation` marks it as an operation; a method carrying only `@restOperation` is a lint finding. */
+    operation: boolean;
+    /** True when `@restOperation` marks it for the HTTP surface. */
+    rest: boolean;
+    location: SpecLocation;
 }
 
 /** A type alias in the spec. */
@@ -377,6 +429,8 @@ export interface SpecModel {
     interfaces: Map<string, SpecInterface>;
     /** Interfaces carrying no `@entity`, which the linter alone reads to report an entity tag on a contract. */
     nonEntityInterfaces: SpecInterface[];
+    /** Every `@operation` method, in name order. See docs/operations.md. */
+    operations: SpecOperation[];
     aliases: Map<string, SpecTypeAlias>;
 }
 
@@ -494,7 +548,7 @@ function tagComment(tag: JSDocTag): string | undefined {
 
 /** Read a JSDoc tag into the plain shape a consumer sees. */
 function specTagOf(tag: JSDocTag): SpecTag {
-    return { name: tag.getTagName(), value: tagComment(tag), line: tag.getStartLineNumber() };
+    return { name: tag.getTagName(), value: tagComment(tag), text: tag.getText().trim(), line: tag.getStartLineNumber() };
 }
 
 /** Parse `key=value` pairs out of a tag's comment. */
@@ -900,6 +954,65 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     return tags;
 }
 
+/** Read a `@throws {Name} [status=…] reason` tag; an empty name or reason is left for the linter to report. */
+export function readThrowsTag(tag: SpecTag, filePath: string): SpecOperationError {
+    // getText() carries the JSDoc lines that follow, so the tag is read from its first line.
+    const line = (tag.text.split("\n")[0] ?? "").replace(/\s+$/u, "");
+    const match = line.match(/^@throws\s*\{([^}]*)\}(.*)$/u);
+    const parameters = parseParameters({ ...tag, value: match?.[2]?.trim() });
+    const written = (match?.[2] ?? "").replace(/\bstatus=\S+/gu, " ").replace(/\s+/gu, " ").trim();
+    const status = parameters.get("status");
+    const parsed: SpecOperationError = {
+        name: (match?.[1] ?? "").trim(),
+        reason: written,
+        parameters,
+        location: { filePath, line: tag.line },
+    };
+    // A value the linter cannot read stays absent, so the generator never writes a non-numeric status.
+    if (status !== undefined && /^\d+$/u.test(status)) {
+        parsed.status = Number(status);
+    }
+    return parsed;
+}
+
+/** Read a method carrying `@operation` as an operation; undefined when it declares none. See docs/operations.md. */
+function readOperation(
+    contract: SpecInterface,
+    method: MethodSignature,
+): SpecOperation | undefined {
+    const tags = readTags(method);
+    const operation = tags.written.byName.has("operation");
+    const rest = tags.written.byName.has("restOperation");
+    // A method carrying only @restOperation is kept so the linter can report the missing marker.
+    if (!operation && !rest) {
+        return undefined;
+    }
+    const doc = method.getJsDocs()[0];
+    const description = (doc?.getDescription() ?? "")
+        .split("\n")
+        .map((line) => line.replace(/^\*+/u, "").trim())
+        .filter((line) => line !== "");
+    const returnTypeNode = method.getReturnTypeNode();
+    const filePath = contract.location.filePath;
+    return {
+        interfaceName: contract.name,
+        importSpecifier: contract.importSpecifier,
+        interfaceTypeParameters: contract.typeParameters,
+        name: method.getName(),
+        description,
+        parameters: method.getParameters().map((parameter) => ({
+            name: parameter.getName(),
+            typeText: parameter.getTypeNode()?.getText() ?? "",
+        })),
+        returnTypeText: returnTypeNode?.getText() ?? "",
+        returnType: returnTypeNode ? readType(returnTypeNode) : { kind: "missing" },
+        throws: (tags.written.byName.get("throws") ?? []).map((tag) => readThrowsTag(tag, filePath)),
+        operation,
+        rest,
+        location: locationOf(method),
+    };
+}
+
 /** Every type alias among the given sources, decoded once so a consumer reads tags rather than walking JSDoc. */
 export function collectAliases(project: Project, sourceGlob?: string): Map<string, SpecTypeAlias> {
     const aliases = new Map<string, SpecTypeAlias>();
@@ -1117,6 +1230,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     const interfaces = new Map<string, SpecInterface>();
     const entities: SpecInterface[] = [];
     const nonEntityInterfaces: SpecInterface[] = [];
+    const operations: SpecOperation[] = [];
     const aliases = new Map<string, SpecTypeAlias>();
 
     for (const [name, alias] of collectAliases(project, sourceGlob)) {
@@ -1137,6 +1251,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 filePath,
                 location: locationOf(declaration),
                 importSpecifier: specImportSpecifier(filePath),
+                typeParameters: declaration.getTypeParameters().map((parameter) => parameter.getText()),
                 tags: declarationTags,
                 properties: declaration.getProperties().map((property) => {
                     const tags = readTags(property);
@@ -1170,6 +1285,12 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
             if (declarationTags.pgTrigger !== undefined) {
                 entity.trigger = declarationTags.pgTrigger;
             }
+            for (const method of declaration.getMethods()) {
+                const operation = readOperation(entity, method);
+                if (operation) {
+                    operations.push(operation);
+                }
+            }
             if (declarationTags.entity) {
                 entities.push(entity);
             } else {
@@ -1183,8 +1304,9 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
         interfaces.set(entity.name, entity);
     }
     nonEntityInterfaces.sort((a, b) => a.name.localeCompare(b.name));
+    operations.sort((a, b) => a.name.localeCompare(b.name) || a.interfaceName.localeCompare(b.interfaceName));
 
-    return { interfaces, nonEntityInterfaces, aliases };
+    return { interfaces, nonEntityInterfaces, operations, aliases };
 }
 
 /** The tsconfig the generators read, with every spec source added to it. */

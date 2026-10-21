@@ -970,6 +970,93 @@ export type UUIDv7 = string;`;
     });
 });
 
+describe("operations", () => {
+    const contract = `
+export interface InvoiceOperations<T> {
+    /**
+     * Send the invoice to the recipient.
+     *
+     * @throws {InvoiceDetailsError} thrown when details are missing
+     * @operation
+     * @restOperation
+     */
+    sendInvoice(ctx: T, opts: { invoice: string }): Promise<string>;
+
+    list(ctx: T): void;
+}`;
+
+    it("reads a method carrying @operation", () => {
+        const spec = parse({ "Ops.ts": contract });
+
+        expect(spec.operations).toHaveLength(1);
+        expect(spec.operations[0]).toMatchObject({
+            interfaceName: "InvoiceOperations",
+            interfaceTypeParameters: ["T"],
+            name: "sendInvoice",
+            description: ["Send the invoice to the recipient."],
+            parameters: [
+                { name: "ctx", typeText: "T" },
+                { name: "opts", typeText: "{ invoice: string }" },
+            ],
+            returnTypeText: "Promise<string>",
+            operation: true,
+            rest: true,
+        });
+    });
+
+    it("reads the class and reason of a @throws tag", () => {
+        const spec = parse({ "Ops.ts": contract });
+
+        expect(spec.operations[0]?.throws).toEqual([
+            {
+                name: "InvoiceDetailsError",
+                reason: "thrown when details are missing",
+                parameters: new Map(),
+                location: expect.objectContaining({ line: expect.any(Number) }),
+            },
+        ]);
+    });
+
+    it("reads a status parameter off the tag, leaving it out of the reason", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @throws {InvoiceDetailsError} status=422 when details are missing
+     * @operation
+     */
+    send(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations[0]?.throws[0]).toMatchObject({
+            name: "InvoiceDetailsError",
+            status: 422,
+            reason: "when details are missing",
+        });
+    });
+
+    it("keeps @restOperation without @operation, so lint can report it", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /** @restOperation */
+    send(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations).toEqual([
+            expect.objectContaining({ name: "send", operation: false, rest: true }),
+        ]);
+    });
+
+    it("ignores a method carrying neither marker", () => {
+        const spec = parse({ "Ops.ts": contract });
+
+        expect(spec.operations.map((operation) => operation.name)).toEqual(["sendInvoice"]);
+    });
+});
+
 describe("resolveType", () => {
     /** What the `Target` alias resolves to, with its siblings as the alias graph. */
     function resolution(text: string): TypeResolution {

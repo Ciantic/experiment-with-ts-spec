@@ -1,7 +1,7 @@
 # Invoice sending
 
 `sendInvoice` in `packages/spec/src/operations/InvoiceOperations.ts` issues a draft and
-delivers it. This note records the delivery options it takes, the party data
+delivers it. This note records the contract it declares today, the party data
 sending depends on, and what is deferred.
 
 ## Options are call choices; routing is master data
@@ -21,15 +21,32 @@ data the `Customer` already owns and store it nowhere — the duplication
 `docs/invoice-snapshotting.md` avoids by linking the `Customer` rather than
 copying it into the call.
 
-## `sendInvoice` options
+## The contract today
 
-- **`format`** — the e-invoice serialization. `InvoiceFormat` is an open union
-  (`finvoice`, `peppolBis`, `ubl`, plus any other string). `finvoice` is the
+```ts
+sendInvoice(ctx, { invoice }): Promise<InvoiceSent>
+```
+
+The call carries the draft and nothing else. The operation issues it, snapshots
+it, and answers the `InvoiceSent` it wrote. It raises `InvoiceDetailsError` when
+the draft lacks a party, a number, or another detail a send needs; see
+`docs/errors.md`.
+
+The backend module is scaffolded by the operations generator and implemented by
+hand. See `docs/operations.md`.
+
+## Delivery options that are deferred
+
+The choices below are the model the operation takes when delivery exists; none
+of them is in the contract yet.
+
+- **`format`** — the e-invoice serialization, an open union (`finvoice`,
+  `peppolBis`, `ubl`, plus any other string). `finvoice` is the
   Finnish national format, `peppolBis` the PEPPOL BIS Billing 3.0 profile used
   across SEPA, and `ubl` the OASIS format. Omitting it defers to the party's
   default.
-- **`delivery`** — the channel. `InvoiceDelivery` is an open union (`eInvoice`,
-  `email`, `print`, `download`, plus any other string). `eInvoice` routes it over
+- **`delivery`** — the channel, an open union (`eInvoice`, `email`, `print`,
+  `download`, plus any other string). `eInvoice` routes it over
   the operator network, which is what needs the routing identities below.
 - **`eInvoiceAddress` / `eInvoiceOperator`** — an override for the recipient's
   routing, for a customer not yet in master data. The stored `Customer` values
@@ -84,9 +101,9 @@ a live company record.
 
 - **Address scheme is not modelled.** PEPPOL distinguishes OVT (`0037`) from GLN
   (`0088`) by a scheme id that the current model leaves implicit in the address.
-- **The routing override is not persisted.** An override on `sendInvoice` is not
-  written back to `Customer`, so the next send needs it again. The same holds for
-  the `language` override.
+- **The routing override is not persisted.** When the deferred routing override
+  lands, it is not written back to `Customer`, so the next send needs it again.
+  The same holds for the `language` override.
 - **The inlined parties leak their language.** `@inlined` on the customer and
   seller fields flatten every scalar field, so `customerLanguage` and
   `sellerLanguage` land on `invoice_sent` next to its own `language` column. See
@@ -94,9 +111,8 @@ a live company record.
 - **The delivery records nothing.** Neither `Invoice` nor `InvoiceSent` carries a
   format or channel, so the chosen delivery is invisible afterwards. The language
   is the exception: it is on both.
-- **`InvoiceOperations` is an interface with no implementation.** Nothing in
-  `packages/backend/` implements it yet, so these options are a contract, not
-  behaviour.
+- **`InvoiceOperations` has only a scaffold.** `packages/backend/src/operations/sendInvoice.ts`
+  declares the contract and returns `null`; delivery is not implemented.
 
 ## Deliberately not implemented
 

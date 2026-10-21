@@ -35,7 +35,7 @@ describe("package entry", () => {
         const files = moduleGraph(ENTRY);
         const reached = [...files].map((file) => file.slice(import.meta.dirname.length + 1)).sort();
 
-        expect(reached).toEqual(["client.ts", "errors.ts", "http.ts", "index.ts"]);
+        expect(reached).toEqual(["builtinErrors.ts", "client.ts", "errorBase.ts", "errors.ts", "http.ts", "index.ts", "specErrors.ts"]);
         for (const file of files) {
             expect(readFileSync(file, "utf8")).not.toContain('from "zod"');
         }

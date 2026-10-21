@@ -173,6 +173,34 @@ function lintContract(spec: SpecInterface, findings: Diagnostic[]): void {
     }
 }
 
+/** Check each `@operation` method: its markers, its contract's type parameters, and its `@throws` entries. See docs/operations.md. */
+function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
+    for (const operation of spec.operations) {
+        const report = (message: string, line = operation.location.line) => {
+            findings.push({ filePath: operation.location.filePath, line, message: `\`${operation.name}\`: ${message}` });
+        };
+        if (!operation.operation) {
+            report("@restOperation requires @operation");
+        }
+        if (spec.interfaces.has(operation.interfaceName)) {
+            report("@operation belongs on a contract interface, not on an @entity");
+        }
+        if (operation.interfaceTypeParameters.length > 1) {
+            report("an operation contract takes at most one type parameter, the context");
+        }
+        if (operation.parameters.length === 0) {
+            report("an operation takes the context as its first parameter");
+        }
+        for (const thrown of operation.throws) {
+            if (thrown.name === "") {
+                report("@throws names the error class, as `@throws {InvoiceDetailsError} why`", thrown.location.line);
+            } else if (thrown.reason === "") {
+                report(`@throws {${thrown.name}} needs a reason`, thrown.location.line);
+            }
+        }
+    }
+}
+
 /** `@tenant` marks the root; `@tenantOwned <field>` names the column scoping an interface. See docs/tenancy.md. */
 function lintTenancyTags(spec: SpecInterface, report: Report): void {
     for (const tag of spec.tags.written.byName.get(TENANT_TAG) ?? []) {
@@ -1137,6 +1165,8 @@ function lintModel(spec: SpecModel, whole: boolean): { findings: Diagnostic[]; p
     for (const contract of spec.nonEntityInterfaces) {
         lintContract(contract, findings);
     }
+
+    lintOperations(spec, findings);
 
     // The tenancy graph is spread over several interfaces, so only a whole model can be judged by it.
     if (whole) {

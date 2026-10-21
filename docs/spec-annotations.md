@@ -38,8 +38,10 @@ tags decide what it is. No directory does:
 - A **primitive** is a type alias carrying `@primitive`. Every other alias is
   read too, since a field's type resolves through it.
 - An interface carrying no `@entity` is a **contract**, such as the ones in
-  `src/operations/`; the generators ignore it. An entity tag on such an
-  interface is a lint finding, not a silent omission.
+  `src/operations/`; the entity generators ignore it. A method carrying
+  `@operation` is read by the operations generator instead, which scaffolds one
+  backend module per operation. An entity tag on a contract is a lint finding,
+  not a silent omission. See `docs/operations.md`.
 
 ## Tags
 
@@ -187,6 +189,21 @@ Type tags:
 Type tags sit on a type alias and are validated as a group: `@primitive` types
 must declare `@zod` and `@pgType`, and any tag outside these four is reported. A
 field never carries a type tag; an alias never carries a field or interface tag.
+
+Method tags:
+
+- `@operation` — a bare marker on a contract method that makes it a backend
+  operation. The contract takes at most one type parameter, the context, and the
+  method's first parameter is that context. See `docs/operations.md`.
+- `@restOperation` — a bare marker exposing the operation on the HTTP surface.
+  It requires `@operation`. The route table and the client do not read it yet.
+- `@throws {Class} [status=<code>] reason` — an error the operation raises, and
+  why. The generator writes the class to `packages/sdk/src/specErrors.ts`, with
+  the wire kind derived from the name and the status defaulting to `400`; the
+  operations scaffold copies the tag into its module's doc comment. See
+  `docs/errors.md`.
+
+A method never carries a field, interface, or type tag.
 
 `@pgType` is also checked against the alias's own type. The tag names storage,
 the TypeScript type says what the value is, and nothing else ties the two

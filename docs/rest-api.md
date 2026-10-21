@@ -348,11 +348,11 @@ No mode reaches the statement unvalidated.
   OpenAPI document, so no such document is emitted. The fix when a non-JS
   consumer is real is `Accept` negotiation adding a JSON encoding, not a document
   that misdescribes the bytes.
-- **An operations route.** `InvoiceOperations` is a contract with no
-  implementation, and `lint-spec.ts` deliberately keeps `operations/` out of the
-  entity set, so the generator does not see it. `POST /invoice/send` is
-  hand-wired when the operation exists, and it takes an id of its own so a group
-  can name it.
+- **An operations route.** `@restOperation` is read and linted, but the route
+  table and the client do not render it. An operation module is scaffolded under
+  `packages/backend/src/operations/`, and `POST /invoice/send` is hand-wired when
+  the route exists; it takes an id of its own so a group can name it. See
+  `docs/operations.md`.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
   (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.

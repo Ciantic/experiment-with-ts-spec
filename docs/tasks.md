@@ -13,10 +13,11 @@ pnpm run check
 runs, in order:
 
 1. `pnpm run generate` — `node scripts/generate.ts`, which lints the spec and
-   then writes every generated artifact: `generate:schema`,
-   `generate:repositories`, `generate:queries`, `generate:rest-api`, and
-   `generate:rest-client` in `packages/backend`, plus `generate:validation` in
-   `packages/sdk`, which owns the generator for its own schemas.
+   then writes every generated artifact: `generate:operations`,
+   `generate:schema`, `generate:repositories`, `generate:queries`,
+   `generate:rest-api`, and `generate:rest-client` in `packages/backend`, plus
+   `generate:errors` and `generate:validation` in `packages/sdk`, which owns the
+   generators for its own modules.
 2. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -40,9 +41,11 @@ The order is load-bearing:
 - **Build last.** It is the only step that consumes the generated output as
   input.
 
-`pnpm run generate` lints first, then runs the schema generator before the
-repository generator, then the query generator, the validation generator, and the
-two REST generators last. The driver parses the
+`pnpm run generate` lints first, then writes the operation errors and scaffolds
+the operation modules, then runs the schema generator before the repository
+generator, then the query generator, the validation generator, and the two REST
+generators last. Errors go before operations because an operation's scaffold
+documents the classes its `@throws` tags declare. The driver parses the
 spec once through
 `packages/spec/scripts/spec-model.ts` and hands the same `SpecModel` to every
 step, because that parse dominates a generate run; each generator keeps a
@@ -52,7 +55,10 @@ spec through that same model: the schema, repository, and
 query generators map it to columns in
 `packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
 Zod schemas in `packages/sdk/scripts/zod-model.ts`, and the REST pair maps
-it to the HTTP surface in `packages/sdk/scripts/rest-model.ts`. The API
+it to the HTTP surface in `packages/sdk/scripts/rest-model.ts`. The error
+generator reads the `@throws` tags and writes `specErrors.ts`; the operations
+generator reads the parsed `@operation` methods and writes only the modules that
+do not exist yet. See `docs/errors.md` and `docs/operations.md`. The API
 generator references the validation schemas by name, which is why it runs after
 them. None reads another's
 output, so the

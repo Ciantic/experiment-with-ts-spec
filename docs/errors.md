@@ -2,12 +2,24 @@
 
 ## The hierarchy
 
-The error classes are hand-written in `packages/sdk/src/errors.ts`, outside
-the generated schema barrel; the transport re-exports them and the backend
-imports them by path. A class is shared because the same failure has to be
-catchable in the backend and in the client: the code that throws it and the code
-that re-raises it from a response name one class, not two mirrors. `AppError` is the base of both the errors the server raises and the
-error the client raises when it cannot classify a response.
+The errors are three modules in `packages/sdk/src/`, outside the generated
+schema barrel; the transport re-exports them and the backend imports them by
+path. A class is shared because the same failure has to be catchable in the
+backend and in the client: the code that throws it and the code that re-raises
+it from a response name one class, not two mirrors.
+
+- `errorBase.ts` — `AppError`, the base of the errors the server raises and of
+  the one the client raises when it cannot classify a response, and
+  `apiErrorBody`, the body a failure becomes.
+- `builtinErrors.ts` — the classes this package raises itself: a request the
+  router refuses, a write that matched no row, a driver result it cannot read.
+- `specErrors.ts` — the classes the spec's `@throws` tags declare, written by
+  `packages/sdk/scripts/generate-errors.ts`.
+
+`errors.ts` is the entry: it re-exports both sets, merges their registries into
+one kind table, and rebuilds an error from a response body. The split keeps
+`errorBase.ts` free of generated imports, so neither generated file imports the
+other.
 
 | Class | Wire kind | Status | Raised when |
 | --- | --- | --- | --- |
@@ -32,6 +44,14 @@ same `409`. `NoMatchingRowError` shares the code because both ways of matching n
 row take the same recovery: re-read, then retry (`docs/versioning.md`).
 `HttpError` lives in the SDK, not in the shared module: it is only what the
 client falls back to.
+
+The classes above are built in. A class a spec declares with `@throws` is written
+to `specErrors.ts` and joins the same table; `InvoiceDetailsError` is the one
+today:
+
+| Class | Wire kind | Status | Declared by |
+| --- | --- | --- | --- |
+| `InvoiceDetailsError` | `invoice-details` | 422 | `InvoiceOperations.sendInvoice` |
 
 `UsageError` and `MockDataError` stay in `packages/backend/src/errors.ts`. They
 extend `AppError` but never reach an HTTP response — one is a command line the
@@ -60,9 +80,10 @@ SQLSTATE — has no `kind`, so the client keeps it as an `HttpError`.
 
 `kind` is deliberately not the class name. It is the wire contract, so renaming
 a class does not change what a client sends or expects. `ERROR_CLASSES` in
-`packages/sdk/src/errors.ts` is the one table mapping a kind to a class;
-a new kind needs an entry there and a class that accepts the same
-`(message, options)` constructor.
+`errors.ts` is the one table mapping a kind to a class. It is the merge of
+`BUILTIN_ERROR_CLASSES` and `SPEC_ERROR_CLASSES`, so a built-in kind needs a
+class in `builtinErrors.ts` and an entry in its table, and a spec kind needs an
+`@throws` tag. Every class accepts the same `(message, options)` constructor.
 
 ## The SDK
 
@@ -141,6 +162,56 @@ Both rules are syntactic: they read the `throw` statements in a file and do not
 trace calls. An error that reaches a function only through another call is
 documented by hand where that matters. Test files and scripts are exempt, since
 their throws are fixtures and tooling failures rather than API contract.
+
+## Errors the spec declares
+
+`pnpm generate:errors` reads every `@throws` an operation declares and writes
+`packages/sdk/src/specErrors.ts`:
+
+```ts
+/**
+ * @throws {InvoiceDetailsError} status=422 when the invoice doesn't have enough details to be sent
+ */
+sendInvoice(ctx: T, opts: { invoice: Invoice }): Promise<InvoiceSent>;
+```
+
+becomes
+
+```ts
+/** When the invoice doesn't have enough details to be sent. */
+export class InvoiceDetailsError extends AppError {
+    constructor(message: string, options: AppErrorOptions = {}) {
+        super(message, { kind: "invoice-details", status: 422 }, options);
+    }
+}
+
+export const SPEC_ERROR_CLASSES: Record<string, new (message: string, options?: AppErrorOptions) => AppError> = {
+    "invoice-details": InvoiceDetailsError,
+};
+```
+
+The tag carries everything the class needs:
+
+- **The name** is the class. It is shared by every tag that names it, so two
+  operations raising the same failure declare it once between them.
+- **`status=`** is the response status, `400` to `599`, and defaults to `400`.
+  A tag that names the same class at two statuses is a finding.
+- **The rest of the tag** is the reason, and becomes the class's doc comment. It
+  is documentation: the tag does not narrow the method's type, and the
+  implementation is what throws the instance.
+- **The wire kind** is derived from the name — `InvoiceDetailsError` becomes
+  `invoice-details` — and is what a client rebuilds the class from.
+
+The generator reports a name that is not a class name, a status outside the
+range, a parameter other than `status=`, and a name or kind a built-in error
+already answers for. A finding stops the run before the module is written.
+
+Because the module is generated in full, deleting a `@throws` removes its class
+on the next run. The hand-written code that throws it then fails to compile,
+which is the migration: either the tag comes back or the throw goes away.
+
+The classes are registered through `SPEC_ERROR_CLASSES`, which `errors.ts`
+merges, so nothing else has to be edited to make one catchable on both sides.
 
 ## Generated repositories
 

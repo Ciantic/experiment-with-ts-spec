@@ -16,6 +16,7 @@
     "generate:schema:stdout": "node scripts/generate-postgres-schema.ts --stdout",
     "generate:repositories": "node scripts/generate-repositories.ts",
     "generate:queries": "node scripts/generate-queries.ts",
+    "generate:operations": "node scripts/generate-operations.ts",
     "generate:rest-api": "node scripts/generate-rest-api.ts",
     "example:server": "node src/main.ts"
   },

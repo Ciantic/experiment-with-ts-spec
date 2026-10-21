@@ -2743,6 +2743,106 @@ export interface Thing {
     });
 });
 
+describe("operation tags", () => {
+    it("accepts a contract operation with a documented error", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * Send.
+     *
+     * @throws {InvoiceDetailsError} because details are missing
+     * @operation
+     * @restOperation
+     */
+    sendInvoice(ctx: T, opts: { invoice: string }): Promise<string>;
+}`);
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("reports @restOperation without @operation", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * Send.
+     * @restOperation
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @restOperation requires @operation"]);
+    });
+
+    it("reports @throws without a reason", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * Send.
+     *
+     * @throws {InvoiceDetailsError}
+     * @operation
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @throws {InvoiceDetailsError} needs a reason"]);
+    });
+
+    it("reports @throws without a class", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * Send.
+     *
+     * @throws because it fails
+     * @operation
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @throws names the error class, as `@throws {InvoiceDetailsError} why`",
+        ]);
+    });
+
+    it("reports @operation on an entity", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ * @queries query
+ */
+export interface Widget {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+
+    /**
+     * @operation
+     */
+    send(ctx: unknown): Promise<void>;
+}`);
+
+        expect(messages(findings)).toContain("`send`: @operation belongs on a contract interface, not on an @entity");
+    });
+
+    it("reports an operation contract with more than one type parameter", () => {
+        const findings = lintSourceText(`
+export interface Ops<T, U> {
+    /**
+     * Send.
+     * @operation
+     */
+    sendInvoice(ctx: T, extra: U): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: an operation contract takes at most one type parameter, the context"]);
+    });
+});
+
 describe("the committed spec", () => {
     it("passes lint", () => {
         const { findings, interfaces, properties } = lintSpec(loadSpec());
