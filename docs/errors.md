@@ -36,6 +36,7 @@ other.
 | `ShortWriteError` | `short-write` | 500 | a create or snapshot upsert writes fewer rows than it carried |
 | `DriverResultError` | `driver-result` | 500 | `affectedRows` or `resultRows` reads a result the driver did not shape |
 | `SavepointOptionsError` | `savepoint-options` | 400 | a nested boundary is asked for transaction options |
+| `NotImplemented` | `not-implemented` | 501 | a call is scaffolded but has no implementation yet |
 | `HttpError` | `http` | response's status | the SDK cannot classify a non-2xx body |
 
 `ConflictError` carries the SQLSTATE `"40001"`, the code clients already treat as

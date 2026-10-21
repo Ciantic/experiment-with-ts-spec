@@ -88,6 +88,13 @@ export class SavepointOptionsError extends AppError {
     }
 }
 
+/** A call exists in the spec and is wired to a route, but its implementation is still the scaffold. */
+export class NotImplemented extends AppError {
+    constructor(message: string, options: AppErrorOptions = {}) {
+        super(message, { kind: "not-implemented", status: 501 }, options);
+    }
+}
+
 /** The errors this module defines, keyed by the wire kind that rebuilds them. */
 export const BUILTIN_ERROR_CLASSES: Record<string, ErrorClass> = {
     "request": RequestError,
@@ -101,4 +108,5 @@ export const BUILTIN_ERROR_CLASSES: Record<string, ErrorClass> = {
     "short-write": ShortWriteError,
     "driver-result": DriverResultError,
     "savepoint-options": SavepointOptionsError,
+    "not-implemented": NotImplemented,
 };

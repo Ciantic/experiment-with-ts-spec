@@ -1,15 +1,22 @@
 /** Unit tests for the operation scaffold generator, driven by self-contained fixtures and a temp directory. See docs/testing.md. */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "spec/scripts/spec-model.ts";
-import { meetsContract, placeholderType, renderOperationFile, run } from "./generate-operations.ts";
+import {
+    declaresContract,
+    isScaffold,
+    meetsContract,
+    renderOperationFile,
+    run,
+    SCAFFOLD_MARKER,
+} from "./generate-operations.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
-/** The returned entity, so the scaffold imports the type it casts the placeholder to. */
+/** A returned entity the fixture contract can reference. */
 const SENT = `
 /**
  * @entity
@@ -34,6 +41,14 @@ export interface InvoiceOperations<T> {
      * @restOperation
      */
     sendInvoice(ctx: T, opts: { invoice: string }): Promise<InvoiceSent>;
+}
+`.trim();
+
+/** The contract after the operation is deleted from it. */
+const WITHOUT_SEND = `
+export interface InvoiceOperations<T> {
+    /** Nothing to do. */
+    idle(ctx: T): void;
 }
 `.trim();
 
@@ -81,27 +96,27 @@ describe("renderOperationFile", () => {
     it("declares the operation under its contract annotation", () => {
         const spec = build();
 
-        expect(renderOperationFile(operation(spec), spec)).toContain(
+        expect(renderOperationFile(operation(spec))).toContain(
             'export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {',
         );
     });
 
     it("leaves the context to the implementer", () => {
-        const code = renderOperationFile(operation(build()), build());
+        const code = renderOperationFile(operation(build()));
 
         expect(code).toContain("InvoiceOperations<unknown>");
         expect(code).not.toContain("SqlExecutor");
     });
 
-    it("imports the contract and the type the placeholder returns", () => {
-        const code = renderOperationFile(operation(build()), build());
+    it("imports the contract and the error its body throws", () => {
+        const code = renderOperationFile(operation(build()));
 
         expect(code).toContain('import type { InvoiceOperations } from "spec/fixtures/InvoiceOperations.ts";');
-        expect(code).toContain('import type { InvoiceSent } from "spec/fixtures/InvoiceSent.ts";');
+        expect(code).toContain('import { NotImplemented } from "sdk/errors.ts";');
     });
 
     it("copies the operation's prose and its declared errors into the doc comment", () => {
-        const code = renderOperationFile(operation(build()), build());
+        const code = renderOperationFile(operation(build()));
 
         expect(code).toContain(" * Send the invoice to the recipient.");
         expect(code).toContain(
@@ -111,15 +126,21 @@ describe("renderOperationFile", () => {
         expect(code).not.toContain("@restOperation");
     });
 
-    it("returns a placeholder the compiler accepts", () => {
-        const code = renderOperationFile(operation(build()), build());
+    it("documents the throw it writes, since the scaffold is what raises it", () => {
+        const code = renderOperationFile(operation(build()));
 
-        expect(code).toContain("return null as unknown as Promise<InvoiceSent>;");
+        expect(code).toContain(
+            " * @throws {NotImplemented} when the operation is still the scaffold; remove this tag with the throw",
+        );
     });
 
-    it("awaits a promise return and leaves a plain return unawaited", () => {
-        expect(placeholderType(operation(build()))).toBe("Promise<InvoiceSent>");
+    it("throws NotImplemented, so a forgotten implementation is a 501 rather than a null answer", () => {
+        const code = renderOperationFile(operation(build()));
 
+        expect(code).toContain('throw new NotImplemented("sendInvoice is scaffolded but not implemented");');
+    });
+
+    it("keeps the method async when the contract returns a promise, and plain otherwise", () => {
         const plain = build({
             "Ops.ts": `
 export interface Ops<T> {
@@ -131,10 +152,129 @@ export interface Ops<T> {
         if (!count) {
             throw new Error("fixture is missing the count operation");
         }
-        const code = renderOperationFile(count, plain);
+        const code = renderOperationFile(count);
 
         expect(code).toContain('export const count: Ops<unknown>["count"] = (ctx) => {');
-        expect(code).toContain("return null as unknown as number;");
+        expect(code).toContain('throw new NotImplemented("count is scaffolded but not implemented");');
+    });
+});
+
+describe("scaffold provenance", () => {
+    it("marks a fresh scaffold, so the generator can tell it from an implementation", () => {
+        expect(renderOperationFile(operation(build())).split("\n", 1)[0]).toBe(SCAFFOLD_MARKER);
+    });
+
+    it("recognizes a scaffold whether or not its marker was kept", () => {
+        expect(
+            isScaffold(`${SCAFFOLD_MARKER}
+export const sendInvoice: Ops["sendInvoice"] = async (ctx) => {
+    throw new NotImplemented("not implemented");
+};
+`),
+        ).toBe(true);
+        expect(
+            isScaffold(`
+export const sendInvoice: Ops["sendInvoice"] = async (ctx) => {
+    throw new NotImplemented("not implemented");
+};
+`),
+        ).toBe(true);
+    });
+
+    it("does not call an implemented module a scaffold, even when it kept the marker", () => {
+        const implemented = `${SCAFFOLD_MARKER}
+export const sendInvoice: Ops["sendInvoice"] = async (ctx) => {
+    return await deliver(ctx.db);
+};
+`;
+
+        expect(isScaffold(implemented)).toBe(false);
+        expect(declaresContract(implemented)).toBe(true);
+    });
+
+    it("treats a module with a body of its own as an implementation", () => {
+        const implemented = `
+export const sendInvoice: Ops["sendInvoice"] = async (ctx) => {
+    const invoice = await load(ctx);
+    return invoice;
+};
+`;
+
+        expect(isScaffold(implemented)).toBe(false);
+        expect(declaresContract(implemented)).toBe(true);
+    });
+
+    it("ignores a module that declares no contract at all, such as a helper", () => {
+        expect(declaresContract("export function clock(): Date { return new Date(); }")).toBe(false);
+    });
+});
+
+describe("pruning", () => {
+    it("removes the scaffold of an operation the spec no longer declares", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(true);
+
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(0);
+        expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(false);
+    });
+
+    it("removes a scaffold that was written without the marker", () => {
+        const dir = tempDir();
+        writeFileSync(
+            join(dir, "sendInvoice.ts"),
+            `export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {\n    throw new NotImplemented("not implemented");\n};\n`,
+        );
+
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(0);
+        expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(false);
+    });
+
+    it("keeps an implementation and reports it, rather than deleting hand-written code", () => {
+        const dir = tempDir();
+        const file = join(dir, "sendInvoice.ts");
+        writeFileSync(
+            file,
+            `export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {\n    return await deliver(ctx.db, opts);\n};\n`,
+        );
+
+        expect(quietly(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(1);
+        expect(existsSync(file)).toBe(true);
+    });
+
+    it("leaves a helper module alone, since it declares no contract", () => {
+        const dir = tempDir();
+        const helper = join(dir, "clock.ts");
+        writeFileSync(helper, "export const now = () => new Date();\n");
+
+        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(existsSync(helper)).toBe(true);
+    });
+
+    it("keeps an implementation that still carries the scaffold marker", () => {
+        const dir = tempDir();
+        const file = join(dir, "sendInvoice.ts");
+        writeFileSync(
+            file,
+            `${SCAFFOLD_MARKER}
+export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {
+    return await deliver(ctx.db, opts);
+};
+`,
+        );
+
+        expect(quietly(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(1);
+        expect(existsSync(file)).toBe(true);
+    });
+
+    it("keeps a declared operation's module however its body looks", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir])).toBe(0);
+        const file = join(dir, "sendInvoice.ts");
+        writeFileSync(file, readFileSync(file, "utf8").replace("throw new NotImplemented", "// throw new NotImplemented"));
+
+        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(existsSync(file)).toBe(true);
     });
 });
 
@@ -142,7 +282,7 @@ describe("meetsContract", () => {
     it("accepts the scaffold it wrote", () => {
         const spec = build();
 
-        expect(meetsContract(renderOperationFile(operation(spec), spec), operation(spec))).toBe(true);
+        expect(meetsContract(renderOperationFile(operation(spec)), operation(spec))).toBe(true);
     });
 
     it("accepts a hand-written module that keeps the annotation", () => {

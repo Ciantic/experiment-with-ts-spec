@@ -51,23 +51,27 @@ A method the spec adds gets a module that compiles and fails the contract at
 runtime rather than at the compiler:
 
 ```ts
+// Generated for implementation by: scripts/generate-operations.ts
 import type { InvoiceOperations } from "spec/operations/InvoiceOperations.ts";
-import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
+import { NotImplemented } from "sdk/errors.ts";
 
 /**
  * Send the invoice to the recipient.
  *
  * @throws {InvoiceDetailsError} when the invoice doesn't have enough details to be sent
+ * @throws {NotImplemented} when the operation is still the scaffold; remove this tag with the throw
  */
 export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {
-    return null as unknown as Promise<InvoiceSent>;
+    throw new NotImplemented("sendInvoice is scaffolded but not implemented");
 };
 ```
 
 The contract annotation is the point of the scaffold: the compiler checks the
-implementation against the spec's method once the placeholder is replaced. The
-generator imports the return type's declarations from the spec, so the
-placeholder names the real type.
+implementation against the spec's method once the body is replaced. The body
+throws `NotImplemented`, which is how a forgotten operation answers `501` rather
+than a null the client has to interpret. The doc comment carries the tag the
+lint rule requires for that throw; remove the tag together with the throw. See
+`docs/errors.md`.
 
 The scaffold fills the contract's type parameter with `unknown`, and that is the
 implementer's first edit. The generator has no opinion on what an operation
@@ -81,6 +85,10 @@ export const sendInvoice: InvoiceOperations<{ db: SqlExecutor }>["sendInvoice"] 
     // ctx.db is the executor
 };
 ```
+
+The first line names the generator and says the file is there to be implemented.
+It is a provenance line rather than an ownership claim: the file is yours from
+the moment it is written.
 
 The scaffold is written only when the file is missing. It is never rewritten:
 from the first generation on, the module is hand-written code, and a later
@@ -113,8 +121,27 @@ The generator refuses the whole run when the spec itself cannot be scaffolded:
 `@throws` findings belong to `generate:errors`, which runs first; an operation
 route that would collide with an entity route is reported by the REST model.
 
-A module for an operation the spec drops is not deleted, because the module is
-hand-written code by then.
+## Removing an operation
+
+The generator owns the set of files under `src/operations/`, but only the
+scaffold half of each one. When the spec no longer declares an operation it
+decides by the module's contents:
+
+- **A scaffold is deleted.** A module whose only statement throws
+  `NotImplemented` carries no implementation to lose, so it is removed. The
+  `Generated for implementation by: …` line says where the file came from; the
+  body is what decides, so an implemented module is never deleted for having kept
+  the line.
+- **An implementation is kept and reported.** A module that exports a contract
+  annotation and has a body of its own is the author's code; the generator names
+  the file and fails the run instead of deleting it.
+- **A helper is ignored.** A file that declares no contract annotation, such as a
+  local clock, is not an operation module and is left alone.
+
+The `removed` count in the generator's summary reports the first case. Routes,
+input schemas, and client builders are pruned by their own generators, so
+deleting a `@restOperation` from the spec leaves nothing behind once its scaffold
+is gone.
 
 ## The context
 
@@ -208,23 +235,25 @@ actually throws it.
   not resolved per operation.
 - **A response schema.** The result is encoded and typed by the contract, but not
   validated, as with every other call.
-- **Deleting a module the spec drops.** The generator cannot tell a stale
-  scaffold from an implementation worth keeping.
-- **A not-implemented failure.** The placeholder returns `null`, so a forgotten
-  implementation answers a null body rather than a `501`.
+- **Deleting an implementation the spec drops.** The generator reports the
+  module and fails the run; deciding whether the code is still wanted is the
+  author's.
 
 ## Gotchas
 
 - **The scaffold's doc is a copy.** It carries the spec's description and
   `@throws` tags as they were when the file was created; later spec edits do not
   propagate.
-- **The placeholder hides a missing implementation.** It returns `null as
-  unknown as …`, which typechecks and answers `null`; replace it before relying
-  on the operation.
+- **The marker may stay after implementation.** It reads as provenance, not as a
+  clean-up task; pruning is decided by the `NotImplemented` body, so implementing
+  an operation without deleting that line is safe.
+- **A scaffold reports itself.** Until the body is replaced the route answers
+  `501 not-implemented`, which is visible to a caller and to a test rather than
+  answering an empty success.
 - **The parameter names are the spec's.** They are copied into the arrow
   function, so an unused context parameter is reported by the linter's
   unused-variable rule.
-- **The placeholder context is `unknown`.** It compiles, but `ctx` is unusable
+- **The scaffold's context is `unknown`.** It compiles, but `ctx` is unusable
   until the implementer narrows the type argument. Widening it past `RouteContext`
   makes the generated route fail to compile, which is the intended pressure.
 - **A route without an input sends nothing.** A `POST` with no body decodes to

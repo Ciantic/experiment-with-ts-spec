@@ -5,6 +5,7 @@ import {
     DriverResultError,
     NoMatchingRowError,
     NotFoundError,
+    NotImplemented,
     PayloadTooLargeError,
     QueryError,
     RequestError,
@@ -29,6 +30,7 @@ const WIRE_ERRORS = [
     new ShortWriteError("short"),
     new DriverResultError("driver"),
     new SavepointOptionsError("savepoint"),
+    new NotImplemented("not implemented"),
 ];
 
 describe("apiErrorBody", () => {
@@ -85,9 +87,16 @@ describe("apiErrorFromBody", () => {
     });
 
     it("answers undefined for a kind it does not know, or a body with no kind", () => {
-        expect(apiErrorFromBody(500, { error: "newer", kind: "not-implemented-yet" })).toBeUndefined();
+        expect(apiErrorFromBody(500, { error: "newer", kind: "from-the-future" })).toBeUndefined();
         expect(apiErrorFromBody(409, { error: "stale" })).toBeUndefined();
         expect(apiErrorFromBody(409, "stale")).toBeUndefined();
+    });
+
+    it("rebuilds the scaffold's NotImplemented from its wire kind", () => {
+        const rebuilt = apiErrorFromBody(501, { error: "sendInvoice is scaffolded", kind: "not-implemented" });
+
+        expect(rebuilt).toBeInstanceOf(NotImplemented);
+        expect(rebuilt?.status).toBe(501);
     });
 
     it("does not rebuild a name inherited from Object.prototype", () => {

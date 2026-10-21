@@ -165,7 +165,7 @@ describe("createHttpClient responses", () => {
 
     it("falls back to an HttpError for a kind this client does not know", async () => {
         const stub = stubFetch(
-            new Response(JSON.stringify({ error: "from a newer server", kind: "not-implemented-yet" }), {
+            new Response(JSON.stringify({ error: "from a newer server", kind: "from-the-future" }), {
                 status: 501,
             }),
         );

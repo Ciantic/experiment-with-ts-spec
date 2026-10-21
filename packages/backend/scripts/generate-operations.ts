@@ -1,9 +1,8 @@
 /** Scaffold one backend module per `@operation`, and verify each hand-written one still declares its contract. See docs/operations.md. */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import {
     loadSpec,
-    specImportSpecifier,
     type Diagnostic,
     type SpecModel,
     type SpecOperation,
@@ -19,6 +18,12 @@ const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/operations");
 
 /** The context a fresh scaffold takes: the implementer chooses it, so the placeholder names nothing. */
 const PLACEHOLDER_CONTEXT = "unknown";
+
+/** The first line of a scaffold: it names the generator that started the file, and who finishes it. */
+export const SCAFFOLD_MARKER = "// Generated for implementation by: scripts/generate-operations.ts";
+
+/** The shared errors module the scaffold throws from. */
+const ERRORS_IMPORT = "sdk/errors.ts";
 
 /** InvoiceOperations -> InvoiceOperations<unknown>. */
 function contractType(operation: SpecOperation): string {
@@ -36,66 +41,72 @@ function isPromise(operation: SpecOperation): boolean {
     );
 }
 
-/** The type the placeholder claims to return: the contract's return type as written. */
-export function placeholderType(operation: SpecOperation): string {
-    return operation.returnTypeText === "" ? "undefined" : operation.returnTypeText;
-}
-
-/** The spec declarations the return type names, so the scaffold imports them from their own modules. */
-function returnTypeImports(operation: SpecOperation, spec: SpecModel): Map<string, string[]> {
-    const text = placeholderType(operation);
-    const declared = new Map<string, string>();
-    for (const [name, entity] of spec.interfaces) {
-        declared.set(name, entity.importSpecifier);
-    }
-    for (const [name, alias] of spec.aliases) {
-        declared.set(name, specImportSpecifier(alias.filePath));
-    }
-
-    const imports = new Map<string, string[]>();
-    for (const name of [...declared.keys()].sort((a, b) => a.localeCompare(b))) {
-        if (name === operation.interfaceName || !new RegExp(`\\b${name}\\b`).test(text)) {
-            continue;
-        }
-        const specifier = declared.get(name);
-        if (specifier === undefined) {
-            continue;
-        }
-        imports.set(specifier, [...(imports.get(specifier) ?? []), name]);
-    }
-    return imports;
-}
-
-/** Render the module a new operation starts from: the contract annotation, the doc, and a null placeholder. */
-export function renderOperationFile(operation: SpecOperation, spec: SpecModel): string {
-    const lines: string[] = [];
+/** Render the module a new operation starts from: the contract annotation, the doc, and a refusing body. */
+export function renderOperationFile(operation: SpecOperation): string {
+    const lines: string[] = [SCAFFOLD_MARKER];
     lines.push(`import type { ${operation.interfaceName} } from "${operation.importSpecifier}";`);
-    for (const [specifier, names] of [...returnTypeImports(operation, spec)].sort(([a], [b]) => a.localeCompare(b))) {
-        lines.push(`import type { ${names.join(", ")} } from "${specifier}";`);
-    }
+    lines.push(`import { NotImplemented } from "${ERRORS_IMPORT}";`);
     lines.push("");
 
-    if (operation.description.length > 0 || operation.throws.length > 0) {
-        lines.push("/**");
-        for (const line of operation.description) {
-            lines.push(` * ${line}`);
-        }
-        if (operation.description.length > 0 && operation.throws.length > 0) {
-            lines.push(" *");
-        }
-        for (const thrown of operation.throws) {
-            lines.push(` * @throws {${thrown.name}} ${thrown.reason}`);
-        }
-        lines.push(" */");
+    lines.push("/**");
+    for (const line of operation.description) {
+        lines.push(` * ${line}`);
     }
+    if (operation.description.length > 0) {
+        lines.push(" *");
+    }
+    for (const thrown of operation.throws) {
+        lines.push(` * @throws {${thrown.name}} ${thrown.reason}`);
+    }
+    // The scaffold's own throw is documented too, since the body is what raises it.
+    lines.push(" * @throws {NotImplemented} when the operation is still the scaffold; remove this tag with the throw");
+    lines.push(" */");
 
     const parameters = operation.parameters.map((parameter) => parameter.name).join(", ");
     const asyncKeyword = isPromise(operation) ? "async " : "";
     lines.push(`export const ${operation.name}: ${contractType(operation)}["${operation.name}"] = ${asyncKeyword}(${parameters}) => {`);
-    lines.push(`    return null as unknown as ${placeholderType(operation)};`);
+    lines.push(`    throw new NotImplemented("${operation.name} is scaffolded but not implemented");`);
     lines.push("};");
     lines.push("");
     return lines.join("\n");
+}
+
+/** Whether a module is still the untouched scaffold: its only statement throws {@link NotImplemented}. */
+export function isScaffold(source: string): boolean {
+    // The marker names where the file came from; the body decides, since an author may implement without removing it.
+    const statements = [...source.matchAll(/^\s*(?:return|throw)\s/gmu)].length;
+    return statements === 1 && /^\s*throw new NotImplemented\(/mu.test(source);
+}
+
+/** Whether a module exports an operation under a contract annotation, whatever its body. */
+export function declaresContract(source: string): boolean {
+    return /export\s+const\s+\w+\s*:\s*\w+(?:\s*<[^=;]*?>)?\s*\[\s*["']\w+["']\s*\]\s*=/u.test(source);
+}
+
+/** Remove the scaffolds of operations the spec no longer declares, and report the implementations it drops. */
+function pruneStale(outDir: string, keep: Set<string>, findings: Diagnostic[]): number {
+    let removed = 0;
+    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+            continue;
+        }
+        const file = join(outDir, entry.name);
+        const source = readFileSync(file, "utf8");
+        if (isScaffold(source)) {
+            rmSync(file);
+            removed += 1;
+            continue;
+        }
+        // An implementation is the author's, so the generator reports it rather than deleting it.
+        if (declaresContract(source)) {
+            findings.push({
+                filePath: relative(process.cwd(), file),
+                line: 1,
+                message: `\`${entry.name.slice(0, -".ts".length)}\` is no longer an @operation; delete ${relative(process.cwd(), file)} or restore the spec`,
+            });
+        }
+    }
+    return removed;
 }
 
 /** Whether a hand-written module still declares the operation with its contract annotation. */
@@ -174,7 +185,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     for (const operation of operations) {
         const file = join(outDir, `${operation.name}.ts`);
         if (!existsSync(file)) {
-            writeFileSync(file, renderOperationFile(operation, spec));
+            writeFileSync(file, renderOperationFile(operation));
             created += 1;
             continue;
         }
@@ -190,12 +201,14 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
         verified += 1;
     }
 
+    const removed = pruneStale(outDir, new Set(operations.map((operation) => `${operation.name}.ts`)), findings);
+
     if (findings.length > 0) {
         report(findings, operations.length);
         return 1;
     }
 
-    console.log(`operations OK (${created} created, ${verified} verified)`);
+    console.log(`operations OK (${created} created, ${verified} verified, ${removed} removed)`);
     return 0;
 }
 
