@@ -13,7 +13,7 @@ export const emailRoutes: Route[] = [
         path: "/email/query",
         source: "query",
         input: queryEmailSchema,
-        handler: (db, body) => queryEmail(db, body as never),
+        handler: (ctx, body) => queryEmail(ctx.db, body as never),
     },
     {
         id: "createEmail",
@@ -21,7 +21,7 @@ export const emailRoutes: Route[] = [
         path: "/email",
         source: "body",
         input: z.array(emailInsertSchema),
-        handler: (db, body) => createEmail(db, body as never),
+        handler: (ctx, body) => createEmail(ctx.db, body as never),
     },
     {
         id: "upsertEmail",
@@ -29,7 +29,7 @@ export const emailRoutes: Route[] = [
         path: "/email",
         source: "body",
         input: z.array(emailUpsertSchema),
-        handler: (db, body) => upsertEmail(db, body as never),
+        handler: (ctx, body) => upsertEmail(ctx.db, body as never),
     },
     {
         id: "updateEmail",
@@ -37,7 +37,7 @@ export const emailRoutes: Route[] = [
         path: "/email",
         source: "body",
         input: z.array(emailPatchSchema),
-        handler: (db, body) => updateEmail(db, body as never),
+        handler: (ctx, body) => updateEmail(ctx.db, body as never),
     },
     {
         id: "deleteEmail",
@@ -45,6 +45,6 @@ export const emailRoutes: Route[] = [
         path: "/email",
         source: "query",
         input: z.array(emailPrimaryKeySchema),
-        handler: (db, body) => deleteEmail(db, body as never),
+        handler: (ctx, body) => deleteEmail(ctx.db, body as never),
     },
 ];

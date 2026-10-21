@@ -13,7 +13,7 @@ export const sellerRoutes: Route[] = [
         path: "/seller/query",
         source: "query",
         input: querySellerSchema,
-        handler: (db, body) => querySeller(db, body as never),
+        handler: (ctx, body) => querySeller(ctx.db, body as never),
     },
     {
         id: "createSeller",
@@ -21,7 +21,7 @@ export const sellerRoutes: Route[] = [
         path: "/seller",
         source: "body",
         input: z.array(sellerInsertSchema),
-        handler: (db, body) => createSeller(db, body as never),
+        handler: (ctx, body) => createSeller(ctx.db, body as never),
     },
     {
         id: "upsertSeller",
@@ -29,7 +29,7 @@ export const sellerRoutes: Route[] = [
         path: "/seller",
         source: "body",
         input: z.array(sellerUpsertSchema),
-        handler: (db, body) => upsertSeller(db, body as never),
+        handler: (ctx, body) => upsertSeller(ctx.db, body as never),
     },
     {
         id: "updateSeller",
@@ -37,7 +37,7 @@ export const sellerRoutes: Route[] = [
         path: "/seller",
         source: "body",
         input: z.array(sellerPatchSchema),
-        handler: (db, body) => updateSeller(db, body as never),
+        handler: (ctx, body) => updateSeller(ctx.db, body as never),
     },
     {
         id: "deleteSeller",
@@ -45,6 +45,6 @@ export const sellerRoutes: Route[] = [
         path: "/seller",
         source: "query",
         input: z.array(sellerPrimaryKeySchema),
-        handler: (db, body) => deleteSeller(db, body as never),
+        handler: (ctx, body) => deleteSeller(ctx.db, body as never),
     },
 ];

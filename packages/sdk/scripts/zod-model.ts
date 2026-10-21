@@ -87,11 +87,25 @@ export interface ZodPrimitive {
     expression: string;
 }
 
+/** The generated input schema for one `@restOperation`: the argument the wire carries. */
+export interface ZodOperationInput {
+    /** The operation's name, which names the file and the schema, e.g. `sendInvoice`. */
+    name: string;
+    schemaName: string;
+    /** The Zod expression validating the input. */
+    expression: string;
+    /** Entity names the input references, so the file imports their schemas. */
+    dependencies: string[];
+    /** True when the input resolves through a primitive schema. */
+    usesPrimitives: boolean;
+}
+
 /** The parsed spec, mapped to Zod schemas. */
 export interface ZodModel {
     primitives: ZodPrimitive[];
     entities: ZodEntity[];
     queries: ZodQuery[];
+    operationInputs: ZodOperationInput[];
     diagnostics: Diagnostic[];
 }
 
@@ -170,6 +184,11 @@ export function primaryKeySchemaName(name: string): string {
 /** Invoice -> invoiceUpsertSchema. */
 export function upsertSchemaName(name: string): string {
     return `${lowerFirst(name)}UpsertSchema`;
+}
+
+/** sendInvoice -> sendInvoiceInputSchema. */
+export function operationInputSchemaName(name: string): string {
+    return `${name}InputSchema`;
 }
 
 /** The shared half of a resolution: the spec maps, and where a diagnostic is written. */
@@ -532,6 +551,37 @@ export function buildZodModel(spec: SpecModel): ZodModel {
     // Entities resolve before queries, so their diagnostics are reported in that order.
     const entities = buildEntities(interfaces, resolver);
     const queries = buildQueries(interfaces, resolver);
+    const operationInputs = buildOperationInputs(spec, resolver);
 
-    return { primitives: buildPrimitives(aliases), entities, queries, diagnostics };
+    return { primitives: buildPrimitives(aliases), entities, queries, operationInputs, diagnostics };
+}
+
+/** Build the input schema of every `@restOperation`: the second parameter, which is what the wire carries. */
+function buildOperationInputs(spec: SpecModel, resolver: Resolver): ZodOperationInput[] {
+    const inputs: ZodOperationInput[] = [];
+    for (const operation of spec.operations) {
+        if (!operation.rest) {
+            continue;
+        }
+        // An operation may take no input; the route then validates `undefined`, so no schema is generated.
+        const input = operation.parameters[1];
+        if (input === undefined) {
+            continue;
+        }
+        const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
+        const expression = resolveTypeNode(input.type, context);
+        if (expression === undefined) {
+            resolver.report(input.location, `\`${operation.name}\`: unsupported input type \`${input.typeText}\``);
+            continue;
+        }
+        inputs.push({
+            name: operation.name,
+            schemaName: operationInputSchemaName(operation.name),
+            expression,
+            dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
+            usesPrimitives: context.usesPrimitives,
+        });
+    }
+    inputs.sort((a, b) => a.name.localeCompare(b.name));
+    return inputs;
 }

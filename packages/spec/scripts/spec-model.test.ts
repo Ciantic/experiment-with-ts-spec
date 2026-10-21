@@ -1036,6 +1036,34 @@ export interface Ops<T> {
         });
     });
 
+    it("reads the verb and the path off @restOperation", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     */
+    send(ctx: T): Promise<void>;
+
+    /**
+     * @operation
+     * @restOperation
+     */
+    other(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations.find((operation) => operation.name === "send")).toMatchObject({
+            rest: true,
+            restMethod: "POST",
+            restPath: "/invoice/send",
+        });
+        // A malformed tag stays absent, so the linter reports it rather than a generator inventing a route.
+        expect(spec.operations.find((operation) => operation.name === "other")?.restMethod).toBeUndefined();
+        expect(spec.operations.find((operation) => operation.name === "other")?.restPath).toBeUndefined();
+    });
+
     it("keeps @restOperation without @operation, so lint can report it", () => {
         const spec = parse({
             "Ops.ts": `

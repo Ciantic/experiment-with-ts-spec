@@ -3,7 +3,13 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "nod
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
 // The REST model is shared with the client generator, and both live in the SDK it describes.
-import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "../../sdk/scripts/rest-model.ts";
+import {
+    buildRestModel,
+    type RestEntity,
+    type RestKind,
+    type RestModel,
+    type RestOperationCall,
+} from "../../sdk/scripts/rest-model.ts";
 
 export type { Diagnostic } from "../../sdk/scripts/rest-model.ts";
 
@@ -20,6 +26,20 @@ const INDEX_FILE = "index.ts";
 
 /** The hand-written router module the generated table is typed against. */
 const ROUTER_IMPORT = "../router.ts";
+
+/** The module holding the operation routes `@restOperation` declares. */
+const OPERATION_ROUTES_FILE = "operationRoutes.ts";
+
+/** The export the barrel spreads for the operation routes. */
+const OPERATION_ROUTES_EXPORT = "operationRoutes";
+
+/** The operations directory, relative to the route modules. */
+const OPERATION_MODULES_DIR = "../../operations";
+
+/** A scaffolded operation module, relative to the route modules: one file per operation. */
+function operationImport(id: string): string {
+    return `${OPERATION_MODULES_DIR}/${id}.ts`;
+}
 
 /** The module specifiers of the generated pieces the routes call into. */
 const QUERIES_IMPORT = "../../db/queries/index.ts";
@@ -114,7 +134,54 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`        source: "${operation.source}",`);
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
         // The body is validated against the schema above, so the handler may trust its shape.
-        lines.push(`        handler: (db, body) => ${operation.id}(db, body as never),`);
+        lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);
+        lines.push("    },");
+    }
+    lines.push("];");
+
+    return lines.join("\n") + "\n";
+}
+
+/** Render the calls the spec's `@restOperation` tags declare, one route each. */
+export function renderOperationRoutes(operations: RestOperationCall[]): string {
+    const lines: string[] = [HEADER];
+    lines.push(`import type { Route } from "${ROUTER_IMPORT}";`);
+    if (operations.length > 0) {
+        for (const operation of operations) {
+            lines.push(`import { ${operation.id} } from "${operationImport(operation.id)}";`);
+        }
+        const schemas = operations
+            .flatMap((operation) => (operation.inputSchemaName === undefined ? [] : [operation.inputSchemaName]))
+            .sort((a, b) => a.localeCompare(b));
+        if (schemas.length > 0) {
+            lines.push(`import { ${schemas.join(", ")} } from "${SCHEMAS_IMPORT}";`);
+        }
+        // A call with no input still validates the decoded argument, which is `undefined` for an empty body.
+        if (operations.some((operation) => operation.inputSchemaName === undefined)) {
+            lines.push('import { z } from "zod";');
+        }
+    }
+
+    lines.push("");
+    lines.push("/** The calls the spec's `@restOperation` tags expose: each under its id, its verb, and its path. */");
+    if (operations.length === 0) {
+        lines.push(`export const ${OPERATION_ROUTES_EXPORT}: Route[] = [];`);
+        return lines.join("\n") + "\n";
+    }
+    lines.push(`export const ${OPERATION_ROUTES_EXPORT}: Route[] = [`);
+    for (const operation of operations) {
+        lines.push("    {");
+        lines.push(`        id: "${operation.id}",`);
+        lines.push(`        method: "${operation.method}",`);
+        lines.push(`        path: "${operation.path}",`);
+        lines.push(`        source: "${operation.source}",`);
+        lines.push(`        input: ${operation.inputSchemaName ?? "z.undefined()"},`);
+        // The context is the one every route receives; an operation that wanted another fails to compile here.
+        lines.push(
+            operation.hasInput
+                ? `        handler: (ctx, body) => ${operation.id}(ctx, body as Parameters<typeof ${operation.id}>[1]),`
+                : `        handler: (ctx) => ${operation.id}(ctx),`,
+        );
         lines.push("    },");
     }
     lines.push("];");
@@ -131,12 +198,18 @@ export function renderRoutesIndex(model: RestModel): string {
             `import { ${routesExportName(entity)} } from "./${routesModuleName(entity)}";`,
         );
     }
+    if (model.operations.length > 0) {
+        lines.push(`import { ${OPERATION_ROUTES_EXPORT} } from "./${OPERATION_ROUTES_FILE}";`);
+    }
 
     lines.push("");
     lines.push("/** Every exposed call: id, verb, and path, as the router and the group resolve them. */");
     lines.push("export const routes: Route[] = [");
     for (const entity of model.entities) {
         lines.push(`    ...${routesExportName(entity)},`);
+    }
+    if (model.operations.length > 0) {
+        lines.push(`    ...${OPERATION_ROUTES_EXPORT},`);
     }
     lines.push("];");
 
@@ -149,6 +222,8 @@ export function renderRoutes(model: RestModel): Map<string, string> {
     for (const entity of model.entities) {
         files.set(routesModuleName(entity), renderEntityRoutes(entity));
     }
+    // The operation module is written even when it is empty, so a dropped @restOperation leaves no stale route.
+    files.set(OPERATION_ROUTES_FILE, renderOperationRoutes(model.operations));
     files.set(INDEX_FILE, renderRoutesIndex(model));
     return files;
 }

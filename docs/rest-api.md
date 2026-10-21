@@ -6,13 +6,15 @@ that must not be generated: the router, the transport, and the entry re-exportin
 the transport.
 
 - `packages/sdk/scripts/rest-model.ts` — the shared model. Paths, methods,
-  operation ids, filters, and the operations each entity exposes. Hand-written.
+  operation ids, filters, the operations each entity exposes, and the calls a
+  `@restOperation` declares. Hand-written.
 - `packages/backend/scripts/generate-rest-api.ts` — the server generator.
 - `packages/sdk/scripts/generate-rest-client.ts` — the client generator.
 - `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
-  each a `Route[]` for that collection, plus the `index.ts` barrel concatenating
-  them into the table the router matches a request on and the group handler
-  resolves an id in.
+  each a `Route[]` for that collection, plus `operationRoutes.ts` for the calls a
+  `@restOperation` declares, and the `index.ts` barrel concatenating them into
+  the table the router matches a request on and the group handler resolves an id
+  in. See `docs/operations.md`.
 - `packages/backend/src/http/router.ts` — the request handler. Hand-written.
 - `packages/backend/src/http/http-response.ts` — the response shape, and the
   plain-JSON failures a handler answers with. Hand-written.
@@ -52,6 +54,7 @@ carries it in the body.
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
+| operation | `sendInvoice` | as `@restOperation` names it | as `@restOperation` names it | the operation's input |
 | group | — | `POST` | `/$group` | a tree of the calls above, in the body |
 
 The id is the call's name: the generated client function is it, and a group entry
@@ -71,6 +74,11 @@ each applying a rule. The router obeys the table: it decodes `q` for a `query`
 call and the body for a `body` call, and ignores the other. A group entry carries
 its argument as a field of the tree, so it is the one place `source` does not
 apply.
+
+A route handler receives one `RouteContext`, whose only field is `db`; a
+generated entity route reads `ctx.db`, and a generated operation route passes
+`ctx` itself to the module, so the operation's chosen context is compile-checked
+against it. See `docs/operations.md`.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by
@@ -348,11 +356,9 @@ No mode reaches the statement unvalidated.
   OpenAPI document, so no such document is emitted. The fix when a non-JS
   consumer is real is `Accept` negotiation adding a JSON encoding, not a document
   that misdescribes the bytes.
-- **An operations route.** `@restOperation` is read and linted, but the route
-  table and the client do not render it. An operation module is scaffolded under
-  `packages/backend/src/operations/`, and `POST /invoice/send` is hand-wired when
-  the route exists; it takes an id of its own so a group can name it. See
-  `docs/operations.md`.
+- **An operation's response schema.** An operation route validates its input and
+  types its result from the contract, but the result is not validated on the
+  wire, as with every other call.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
   (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.

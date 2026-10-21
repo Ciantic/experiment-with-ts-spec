@@ -2752,7 +2752,7 @@ export interface Ops<T> {
      *
      * @throws {InvoiceDetailsError} because details are missing
      * @operation
-     * @restOperation
+     * @restOperation POST /invoice/send
      */
     sendInvoice(ctx: T, opts: { invoice: string }): Promise<string>;
 }`);
@@ -2765,7 +2765,7 @@ export interface Ops<T> {
 export interface Ops<T> {
     /**
      * Send.
-     * @restOperation
+     * @restOperation POST /invoice/send
      */
     sendInvoice(ctx: T): Promise<void>;
 }`);
@@ -2802,6 +2802,37 @@ export interface Ops<T> {
 
         expect(messages(findings)).toEqual([
             "`sendInvoice`: @throws names the error class, as `@throws {InvoiceDetailsError} why`",
+        ]);
+    });
+
+    it("reports a @restOperation without a verb and path", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation
+     */
+    send(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`send`: @restOperation names the verb and the path, as `@restOperation POST /invoice/send`",
+            "`send`: @restOperation names a path beginning with `/`",
+        ]);
+    });
+
+    it("reports a @restOperation that takes more than one input", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /op
+     */
+    send(ctx: T, first: string, second: string): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`send`: a @restOperation takes the context and at most one input parameter",
         ]);
     });
 

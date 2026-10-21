@@ -1,7 +1,7 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as api from "sdk/api/index.ts";
-import { AppError, createHttpClient, exec, transactionWith, ValidationError } from "sdk/index.ts";
+import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
 import { routes } from "./http/routes/index.ts";
@@ -80,6 +80,43 @@ describe("the generated client and the generated route table", () => {
 
     it("expose at least one call, so the assertion above is not vacuous", () => {
         expect(builders().length).toBeGreaterThan(0);
+    });
+});
+
+describe("the operation routes", () => {
+    /** Every id the server answers, which includes the calls `@restOperation` declares. */
+    function operationIds(): string[] {
+        const entityIds = new Set(mockTables.map((table) => table.entity));
+        const prefixes = /^(?:query|create|upsert|update|delete)[A-Z]/;
+        return routes
+            .map((route) => route.id)
+            .filter((id) => !prefixes.test(id) && !entityIds.has(id));
+    }
+
+    it("expose a client builder that names the served verb and path", () => {
+        const barrel = api as unknown as Record<string, Builder | undefined>;
+        const ids = operationIds();
+        expect(ids.length).toBeGreaterThan(0);
+
+        for (const id of ids) {
+            const builder = barrel[id];
+            expect(builder, id).toBeTypeOf("function");
+            const built = builder!(undefined);
+            const route = routes.find((candidate) => candidate.id === id);
+            expect(built).toMatchObject({ kind: "call", operation: id, method: route?.method, path: route?.path });
+        }
+    });
+
+    it("answer a refused argument with a 400, so the route is wired to a schema", async () => {
+        for (const id of operationIds()) {
+            const route = routes.find((candidate) => candidate.id === id)!;
+            const thrown = await exec(http, call(id, route.method, route.path, "not an input")).catch(
+                (error: unknown) => error,
+            );
+
+            expect(thrown, id).toBeInstanceOf(ValidationError);
+            expect(thrown).not.toBeInstanceOf(NotFoundError);
+        }
     });
 });
 

@@ -58,9 +58,32 @@ export interface RestEntity {
     operations: RestOperation[];
 }
 
+/** One `@restOperation` call: an operation the spec exposes on the HTTP surface. */
+export interface RestOperationCall {
+    /** The operation's name, which is also the call id a group entry names, e.g. `sendInvoice`. */
+    id: string;
+    /** The contract interface that declares it, e.g. `InvoiceOperations`. */
+    contract: string;
+    /** The module specifier that imports the contract. */
+    contractImport: string;
+    /** The contract's type-parameter count, so a client can name the same type without choosing the context. */
+    contractTypeParameters: number;
+    method: RestMethod;
+    path: string;
+    /** Where the call carries its argument: a `GET` or a `DELETE` has no body, so it uses `q`. */
+    source: RestSource;
+    /** The schema the route validates the argument with; absent when the operation takes no input. */
+    inputSchemaName?: string;
+    /** The prose from the spec, copied into the generated doc comments. */
+    description: string[];
+    /** Whether the operation declares an input parameter, which is the argument the wire carries. */
+    hasInput: boolean;
+}
+
 /** The parsed spec mapped to a REST surface, with the problems found while mapping it. */
 export interface RestModel {
     entities: RestEntity[];
+    operations: RestOperationCall[];
     /** Problems found in the spec; a generator reports them and refuses to write. */
     diagnostics: Diagnostic[];
 }
@@ -147,6 +170,54 @@ function restEntityFor(spec: SpecInterface): RestEntity {
     };
 }
 
+/** The `@restOperation` calls, in name order, checked against the ids and paths the entities already claim. */
+function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (location: SpecLocation, message: string) => void): RestOperationCall[] {
+    const claims = new Map<string, string>();
+    for (const entity of entities) {
+        for (const operation of entity.operations) {
+            claims.set(`${operation.method} ${operation.path}`, operation.id);
+            claims.set(operation.id, `${operation.method} ${operation.path}`);
+        }
+    }
+
+    const calls: RestOperationCall[] = [];
+    for (const operation of spec.operations) {
+        if (!operation.rest) {
+            continue;
+        }
+        const { restMethod, restPath } = operation;
+        if (restMethod === undefined || restPath === undefined) {
+            // Lint reports the malformed tag; a generator cannot place a route without a verb and a path.
+            continue;
+        }
+        const route = `${restMethod} ${restPath}`;
+        if (claims.has(operation.name)) {
+            report(operation.location, `\`${operation.name}\`: the id is already a route's id`);
+            continue;
+        }
+        if (claims.has(route)) {
+            report(operation.location, `\`${operation.name}\`: ${route} is already served by \`${claims.get(route)}\``);
+            continue;
+        }
+        claims.set(operation.name, route);
+        claims.set(route, operation.name);
+        calls.push({
+            id: operation.name,
+            contract: operation.interfaceName,
+            contractImport: operation.importSpecifier,
+            contractTypeParameters: operation.interfaceTypeParameters.length,
+            method: restMethod as RestMethod,
+            path: restPath,
+            source: restMethod === "GET" || restMethod === "DELETE" ? "query" : "body",
+            ...(operation.parameters.length > 1 ? { inputSchemaName: `${operation.name}InputSchema` } : {}),
+            description: operation.description,
+            hasInput: operation.parameters.length > 1,
+        });
+    }
+    calls.sort((a, b) => a.id.localeCompare(b.id));
+    return calls;
+}
+
 /** Build the REST model from the parsed spec. */
 export function buildRestModel(spec: SpecModel): RestModel {
     const diagnostics: Diagnostic[] = [];
@@ -190,5 +261,6 @@ export function buildRestModel(spec: SpecModel): RestModel {
         entities.push(entity);
     }
     entities.sort((a, b) => a.entity.localeCompare(b.entity));
-    return { entities, diagnostics };
+    const operations = restOperationCalls(spec, entities, report);
+    return { entities, operations, diagnostics };
 }

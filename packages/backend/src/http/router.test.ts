@@ -49,7 +49,7 @@ function echoRoute(overrides: Partial<Route> = {}): Route {
         path: "/echo",
         source: "body",
         input: accepts,
-        handler: async (_db, argument) => argument,
+        handler: async (_ctx, argument) => argument,
         ...overrides,
     };
 }
@@ -177,8 +177,8 @@ describe("createRouter", () => {
     it("routes the handler's queries through the executor of the request", async () => {
         const statements: string[] = [];
         const route = echoRoute({
-            handler: async (executor) => {
-                await executor.query("select 1");
+            handler: async (ctx) => {
+                await ctx.db.query("select 1");
                 return null;
             },
         });
@@ -283,7 +283,7 @@ describe("createRouter", () => {
     it("opens a boundary when a handler asks for one, and no other", async () => {
         const router = createRouter(db, [
             echoRoute({
-                handler: async (executor) => await executor.transaction(async () => null),
+                handler: async (ctx) => await ctx.db.transaction(async () => null),
             }),
         ]);
 

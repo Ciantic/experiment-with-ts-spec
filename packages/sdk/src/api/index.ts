@@ -9,3 +9,4 @@ export * from "./invoiceSentRow.ts";
 export * from "./seller.ts";
 export * from "./tenant.ts";
 export * from "./translation.ts";
+export * from "./invoiceOperations.ts";

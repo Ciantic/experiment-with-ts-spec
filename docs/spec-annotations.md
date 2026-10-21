@@ -195,8 +195,9 @@ Method tags:
 - `@operation` — a bare marker on a contract method that makes it a backend
   operation. The contract takes at most one type parameter, the context, and the
   method's first parameter is that context. See `docs/operations.md`.
-- `@restOperation` — a bare marker exposing the operation on the HTTP surface.
-  It requires `@operation`. The route table and the client do not read it yet.
+- `@restOperation <verb> <path>` — exposes the operation on the HTTP surface,
+  e.g. `@restOperation POST /invoice/send`. It requires `@operation`, and the
+  operation takes the context and at most one input. See `docs/operations.md`.
 - `@throws {Class} [status=<code>] reason` — an error the operation raises, and
   why. The generator writes the class to `packages/sdk/src/specErrors.ts`, with
   the wire kind derived from the name and the status defaulting to `400`; the

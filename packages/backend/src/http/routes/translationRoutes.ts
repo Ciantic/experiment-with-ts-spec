@@ -13,7 +13,7 @@ export const translationRoutes: Route[] = [
         path: "/translation/query",
         source: "query",
         input: queryTranslationSchema,
-        handler: (db, body) => queryTranslation(db, body as never),
+        handler: (ctx, body) => queryTranslation(ctx.db, body as never),
     },
     {
         id: "createTranslation",
@@ -21,7 +21,7 @@ export const translationRoutes: Route[] = [
         path: "/translation",
         source: "body",
         input: z.array(translationInsertSchema),
-        handler: (db, body) => createTranslation(db, body as never),
+        handler: (ctx, body) => createTranslation(ctx.db, body as never),
     },
     {
         id: "upsertTranslation",
@@ -29,7 +29,7 @@ export const translationRoutes: Route[] = [
         path: "/translation",
         source: "body",
         input: z.array(translationUpsertSchema),
-        handler: (db, body) => upsertTranslation(db, body as never),
+        handler: (ctx, body) => upsertTranslation(ctx.db, body as never),
     },
     {
         id: "updateTranslation",
@@ -37,7 +37,7 @@ export const translationRoutes: Route[] = [
         path: "/translation",
         source: "body",
         input: z.array(translationPatchSchema),
-        handler: (db, body) => updateTranslation(db, body as never),
+        handler: (ctx, body) => updateTranslation(ctx.db, body as never),
     },
     {
         id: "deleteTranslation",
@@ -45,6 +45,6 @@ export const translationRoutes: Route[] = [
         path: "/translation",
         source: "query",
         input: z.array(translationPrimaryKeySchema),
-        handler: (db, body) => deleteTranslation(db, body as never),
+        handler: (ctx, body) => deleteTranslation(ctx.db, body as never),
     },
 ];

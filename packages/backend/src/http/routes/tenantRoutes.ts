@@ -13,7 +13,7 @@ export const tenantRoutes: Route[] = [
         path: "/tenant/query",
         source: "query",
         input: queryTenantSchema,
-        handler: (db, body) => queryTenant(db, body as never),
+        handler: (ctx, body) => queryTenant(ctx.db, body as never),
     },
     {
         id: "createTenant",
@@ -21,7 +21,7 @@ export const tenantRoutes: Route[] = [
         path: "/tenant",
         source: "body",
         input: z.array(tenantInsertSchema),
-        handler: (db, body) => createTenant(db, body as never),
+        handler: (ctx, body) => createTenant(ctx.db, body as never),
     },
     {
         id: "upsertTenant",
@@ -29,7 +29,7 @@ export const tenantRoutes: Route[] = [
         path: "/tenant",
         source: "body",
         input: z.array(tenantUpsertSchema),
-        handler: (db, body) => upsertTenant(db, body as never),
+        handler: (ctx, body) => upsertTenant(ctx.db, body as never),
     },
     {
         id: "updateTenant",
@@ -37,7 +37,7 @@ export const tenantRoutes: Route[] = [
         path: "/tenant",
         source: "body",
         input: z.array(tenantPatchSchema),
-        handler: (db, body) => updateTenant(db, body as never),
+        handler: (ctx, body) => updateTenant(ctx.db, body as never),
     },
     {
         id: "deleteTenant",
@@ -45,6 +45,6 @@ export const tenantRoutes: Route[] = [
         path: "/tenant",
         source: "query",
         input: z.array(tenantPrimaryKeySchema),
-        handler: (db, body) => deleteTenant(db, body as never),
+        handler: (ctx, body) => deleteTenant(ctx.db, body as never),
     },
 ];

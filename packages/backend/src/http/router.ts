@@ -17,6 +17,12 @@ export interface RouteInput {
     ): { success: true; data: unknown } | { success: false; error: { issues: unknown } };
 }
 
+/** What a route handler receives: the backend's context for one request. See docs/operations.md. */
+export interface RouteContext {
+    /** The executor the call runs on; a group hands the boundary its kind opened. */
+    db: SqlExecutor;
+}
+
 /** One exposed call: an HTTP route a single request matches, and an id a group entry names. */
 export interface Route {
     /** The operation's name, e.g. `queryInvoice`. The generated builder and a group entry both use it. */
@@ -27,8 +33,8 @@ export interface Route {
     source: "query" | "body";
     /** Validates the decoded argument. */
     input: RouteInput;
-    /** Runs the call; it receives the request's `SqlExecutor` and may open a boundary. See docs/transactions.md. */
-    handler: (db: SqlExecutor, argument: unknown) => Promise<unknown>;
+    /** Runs the call; it receives the request's context and may open a boundary on it. See docs/transactions.md. */
+    handler: (ctx: RouteContext, argument: unknown) => Promise<unknown>;
 }
 
 /** One request, with the body already read into a string. */
@@ -41,6 +47,8 @@ export interface HttpRequest {
 
 /** A router over a route table, reusing one `db` for every call. */
 export function createRouter(db: SqlExecutor, routes: Route[]) {
+    // One context per server, so a route never reaches for a dependency the router did not hand it.
+    const context: RouteContext = { db };
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
     const byId = new Map(routes.map((route) => [route.id, route]));
     /** Resolve a single request and a group entry out of one table, so the two cannot disagree. */
@@ -81,7 +89,7 @@ export function createRouter(db: SqlExecutor, routes: Route[]) {
             }
 
             try {
-                const result = await route.handler(db, parsed.data);
+                const result = await route.handler(context, parsed.data);
                 // A `get` miss and a void write both encode as `null`.
                 return { status: 200, body: encode(result ?? null) };
             } catch (thrown) {

@@ -347,3 +347,60 @@ describe("generateRestClient", () => {
         }
     });
 });
+
+/** A contract exposing two operations: one with an input, one without. */
+const OPERATIONS = `
+import type { Widget } from "./Widget.ts";
+
+export interface WidgetOperations<T> {
+    /**
+     * Send the widget.
+     *
+     * @operation
+     * @restOperation POST /widget/send
+     */
+    sendWidget(ctx: T, opts: { widget: Widget }): Promise<Widget>;
+
+    /**
+     * Reset the widgets.
+     *
+     * @operation
+     * @restOperation POST /widget/reset
+     */
+    resetWidgets(ctx: T): Promise<void>;
+}
+`.trim();
+
+describe("operation builders", () => {
+    const withOperations = build({ Widget: WIDGET, Marker: MARKER, WidgetOperations: OPERATIONS });
+    const module = () => generateRestClient(withOperations).get("widgetOperations.ts") ?? "";
+
+    it("writes one module per contract, named after it", () => {
+        expect(generateRestClient(withOperations).has("widgetOperations.ts")).toBe(true);
+    });
+
+    it("imports the contract, so the client names no context of its own", () => {
+        expect(module()).toContain(
+            'import type { WidgetOperations } from "spec/fixtures/WidgetOperations.ts";',
+        );
+        expect(module()).toContain('from "../client.ts"');
+    });
+
+    it("types the input with the contract's parameter and the result with its return type", () => {
+        expect(module()).toContain(
+            'export function sendWidget(opts: Parameters<WidgetOperations<unknown>["sendWidget"]>[1]): Call<Awaited<ReturnType<WidgetOperations<unknown>["sendWidget"]>>> {',
+        );
+        expect(module()).toContain('"sendWidget", "POST", "/widget/send", opts);');
+    });
+
+    it("takes no argument when the operation declares none", () => {
+        expect(module()).toContain('export function resetWidgets(): Call<Awaited<ReturnType<WidgetOperations<unknown>["resetWidgets"]>>> {');
+        expect(module()).toContain('"resetWidgets", "POST", "/widget/reset", undefined);');
+    });
+
+    it("re-exports the module from the barrel", () => {
+        expect(generateRestClient(withOperations).get("index.ts")).toContain(
+            'export * from "./widgetOperations.ts";',
+        );
+    });
+});

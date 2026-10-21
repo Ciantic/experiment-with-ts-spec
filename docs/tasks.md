@@ -45,7 +45,8 @@ The order is load-bearing:
 the operation modules, then runs the schema generator before the repository
 generator, then the query generator, the validation generator, and the two REST
 generators last. Errors go before operations because an operation's scaffold
-documents the classes its `@throws` tags declare. The driver parses the
+documents the classes its `@throws` tags declare. Operations go before the REST
+pair because the generated route imports the module the scaffold writes. The driver parses the
 spec once through
 `packages/spec/scripts/spec-model.ts` and hands the same `SpecModel` to every
 step, because that parse dominates a generate run; each generator keeps a

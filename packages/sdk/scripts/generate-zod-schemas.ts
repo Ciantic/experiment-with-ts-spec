@@ -7,6 +7,7 @@ import {
     querySchemaName,
     type ZodEntity,
     type ZodModel,
+    type ZodOperationInput,
     type ZodPrimitive,
     type ZodQuery,
 } from "./zod-model.ts";
@@ -189,6 +190,49 @@ export function generateQueriesIndex(queries: ZodQuery[]): string {
     const entities = [...new Set(queries.map((query) => query.entity))].sort((a, b) => a.localeCompare(b));
     for (const entity of entities) {
         lines.push(`export * from "./query${entity}.ts";`);
+    }
+    return lines.join("\n") + "\n";
+}
+
+/** The directory holding the generated operation input schemas, under the output root. */
+const OPERATIONS_DIR = "operations";
+
+/** The barrel re-exporting every operation input schema, inside {@link OPERATIONS_DIR}. */
+const OPERATIONS_INDEX = join(OPERATIONS_DIR, "index.ts");
+
+/** sendInvoice -> operations/sendInvoiceInputSchema.ts. */
+export function operationInputFileName(name: string): string {
+    return join(OPERATIONS_DIR, `${name}InputSchema.ts`);
+}
+
+/** Render one operation's input schema module: the argument the route validates. */
+export function generateOperationInputFile(
+    input: ZodOperationInput,
+    entitiesByName: Map<string, ZodEntity>,
+): string {
+    const lines: string[] = [HEADER, 'import { z } from "zod";'];
+    if (input.usesPrimitives) {
+        lines.push('import * as primitives from "../primitives.ts";');
+    }
+    for (const dependency of input.dependencies) {
+        const target = entitiesByName.get(dependency);
+        if (target) {
+            lines.push(
+                `import { ${target.schemaName} } from "../${join(DOMAIN_DIR, domainModuleName(target.name))}";`,
+            );
+        }
+    }
+    lines.push("");
+    lines.push(`/** The argument \`${input.name}\` accepts, as the route validates it. */`);
+    lines.push(`export const ${input.schemaName} = ${input.expression};`);
+    return lines.join("\n") + "\n";
+}
+
+/** Render the barrel that re-exports every operation input schema module. */
+export function generateOperationsIndex(inputs: ZodOperationInput[]): string {
+    const lines = [HEADER];
+    for (const input of inputs) {
+        lines.push(`export * from "./${input.name}InputSchema.ts";`);
     }
     return lines.join("\n") + "\n";
 }
@@ -498,6 +542,9 @@ export function generateSchemaBarrel(model: ZodModel): string {
     if (model.queries.length > 0) {
         lines.push('export * from "./queries/index.ts";');
     }
+    if (model.operationInputs.length > 0) {
+        lines.push(`export * from "./${OPERATIONS_DIR}/index.ts";`);
+    }
     return lines.join("\n") + "\n";
 }
 
@@ -535,6 +582,13 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     }
     if (model.queries.length > 0) {
         files.set(QUERIES_INDEX, generateQueriesIndex(model.queries));
+    }
+
+    for (const input of model.operationInputs) {
+        files.set(operationInputFileName(input.name), generateOperationInputFile(input, byName));
+    }
+    if (model.operationInputs.length > 0) {
+        files.set(OPERATIONS_INDEX, generateOperationsIndex(model.operationInputs));
     }
 
     files.set(SCHEMAS_FILE, generateSchemaBarrel(model));

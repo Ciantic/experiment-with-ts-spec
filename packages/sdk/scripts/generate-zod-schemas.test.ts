@@ -1419,3 +1419,91 @@ describe("insert schemas over a nullable column", () => {
         expect(noteInsert()?.safeParse({ id: "n1", version: 0n }).success).toBe(true);
     });
 });
+
+describe("operation input schemas", () => {
+    const OPERATIONS = `
+import type { Thing } from "./Thing.ts";
+
+export interface ThingOperations<T> {
+    /**
+     * Update the thing.
+     *
+     * @operation
+     * @restOperation POST /thing/update
+     */
+    updateThing(ctx: T, opts: { thing: Thing; name?: string }): Promise<void>;
+
+    /**
+     * Reset.
+     *
+     * @operation
+     * @restOperation POST /thing/reset
+     */
+    resetThings(ctx: T): Promise<void>;
+}
+`.trim();
+
+    const THING = `
+/** @entity */
+export interface Thing {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
+    function render(files: Record<string, string>) {
+        const spec = [
+            { filePath: "fixtures/primitives.ts", sourceFileText: PRIMITIVES },
+            ...Object.entries(files).map(([name, sourceFileText]) => ({
+                filePath: `fixtures/${name}.ts`,
+                sourceFileText,
+            })),
+        ];
+        const model = buildZodModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
+        return { model, files: generateZodSchemas(model) };
+    }
+
+    it("validates the second parameter as a strict object, referencing the entity's schema", () => {
+        const code = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS }).files.get(
+            join("operations", "updateThingInputSchema.ts"),
+        ) ?? "";
+
+        expect(code).toContain("export const updateThingInputSchema = z.strictObject({");
+        expect(code).toContain("thing: z.lazy(() => thingSchema)");
+        expect(code).toContain('import { thingSchema } from "../domain/thingSchema.ts";');
+    });
+
+    it("writes no schema for an operation that takes no input", () => {
+        const { model, files } = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS });
+
+        expect(model.operationInputs.map((input) => input.name)).toEqual(["updateThing"]);
+        expect(files.has(join("operations", "resetThingsInputSchema.ts"))).toBe(false);
+    });
+
+    it("re-exports the schemas from the barrel", () => {
+        const { files } = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS });
+
+        expect(files.get(join("operations", "index.ts"))).toContain(
+            'export * from "./updateThingInputSchema.ts";',
+        );
+        expect(files.get("schemas.ts")).toContain('export * from "./operations/index.ts";');
+    });
+
+    it("reports an input type it cannot render", () => {
+        const { model } = render({
+            "Thing.ts": THING,
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /op
+     */
+    run(ctx: T, opts: { when: () => void }): Promise<void>;
+}`,
+        });
+
+        expect(model.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`run`: unsupported input type `{ when: () => void }`",
+        ]);
+    });
+});

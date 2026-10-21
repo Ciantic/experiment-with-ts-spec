@@ -8,7 +8,7 @@ export interface InvoiceOperations<T> {
      * @throws {InvoiceDetailsError} status=422 when the invoice doesn't have enough details to be sent
      * 
      * @operation
-     * @restOperation
+     * @restOperation POST /invoice/send
      **/
     sendInvoice(ctx: T, opts: {
         invoice: Invoice;
@@ -18,7 +18,7 @@ export interface InvoiceOperations<T> {
      * Receive an invoice from the system.
      * 
      * @operation
-     * @restOperation
+     * @restOperation POST /invoice/receive
      */
     receiveInvoice(ctx: T): Promise<void>;
 }

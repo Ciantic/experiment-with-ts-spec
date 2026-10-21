@@ -191,6 +191,18 @@ function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
         if (operation.parameters.length === 0) {
             report("an operation takes the context as its first parameter");
         }
+        if (operation.rest) {
+            if (operation.restMethod === undefined) {
+                report("@restOperation names the verb and the path, as `@restOperation POST /invoice/send`");
+            }
+            if (operation.restPath === undefined) {
+                report("@restOperation names a path beginning with `/`");
+            }
+            // The wire carries at most one argument, so a REST operation is the context and optionally one input.
+            if (operation.parameters.length > 2) {
+                report("a @restOperation takes the context and at most one input parameter");
+            }
+        }
         for (const thrown of operation.throws) {
             if (thrown.name === "") {
                 report("@throws names the error class, as `@throws {InvoiceDetailsError} why`", thrown.location.line);

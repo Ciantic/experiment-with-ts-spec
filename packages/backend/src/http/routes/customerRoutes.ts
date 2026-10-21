@@ -13,7 +13,7 @@ export const customerRoutes: Route[] = [
         path: "/customer/query",
         source: "query",
         input: queryCustomerSchema,
-        handler: (db, body) => queryCustomer(db, body as never),
+        handler: (ctx, body) => queryCustomer(ctx.db, body as never),
     },
     {
         id: "createCustomer",
@@ -21,7 +21,7 @@ export const customerRoutes: Route[] = [
         path: "/customer",
         source: "body",
         input: z.array(customerInsertSchema),
-        handler: (db, body) => createCustomer(db, body as never),
+        handler: (ctx, body) => createCustomer(ctx.db, body as never),
     },
     {
         id: "upsertCustomer",
@@ -29,7 +29,7 @@ export const customerRoutes: Route[] = [
         path: "/customer",
         source: "body",
         input: z.array(customerUpsertSchema),
-        handler: (db, body) => upsertCustomer(db, body as never),
+        handler: (ctx, body) => upsertCustomer(ctx.db, body as never),
     },
     {
         id: "updateCustomer",
@@ -37,7 +37,7 @@ export const customerRoutes: Route[] = [
         path: "/customer",
         source: "body",
         input: z.array(customerPatchSchema),
-        handler: (db, body) => updateCustomer(db, body as never),
+        handler: (ctx, body) => updateCustomer(ctx.db, body as never),
     },
     {
         id: "deleteCustomer",
@@ -45,6 +45,6 @@ export const customerRoutes: Route[] = [
         path: "/customer",
         source: "query",
         input: z.array(customerPrimaryKeySchema),
-        handler: (db, body) => deleteCustomer(db, body as never),
+        handler: (ctx, body) => deleteCustomer(ctx.db, body as never),
     },
 ];

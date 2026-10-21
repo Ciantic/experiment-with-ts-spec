@@ -181,6 +181,15 @@ export type FilterDefault =
 export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;
 export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
 
+/** The verbs a `@restOperation` may name. */
+export const REST_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+export type RestMethod = (typeof REST_METHODS)[number];
+
+/** Whether a token is a verb a route table can match. */
+export function isRestMethod(value: string): value is RestMethod {
+    return (REST_METHODS as readonly string[]).includes(value);
+}
+
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
 export const READ_OPERATIONS = ["query"] as const;
 export type ReadOperation = (typeof READ_OPERATIONS)[number];
@@ -369,6 +378,9 @@ export interface SpecOperationParameter {
     name: string;
     /** The parameter type as written, e.g. `T` or `{ invoice: Invoice }`. */
     typeText: string;
+    /** The parameter type as a shape, which the operation input schema is rendered from. */
+    type: SpecType;
+    location: SpecLocation;
 }
 
 /** One error a contract method declares with `@throws {Name} [status=…] reason`. */
@@ -408,6 +420,10 @@ export interface SpecOperation {
     operation: boolean;
     /** True when `@restOperation` marks it for the HTTP surface. */
     rest: boolean;
+    /** The verb `@restOperation` names, e.g. `POST`; absent when the tag is malformed. */
+    restMethod?: RestMethod;
+    /** The path `@restOperation` names, e.g. `/invoice/send`; absent when the tag is malformed. */
+    restPath?: string;
     location: SpecLocation;
 }
 
@@ -994,21 +1010,31 @@ function readOperation(
         .filter((line) => line !== "");
     const returnTypeNode = method.getReturnTypeNode();
     const filePath = contract.location.filePath;
+    // The verb and the path are the tag's value; a malformed one stays absent so the linter reports it.
+    const restTokens = (tags.written.byName.get("restOperation")?.[0]?.value ?? "").split(/\s+/u).filter(Boolean);
+    const restMethod = restTokens[0];
     return {
         interfaceName: contract.name,
         importSpecifier: contract.importSpecifier,
         interfaceTypeParameters: contract.typeParameters,
         name: method.getName(),
         description,
-        parameters: method.getParameters().map((parameter) => ({
-            name: parameter.getName(),
-            typeText: parameter.getTypeNode()?.getText() ?? "",
-        })),
+        parameters: method.getParameters().map((parameter) => {
+            const typeNode = parameter.getTypeNode();
+            return {
+                name: parameter.getName(),
+                typeText: typeNode?.getText() ?? "",
+                type: typeNode ? readType(typeNode) : { kind: "missing" },
+                location: { filePath, line: parameter.getStartLineNumber() },
+            };
+        }),
         returnTypeText: returnTypeNode?.getText() ?? "",
         returnType: returnTypeNode ? readType(returnTypeNode) : { kind: "missing" },
         throws: (tags.written.byName.get("throws") ?? []).map((tag) => readThrowsTag(tag, filePath)),
         operation,
         rest,
+        ...(restMethod !== undefined && isRestMethod(restMethod) ? { restMethod } : {}),
+        ...(restTokens[1] !== undefined && restTokens[1].startsWith("/") ? { restPath: restTokens[1] } : {}),
         location: locationOf(method),
     };
 }

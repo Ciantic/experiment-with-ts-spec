@@ -54,7 +54,7 @@ function echoRoute(overrides: Partial<Route> = {}): Route {
         path: "/echo",
         source: "body",
         input: accepts,
-        handler: async (_db, argument) => argument,
+        handler: async (_ctx, argument) => argument,
         ...overrides,
     };
 }
@@ -165,8 +165,8 @@ describe("handleGroup", () => {
         await handle(
             [
                 echoRoute({
-                    handler: async (executor) => {
-                        await executor.query("select 1");
+                    handler: async (ctx) => {
+                        await ctx.db.query("select 1");
                         return null;
                     },
                 }),
@@ -222,7 +222,7 @@ describe("handleGroup", () => {
 
     it("gives a handler that asks inside a transaction group a savepoint of its own", async () => {
         await handle(
-            [echoRoute({ handler: async (executor) => await executor.transaction(async () => null) })],
+            [echoRoute({ handler: async (ctx) => await ctx.db.transaction(async () => null) })],
             groupBody("transaction", [callEntry("echo", {})]),
         );
 
@@ -231,7 +231,7 @@ describe("handleGroup", () => {
 
     it("opens the handler's own boundary inside a batch, which has none", async () => {
         await handle(
-            [echoRoute({ handler: async (executor) => await executor.transaction(async () => null) })],
+            [echoRoute({ handler: async (ctx) => await ctx.db.transaction(async () => null) })],
             groupBody("batch", [callEntry("echo", {})]),
         );
 

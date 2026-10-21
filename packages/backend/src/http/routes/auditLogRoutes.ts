@@ -13,7 +13,7 @@ export const auditLogRoutes: Route[] = [
         path: "/audit_log/query",
         source: "query",
         input: queryAuditLogSchema,
-        handler: (db, body) => queryAuditLog(db, body as never),
+        handler: (ctx, body) => queryAuditLog(ctx.db, body as never),
     },
     {
         id: "createAuditLog",
@@ -21,6 +21,6 @@ export const auditLogRoutes: Route[] = [
         path: "/audit_log",
         source: "body",
         input: z.array(auditLogInsertSchema),
-        handler: (db, body) => createAuditLog(db, body as never),
+        handler: (ctx, body) => createAuditLog(ctx.db, body as never),
     },
 ];

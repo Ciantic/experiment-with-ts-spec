@@ -225,7 +225,7 @@ function within(path: number[], ancestor: number[]): boolean {
 /** The body of {@link execute}, without the path bookkeeping. */
 async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
     if (node.kind === "call") {
-        const result = await node.route.handler(db, node.argument);
+        const result = await node.route.handler({ db }, node.argument);
         return result ?? null;
     }
 

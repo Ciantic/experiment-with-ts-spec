@@ -101,6 +101,11 @@ function build(domain: Record<string, string>): RestModel {
 
 const model = build({ Widget: WIDGET, Marker: MARKER });
 
+/** The diagnostic messages, so an assertion names the rule without the location. */
+function messages(diagnostics: RestModel["diagnostics"]): string[] {
+    return diagnostics.map((diagnostic) => diagnostic.message);
+}
+
 describe("buildRestModel", () => {
     it("keys every entity by its interface name and orders them", () => {
         expect(model.entities.map((entity) => entity.entity)).toEqual(["Marker", "Widget"]);
@@ -340,5 +345,123 @@ export interface Bad {
 
         expect(widget?.whereFields).toEqual([{ name: "amount", operators: ["gte", "lte"] }]);
         expect(marker?.whereFields).toEqual([]);
+    });
+});
+
+/** A contract with a REST operation that takes an input and one that does not. */
+const INVOICES = `
+import type { Widget } from "./Widget.ts";
+
+export interface InvoiceOperations<T> {
+    /**
+     * Send the invoice.
+     *
+     * @operation
+     * @restOperation POST /invoice/send
+     */
+    sendInvoice(ctx: T, opts: { invoice: Widget }): Promise<void>;
+
+    /**
+     * Receive the invoice.
+     *
+     * @operation
+     * @restOperation POST /invoice/receive
+     */
+    receiveInvoice(ctx: T): Promise<void>;
+
+    /**
+     * Look one up.
+     *
+     * @operation
+     * @restOperation GET /invoice/one
+     */
+    getInvoice(ctx: T, opts: { id: string }): Promise<void>;
+}
+`.trim();
+
+describe("@restOperation", () => {
+    const withOperations = build({ Widget: WIDGET, Marker: MARKER, InvoiceOperations: INVOICES });
+
+    it("maps each operation to a call with its verb and path", () => {
+        const calls = withOperations.operations.map((operation) => [operation.id, operation.method, operation.path]);
+
+        expect(calls).toEqual([
+            ["getInvoice", "GET", "/invoice/one"],
+            ["receiveInvoice", "POST", "/invoice/receive"],
+            ["sendInvoice", "POST", "/invoice/send"],
+        ]);
+    });
+
+    it("names the contract and its type-parameter count", () => {
+        const send = withOperations.operations.find((operation) => operation.id === "sendInvoice");
+
+        expect(send).toMatchObject({
+            contract: "InvoiceOperations",
+            contractTypeParameters: 1,
+            inputSchemaName: "sendInvoiceInputSchema",
+            hasInput: true,
+        });
+    });
+
+    it("lets a GET carry its input in the query string and a POST in the body", () => {
+        const byId = new Map(withOperations.operations.map((operation) => [operation.id, operation.source]));
+
+        expect(byId.get("getInvoice")).toBe("query");
+        expect(byId.get("sendInvoice")).toBe("body");
+    });
+
+    it("marks an operation with no input parameter, and names no schema for it", () => {
+        const receive = withOperations.operations.find((operation) => operation.id === "receiveInvoice");
+
+        expect(receive?.hasInput).toBe(false);
+        expect(receive?.inputSchemaName).toBeUndefined();
+    });
+
+    it("reports an operation whose path an entity route already serves", () => {
+        const clash = build({
+            Widget: WIDGET,
+            Ops: `
+export interface Ops<T> {
+    /**
+     * Clash.
+     *
+     * @operation
+     * @restOperation POST /widget
+     */
+    clash(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(messages(clash.diagnostics)).toEqual([
+            "`clash`: POST /widget is already served by `createWidget`",
+        ]);
+    });
+
+    it("reports two operations that claim one path", () => {
+        const clash = build({
+            Widget: WIDGET,
+            Ops: `
+export interface Ops<T> {
+    /**
+     * One.
+     *
+     * @operation
+     * @restOperation POST /invoice/send
+     */
+    send(ctx: T): Promise<void>;
+
+    /**
+     * Two.
+     *
+     * @operation
+     * @restOperation POST /invoice/send
+     */
+    resend(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(messages(clash.diagnostics)).toEqual([
+            "`send`: POST /invoice/send is already served by `resend`",
+        ]);
     });
 });

@@ -13,7 +13,7 @@ export const invoiceSentRowRoutes: Route[] = [
         path: "/invoice_sent_row/query",
         source: "query",
         input: queryInvoiceSentRowSchema,
-        handler: (db, body) => queryInvoiceSentRow(db, body as never),
+        handler: (ctx, body) => queryInvoiceSentRow(ctx.db, body as never),
     },
     {
         id: "createInvoiceSentRow",
@@ -21,7 +21,7 @@ export const invoiceSentRowRoutes: Route[] = [
         path: "/invoice_sent_row",
         source: "body",
         input: z.array(invoiceSentRowInsertSchema),
-        handler: (db, body) => createInvoiceSentRow(db, body as never),
+        handler: (ctx, body) => createInvoiceSentRow(ctx.db, body as never),
     },
     {
         id: "upsertInvoiceSentRow",
@@ -29,7 +29,7 @@ export const invoiceSentRowRoutes: Route[] = [
         path: "/invoice_sent_row",
         source: "body",
         input: z.array(invoiceSentRowUpsertSchema),
-        handler: (db, body) => upsertInvoiceSentRow(db, body as never),
+        handler: (ctx, body) => upsertInvoiceSentRow(ctx.db, body as never),
     },
     {
         id: "updateInvoiceSentRow",
@@ -37,7 +37,7 @@ export const invoiceSentRowRoutes: Route[] = [
         path: "/invoice_sent_row",
         source: "body",
         input: z.array(invoiceSentRowPatchSchema),
-        handler: (db, body) => updateInvoiceSentRow(db, body as never),
+        handler: (ctx, body) => updateInvoiceSentRow(ctx.db, body as never),
     },
     {
         id: "deleteInvoiceSentRow",
@@ -45,6 +45,6 @@ export const invoiceSentRowRoutes: Route[] = [
         path: "/invoice_sent_row",
         source: "query",
         input: z.array(invoiceSentRowPrimaryKeySchema),
-        handler: (db, body) => deleteInvoiceSentRow(db, body as never),
+        handler: (ctx, body) => deleteInvoiceSentRow(ctx.db, body as never),
     },
 ];

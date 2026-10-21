@@ -3,7 +3,13 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "nod
 import { dirname, join } from "node:path";
 import { loadSpec, type SpecModel } from "spec/scripts/spec-model.ts";
 import { writeTypeFileName } from "./generate-zod-schemas.ts";
-import { buildRestModel, type RestEntity, type RestKind, type RestModel } from "./rest-model.ts";
+import {
+    buildRestModel,
+    type RestEntity,
+    type RestKind,
+    type RestModel,
+    type RestOperationCall,
+} from "./rest-model.ts";
 
 export type { Diagnostic } from "./rest-model.ts";
 
@@ -199,13 +205,68 @@ export function renderClientModule(entity: RestEntity): string {
     return lines.join("\n") + "\n";
 }
 
+/** InvoiceOperations -> invoiceOperations.ts, the module holding that contract's operation builders. */
+export function operationModuleName(contract: string): string {
+    return `${contract.charAt(0).toLowerCase()}${contract.slice(1)}.ts`;
+}
+
+/** The contract as a type a client can name without choosing the context, e.g. `InvoiceOperations<unknown>`. */
+function contractType(operation: RestOperationCall): string {
+    return operation.contractTypeParameters === 0 ? operation.contract : `${operation.contract}<unknown>`;
+}
+
+/** Render one contract's operation builders: one function per `@restOperation`. */
+export function renderOperationClientModule(contract: string, operations: RestOperationCall[]): string {
+    const lines: string[] = [HEADER];
+    const first = operations[0];
+    if (first === undefined) {
+        return lines.join("\n") + "\n";
+    }
+    lines.push(`import type { ${contract} } from "${first.contractImport}";`);
+    lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
+
+    for (const operation of operations) {
+        const signature = `${contractType(operation)}["${operation.id}"]`;
+        lines.push("");
+        if (operation.description.length > 0) {
+            lines.push("/**");
+            for (const line of operation.description) {
+                lines.push(` * ${line}`);
+            }
+            lines.push(" */");
+        }
+        const parameters = operation.hasInput ? `opts: Parameters<${signature}>[1]` : "";
+        const result = `Awaited<ReturnType<${signature}>>`;
+        lines.push(`export function ${operation.id}(${parameters}): Call<${result}> {`);
+        const argument = operation.hasInput ? "opts" : "undefined";
+        lines.push(`    return call<${result}>("${operation.id}", "${operation.method}", "${operation.path}", ${argument});`);
+        lines.push("}");
+    }
+    return lines.join("\n") + "\n";
+}
+
 /** Render the barrel re-exporting every entity module. */
 export function renderClientIndex(model: RestModel): string {
     const lines: string[] = [HEADER];
     for (const entity of model.entities) {
         lines.push(`export * from "./${entity.module}.ts";`);
     }
+    for (const contract of contractsOf(model)) {
+        lines.push(`export * from "./${operationModuleName(contract)}";`);
+    }
     return lines.join("\n") + "\n";
+}
+
+/** The contracts the model's operations belong to, in name order. */
+function contractsOf(model: RestModel): string[] {
+    return [...new Set(model.operations.map((operation) => operation.contract))].sort((a, b) => a.localeCompare(b));
+}
+
+/** The operations of one contract, in name order. */
+function operationsOf(model: RestModel, contract: string): RestOperationCall[] {
+    return model.operations
+        .filter((operation) => operation.contract === contract)
+        .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Render every generated client file, keyed by file name. */
@@ -213,6 +274,9 @@ export function generateRestClient(model: RestModel): Map<string, string> {
     const files = new Map<string, string>();
     for (const entity of model.entities) {
         files.set(`${entity.module}.ts`, renderClientModule(entity));
+    }
+    for (const contract of contractsOf(model)) {
+        files.set(operationModuleName(contract), renderOperationClientModule(contract, operationsOf(model, contract)));
     }
     files.set(INDEX_FILE, renderClientIndex(model));
     return files;

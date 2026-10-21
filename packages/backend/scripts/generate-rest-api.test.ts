@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
 import { buildRestModel, type RestEntity, type RestModel } from "../../sdk/scripts/rest-model.ts";
-import { renderEntityRoutes, renderRoutes, renderRoutesIndex } from "./generate-rest-api.ts";
+import {
+    renderEntityRoutes,
+    renderOperationRoutes,
+    renderRoutes,
+    renderRoutesIndex,
+} from "./generate-rest-api.ts";
 // The drift check drives both generators from one model, so it lives here with the server's renderer.
 import { generateRestClient } from "../../sdk/scripts/generate-rest-client.ts";
 
@@ -122,11 +127,11 @@ describe("renderEntityRoutes", () => {
     it("wires each route to its generated function", () => {
         const code = render();
 
-        expect(code).toContain("handler: (db, body) => queryWidget(db, body as never)");
-        expect(code).toContain("handler: (db, body) => createWidget(db, body as never)");
-        expect(code).toContain("handler: (db, body) => upsertWidget(db, body as never)");
-        expect(code).toContain("handler: (db, body) => updateWidget(db, body as never)");
-        expect(code).toContain("handler: (db, body) => deleteWidget(db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => queryWidget(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => createWidget(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => upsertWidget(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => updateWidget(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => deleteWidget(ctx.db, body as never)");
     });
 
     it("imports every generated piece from its barrel", () => {
@@ -181,8 +186,8 @@ export interface AuditLog {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain("handler: (db, body) => createAuditLog(db, body as never)");
-        expect(code).toContain("handler: (db, body) => queryAuditLog(db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => createAuditLog(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => queryAuditLog(ctx.db, body as never)");
         expect(code).not.toContain("upsertAuditLog");
         expect(code).not.toContain("updateAuditLog");
         expect(code).not.toContain("deleteAuditLog");
@@ -209,7 +214,7 @@ export interface Internal {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain("handler: (db, body) => createInternal(db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => createInternal(ctx.db, body as never)");
         expect(code).not.toContain("queryInternal");
         expect(code).not.toContain("/internal/query");
     });
@@ -234,14 +239,14 @@ describe("renderRoutesIndex", () => {
     it("gives every entity and the barrel a module", () => {
         const files = renderRoutes(build({ Widget: WIDGET, Marker: MARKER }));
 
-        expect([...files.keys()]).toEqual(["markerRoutes.ts", "widgetRoutes.ts", "index.ts"]);
+        expect([...files.keys()]).toEqual(["markerRoutes.ts", "widgetRoutes.ts", "operationRoutes.ts", "index.ts"]);
         expect(files.get("widgetRoutes.ts")).toBe(renderEntityRoutes(widgetEntity()));
     });
 });
 
 describe("the pair", () => {
     it("exposes exactly the calls the server exposes", () => {
-        const model = build({ Widget: WIDGET, Marker: MARKER });
+        const model = build({ Widget: WIDGET, Marker: MARKER, WidgetOperations: OPERATIONS });
         // Every route module, barrel included; the barrel names no id, so it adds nothing.
         const exposed = [...renderRoutes(model).values()].flatMap((content) =>
             [...content.matchAll(/id: "(\w+)",/g)].map((match) => match[1]),
@@ -250,7 +255,75 @@ describe("the pair", () => {
             [...content.matchAll(/call<.*?>\("(\w+)",/g)].map((match) => match[1]),
         );
 
-        expect(exposed.length).toBeGreaterThan(0);
+        expect(exposed).toContain("sendWidget");
+        expect(exposed).toContain("resetWidgets");
         expect([...called].sort()).toEqual([...exposed].sort());
+    });
+});
+
+/** A contract exposing a REST operation with an input and one without. */
+const OPERATIONS = `
+import type { Widget } from "./Widget.ts";
+
+export interface WidgetOperations<T> {
+    /**
+     * Send the widget.
+     *
+     * @operation
+     * @restOperation POST /widget/send
+     */
+    sendWidget(ctx: T, opts: { widget: Widget }): Promise<Widget>;
+
+    /**
+     * Reset the widgets.
+     *
+     * @operation
+     * @restOperation POST /widget/reset
+     */
+    resetWidgets(ctx: T): Promise<void>;
+}
+`.trim();
+
+describe("renderOperationRoutes", () => {
+    const withOperations = build({ Widget: WIDGET, Marker: MARKER, WidgetOperations: OPERATIONS });
+
+    it("renders one route per @restOperation, keyed by its id", () => {
+        const code = renderOperationRoutes(withOperations.operations);
+
+        expect(code).toContain('export const operationRoutes: Route[] = [');
+        expect(code).toContain('id: "sendWidget"');
+        expect(code).toContain('method: "POST"');
+        expect(code).toContain('path: "/widget/send"');
+        expect(code).toContain("input: sendWidgetInputSchema");
+    });
+
+    it("hands the route's context straight to the operation, so the compiler checks it", () => {
+        const code = renderOperationRoutes(withOperations.operations);
+
+        expect(code).toContain(
+            "handler: (ctx, body) => sendWidget(ctx, body as Parameters<typeof sendWidget>[1])",
+        );
+    });
+
+    it("imports each operation module by file and validates a call with no input against undefined", () => {
+        const code = renderOperationRoutes(withOperations.operations);
+
+        expect(code).toContain('import { sendWidget } from "../../operations/sendWidget.ts";');
+        expect(code).toContain('import { z } from "zod";');
+        expect(code).toContain("input: z.undefined()");
+        expect(code).toContain("handler: (ctx) => resetWidgets(ctx)");
+    });
+
+    it("joins the barrier every entity's routes are spread into", () => {
+        const code = renderRoutesIndex(withOperations);
+
+        expect(code).toContain('import { operationRoutes } from "./operationRoutes.ts";');
+        expect(code).toContain("    ...operationRoutes,");
+    });
+
+    it("writes the operation module even when the spec declares none", () => {
+        const files = renderRoutes(build({ Widget: WIDGET }));
+
+        expect(files.get("operationRoutes.ts")).toContain("export const operationRoutes: Route[] = [];");
     });
 });

@@ -13,7 +13,7 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice/query",
         source: "query",
         input: queryInvoiceSchema,
-        handler: (db, body) => queryInvoice(db, body as never),
+        handler: (ctx, body) => queryInvoice(ctx.db, body as never),
     },
     {
         id: "createInvoice",
@@ -21,7 +21,7 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice",
         source: "body",
         input: z.array(invoiceInsertSchema),
-        handler: (db, body) => createInvoice(db, body as never),
+        handler: (ctx, body) => createInvoice(ctx.db, body as never),
     },
     {
         id: "upsertInvoice",
@@ -29,7 +29,7 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice",
         source: "body",
         input: z.array(invoiceUpsertSchema),
-        handler: (db, body) => upsertInvoice(db, body as never),
+        handler: (ctx, body) => upsertInvoice(ctx.db, body as never),
     },
     {
         id: "updateInvoice",
@@ -37,7 +37,7 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice",
         source: "body",
         input: z.array(invoicePatchSchema),
-        handler: (db, body) => updateInvoice(db, body as never),
+        handler: (ctx, body) => updateInvoice(ctx.db, body as never),
     },
     {
         id: "deleteInvoice",
@@ -45,6 +45,6 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice",
         source: "query",
         input: z.array(invoicePrimaryKeySchema),
-        handler: (db, body) => deleteInvoice(db, body as never),
+        handler: (ctx, body) => deleteInvoice(ctx.db, body as never),
     },
 ];
