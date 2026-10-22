@@ -5,17 +5,17 @@ against the real spec. It is the seed a development server starts from, so the
 client has something to read without a fixture being written per test.
 
 - `packages/spec/mockdata/<name>.ts` — one entity's row array, named after the
-  array it exports (`invoices.ts` exports `invoices`).
+  array it exports (`widgets.ts` exports `widgets`).
 - `packages/spec/mockdata/index.ts` — the barrel, plus `mockTables`, the
   ordered list of `{ entity, rows }`.
 - `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
-The `mockTables` are ordered so foreign keys resolve: the tenant every row
-belongs to, then customers and sellers, then invoices and their rows, then sent
-invoices and their rows, then queued emails. Tables that reference nothing —
-`Translation` and `AuditLog` — sit at the end, where their position cannot
-matter. `seedMockData` walks the list in that order.
+The `mockTables` are ordered so foreign keys resolve: the tenancy root every row
+belongs to, then the entities it references, then children after their parents,
+then snapshots after the rows they copy. Tables that reference nothing sit at
+the end, where their position cannot matter. `seedMockData` walks the list in
+that order.
 
 ## Seeding is generic
 
@@ -29,7 +29,7 @@ the mock data at compile time instead of seeding a database the server disagrees
 with. A row must also satisfy the constraints it is inserted under: its
 `tenantId` has to match the tenant of every row it points at, since a scoped
 foreign key refuses a pair that does not exist (`docs/tenancy.md`). Computed
-values — the invoice aggregates and the row amounts — are left
+values — a parent's aggregates and a child's amounts — are left
 out, because their fields are optional and the triggers fill them. The
 `createdAt`, `updatedAt`, and `version` values are declared and stored as
 written: the generated insert carries them, so a sample row seeds the instant

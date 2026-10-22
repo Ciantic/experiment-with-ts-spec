@@ -1,9 +1,10 @@
 # Tenancy
 
-`Tenant` is the root of the data graph: every other entity declares a `tenantId`
-pointing at it, except `Translation` and `AuditLog`, which are global. Three
-annotations carry that: two on the interface say what it is, and one on a
-reference says what it must agree with. The linter holds all three together.
+A spec may declare one tenant root: the entity that scoped entities point at with
+a `tenantId`, save the global ones. In the example, the root is `Tenant`, and
+`Locale` and `LogEntry` are its global entities. Three annotations carry that:
+two on the interface say what it is, and one on a reference says what it must
+agree with. The linter holds all three together.
 
 ```ts
 /**
@@ -16,9 +17,9 @@ export interface Tenant { … }
 /**
  * @entity
  * @tenantOwned tenantId
- * @pgTable invoice
+ * @pgTable widget
  */
-export interface Invoice {
+export interface Widget {
     /**
      * @fieldName Tenant ID
      * @queryFilter required
@@ -36,7 +37,7 @@ reports a second one: one root keeps every scope unambiguous. The root is never
 `@tenantOwned`, since there is no higher scope for it to agree with, and a
 reference to it is never scoped.
 
-`Tenant` is the only interface the tag sits on today.
+`Tenant` is the only interface in the example that carries the tag.
 
 ## Ownership: `@tenantOwned <column>`
 
@@ -44,24 +45,23 @@ reference to it is never scoped.
 that field to exist, to be required, to be a scalar column rather than a branch,
 and to link to the root with `@foreignKey Tenant`: the link is what makes the
 column a tenant column rather than a bare id. An interface that declares neither
-the tag nor a `tenantId` is global, which is what `Translation` and `AuditLog`
-are.
+the tag nor a `tenantId` is global, which is what `Locale` and `LogEntry` are.
 
 ## Reads: `@queryFilter required`
 
 Marking `tenantId` a required filter makes every read of the entity name it, so a
 read cannot list another tenant's rows by omitting a filter. The requirement is
 enforced in four places, from the type down to the resolver — see
-`docs/queries.md`. `Tenant`, `Translation`, and `AuditLog` have no `tenantId` and
-so nothing to require; a read of them is unscoped.
+`docs/queries.md`. `Tenant`, `Locale`, and `LogEntry` have no `tenantId` and so
+nothing to require; a read of them is unscoped.
 
 That alone is not enough: it scopes what is *read*, not what is *written*.
 
 ## Links: `@foreignKey <Entity> scope=<column>`
 
-A foreign key names one column, so `@foreignKey Invoice` on `invoiceId` says the
-row points at an invoice and says nothing about the tenant. Writes go through the
-generated repositories, but nothing stops `tenantId` and `invoiceId` from
+A foreign key names one column, so `@foreignKey Widget` on `widgetId` says the
+row points at a widget and says nothing about the tenant. Writes go through the
+generated repositories, but nothing stops `tenantId` and `widgetId` from
 disagreeing, which would produce a row that one tenant can read and no tenant
 owns.
 
@@ -71,35 +71,36 @@ target, and the column it names is the one the target declares with
 
 ```ts
 /**
- * @fieldName Invoice
- * @foreignKey Invoice scope=tenantId
+ * @fieldName Widget
+ * @foreignKey Widget scope=tenantId
  * @widget text
  */
-invoiceId: InvoiceId;
+widgetId: WidgetId;
 ```
 
 ```sql
-constraint "invoice_row_tenantId_invoiceId_fkey"
-    foreign key ("tenantId", "invoiceId") references "invoice" ("tenantId", "id")
+constraint "widget_row_tenantId_widgetId_fkey"
+    foreign key ("tenantId", "widgetId") references "widget" ("tenantId", "id")
 ```
 
 The referencing interface declares a column of that name too — its own owned
 column, so a child links to a parent inside one tenant or not at all. The
 generator covers the pair with the unique constraint a composite reference needs
-(`constraint "invoice_tenantId_id_key" unique ("tenantId", "id")`). Nothing else
+(`constraint "widget_tenantId_id_key" unique ("tenantId", "id")`). Nothing else
 changes: the repository generators write the same columns, and a `@relation`
 still joins through the target's key, because the key alone identifies the row.
 
 This is a **database** constraint rather than a check in generated SQL, so it
 holds for every writer — the repositories, a batch, a migration, `psql`. It also
 guards the other direction: moving a parent's tenant out from under a child is
-refused. And it composes: `invoice_sent_row` is scoped to `invoice_sent`, which
-is scoped to `invoice`, so the chain holds two levels deep without a third rule.
+refused. And it composes: `widget_snapshot_row` is scoped to `widget_snapshot`,
+which is scoped to `widget`, so the chain holds two levels deep without a third
+rule.
 
-Five relations carry a scope: `InvoiceRow` → `Invoice`, `InvoiceSentRow` →
-`InvoiceSent`, `InvoiceSent` → `Invoice`, `Invoice` → `Customer`, and `Invoice` →
-`Seller`. The `tenantId` keys into `Tenant` are not scoped: `Tenant` is the root,
-so there is no second column to agree with.
+In the example, five relations carry a scope: `WidgetRow` → `Widget`,
+`WidgetSnapshotRow` → `WidgetSnapshot`, `WidgetSnapshot` → `Widget`, `Widget` →
+`Account`, and `Widget` → `Supplier`. The `tenantId` keys into `Tenant` are not
+scoped: `Tenant` is the root, so there is no second column to agree with.
 
 ## The tags are the only source
 
@@ -127,16 +128,16 @@ it does for every other annotation.
 - `onDelete=setNull` **may not** accompany a scope. Postgres nulls every column of
   a composite key on delete, and the scope is required, so the delete could never
   succeed. A partial `set null (column)` list is not generated.
-- The referencing column may still be optional. A null `customerId` means "no
-  customer", and the pair is not matched — which is the intent, not a gap.
+- The referencing column may still be optional. A null `accountId` means "no
+  account", and the pair is not matched — which is the intent, not a gap.
 
 ## What this does not cover
 
-- **A scope that is not a key lookup.** `invoice_sent."customerId"` carries no
-  foreign key at all: the customer is copied into the row as a snapshot
-  (`docs/invoice-snapshotting.md`), so there is no reference to constrain.
-- **An interface that is meant to be tenanted but says nothing.** `Translation`
-  and `AuditLog` are global because they carry neither `@tenantOwned` nor a
+- **A scope that is not a key lookup.** `widget_snapshot."accountId"` carries no
+  foreign key at all: the account is copied into the row as a snapshot, so there
+  is no reference to constrain.
+- **An interface that is meant to be tenanted but says nothing.** `Locale` and
+  `LogEntry` are global because they carry neither `@tenantOwned` nor a
   `tenantId`, and nothing tells that apart from an entity whose tenancy someone
   forgot. Intent is checkable once one of the two is written.
 - **Authorization.** Nothing reads a principal. A constraint stops two tenants

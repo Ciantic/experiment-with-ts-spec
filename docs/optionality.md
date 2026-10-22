@@ -36,8 +36,8 @@ field whose column has a fallback:
   value, or the column default when the row omits it.
 - A `@pgDefault` field is relaxed the same way.
 
-So `Email.status` is required and `EmailInsert["status"]` is optional, without
-one contradicting the other. The same applies to `createdAt`, `updatedAt`, and a
+So a defaulted `status` column is required in its entity and optional in
+`MessageInsert`, without one contradicting the other. The same applies to `createdAt`, `updatedAt`, and a
 defaulted `version`, which a seed or a backfill may supply. See
 `docs/validation.md` and `docs/repositories.md`.
 
@@ -45,12 +45,12 @@ defaulted `version`, which a seed or a backfill may supply. See
 
 A field whose column is nullable, which is how `@computed` values start life:
 
-- `Invoice.netAmount`, `Invoice.taxAmount`, `Invoice.totalAmount` — computed
-  from the rows, so absent until there are rows. A trigger propagates `null`
-  rather than inventing a zero.
-- `InvoiceRow.netAmount` and friends, the same way.
-- Plain optional data: `Customer.eInvoiceAddress`, `Invoice.notes`. Nullable,
-  because a customer may have no e-invoice address.
+- `Widget.subtotal`, `Widget.surcharge`, `Widget.total` — computed from
+  the rows, so absent until there are rows. A trigger propagates `null` rather
+  than inventing a zero.
+- `WidgetRow.subtotal` and friends, the same way.
+- Plain optional data: `Account.externalId`, `Widget.notes`. Nullable, because
+  an account may have no external identifier.
 
 ## Writing one back
 
@@ -64,7 +64,7 @@ the column, which is the only way to write a null
 An upsert takes both like a create and stores them like one — it writes the row
 whole, so omitting the field and sending `null` are again one request. It accepts
 `null` anyway, because a caller holding a row from a form or another JSON surface
-carries `null` where this spec carries an absent field.
+carries `null` where a spec may carry an absent field.
 
 ## Generation
 

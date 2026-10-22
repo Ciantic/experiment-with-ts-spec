@@ -48,8 +48,8 @@ Everything else resolves through the alias tree:
 - A `@primitive` alias (`UUIDv7`, `Decimal`, `Money`, `Version`, and so on) → the
   type its `@pgType` names.
 - `BrandedId<...>` and any `<Entity>Id` alias → `uuid`.
-- A union of string literals (such as `"draft" | "sent"`) → `text` plus a CHECK
-  constraint listing the values.
+- A union of string literals (such as `"draft" | "released"`) → `text` plus a
+  CHECK constraint listing the values.
 - An open union (`Unit`, `Currency`, which end in `string & {}`) → plain `text`,
   no CHECK, because the value set is deliberately not closed.
 - An entity type → not a column; `@relation` navigates through the field tagged
@@ -115,8 +115,8 @@ would then need manual reordering or deferred constraints.
 
 `@computed @pgTrigger` fields become row-level triggers. Without a header the
 trigger is `before insert or update` on the field's own table, assigning in
-interface field order. Order matters on `invoice_row`: the assignments are
-`netAmount`, `taxAmount`, `totalAmount`, and each reads the previous one, so they
+interface field order. Order matters on `widget_row`: the assignments are
+`subtotal`, `surcharge`, `total`, and each reads the previous one, so they
 cannot be virtual columns.
 
 The statements are plpgsql, so every reference to a column of the row being
@@ -146,8 +146,8 @@ derived value: were it emitted first, it would see whatever the client sent.
 
 Neither clock nor version columns generate a trigger. The generated writes
 assign the clocks and increment the version themselves (`docs/timestamps.md`,
-`docs/versioning.md`), so the only triggers are the `@pgTrigger` statements the
-spec declares.
+`docs/versioning.md`), so the only triggers are the `@pgTrigger` statements an
+entity declares.
 
 A cross-table aggregate cannot run as a before trigger on the parent, because
 the child rows do not exist yet at insert. Its header therefore reads `after
@@ -157,10 +157,10 @@ for all three events, so it names the parent row it recomputes with `in
 (OLD."<fk>", NEW."<fk>")`: an update that moves a row from one parent to another
 refreshes both, which a statement reading `NEW.` alone would not.
 
-The invoice total is not part of that update. It is a virtual generated column
-over `"netAmount" + "taxAmount"`, so it recomputes on read. The trigger's statement
-also writes `"updatedAt" = now()` and `"version" = "version" + 1`, because no
-generated write runs there to maintain them (`docs/timestamps.md`).
+The widget total is not part of that update. It is a virtual generated column
+over `"subtotal" + "surcharge"`, so it recomputes on read. The trigger's
+statement also writes `"updatedAt" = now()` and `"version" = "version" + 1`,
+because no generated write runs there to maintain them (`docs/timestamps.md`).
 
 A child whose foreign key points at the parent but which no trigger names gets no
 trigger. A statement that reads such a child's table without attaching to it is a
@@ -211,12 +211,12 @@ Gotchas found by running the DDL:
 
 - **PGlite parses `int8` to a JS number by default,** which silently loses
   precision above 2^53. The parsers in `packages/backend/src/postgres/pglite-setup.ts` map it to
-  `bigint`. No spec field uses `bigint` now, so this only matters if one is added.
+  `bigint`, so an `int8` column arrives as a `bigint` however large its value.
 - **The fragments must be `NEW`-qualified** (see above). Running the DDL is what
   revealed this.
 - **A foreign key takes the database default unless the key declares an
   action,** so a referenced row cannot be deleted unless the key opts into
-  nulling or cascading. `@foreignKey Customer onDelete=cascade` — or
+  nulling or cascading. `@foreignKey Account onDelete=cascade` — or
   `onUpdate=<action>` — appends the clause. See `docs/spec-annotations.md`.
 - **A scoped reference replaces the single-column one.** The composite constraint
   already requires the key to exist on the target, so emitting both would be a
@@ -242,7 +242,7 @@ https://github.com/Ciantic/pg-unified-mapping.
 
 The rules are the same in both:
 
-- `int8` returns `bigint`. No spec field uses it at present.
+- `int8` returns `bigint`.
 - `date` and `timestamp` return strings, not `Date`. The spec models them with a
   `Date` type at the application boundary; the driver returning strings keeps the
   wire format explicit. Converting is the caller's job.
@@ -260,10 +260,11 @@ Gotchas:
   `{ create }`, which is what the mapper reads. The test asserts the runtime
   shape and casts at that one seam; the rest of `PgModule` is checked by
   assignment.
-- **Everything numeric is `decimal`.** Amounts, quantities, and tax rates share
-  one type, so the drivers return strings for all of them, matching the `Decimal`
-  brand. Rounding to two decimals is in the expression (`round(..., 2)`), not in the
-  column type, so a stored amount's scale is defined in one place.
+- **Everything numeric is `decimal`.** Amounts, quantities, and percentages
+  share one type, so the drivers return strings for all of them, matching the
+  `Decimal` brand. Rounding to two decimals is in the expression
+  (`round(..., 2)`), not in the column type, so a stored amount's scale is
+  defined in one place.
 - **Only the OIDs listed in each file are remapped.** Anything else delegates to
   the driver's own parser.
 - **PGlite parsers are keyed by OID in a `ParserOptions` object**, whereas `pg`
@@ -272,8 +273,8 @@ Gotchas:
 
 ## Deliberately not implemented
 
-- **Views for a derived read-time projection.** Nothing emits a view; the spec's
-  computed fields use virtual generated columns or triggers instead.
+- **Views for a derived read-time projection.** Nothing emits a view; a
+  computed field uses a virtual generated column or a trigger instead.
 - **Migrations.** Only full `create` statements are produced; there is no diffing
   against an existing database.
 - **Defaults and sequences.** `id` is `uuid not null` with no default, so the

@@ -12,7 +12,7 @@ request.
 
 Two places exist because a boundary is asked for by two different parties. A
 handler asks for one when the server authored the sequence, such as issuing and
-delivering an invoice. A group asks for one when the caller composed the
+delivering a widget. A group asks for one when the caller composed the
 sequence, such as an editor saving a header and its rows in one request.
 
 Atomicity and batching are separate axes, and the SDK keeps them separate:
@@ -60,7 +60,7 @@ export interface SqlPool {
 
 `SqlPool` is structural rather than a named driver, so a `pg` `Pool` satisfies it
 as it stands and the port names no driver: `createPgPool`
-(`src/postgres/pg-setup.ts`) is a `pg` pool with the spec's result mapping
+(`src/postgres/pg-setup.ts`) is a `pg` pool with the generated result mapping
 applied. A one-connection driver reaches it through
 `createSingleConnectionPool` (`src/db/sql-pool.ts`), which serialises its one
 session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
@@ -165,12 +165,12 @@ each step's own result:
 ```ts
 const [found, written] = await transaction(
     db,
-    (tx) => queryInvoice(tx, { filter: { tenantId: [tenantId] }, select: { id: true } }),
+    (tx) => queryWidget(tx, { filter: { tenantId: [tenantId] }, select: { id: true } }),
     async (tx) => {
-        await createInvoice(tx, [invoice]);
+        await createWidget(tx, [widget]);
     },
 );
-// found: Selected<Invoice, { id: true }>[]; written: void
+// found: Selected<Widget, { id: true }>[]; written: void
 ```
 
 `attempt` reports the error unchanged rather than interpreting it, because what a
@@ -203,7 +203,7 @@ export interface Route {
 ```
 
 ```ts
-export function sendInvoice(db: SqlExecutor, opts: SendInvoiceOptions): Promise<void> {
+export function sendWidget(db: SqlExecutor, opts: SendWidgetOptions): Promise<void> {
     return db.transaction(async (tx) => { … });
 }
 ```
@@ -292,16 +292,16 @@ subtree.
 ### Named operations
 
 A boundary is worth asking for where one request is more than one repository
-call. `sendInvoice` is the case: it reads the draft, writes `invoice_sent` and
-`invoice_sent_row`, freezes the parties, and delivers.
+call. `sendWidget` is the case: it reads the draft, writes `widget_snapshot` and
+`widget_snapshot_row`, freezes the parties, and delivers.
 
 Nothing marks it as such. The implementation is hand-written, takes `SqlExecutor`, and
 opens the boundary itself — `transaction(db, …)` where it wants a unit of work,
 `attempt(db, …)` where a step may fail without taking the rest down — which is
-what makes it callable outside the router too: a seed script or a test passes any
-`SqlExecutor` and the same function works. No route is a named operation yet, because
-`InvoiceOperations` is still a contract with no implementation
-(`docs/invoice-sending.md`); `Route.handler` taking `SqlExecutor` is the seam it lands on.
+what makes it callable outside the router too: a seed script or a test passes
+any `SqlExecutor` and the same function works. No route is a named operation
+yet, because the operations contract has no implementation; `Route.handler`
+taking `SqlExecutor` is the seam it lands on.
 
 A client composes its own boundary with a group instead, which is the subject of
 the rest of this note. The distinction is who authored the sequence, not what the
@@ -360,16 +360,16 @@ Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
 
 ```ts
-export function createInvoice(rows: InvoiceInsert[]): Call<InvoicePrimaryKey[]>
-export function queryInvoice<S extends Selection<Invoice>>(opts: { …; select: S }): Call<Selected<Invoice, S>[]>
+export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[]>
+export function queryWidget<S extends Selection<Widget>>(opts: { …; select: S }): Call<Selected<Widget, S>[]>
 ```
 
 ```ts
 // answers the keys the rows were given, in the order they were carried
-const keys = await exec(http, createInvoice(rows));
-const [invoice] = await exec(
+const keys = await exec(http, createWidget(rows));
+const [widget] = await exec(
     http,
-    queryInvoice({ filter: { tenantId: [tenantId], id: [id] }, select: { number: true } }),
+    queryWidget({ filter: { tenantId: [tenantId], id: [id] }, select: { name: true } }),
 );
 ```
 
@@ -382,28 +382,28 @@ call composable: a builder with a client already bound could not be handed to
 builders and return a group, so the axes compose in either direction:
 
 ```ts
-await exec(http, transaction(createInvoice(rows), createInvoiceRow(rowInserts)));
-await exec(http, batch(queryInvoice(a), transaction(createInvoice(rows), createInvoiceRow(rowInserts))));
-await exec(http, transaction(createInvoice(rows), attempt(createInvoiceRow(bad))));
+await exec(http, transaction(createWidget(rows), createWidgetRow(rowInserts)));
+await exec(http, batch(queryWidget(a), transaction(createWidget(rows), createWidgetRow(rowInserts))));
+await exec(http, transaction(createWidget(rows), attempt(createWidgetRow(bad))));
 // only a group that opens a boundary has a `With` form, and there the modes come first
-await exec(http, attemptWith({ accessMode: "read only" }, queryInvoice({ filter: { tenantId: [tenantId] }, select: { id: true } })));
+await exec(http, attemptWith({ accessMode: "read only" }, queryWidget({ filter: { tenantId: [tenantId] }, select: { id: true } })));
 ```
 
 A group's result is a tuple aligned with its arguments, and nesting composes:
 
 | Call | Result |
 | --- | --- |
-| `exec(http, createInvoice(rows))` | `Promise<InvoicePrimaryKey[]>` |
+| `exec(http, createWidget(rows))` | `Promise<WidgetPrimaryKey[]>` |
 | `exec(http, transaction(writeA, writeB))` | `Promise<void>` — an all-void group collapses to `void` |
 | `exec(http, batch(read, writeA))` | `Promise<[Row[], void]>` |
-| `exec(http, transaction(batch(readA, readB), createInvoice(rows)))` | `Promise<[[RowA[], RowB[]], InvoicePrimaryKey[]]>` |
-| `exec(http, attempt(read, createInvoice(rows)))` | `Promise<Attempted<[Row[], InvoicePrimaryKey[]]>>` |
+| `exec(http, transaction(batch(readA, readB), createWidget(rows)))` | `Promise<[[RowA[], RowB[]], WidgetPrimaryKey[]]>` |
+| `exec(http, attempt(read, createWidget(rows)))` | `Promise<Attempted<[Row[], WidgetPrimaryKey[]]>>` |
 
 An all-void group collapses to `void`, which is why the rejected branch of an
 `attempt` over writes is `Attempted<void>` rather than a tuple of nothings.
 
 A builder is immutable data, so one may be passed to two groups. It is not
-thenable, so `await createInvoice(rows)` compiles and does nothing; `exec` is the
+thenable, so `await createWidget(rows)` compiles and does nothing; `exec` is the
 only way a call is made.
 
 ## The group endpoint
@@ -446,9 +446,9 @@ rest of the request with it:
 
 ```ts
 await exec(client, transaction(
-    createCustomer([survivor]),
-    attempt(createCustomer([victim]), createInvoice([orphan])),   // fails on the foreign key
-    createCustomer([patient]),
+    createAccount([survivor]),
+    attempt(createAccount([victim]), createWidget([orphan])),   // fails on the foreign key
+    createAccount([patient]),
 ));
 // the survivor and patient commit; the victim's group is rolled back to its savepoint
 // [[{ id: … }], { ok: false, error: { message: …, path: [1, 1], kind: "…" } }, [{ id: … }]]
@@ -484,7 +484,7 @@ A group that opens a boundary takes the modes through its `With` form —
 ```ts
 await exec(
     http,
-    transactionWith({ isolationLevel: "serializable", accessMode: "read only" }, createInvoice(rows)),
+    transactionWith({ isolationLevel: "serializable", accessMode: "read only" }, createWidget(rows)),
 );
 ```
 
@@ -507,7 +507,7 @@ A failed group names the entry that failed by its path in the tree, and keeps
 the kind of the error that raised:
 
 ```json
-{ "error": "version conflict on invoice 3f…", "kind": "version-conflict", "path": [2, 1] }
+{ "error": "version conflict on widget 3f…", "kind": "version-conflict", "path": [2, 1] }
 ```
 
 That is what makes a retry tractable. The client holds the tree it sent, so it can
@@ -550,7 +550,7 @@ the client imports nothing from the backend.
   entry cap and a statement timeout are the backstops. A nested boundary adds a
   `savepoint` and a `release` round trip; a failed one adds a `rollback to
   savepoint`.
-- **A builder is inert.** `await createInvoice(rows)` compiles and does nothing,
+- **A builder is inert.** `await createWidget(rows)` compiles and does nothing,
   because a builder is not thenable. `exec` is the only function that makes a
   call, and the generated modules take no `HttpClient`.
 - **Both sides declare the group contract.** `GROUP_PATH` and the verb list are
@@ -601,8 +601,8 @@ the client imports nothing from the backend.
   for a boundary gets a savepoint when one is ambient, and any route may be a
   group entry, so a caller can pull a call into its transaction. That is right
   for a sequence of writes and wrong for one with a side effect a rollback cannot
-  undo — delivery is the case (`docs/invoice-sending.md`). Declaring that needs
-  an operation to exist first.
+  undo — delivery is the case. Declaring that needs an operation to exist
+  first.
 - **A retry policy.** The modes on `transaction` are how a caller picks the
   characteristics of its own boundary; recognising a conflict and retrying is
   still the caller's decision.

@@ -10,7 +10,7 @@ the value on insert, and the create hands it back.
  * @pgAutoIncrement
  * @widget number
  */
-id: AuditLogId;
+id: LogEntryId;
 ```
 
 ```sql
@@ -62,8 +62,8 @@ collides.
 ## Where it fits
 
 An identity column suits a row whose identity is only "the next one", and not
-master data, where the identifier is meaningful or arrives from elsewhere. The
-case in the spec is `AuditLog`: it is append-only, its key is a monotonic integer
+master data, where the identifier is meaningful or arrives from elsewhere. An
+append-only log entity is the natural case: its key is a monotonic integer
 nothing joins on, and its rows are written by the system rather than chosen by a
 caller.
 

@@ -1,17 +1,11 @@
 # Versioning
 
-Every mutable domain model carries a `version`, an optimistic-lock counter:
+A field carrying `@version` is an optimistic-lock counter.
 
-- `Customer` — `version`
-- `Seller` — `version`
-- `Invoice` — `version`
-- `InvoiceRow` — `version`
-- `Email` — `version`
-- `Tenant` — `version`
-
-`InvoiceSent` and `InvoiceSentRow` do not. They are frozen copies
-(`docs/invoice-snapshotting.md`); a revision of a document that is not supposed
-to change is the same contradiction `updatedAt` would be.
+A snapshot entity — one copied at write time rather than referenced — carries no
+counter. `WidgetSnapshot` and `WidgetSnapshotRow` are frozen when they are
+written; a revision of a document that is not supposed to change is the same
+contradiction `updatedAt` would be.
 
 The column is `int8`. A generated patch or upsert matches the stored revision and
 increments it in the same statement, so a caller that sends a version other than
@@ -63,7 +57,7 @@ There is no version trigger. A generated patch matches the stored revision and
 increments it in the same statement:
 
 ```sql
-update "customer" as u
+update "account" as u
     set "notes" = case when v."notes#present" then v."notes" else u."notes" end,
         "version" = u."version" + 1
 from unnest($1::uuid[], $2::text[], $3::bool[], $4::int8[])
@@ -81,7 +75,7 @@ where u."id" = v."id" and u."version" = v."version"
   `VersionConflictError` (`40001`).
 - **A raw update owns its own counter.** A hand-written `update` that omits
   `version` leaves it where it stood; one that sets it writes what it names.
-  Nothing checks it. The invoice's aggregate trigger writes
+  Nothing checks it. A parent row's aggregate trigger writes
   `"version" = "version" + 1` itself for this reason.
 
 ## Why the statement owns the increment
@@ -90,15 +84,14 @@ The counter has to move for every path that writes the row, including paths that
 do not go through the repository:
 
 ```sql
-update "invoice" set "netAmount" = (select coalesce(sum(…))), "version" = "version" + 1 where …
+update "widget" set "subtotal" = (select coalesce(sum(…))), "version" = "version" + 1 where …
 ```
 
-The invoice's cross-table trigger writes the parent row in raw SQL when a child
+A `widget`'s cross-table trigger writes the parent row in raw SQL when a child
 row changes. An increment owned by a database trigger would cover that statement
-automatically; an increment owned by the generated statement does not. The spec
-therefore states the increment in the trigger's own SQL, and any other
-hand-written writer must do the same. The generated writes state it in their
-`set` clause.
+automatically; an increment owned by the generated statement does not. The
+increment therefore lives in the trigger's own SQL, and any other hand-written
+writer must do the same. The generated writes state it in their `set` clause.
 
 ## A predicate that matches nothing rejects the call
 
@@ -138,8 +131,8 @@ second read, and the caller's move is the same either way: re-read, then retry.
 | raw SQL, version omitted | — | `4` | Leaves it at `4`. |
 | raw SQL that sets `version` | `3` | `4` | Writes `3`; nothing checks it. |
 
-A raw writer that omits the column does not advance the counter. The spec's own
-aggregate trigger maintains it explicitly; any other raw writer has to do the
+A raw writer that omits the column does not advance the counter. The aggregate
+trigger maintains it explicitly; any other raw writer has to do the
 same if the column is to move.
 
 ## Insert vs update vs upsert
@@ -165,7 +158,7 @@ than as a precondition, because it must say which revision it believes the row i
 at even when no row is there yet:
 
 ```sql
-insert into "customer" as u ("id", "name", "version") select v."id", v."name", v."version"
+insert into "account" as u ("id", "name", "version") select v."id", v."name", v."version"
 from unnest($1::uuid[], $2::text[], $3::int8[]) as v("id", "name", "version")
 on conflict ("id") do update set "name" = excluded."name", "version" = u."version" + 1
 where u."version" = excluded."version"
@@ -214,10 +207,10 @@ matched before the generated code rejects the call
   and a missing id are both `40001` → `409`. A caller that needs to tell them
   apart reads first. An upsert reads a missing row as a row to create, so the
   only way it rejects a row is a version the stored one has moved past.
-- **The aggregate update bumps the version.** Editing an `invoice_row` reassigns
-  `invoice.netAmount`, and the spec's trigger statement also writes
-  `"version" = "version" + 1`. A user editing the invoice in that window gets a
-  conflict. Correct, since their `totalAmount` is stale, but version changes are
+- **The aggregate update bumps the version.** Editing a `widget_row` reassigns
+  `widget.subtotal`, and the aggregate trigger statement also writes
+  `"version" = "version" + 1`. A user editing the widget in that window gets a
+  conflict. Correct, since their `total` is stale, but version changes are
   not one-to-one with user edits.
 - **`JSON.stringify` throws on `bigint`.** This is the objection
   `docs/primitives.md` raises against bigint, and it applies here. Nothing in
@@ -226,18 +219,18 @@ matched before the generated code rejects the call
   boundary, is the fix.
 - **The first version is not returned.** A create and an upsert answer the keys
   they wrote, not the columns the database assigned (`docs/repositories.md`), so
-  `createCustomer` does not tell the caller that the row is now at version `0`.
+  `createAccount` does not tell the caller that the row is now at version `0`.
   Learning it takes a `RETURNING` that names the column or a read path. An
   upsert does not return the version it produced either, so a caller replacing a
   row it read at `3` learns only that the row is now at `4` by reading again.
-- **`@inlined` leaks `customerVersion`.** Inlining flattens every scalar
-  field, so `invoice_sent` gains a nullable `customerVersion int8` — the
-  customer's revision at send time, alongside the `customerCreatedAt` and
-  `customerUpdatedAt` that already leak. There is no per-field opt-out.
+- **`@inlined` leaks `accountVersion`.** Inlining flattens every scalar
+  field, so `widget_snapshot` gains a nullable `accountVersion int8` — the
+  account's revision at snapshot time, alongside the `accountCreatedAt` and
+  `accountUpdatedAt` that already leak. There is no per-field opt-out.
 - **A raw update owns the counter.** Nothing in the database guards or advances
   it, so a hand-written statement that omits `version` leaves the row at its old
   revision, and one that sets it can move the row backwards. The generated writes
-  and the spec's aggregate trigger maintain it explicitly.
+  and the aggregate trigger maintain it explicitly.
 
 ## Deliberately not implemented
 
@@ -245,7 +238,7 @@ matched before the generated code rejects the call
 - **Returning the new version from `create`/`update`.** See the gotcha.
 - **A conflict-resolution strategy.** The statement reports; retrying, merging, or
   surfacing a conflict to a user is the caller's decision.
-- **Deletes checking a version.** `deleteCustomer` keys on the primary key only.
+- **Deletes checking a version.** `deleteAccount` keys on the primary key only.
   Deleting a row someone else has just updated is a real race, but a delete is
   idempotent enough to omit the check.
 

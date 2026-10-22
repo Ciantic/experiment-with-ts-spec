@@ -2,8 +2,8 @@
 
 `packages/backend/scripts/generate-repositories.ts` writes one module per
 operation into `packages/backend/src/db/repositories/`, named after the function
-it exports: `createInvoice.ts`, `upsertInvoice.ts`, `updateInvoice.ts`,
-`deleteInvoice.ts`. An entity generates only the operations its `@repository`
+it exports: `createWidget.ts`, `upsertWidget.ts`, `updateWidget.ts`,
+`deleteWidget.ts`. An entity generates only the operations its `@repository`
 tag names, so a table that is appended to and never changed has a create module
 and no others. See `docs/spec-annotations.md`.
 
@@ -18,14 +18,14 @@ Each entity gets one module per operation `@repository` names — four for an
 entity that carries the whole set:
 
 ```ts
-// createCustomer.ts
-createCustomer(db: SqlExecutor, rows: CustomerInsert[]): Promise<CustomerPrimaryKey[]>
-// upsertCustomer.ts
-upsertCustomer(db: SqlExecutor, rows: CustomerUpsert[]): Promise<CustomerPrimaryKey[]>
-// updateCustomer.ts
-updateCustomer(db: SqlExecutor, rows: CustomerPatch[]): Promise<void>
-// deleteCustomer.ts
-deleteCustomer(db: SqlExecutor, rows: CustomerPrimaryKey[]): Promise<void>
+// createAccount.ts
+createAccount(db: SqlExecutor, rows: AccountInsert[]): Promise<AccountPrimaryKey[]>
+// upsertAccount.ts
+upsertAccount(db: SqlExecutor, rows: AccountUpsert[]): Promise<AccountPrimaryKey[]>
+// updateAccount.ts
+updateAccount(db: SqlExecutor, rows: AccountPatch[]): Promise<void>
+// deleteAccount.ts
+deleteAccount(db: SqlExecutor, rows: AccountPrimaryKey[]): Promise<void>
 ```
 
 The barrel `index.ts` re-exports every generated operation module, so a caller
@@ -94,12 +94,12 @@ guard.
 same fields, and the repository imports it:
 
 ```ts
-import type { InvoiceInsert } from "sdk/repositories/invoiceInsertSchema.ts";
+import type { WidgetInsert } from "sdk/repositories/widgetInsertSchema.ts";
 
-export async function createInvoice(db: SqlExecutor, rows: InvoiceInsert[]): Promise<InvoicePrimaryKey[]>
+export async function createWidget(db: SqlExecutor, rows: WidgetInsert[]): Promise<WidgetPrimaryKey[]>
 ```
 
-`InvoiceInsert` is the entity minus every field the statement does not write, so
+`WidgetInsert` is the entity minus every field the statement does not write, so
 it mirrors the SQL exactly. A whole entity is still assignable to it, so a caller
 holding one can pass it unchanged. What the type rules out is a field that would
 be read and then dropped — a branch, a `@pgVirtual` column, or a derivable
@@ -114,7 +114,7 @@ the shape `Patching` describes in full: a column a row may leave out binds a
 second array of flags saying whether that row supplied it.
 
 ```sql
-insert into "customer" ("id", "name", "source") select
+insert into "account" ("id", "name", "source") select
     v."id",
     v."name",
     case when v."source#present" then v."source" else 'manual' end
@@ -124,7 +124,7 @@ from unnest($1::uuid[], $2::text[], $3::text[], $4::bool[])
 
 The fallback for an omitted column is the column default, where a patch falls
 back to the value the row already holds. A create may therefore omit a column
-with a database default, and the statement writes the default the spec declares,
+with a database default, and the statement writes the declared default,
 since the `default` keyword is not allowed outside an `insert … values` list. A
 required field with a default is relaxed to optional in `<Entity>Insert`, and its
 schema is `.partial()`, so the type and the wire agree that omitting it is
@@ -167,9 +167,9 @@ and the return value are the same read.
 repository imports it:
 
 ```ts
-import type { CustomerPatch } from "sdk/repositories/customerPatchSchema.ts";
+import type { AccountPatch } from "sdk/repositories/accountPatchSchema.ts";
 
-export type CustomerPatch = Omit<Partial<Customer>, "createdAt"> & Required<Pick<Customer, "id" | "version">>;
+export type AccountPatch = Omit<Partial<Account>, "createdAt"> & Required<Pick<Account, "id" | "version">>;
 ```
 
 Every written column is optional except two, which are the keys the rest of the
@@ -180,8 +180,8 @@ design leans on:
   matches a row on all of them.
 - **The `@version` column**, where one exists, is the optimistic-lock
   precondition (`docs/versioning.md`). It is required so a patch cannot
-  accidentally skip the check. For an entity with no version — the snapshots —
-  only the key is required.
+  accidentally skip the check. For an entity with no `@version` field, only the
+  key is required.
 
 A field the statement does not write is left out of the type rather than being
 accepted and ignored, so `<Entity>Patch` permits exactly the fields its `update`
@@ -198,7 +198,7 @@ field the caller omitted keeps its stored value while a field the caller sets to
 `null` writes a null:
 
 ```sql
-update "customer" as u
+update "account" as u
     set "name" = case when v."name#present" then v."name" else u."name" end,
         "updatedAt" = case when v."updatedAt#present" then v."updatedAt" else now() end,
         "version" = u."version" + 1
@@ -252,9 +252,9 @@ and a replacement of the stored row if it is not**. It takes `<Entity>Upsert`,
 the insert's field set with the `@version` column put back:
 
 ```ts
-import type { CustomerUpsert } from "sdk/repositories/customerUpsertSchema.ts";
+import type { AccountUpsert } from "sdk/repositories/accountUpsertSchema.ts";
 
-export type CustomerUpsert = Upsert<Customer, never, "id" | "version", "eInvoiceAddress" | …, "createdAt" | "updatedAt">;
+export type AccountUpsert = Upsert<Account, never, "id" | "version", "description" | …, "createdAt" | "updatedAt">;
 ```
 
 A create may take a defaulted version or claim one. An upsert must always claim
@@ -263,7 +263,7 @@ required and the statement writes what it carries. The clocks stay optional, and
 an omitted one falls back to `now()`:
 
 ```sql
-insert into "customer" as u ("id", "name", "email", "createdAt", "updatedAt", "version") select
+insert into "account" as u ("id", "name", "email", "createdAt", "updatedAt", "version") select
     v."id", v."name", v."email",
     case when v."createdAt#present" then v."createdAt" else now() end,
     case when v."updatedAt#present" then v."updatedAt" else now() end,
@@ -294,7 +294,7 @@ returning u."id"
   `VersionConflictError` naming those rows — the same rejection a stale patch
   raises. The target is aliased only where the predicate needs it, so an entity
   with no version conflicts on the key and replaces unconditionally.
-- **An entity with no version** — the snapshots — has nothing to claim, so its
+- **An entity with no `@version` field** has nothing to claim, so its
   upsert is the create's statement plus `on conflict ("id") do update`: no
   predicate, and every conflicting row replaced. A short count
   there is not a stale claim but a row the database declined to write, and it
@@ -308,7 +308,7 @@ Every column the insert names is written on both paths, so
 - a column a row omits takes its default, even on a row that already holds a
   value, where a patch would have kept it, and
 - a branch the row leaves out writes nulls over the stored snapshot, where a
-  patch would have left `row.customer` alone.
+  patch would have left `row.account` alone.
 
 A caller that wants to change some fields without reading the rest wants
 `update`; a caller that holds the whole row wants `upsert`. The `<Entity>Upsert`
@@ -319,7 +319,7 @@ default here exactly as it does in an insert.
 A nullable column also accepts `null`, the way a patch does:
 
 ```ts
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | … , "id" | "version", "number" | "notes" | …, never>;
+export type WidgetUpsert = Upsert<Widget, "account" | "supplier" | … , "id" | "version", "code" | "notes" | …, never>;
 ```
 
 Because the statement writes every column it names either way, `null` and an
@@ -344,20 +344,20 @@ reads. The type and its matching `<name>PrimaryKeySchema` are generated from the
 `@primaryKey` fields in `packages/sdk`, in the by-key module:
 
 ```ts
-import type { CustomerPrimaryKey } from "sdk/repositories/customerPrimaryKeySchema.ts";
+import type { AccountPrimaryKey } from "sdk/repositories/accountPrimaryKeySchema.ts";
 
-export type CustomerPrimaryKey = Pick<Customer, "id">;
+export type AccountPrimaryKey = Pick<Account, "id">;
 ```
 
 A composite key names every one of its columns, and the delete's `where` matches
 on all of them, so a partial key cannot address a row:
 
 ```ts
-export type TranslationPrimaryKey = Pick<Translation, "lang" | "key">;
+export type WidgetTagPrimaryKey = Pick<WidgetTag, "widgetId" | "tag">;
 ```
 
 The wire schema is the same field set — the delete route validates
-`z.array(customerPrimaryKeySchema)` — so the caller, the schema, and the
+`z.array(accountPrimaryKeySchema)` — so the caller, the schema, and the
 statement agree on what a delete carries (`docs/rest-api.md`).
 
 ## Where the columns come from
@@ -371,9 +371,9 @@ key tags, and type mapping feeds both the DDL and the repositories, so a
 repository cannot name a column the schema does not have.
 
 The column value is read through the accessor recorded on the model, so an
-inlined optional customer is written as `row.customer?.name`, without the
+inlined optional account is written as `row.account?.name`, without the
 generator special-casing it. A relation contributes no column of its own: its
-`@foreignKey` field is an ordinary column, read as `row.customerId`.
+`@foreignKey` field is an ordinary column, read as `row.accountId`.
 
 A column with a database default (`@pgDefault`) is written when the row supplies
 it, and its tuple carries the default expression when the row omits it, so the
@@ -418,19 +418,19 @@ it was handed with the planner's, so the two cannot drift.
 ## Gotchas
 
 - **A foreign key has no `ON DELETE` clause unless the key declares one**, so
-  `deleteInvoice` fails while rows still reference it. Deleting children is the
+  `deleteWidget` fails while rows still reference it. Deleting children is the
   caller's job unless the child's `@foreignKey` says `onDelete=cascade`. See
   `docs/spec-annotations.md`.
 - **A required computed column is supplied and then overwritten.** The insert
   sends it, the before-trigger overwrites it, so passing a value has no effect.
   Whether one is required follows the field's optionality, not the computation:
-  `InvoiceSentRow.netAmount` is required and `not null`, so the insert has to
-  carry it, while `InvoiceRow.netAmount` is optional and its column nullable. A
+  `WidgetSnapshotRow.subtotal` is required and `not null`, so the insert has to
+  carry it, while `WidgetRow.subtotal` is optional and its column nullable. A
   *nullable* computed column is named in neither the `insert` nor the `update`,
   so its value is left to the trigger that fills it
   (`docs/validation.md`).
 - **A defaulted column is written only when the caller supplies it.** A create
-  that omits one writes the default the spec declares, so that row gets the same
+  that omits one writes the declared default, so that row gets the same
   value the database would have; a patch that omits one keeps the stored value,
   and an upsert that omits one resets it to the default. `createdAt` and
   `updatedAt` are ordinary defaulted columns on a create, so a caller may supply
@@ -445,8 +445,8 @@ it was handed with the planner's, so the two cannot drift.
   `u."version" + 1`. A rejection does not say whether the version was stale or
   the row was missing. See `docs/versioning.md`.
 - **A patch cannot set a non-nullable column to null.** Nullable columns are the
-  exception: a patch sets one to `null` to clear it. `Invoice.notes`,
-  `Invoice.number`, and the optional foreign keys are the ones in this model.
+  exception: a patch sets one to `null` to clear it. An optional `notes` or
+  `code` field, and an optional foreign key, are the ones here.
 - **A create takes `null` for the same nullable columns.** It means the same as
   omitting the field, since the column has no default to fall back on; both write
   a null. The insert schema and `<Entity>Insert` widen the patch's nullable set.
@@ -463,8 +463,8 @@ it was handed with the planner's, so the two cannot drift.
   caller sent, so a row that omits a field writes the stored value back. That is
   a no-op, but it means the flags are the signal of what the caller sent rather
   than the `set` clause.
-- **`delete` keys on the primary key only.** `deleteCustomer` takes
-  `CustomerPrimaryKey[]` and has no patch variant and no version precondition.
+- **`delete` keys on the primary key only.** `deleteAccount` takes
+  `AccountPrimaryKey[]` and has no patch variant and no version precondition.
 - **An upsert replaces; it does not patch.** Every column the insert names is
   written whether the row exists or not, so a field the caller leaves out takes
   its default and a branch it leaves out is written as nulls. `excluded` is all
@@ -472,7 +472,7 @@ it was handed with the planner's, so the two cannot drift.
   nullable column accepts `null` for convenience, but it means the same as
   omitting the field.
 - **An upsert conflicts on the primary key.** A clash on another unique index —
-  `Invoice.number`, `InvoiceSent.number` — is a `23505`, and a `409`, rather than
+  `Widget.code`, `WidgetSnapshot.code` — is a `23505`, and a `409`, rather than
   the row being replaced. There is no `@upsertKey` annotation.
 - **An upsert claims a version, so its rows are born at one.** A missing row is
   created at the version its row carries rather than at `0`, and a row that

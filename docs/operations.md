@@ -5,8 +5,9 @@ operations generator scaffolds one backend module per operation under
 `packages/backend/src/operations/`, and after that the module is hand-written
 code that regeneration only verifies.
 
-`sendInvoice` and `receiveInvoice` in
-`packages/spec/src/operations/InvoiceOperations.ts` are the two operations today.
+A contract interface groups the operations for one area. One such contract might
+declare `sendWidget` with `@operation` and `@restOperation POST /widget/send`,
+and a contract may declare more than one method.
 
 ## The contract
 
@@ -15,18 +16,18 @@ generators ignore it. It takes at most one type parameter, the context the
 backend supplies; the method's first parameter is that context.
 
 ```ts
-export interface InvoiceOperations<T> {
+export interface WidgetOperations<T> {
     /**
-     * Send the invoice to the recipient.
+     * Send the widget to the account.
      *
-     * @throws {InvoiceDetailsError} status=422 when the invoice doesn't have enough details to be sent
+     * @throws {WidgetDetailsError} status=422 when the widget doesn't have enough details to be sent
      *
      * @operation
-     * @restOperation POST /invoice/send
+     * @restOperation POST /widget/send
      */
-    sendInvoice(ctx: T, opts: {
-        invoice: Invoice;
-    }): Promise<InvoiceSent>;
+    sendWidget(ctx: T, opts: {
+        widget: Widget;
+    }): Promise<WidgetSnapshot>;
 }
 ```
 
@@ -52,17 +53,17 @@ runtime rather than at the compiler:
 
 ```ts
 // Generated for implementation by: scripts/generate-operations.ts
-import type { InvoiceOperations } from "spec/operations/InvoiceOperations.ts";
+import type { WidgetOperations } from "spec/operations/…";
 import { NotImplemented } from "sdk/errors.ts";
 
 /**
- * Send the invoice to the recipient.
+ * Send the widget to the account.
  *
- * @throws {InvoiceDetailsError} when the invoice doesn't have enough details to be sent
+ * @throws {WidgetDetailsError} when the widget doesn't have enough details to be sent
  * @throws {NotImplemented} when the operation is still the scaffold; remove this tag with the throw
  */
-export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {
-    throw new NotImplemented("sendInvoice is scaffolded but not implemented");
+export const sendWidget: WidgetOperations<unknown>["sendWidget"] = async (ctx, opts) => {
+    throw new NotImplemented("sendWidget is scaffolded but not implemented");
 };
 ```
 
@@ -76,13 +77,13 @@ so a call left as its scaffold is visible in `pnpm lint`. See `docs/errors.md`.
 
 The scaffold fills the contract's type parameter with `unknown`, and that is the
 implementer's first edit. The generator has no opinion on what an operation
-receives; it only knows the spec's parameter names. Naming the context also buys
-the implementation a typed `ctx`:
+receives; it only knows the spec's parameter names. Naming the context also
+buys the implementation a typed `ctx`:
 
 ```ts
 import type { SqlExecutor } from "../db/sql-executor.ts";
 
-export const sendInvoice: InvoiceOperations<{ db: SqlExecutor }>["sendInvoice"] = async (ctx, opts) => {
+export const sendWidget: WidgetOperations<{ db: SqlExecutor }>["sendWidget"] = async (ctx, opts) => {
     // ctx.db is the executor
 };
 ```
@@ -101,7 +102,7 @@ The generator reads the committed module and verifies it still contains the
 contract annotation:
 
 ```ts
-export const sendInvoice: InvoiceOperations<…>["sendInvoice"] = …
+export const sendWidget: WidgetOperations<…>["sendWidget"] = …
 ```
 
 The type argument may be any context the implementer chose, but the interface
@@ -125,8 +126,8 @@ route that would collide with an entity route is reported by the REST model.
 ## Removing an operation
 
 The generator owns the set of files under `src/operations/`, but only the
-scaffold half of each one. When the spec no longer declares an operation it
-decides by the module's contents:
+scaffold half of each one. When an operation is gone from its contract the
+generator decides by the module's contents:
 
 - **A scaffold is deleted.** A module whose only statement throws
   `NotImplemented` carries no implementation to lose, so it is removed. The
@@ -155,7 +156,7 @@ Every route handler receives one context, `RequestContext` in
 `createAppContext` once, which opens the in-memory database and applies the
 schema; the router calls `createRequestContext(app, request)` per request, which
 gives that request its own executor over the shared pool. An operation annotated
-`InvoiceOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
+`WidgetOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
 An operation that wanted more, such as `<{ db: SqlExecutor; clock: Clock }>`,
 would fail to compile in the generated route, because the HTTP layer cannot build
 a clock. Widening `RequestContext` is therefore a deliberate change: it is where
@@ -169,18 +170,18 @@ An operation that writes more than one row opens its own boundary with
 
 ## The route and the client
 
-`@restOperation POST /invoice/send` makes the REST pair render the call from the
+`@restOperation POST /widget/send` makes the REST pair render the call from the
 same model as the entity routes:
 
 ```ts
 // packages/backend/src/http/routes/operationRoutes.ts
 {
-    id: "sendInvoice",
+    id: "sendWidget",
     method: "POST",
-    path: "/invoice/send",
+    path: "/widget/send",
     source: "body",
-    input: sendInvoiceSchema,
-    handler: (ctx, body) => sendInvoice(ctx, body as SendInvoiceInput),
+    input: sendWidgetSchema,
+    handler: (ctx, body) => sendWidget(ctx, body as SendWidgetInput),
 }
 ```
 
@@ -201,25 +202,25 @@ Each operation gets one module, `packages/sdk/src/operations/<name>Schema.ts`,
 holding its input schema, its result schema, and a named type for each:
 
 ```ts
-/** The argument `sendInvoice` accepts, as the route validates it. */
-export const sendInvoiceSchema = z.strictObject({ invoice: z.lazy(() => invoiceSchema) });
+/** The argument `sendWidget` accepts, as the route validates it. */
+export const sendWidgetSchema = z.strictObject({ widget: z.lazy(() => widgetSchema) });
 
-/** What `sendInvoice` takes, as the contract declares it. */
-export type SendInvoiceInput = { invoice: Invoice };
+/** What `sendWidget` takes, as the contract declares it. */
+export type SendWidgetInput = { widget: Widget };
 
-/** What `sendInvoice` answers; the route does not validate it. */
-export const sendInvoiceOutputSchema = z.lazy(() => invoiceSentSchema);
+/** What `sendWidget` answers; the route does not validate it. */
+export const sendWidgetOutputSchema = z.lazy(() => widgetSnapshotSchema);
 
-/** What `sendInvoice` returns, as the contract declares it. */
-export type SendInvoiceOutput = InvoiceSent;
+/** What `sendWidget` returns, as the contract declares it. */
+export type SendWidgetOutput = WidgetSnapshot;
 ```
 
 The two schemas are rendered from the spec's types by the Zod resolver, and a
 type it cannot render is a finding: a REST operation is never left unvalidated.
-The two types are the spec's own type text, re-exported under a name the client
-and the route can import. Emitting the text rather than inferring from the schema
-keeps the type identical to the contract — a `z.infer` of an optional field is
-`string | undefined`, which is not assignable to `field?: string` under
+The two types are the spec's own type text, re-exported under a name the
+client and the route can import. Emitting the text rather than inferring from
+the schema keeps the type identical to the contract — a `z.infer` of an optional
+field is `string | undefined`, which is not assignable to `field?: string` under
 `exactOptionalPropertyTypes`. The input type is what the route hands the
 implementation, so it is the parsed value, not a pre-parse one.
 
@@ -227,13 +228,13 @@ The output schema is generated but not applied: the route encodes the result
 unvalidated, as every other call does.
 
 The module is re-exported from `sdk/schemas.ts`, so a caller imports
-`SendInvoiceInput`, not a `Parameters<…>` expression.
+`SendWidgetInput`, not a `Parameters<…>` expression.
 
 The client gets one builder per operation, in a module named after its contract:
 
 ```ts
-export function sendInvoice(opts: SendInvoiceInput): Call<SendInvoiceOutput> {
-    return call<SendInvoiceOutput>("sendInvoice", "POST", "/invoice/send", opts);
+export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput> {
+    return call<SendWidgetOutput>("sendWidget", "POST", "/widget/send", opts);
 }
 ```
 
@@ -246,12 +247,12 @@ An operation's custom error is declared by `@throws` and generated:
 
 ```ts
 /**
- * @throws {InvoiceDetailsError} status=422 when the invoice doesn't have enough details to be sent
+ * @throws {WidgetDetailsError} status=422 when the widget doesn't have enough details to be sent
  */
-sendInvoice(ctx: T, opts: { invoice: Invoice }): Promise<InvoiceSent>;
+sendWidget(ctx: T, opts: { widget: Widget }): Promise<WidgetSnapshot>;
 ```
 
-`generate:errors` writes `InvoiceDetailsError` and registers it under its wire
+`generate:errors` writes `WidgetDetailsError` and registers it under its wire
 kind, so the implementation imports it from `sdk/errors.ts` and throws it, and a
 client catches it after `apiErrorFromBody` rebuilds it. `status=` defaults to
 `400`; see `docs/errors.md` for the tag's grammar and the generator's findings.
@@ -268,8 +269,8 @@ actually throws it.
   need is added to `createRequestContext`, not resolved per operation.
 - **Validating the response.** The result schema is generated and exported, but
   the route encodes the result unvalidated, as with every other call.
-- **Deleting an implementation the spec drops.** The generator reports the
-  module and fails the run; deciding whether the code is still wanted is the
+- **Deleting an implementation for a removed operation.** The generator reports
+  the module and fails the run; deciding whether the code is still wanted is the
   author's.
 
 ## Gotchas

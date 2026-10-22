@@ -11,7 +11,7 @@ import type { TenantId } from "./Tenant.ts";
 export type InvoiceSentId = BrandedId<"InvoiceSentId">;
 
 /**
- * An invoice as issued, frozen at the moment it was sent. See docs/invoice-snapshotting.md.
+ * An invoice as issued, frozen at the moment it was sent. See packages/spec/docs/invoice-snapshotting.md.
  * @entity
  * @tenantOwned tenantId
  * @pgTable invoice_sent

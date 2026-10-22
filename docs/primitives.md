@@ -56,7 +56,7 @@ The schema mirrors the alias:
   base brand first, `.brand<"Decimal">().brand<"Money">()`, and
   `z.infer<typeof moneySchema>` is then assignable to `Money` with no cast.
 - A **closed** union gets `z.enum([...])`.
-- An **open** union (`Unit`, `Currency`, `Language`, `EInvoiceOperator`) gets
+- An **open** union (`Unit`, `Currency`, `Language`) gets
   `z.enum([...]).or(z.string())`, not a brand — the alias is a plain string with
   hints, not a nominal type. It validates the same as `z.string()`, but keeps the
   known members visible to schema introspection (OpenAPI, `z.toJSONSchema()`).
@@ -80,9 +80,9 @@ export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;
 collide with a real property. It is the single place the spec reaches for Zod's
 brand; every branded primitive imports it from
 `packages/spec/src/primitives/Brand.ts` rather than `$brand` directly. It is what
-separates `InvoiceId` from `InvoiceRowId`. A plain alias
-(`type InvoiceId = UUIDv7`) would not: aliases are structurally interchangeable, so
-the compiler could not catch an invoice id passed where a row id was expected.
+separates `WidgetId` from `WidgetRowId`. A plain alias
+(`type WidgetId = UUIDv7`) would not: aliases are structurally interchangeable, so
+the compiler could not catch a widget id passed where a row id was expected.
 `Decimal` brands `string` the same way.
 
 Zod's brand has two payoffs:
@@ -133,7 +133,7 @@ export type Quantity = Decimal & Brand<"Quantity">;
 export type TaxRate = Decimal & Brand<"TaxRate">;
 ```
 
-Money (`unitPrice`, `netAmount`, `taxAmount`, `totalAmount`) is `Money`, counts are
+Money (`unitPrice`, `subtotal`, `surcharge`, `total`) is `Money`, counts are
 `Quantity`, and ratios are `TaxRate`. All are `decimal` in Postgres; the brands
 only exist in the type system.
 

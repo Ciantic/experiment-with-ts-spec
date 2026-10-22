@@ -31,8 +31,8 @@
 ## Code style
 
 - Only single-line comments in code. If you need more than one line of
-  explanation, put it in `docs/` instead and leave a one-line pointer where the
-  code needs it. `pnpm lint` enforces this (`docs/comments.md`).
+  explanation, put it in the matching `docs/` note instead and leave a one-line
+  pointer where the code needs it. `pnpm lint` enforces this (`docs/comments.md`).
 - Errors are `AppError` subclasses, the one contract the backend and the client
   share: the built-in ones in `packages/sdk/src/builtinErrors.ts`, and the ones a
   spec declares with `@throws` generated into
@@ -42,8 +42,13 @@
 
 ## Docs
 
-- One topic per file in `docs/`, named for the concept (`queries.md`,
-  `versioning.md`), each with a single `# Title`. There is no index;
+- One topic per file, named for the concept (`queries.md`, `versioning.md`), each
+  with a single `# Title`. `docs/` documents the mechanisms every generator
+  shares — the annotations, primitives, tenancy, versioning, timestamps — with
+  invented examples (`Widget`, `Account`), never the demo spec's own entities, so
+  a note outlives a change to it. `docs/examples.md` defines that vocabulary.
+  `packages/spec/docs/` holds the notes that are only about this spec's domain
+  (`invoice-sending.md`, `invoice-snapshotting.md`). There is no index;
   `docs/spec-annotations.md` is the entry point, since the tags are the contract
   every generator reads.
 - Write about the design as it is. A note explains how the system works, not how

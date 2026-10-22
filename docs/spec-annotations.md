@@ -2,6 +2,8 @@
 
 Field-level JSDoc tags in `packages/spec/` are the machine-readable contract a generator
 consumes. This note records what each tag means and how it lands in Postgres.
+Its examples use the invented vocabulary in `docs/examples.md`; only the tags
+are literal.
 
 ## Naming
 
@@ -15,9 +17,9 @@ Two rules decide every tag name, and both are checkable by eye.
 
 **An option inside a tag's value is camelCase, and written `key=value`.** The
 first token stays whatever the tag's value is — for `@foreignKey`, the interface
-— and each later token is an option. `@foreignKey Customer onDelete=cascade`
-names the interface `Customer` and asks Postgres to cascade the delete;
-`@foreignKey Invoice scope=tenantId` adds a second column to match on, so the
+— and each later token is an option. `@foreignKey Account onDelete=cascade`
+names the interface `Account` and asks Postgres to cascade the delete;
+`@foreignKey Widget scope=tenantId` adds a second column to match on, so the
 reference is composite.
 
 **A Postgres-specific tag carries the `pg` prefix.** `@pgType`, `@pgTable`,
@@ -68,7 +70,7 @@ Field tags:
 - `@pgTrigger <header>: <statement>` — the same tag with a header moves the
   trigger to another table and shapes it the way `CREATE TRIGGER` does. The
   header is the timing, then the events, then the table: `after insert or update
-  or delete on InvoiceRow:`. The statement is written verbatim, and it must be
+  or delete on WidgetRow:`. The statement is written verbatim, and it must be
   correct for every event the header names: `NEW.` on insert and update, `OLD.`
   on delete. See "`@pgTrigger` headers" below.
 - `@createdAt` — the row's creation moment. A bare marker on a `Date` field: the
@@ -144,14 +146,14 @@ Interface tags:
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
   operation left out has no module, no function, and no barrel export. Required
-  on every entity. See "`@repository`, `@restRepository`, and the read tags"
+  on each entity. See "`@repository`, `@restRepository`, and the read tags"
   below.
 - `@restRepository <operation>…` — the subset of `@repository` that the route
   table and the generated SDK expose. A write may be generated and not exposed,
-  so a seed or a group can still call it. Required on every entity. See
+  so a seed or a group can still call it. Required on each entity. See
   "`@repository`, `@restRepository`, and the read tags" below.
 - `@queries <operation>…` — the read operations whose query modules the generator
-  writes. `query` is the only one today, and the tag is a list so another read
+  writes. `query` is the only read operation; the tag is a list so another read
   can be added without a new tag. Optional: an entity that declares no read gets
   none. See `docs/queries.md`.
 - `@restQueries <operation>…` — the subset of `@queries` that the route table and
@@ -175,7 +177,7 @@ Type tags:
   `z.uuidv7().brand<"Something">()`. It is what gives a primitive a runtime
   counterpart to its compile-time brand. At most one per type alias.
 - `@pgType <sql-type>` — the storage type a generator maps the alias to, such as
-  `uuid` or `decimal`. The spec declares *what* the value is stored as; a
+  `uuid` or `decimal`. The tag declares *what* the value is stored as; a
   generator reads the tag rather than knowing the domain type by name, so adding
   a primitive does not require editing the backend. `@primitive` types must
   carry it. See `docs/primitives.md`.
@@ -196,7 +198,7 @@ Method tags:
   operation. The contract takes at most one type parameter, the context, and the
   method's first parameter is that context. See `docs/operations.md`.
 - `@restOperation <verb> <path>` — exposes the operation on the HTTP surface,
-  e.g. `@restOperation POST /invoice/send`. It requires `@operation`, and the
+  e.g. `@restOperation POST /widget/freeze`. It requires `@operation`, and the
   operation takes the context and at most one input. See `docs/operations.md`.
 - `@throws {Class} [status=<code>] reason` — an error the operation raises, and
   why. The generator writes the class to `packages/sdk/src/specErrors.ts`, with
@@ -256,17 +258,17 @@ tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
 ## `@repository`, `@restRepository`, and the read tags
 
-Every entity names the operations it materializes and the subset it publishes:
+Each entity names the operations it materializes and the subset it publishes:
 
 ```ts
 /**
- * @pgTable audit_log
+ * @pgTable log_entry
  * @repository create
  * @restRepository create
  * @queries query
  * @restQueries query
  */
-export interface AuditLog {
+export interface LogEntry {
 ```
 
 The four tags are two pairs, and each pair reads the same way: the first tag
@@ -277,8 +279,8 @@ table and the generated SDK expose.
 `generate-repositories.ts` writes: one or more of `create`, `upsert`, `update`,
 `delete`, in any order. An operation the list leaves out has no module, no
 function, and no barrel export. `@queries` lists the read operations whose query
-modules `generate-queries.ts` writes. `query` is the only read operation today;
-the tag is a list so a second kind of read is a token rather than a new tag, and
+modules `generate-queries.ts` writes. `query` is the only read operation; the
+tag is a list so a second kind of read is a token rather than a new tag, and
 it is what keeps the shape of the two pairs the same. See `docs/queries.md`.
 
 `@restRepository` and `@restQueries` list the subset of those the REST surface
@@ -286,8 +288,8 @@ serves; neither may name an operation its declaring tag omits, since a route
 would call a function that does not exist. A write may be generated and not
 exposed — a seed or a group can still call it — and so may a read.
 
-`@repository` and `@restRepository` are required on every entity; an entity with
-no writes is not a thing this spec has, and naming the four makes the surface
+`@repository` and `@restRepository` are required on each entity; an entity with
+no writes is not a shape the tags allow, and naming the four makes the surface
 explicit rather than implied. The read pair is optional: an entity that declares
 no read gets no `query<Entity>` and no read route. All four are validated as a
 group: the linter reports a missing required tag, an empty list, a token that is
@@ -301,7 +303,7 @@ The key tags say what a column *is*, without deriving it from a name or a type:
 `@primaryKey` marks the table's key, and `@foreignKey <Entity>` marks a column
 that points at another table's key. Neither convention survives — a field named
 `id` is not a key unless it is tagged, and an `<Entity>Id` type is not a foreign
-key unless it is tagged. Every entity declares at least one `@primaryKey`, and a
+key unless it is tagged. Each entity declares at least one `@primaryKey`, and a
 missing one is a generation error rather than a fallback. Marking several fields
 builds a composite key, whose column order is the order the fields are declared:
 
@@ -311,14 +313,14 @@ builds a composite key, whose column order is the order the fields are declared:
  * @primaryKey
  * @widget text
  */
-id: InvoiceId;
+id: WidgetId;
 
 /**
- * @fieldName Customer ID
- * @foreignKey Customer
+ * @fieldName Account ID
+ * @foreignKey Account
  * @widget text
  */
-customerId?: CustomerId;
+accountId?: AccountId;
 ```
 
 ```ts
@@ -337,21 +339,21 @@ lang: string;
 key: string;
 ```
 
-`@foreignKey Customer onDelete=cascade onUpdate=setNull` may append the
+`@foreignKey Account onDelete=cascade onUpdate=setNull` may append the
 referential actions Postgres runs on the constraint's `on delete` and `on
 update`. Each option is one camelCase token — `cascade`, `restrict`, `noAction`,
 `setNull`, `setDefault` — mapping to its SQL spelling (`set null`, `no action`).
 An option the model does not know is a lint finding, and an action left off
 emits no clause, so the constraint takes Postgres's default.
 
-`@foreignKey Invoice scope=tenantId` makes the reference **composite**: `scope`
+`@foreignKey Widget scope=tenantId` makes the reference **composite**: `scope`
 names a column of the same interface, the target declares it too as the column its
 `@tenantOwned` names, and the constraint matches on the pair rather than on the
 key alone. That is how a link cannot cross tenants, and the generator adds the
 unique constraint the pair needs on the target. See `docs/tenancy.md`.
 
-`@foreignKey Customer` takes the column's storage type and referenced column
-from `Customer`'s own `@primaryKey` field, so the field's declared type is
+`@foreignKey Account` takes the column's storage type and referenced column
+from `Account`'s own `@primaryKey` field, so the field's declared type is
 documentation and may be an alias this model cannot resolve. Both tags sit on a
 single scalar field and are mutually exclusive, so a self-referencing key is not
 expressible; that keeps the pair unambiguous. A `@foreignKey` names one column,
@@ -366,18 +368,18 @@ foreign key. The key itself is an ordinary field the interface declares, carryin
 
 ```ts
 /**
- * @fieldName Customer
+ * @fieldName Account
  * @relation
  * @widget select
  */
-customer?: Customer;
+account?: Account;
 
 /**
- * @fieldName Customer ID
- * @foreignKey Customer
+ * @fieldName Account ID
+ * @foreignKey Account
  * @widget text
  */
-customerId?: CustomerId;
+accountId?: AccountId;
 ```
 
 The alternative — the tag synthesizing the column — would put one fact in two
@@ -405,11 +407,11 @@ An `@inlined` field is an entity reference that is *copied* rather than
 scalar fields are flattened into columns on the same table, prefixed with the
 field name:
 
-| `Customer` field | `InvoiceSent.customer` column |
+| `Account` field | `WidgetSnapshot.account` column |
 | --- | --- |
-| `id` | `customerId` |
-| `name` | `customerName` |
-| `email` | `customerEmail` |
+| `id` | `accountId` |
+| `name` | `accountName` |
+| `email` | `accountEmail` |
 
 No foreign key is emitted, so the row survives a change to — or the deletion of —
 the referenced entity. That is the point: an inlined entity is a snapshot of the
@@ -417,8 +419,8 @@ values at write time, not a live link. `@inlined` and `@relation` are mutually
 exclusive; `@inlined` is the snapshot spelling, `@relation` the linked one.
 
 Nullability propagates: a column is `not null` only when both the outer field and
-the inlined field are required, so an optional `customer?: Customer` yields all
-nullable customer columns.
+the inlined field are required, so an optional `account?: Account` yields all
+nullable account columns.
 
 The inlined columns carry the target field's type (including a closed-union
 CHECK) but not its `@unique`. `@computed` on the target is
@@ -433,10 +435,10 @@ how Postgres materializes it, and the expression is written on the field:
 
 ```
 /**
- * @fieldName Net amount
+ * @fieldName Subtotal
  * @widget number
  * @computed
- * @pgTrigger NEW."netAmount" := round(NEW."quantity" * NEW."unitPrice", 2)
+ * @pgTrigger NEW."subtotal" := round(NEW."quantity" * NEW."unitPrice", 2)
  */
 ```
 
@@ -451,21 +453,22 @@ Three mechanisms, chosen by what the expression needs:
   the only mechanism that can read another table, by naming it in the header.
   The same tag on an interface declares a trigger with no column behind it.
 
-`invoice.totalAmount` is the one `@pgVirtual` field: it is a same-row sum of two
-regular columns. `invoice.netAmount`/`taxAmount` are `@pgTrigger` on
-`invoice_row` because a sum over that table cannot be a generated column. The
-`invoice_row` amounts are `@pgTrigger` on their own table because `taxAmount`
-reads `netAmount` and `totalAmount` reads both, and a generated column cannot
-reference another generated column.
+A field derived from two columns of its own row is the case `@pgVirtual` fits:
+`widget.total` is a same-row sum of `subtotal` and `surcharge`. A field
+that aggregates a child table is a `@pgTrigger` instead: `widget.subtotal` and
+`widget.surcharge` carry `on WidgetRow`, because a sum over that table cannot be
+a generated column. The `widget_row` amounts are `@pgTrigger` on their own table
+because `surcharge` reads `subtotal` and `total` reads both, and a
+generated column cannot reference another generated column.
 
 ## Why the row amounts are trigger assignments
 
-The chain is `netAmount`, then `taxAmount`, then `totalAmount`. Two properties of
+The chain is `subtotal`, then `surcharge`, then `total`. Two properties of
 generated columns forbid expressing it directly:
 
 - A generated column's expression may not reference another generated column.
 - A `before` trigger sees `NEW."<generated column>"` as null, so the later
-  assignments could not read `netAmount` even if it were virtual.
+  assignments could not read `subtotal` even if it were virtual.
 
 Making the row amounts virtual would mean inlining `round(NEW."quantity" *
 NEW."unitPrice", 2)` into all three expressions. The trigger keeps one
@@ -474,11 +477,11 @@ choice explicit in the spec.
 
 ## Why the aggregate amounts are written
 
-An invoice is a legal document, so an issued amount should not change when
-rounding or tax rules change. A trigger writes the aggregated value once, when a
-child row changes, and the column keeps it. `@pgVirtual` is used only where the
-value is a pure function of two columns on the same row, so a recomputation from
-those columns always reproduces the same figure.
+A record that freezes what was agreed at a moment should keep a stored snapshot
+amount even when rounding or fee rules change. A trigger writes the aggregated
+value once, when a child row changes, and the column keeps it. `@pgVirtual` is
+used only where the value is a pure function of two columns on the same row, so
+a recomputation from those columns always reproduces the same figure.
 
 ## `@pgTrigger` headers
 
@@ -486,7 +489,7 @@ A header is the timing, the events, the optional table, and the optional level,
 then a colon and the statement. It mirrors `CREATE TRIGGER`:
 
 ```
-@pgTrigger after insert or update or delete on InvoiceRow: update "invoice" set "netAmount" = (select coalesce(sum("netAmount"), 0) from "invoice_row" where "invoiceId" = "invoice"."id") where "id" in (OLD."invoiceId", NEW."invoiceId")
+@pgTrigger after insert or update or delete on WidgetRow: update "widget" set "subtotal" = (select coalesce(sum("subtotal"), 0) from "widget_row" where "widgetId" = "widget"."id") where "id" in (OLD."widgetId", NEW."widgetId")
 ```
 
 - The timing is `before` or `after`. Without a header the timing is `before` and
@@ -495,8 +498,8 @@ then a colon and the statement. It mirrors `CREATE TRIGGER`:
 - The events are `insert`, `update`, and `delete`, joined by `or`, and at least
   one is required. The statement runs for every event listed, so it must be
   correct for all of them: `NEW` is null on delete and `OLD` is null on insert.
-  The statement above covers both with `in (OLD."invoiceId", NEW."invoiceId")`,
-  which recomputes the invoice the row left as well as the one it joined.
+  The statement above covers both with `in (OLD."widgetId", NEW."widgetId")`,
+  which recomputes the widget the row left as well as the one it joined.
 - `on <Entity>` attaches the trigger to that entity's table instead of the
   field's. The named table must carry a `@foreignKey` into the field's own
   table, because the trigger writes the parent back; generation fails otherwise.
@@ -508,16 +511,16 @@ then a colon and the statement. It mirrors `CREATE TRIGGER`:
   interface-level one is `for each statement`.
 - The statement is written verbatim, as a `@pgVirtual` expression is. It names
   its own tables and columns, so it can be read, corrected, and run without
-  substituting anything, and `grep "invoice_row"` finds it.
+  substituting anything, and `grep "widget_row"` finds it.
 - `instead of` is not accepted: it needs a row-level trigger on a view, and the
-  spec has no view entity to attach one to.
+  tag vocabulary has no way to declare a view to attach one to.
 
 Every trigger on one table with the same timing, events, and level shares one
 function, so several fields' statements are emitted together in interface field
 order, and the interface's own statements after them. That order is
-load-bearing: on `invoice_row` each assignment reads the one before it, and an
+load-bearing: on `widget_row` each assignment reads the one before it, and an
 interface-level statement runs last so it can read a derived value rather than
-the value the client sent.
+the value the client supplied.
 
 ## Where a trigger is declared
 
@@ -544,8 +547,8 @@ plain table. Nothing generates them yet; see "Deliberately not implemented".
 ## Column naming
 
 Columns are named exactly as the TypeScript fields, quoted camelCase
-(`"unitPrice"`, `"netAmount"`). There is no field-to-column mapping, so the tags
-and the spec fields use identical identifiers. Changing a field name therefore
+(`"unitPrice"`, `"subtotal"`). There is no field-to-column mapping, so the tags
+and the field names use identical identifiers. Changing a field name therefore
 changes a column name — intentional, since it keeps one name in play.
 
 ## Number representation
@@ -554,9 +557,9 @@ Every numeric column is `decimal`, from the `Decimal` brand, which the drivers
 return as a string. Rounding is therefore part of the expression rather than a
 column type:
 
-- `rowNetAmount` is `round(NEW."quantity" * NEW."unitPrice", 2)`, fixing money to
+- `rowSubtotal` is `round(NEW."quantity" * NEW."unitPrice", 2)`, fixing money to
   two decimals.
-- `rowTaxAmount` is `round(NEW."netAmount" * NEW."taxRate", 2)`, where `taxRate`
+- `rowFeeAmount` is `round(NEW."subtotal" * NEW."surchargeRate", 2)`, where `surchargeRate`
   is a fraction (`0.255` is 25.5%).
 - The aggregates need no cast, since `sum` of `decimal` is `decimal`.
 
@@ -565,25 +568,25 @@ Rationale is in `docs/primitives.md`.
 ## Gotchas
 
 - **An aggregate cannot be `@pgVirtual`.** Postgres forbids a generated column
-  from referencing another table, so `Invoice.netAmount` (a sum over
-  `invoice_row`) must be a `@pgTrigger` whose header names `on InvoiceRow`.
+  from referencing another table, so `Widget.subtotal` (a sum over
+  `widget_row`) must be a `@pgTrigger` whose header names `on WidgetRow`.
 - **A generated column cannot read another generated column,** and a `before`
   trigger cannot read one either — `NEW."<col>"` is null for a virtual column.
-  The `invoice_row` amounts stay `@pgTrigger` for this reason.
-- **Trigger order is part of the contract.** For `invoice_row`: `netAmount`,
-  then `taxAmount`, then `totalAmount`. Reordering the fields produces stale
+  The `widget_row` amounts stay `@pgTrigger` for this reason.
+- **Trigger order is part of the contract.** For `widget_row`: `subtotal`,
+  then `surcharge`, then `total`. Reordering the fields produces stale
   values rather than an error.
 - **A cross-table trigger names its table in the header.** The tag names one
   table, and the statement names its tables and columns verbatim, so a rename of
   the child's foreign key field breaks the statement — as it breaks a same-row
   `@pgTrigger` expression, and for the same reason: column names are field names.
-- **The invoice total is not set by the `invoice_row` trigger.** It writes
-  `netAmount` and `taxAmount` only; `totalAmount` is virtual, so it recomputes on
+- **The widget total is not set by the `widget_row` trigger.** It writes
+  `subtotal` and `surcharge` only; `total` is virtual, so it recomputes on
   read. No ordering is load-bearing there, which is the point of choosing
   `@pgVirtual`.
-- **Currency is not yet modelled.** `Invoice.currency` was removed, so amounts
-  currently carry no currency. The doc comments that say "in the invoice
-  currency" are forward references to work not yet done.
+- **Currency is not part of an amount column.** A `decimal` amount carries a
+  figure only, and no tag records the currency it is in. A doc comment that names
+  one is prose the generators do not read.
 - **Tags must be on their own line.** A tag written inline on the same line as
   the field, as in `/** @unique */ code: string;`, is not attached to the field
   and is silently ignored by both the generator and the linter. Use a JSDoc block.
@@ -596,8 +599,8 @@ Rationale is in `docs/primitives.md`.
 ## Deliberately not implemented
 
 - **Views for a read-time projection.** A derived view would recompute on every
-  read; the mechanisms above cover what the spec needs today, and nothing emits
-  a view.
+  read; the mechanisms above cover what the vocabulary expresses, and nothing
+  emits a view.
 - **Transition tables.** `REFERENCING OLD TABLE`/`NEW TABLE` would give an
   interface-level `after` statement-level trigger the whole set of affected rows
   at once. The grammar has a place for it — the header already reads like
@@ -605,13 +608,13 @@ Rationale is in `docs/primitives.md`.
   row set yet.
 - **A cross-table `@pgVirtual`.** Postgres rejects it outright, so no generator
   support is planned.
-- **Multi-currency rows.** Rows may eventually be issued in currencies other
-  than the invoice's, which needs an exchange rate per row and a converted total
-  in the invoice currency. The `@pgTrigger` expressions would gain
-  rate-aware arithmetic, and the rounding/tax ordering (convert-then-tax vs
-  tax-then-convert) would need to be pinned down.
-- **Rate dates.** Invoices normally lock an exchange rate as of a specific date,
-  which is frequently not `issueDate`.
+- **Multi-currency rows.** A child row may eventually carry a currency other
+  than its parent's, which needs an exchange rate per row and a converted total
+  in the parent's currency. The `@pgTrigger` expressions would gain rate-aware
+  arithmetic, and the rounding/fee ordering (convert-then-fee vs fee-then
+  convert) would need to be pinned down.
+- **Rate dates.** A frozen record normally locks an exchange rate as of a
+  specific moment, which is frequently not `startsAt`.
 
 ## Wiring
 
@@ -660,10 +663,10 @@ keep in step, so a field's expression sits next to the field it describes:
 /**
  * @fieldName Total amount
  * @computed
- * @pgVirtual "netAmount" + "taxAmount"
+ * @pgVirtual "subtotal" + "surcharge"
  * @widget number
  */
-totalAmount?: Money;
+total?: Money;
 ```
 
 ## Linting
@@ -759,7 +762,7 @@ Enforced:
 - `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
   operations: the write tags one or more of `create`, `upsert`, `update`,
   `delete`, the read tags one or more of `query`. `@repository` and
-  `@restRepository` are required on every entity; the read pair is optional. An
+  `@restRepository` are required on each entity; the read pair is optional. An
   unknown token, a token named twice, an empty list, a tag that appears twice,
   and a `@restRepository` or `@restQueries` operation its declaring tag does not
   contain are each reported. See "`@repository`, `@restRepository`, and the read

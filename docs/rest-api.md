@@ -34,8 +34,8 @@ the transport.
 - Either accepts `--out <dir>`; a missing directory is created.
 
 The generated output is committed. Regenerate rather than editing it by hand. A
-regeneration also removes a module the spec no longer declares, so an entity dropped
-from the spec leaves no route module and no client module behind.
+regeneration also removes a module for an entity that is gone, so a dropped
+entity leaves no route module and no client module behind.
 
 ## The surface
 
@@ -54,7 +54,7 @@ carries it in the body.
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |
 | delete | `delete<Entity>` | `DELETE` | `/<table>?q=…` | `[{ id }]` |
-| operation | `sendInvoice` | as `@restOperation` names it | as `@restOperation` names it | the operation's input |
+| operation | `sendWidget` | as `@restOperation` names it | as `@restOperation` names it | the operation's input |
 | group | — | `POST` | `/$group` | a tree of the calls above, in the body |
 
 The id is the call's name: the generated client function is it, and a group entry
@@ -120,10 +120,11 @@ structured one:
 - **A filter is a set.** `Filters` maps a field to an array, and every clause is
   `= any($n)`. `?id=a&id=b` can spell one set; it cannot spell two independent ones
   without inventing an encoding.
-- **`select` is a nested object.** `{ number: true, rows: { select: { description: true } } }`
-  survives a query string only with bracket encoding, and then the argument is
-  parsed by hand instead of by `strictObject`, which is what makes an unknown key
-  fail rather than be stripped.
+- **`select` is a nested object.** The argument
+  `{ label: true, rows: { select: { note: true } } }` survives a query string
+  only with bracket encoding, and then the argument is parsed by hand instead
+  of by `strictObject`, which is what makes an unknown key fail rather than be
+  stripped.
 
 So the whole argument goes into one parameter, `?q=<devalue>`, encoded and
 decoded by the same codec the responses use. One parameter and one codec means no
@@ -184,27 +185,27 @@ server's narrowing. A generated function takes the argument and returns a call, 
 is the one function that talks to the network:
 
 ```typescript
-export function queryInvoice<S extends Selection<Invoice>>(
+export function queryWidget<S extends Selection<Widget>>(
     opts: {
-        filter: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId", "tenantId">;
+        filter: Filters<Widget, "id" | "tenantId" | "accountId" | "supplierId", "tenantId">;
         order?: Order<"createdAt" | "updatedAt">[];
-        where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
+        where?: Where<Widget, { startsAt: "gte" | "lte" }>;
         limit?: number;
         offset?: number;
         select: S;
     },
-): Call<Selected<Invoice, S>[]> {
-    return call<Selected<Invoice, S>[]>("GET", "/invoice/query", opts);
+): Call<Selected<Widget, S>[]> {
+    return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);
 }
 ```
 
 ```typescript
-const [invoice] = await exec(http, queryInvoice({
+const [widget] = await exec(http, queryWidget({
     filter: { tenantId: [tenantId], id: [id] },
-    select: { number: true, totalAmount: true, rows: { select: { description: true } } },
+    select: { label: true, total: true, rows: { select: { note: true } } },
 }));
-// invoice.rows![0].description  ✓
-// invoice.rows![0].taxAmount    ✗  not selected
+// widget.rows![0].note    ✓
+// widget.rows![0].total   ✗  not selected
 ```
 
 Nothing about the narrowing changes: the selection is fixed where the builder is
@@ -219,12 +220,12 @@ definition the repository takes and the route table validates with — so the
 client cannot drift from the server:
 
 ```typescript
-import type { InvoiceInsert } from "../repositories/invoiceInsertSchema.ts";
-import type { InvoicePatch } from "../repositories/invoicePatchSchema.ts";
-import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.ts";
+import type { WidgetInsert } from "../repositories/widgetInsertSchema.ts";
+import type { WidgetPatch } from "../repositories/widgetPatchSchema.ts";
+import type { WidgetPrimaryKey } from "../repositories/widgetPrimaryKeySchema.ts";
 
-export function updateInvoice(rows: InvoicePatch[]): Call<void>
-export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void>
+export function updateWidget(rows: WidgetPatch[]): Call<void>
+export function deleteWidget(rows: WidgetPrimaryKey[]): Call<void>
 ```
 
 A create narrows the same way, to `<Entity>Insert`, so the type a caller sends
@@ -253,7 +254,7 @@ and it carries the `q` parameter as well as the bodies.
   class from `kind`, ok means decode. See `docs/errors.md`.
 
 The reason to prefer it over a wire schema per entity is that `Date` and `bigint`
-survive as themselves. `version` is `bigint & Brand`, `issueDate` is a `Date`,
+survive as themselves. `version` is `bigint & Brand`, `startsAt` is a `Date`,
 and the amounts are branded strings; a JSON encoding would need an ISO-string
 `z.iso.datetime().transform(…)` and a digit-string `BigInt` conversion, which
 changes the schema's output type and fights `Selected<E, S>` at the edge. With

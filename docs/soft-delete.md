@@ -4,11 +4,11 @@ Soft deletion needs no tag. A row's deletion moment is an ordinary nullable
 column, `update` writes it, and a filter default hides the deleted rows from a
 read that does not ask for them.
 
-`Invoice` declares it in the spec:
+An entity declares it in the spec as an ordinary nullable field:
 
 ```ts
 /**
- * The moment the invoice was trashed; null while it is live.
+ * The moment the widget was trashed; null while it is live.
  *
  * @fieldName Deleted at
  * @deletedAt
@@ -47,16 +47,16 @@ it. Every read of the entity therefore returns live rows unless it names the
 filter:
 
 ```ts
-const live = await queryInvoice(db, { filter: { tenantId: [tenantId] }, select: { number: true, deletedAt: true } });
+const live = await queryWidget(db, { filter: { tenantId: [tenantId] }, select: { code: true, deletedAt: true } });
 ```
 
 A read that names `deletedAt` overrides the default. A set cannot say "is not
 null", so a read of deleted rows uses the filter's null test:
 
 ```ts
-const deleted = await queryInvoice(db, {
+const deleted = await queryWidget(db, {
     filter: { tenantId: [tenantId], deletedAt: { isNotNull: true } },
-    select: { number: true, deletedAt: true },
+    select: { code: true, deletedAt: true },
 });
 ```
 
@@ -71,8 +71,8 @@ A trash is a patch of the version the caller holds; a restore is the same patch
 with `null`:
 
 ```ts
-await updateInvoice(db, [{ id, version, deletedAt: new Date() }]);
-await updateInvoice(db, [{ id, version, deletedAt: null }]);
+await updateWidget(db, [{ id, version, deletedAt: new Date() }]);
+await updateWidget(db, [{ id, version, deletedAt: null }]);
 ```
 
 The optimistic-lock rules are the ordinary ones (`docs/versioning.md`): a stale
@@ -83,7 +83,7 @@ un-delete a row.
 ## Gotchas
 
 - **Uniqueness covers every row.** A trashed row keeps its values, so a
-  `@unique` column such as `Invoice.number` stays taken until the row is deleted
+  `@unique` column such as `Widget.code` stays taken until the row is deleted
   for good. A partial unique index over live rows is not generated.
 - **A trashed row is still writable.** `update` and `delete` address a row by key
   whatever its state, and a foreign key may point at it. Hiding is a read rule,

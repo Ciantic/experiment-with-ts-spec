@@ -1,6 +1,6 @@
 # Queries
 
-Reading is derived from the spec. Every entity that carries `@queries query` in
+Reading is derived from the spec. An entity that carries `@queries query` in
 `packages/spec/src/` gets a generated `query<Entity>` read; a caller that
 wants a single row takes the first result. A generator emits the typed functions
 and the physical model; one hand-written resolver turns a selection into SQL.
@@ -22,7 +22,7 @@ See "Why the resolver is hand-written".
 - `pnpm generate:queries --out <dir>` — writes elsewhere. A missing directory is created.
 
 The generated output is committed. Regenerate rather than editing it by hand. A
-regeneration also removes a module the spec no longer declares, so an entity that
+regeneration also removes a module that no entity declares, so an entity that
 drops `@queries query` leaves no stale file behind.
 
 ## One query per entity
@@ -38,18 +38,18 @@ There is no query alias to write. The generator walks the tables and emits
 `query<Entity>`:
 
 ```ts
-export function queryInvoice<S extends Selection<Invoice>>(
+export function queryWidget<S extends Selection<Widget>>(
     db: SqlExecutor,
     opts: {
-        filter: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId", "tenantId">;
+        filter: Filters<Widget, "id" | "tenantId" | "accountId" | "supplierId", "tenantId">;
         order?: Order<"createdAt" | "updatedAt">[];
-        where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
+        where?: Where<Widget, { startsAt: "gte" | "lte" }>;
         limit?: number;
         offset?: number;
         select: S;
     },
-): Promise<Selected<Invoice, S>[]> {
-    return resolver.resolveMany<Invoice, S>(db, "invoice", opts.filter ?? {}, {
+): Promise<Selected<Widget, S>[]> {
+    return resolver.resolveMany<Widget, S>(db, "widget", opts.filter ?? {}, {
         select: opts.select,
         order: opts.order,
         where: opts.where,
@@ -60,8 +60,8 @@ export function queryInvoice<S extends Selection<Invoice>>(
 ```
 
 No domain name is hardcoded: a new entity flows through with no generator edit.
-`Customer`, `InvoiceRow`, `InvoiceSent`, and `Seller` get `queryCustomer`,
-`queryInvoiceRow`, `queryInvoiceSent`, and `querySeller` the same way.
+An entity named `Account` gets `queryAccount`, and `WidgetRow` gets
+`queryWidgetRow`, the same way.
 
 `model.ts` names every table, whether or not the entity reads: a read may select
 into a table that has no read of its own, so the resolver needs its key, fields,
@@ -81,32 +81,32 @@ default), at most `limit` of them, in pages of `offset`.
 ```
 
 A bare marker on a **scalar** field. It adds the field as a filter of the
-entity's reads. `id` is a filter **without the tag**, because every entity has
-one, so `queryInvoiceRow` accepts `filter: { id }` out of the box:
+entity's reads. `id` is a filter **without the tag**, because each entity has
+one, so `queryWidgetRow` accepts `filter: { id }` out of the box:
 
 ```ts
-const rows = await queryInvoiceRow(db, {
+const rows = await queryWidgetRow(db, {
     filter: { tenantId: [tenantId], id: [firstId, secondId] },
-    select: { description: true, totalAmount: true },
+    select: { description: true, subtotal: true },
 });
 
-const [row] = await queryInvoiceRow(db, {
+const [row] = await queryWidgetRow(db, {
     filter: { tenantId: [tenantId], id: [rowId] },
-    select: { description: true, totalAmount: true },
+    select: { description: true, subtotal: true },
 });
 ```
 
-The tag is what adds a filter *besides* `id`. `Invoice.number` would become
+The tag is what adds a filter *besides* `id`. `Widget.code` would become
 filterable by marking it:
 
 ```ts
 /**
- * @fieldName Invoice number
+ * @fieldName Widget code
  * @unique
  * @widget text
  * @queryFilter
  */
-number?: string;
+code?: string;
 ```
 
 The default lives in `spec-model.ts`, which sets the tag when it parses a field
@@ -123,19 +123,19 @@ A filter's value is a **set** by default, but a nullable field also takes a null
 test instead. That is how a read names the rows a default would hide:
 
 ```ts
-// Live invoices: the default fills in `is null`.
-const live = await queryInvoice(db, { filter: { tenantId: [tenantId] }, select: { number: true } });
+// Live widgets: the default fills in `is null`.
+const live = await queryWidget(db, { filter: { tenantId: [tenantId] }, select: { code: true } });
 
-// Deleted invoices: the null test replaces the default.
-const deleted = await queryInvoice(db, {
+// Deleted widgets: the null test replaces the default.
+const deleted = await queryWidget(db, {
     filter: { tenantId: [tenantId], deletedAt: { isNotNull: true } },
-    select: { number: true, deletedAt: true },
+    select: { code: true, deletedAt: true },
 });
 
-// Invoices with no customer.
-const unassigned = await queryInvoice(db, {
-    filter: { tenantId: [tenantId], customerId: { isNull: true } },
-    select: { number: true },
+// Widgets with no account.
+const unassigned = await queryWidget(db, {
+    filter: { tenantId: [tenantId], accountId: { isNull: true } },
+    select: { code: true },
 });
 ```
 
@@ -148,7 +148,7 @@ test on a required filter. See "Filters are sets" below.
 ### A required filter
 
 `@queryFilter required` makes the filter **mandatory**: every read of the entity
-has to name it. Each tenant-owned entity marks its `tenantId` that way, because a
+has to name it. A tenant-owned entity marks its `tenantId` that way, because a
 read that forgets it would cross tenants. See `docs/tenancy.md`.
 
 ```ts
@@ -165,12 +165,12 @@ The generated args type then requires the filter object itself, and the field
 inside it:
 
 ```ts
-export function queryInvoiceRow<S extends Selection<InvoiceRow>>(db: SqlExecutor, opts: {
-    filter: Filters<InvoiceRow, "id" | "tenantId", "tenantId">;
+export function queryWidgetRow<S extends Selection<WidgetRow>>(db: SqlExecutor, opts: {
+    filter: Filters<WidgetRow, "id" | "tenantId", "tenantId">;
     limit?: number;
     offset?: number;
     select: S;
-}): Promise<Selected<InvoiceRow, S>[]>;
+}): Promise<Selected<WidgetRow, S>[]>;
 ```
 
 `Filters<E, K, R>` takes the possible keys and the required ones separately, so
@@ -183,8 +183,8 @@ for a caller that reaches it with an untyped object, the same guard it puts on a
 unknown filter field. See "The resolver reads one query per branch".
 
 A required filter scopes what a read may **see**. What a write may **link** is a
-separate annotation: `@foreignKey Invoice scope=tenantId` makes the reference
-composite, so a row cannot point at another tenant's invoice, and the interface it
+separate annotation: `@foreignKey Widget scope=tenantId` makes the reference
+composite, so a row cannot point at another tenant's widget, and the interface it
 points at declares that column with `@tenantOwned`. See `docs/tenancy.md`.
 
 ### A defaulted filter
@@ -240,7 +240,7 @@ written as a one-element array. An array matches any of its values, and an empty
 array matches nothing. A filter whose field is nullable also takes a null test,
 `{ isNull: true }` or `{ isNotNull: true }`, because a set cannot say either.
 
-Several filters are combined with **`and`**: `{ tenantId: […], customerId: […] }`
+Several filters are combined with **`and`**: `{ tenantId: […], accountId: […] }`
 requires both. A filter left `undefined` is dropped — unless it declares a
 default, which is applied in its place — so a read that names only the tenant
 returns every row of that tenant, and an entity with no required filter, such as
@@ -273,10 +273,10 @@ A bare marker on a **scalar** field whitelists it as an ordering key. The
 `order` option then accepts clauses that name those fields:
 
 ```ts
-const invoices = await queryInvoice(db, {
-    filter: { tenantId: [tenantId], customerId: [customerId] },
+const widgets = await queryWidget(db, {
+    filter: { tenantId: [tenantId], accountId: [accountId] },
     order: [["createdAt", "desc"]],
-    select: { number: true },
+    select: { code: true },
 });
 ```
 
@@ -331,10 +331,10 @@ operators that field may be narrowed with, and the read's `where` key carries
 them.
 
 ```ts
-const invoices = await queryInvoice(db, {
+const widgets = await queryWidget(db, {
     filter: { tenantId: [tenantId] },
-    where: { issueDate: { gte: from, lte: to } },
-    select: { number: true },
+    where: { startsAt: { gte: from, lte: to } },
+    select: { code: true },
 });
 ```
 
@@ -369,11 +369,11 @@ set in one comparison, so a read may use both — `filter` to narrow cheaply, th
 
 ```ts
 /**
- * @fieldName Issue date
+ * @fieldName Starts at
  * @queryWhere gte lte
  * @widget date
  */
-issueDate?: Date;
+startsAt?: Date;
 ```
 
 A field may carry `@queryFilter`, `@queryWhere`, and `@queryOrderBy` at once — they
@@ -387,12 +387,12 @@ Every read pages. `limit` bounds how many rows a read returns and `offset` skips
 leading rows.
 
 ```ts
-const page = await queryInvoice(db, {
-    filter: { tenantId: [tenantId], customerId: [customerId] },
+const page = await queryWidget(db, {
+    filter: { tenantId: [tenantId], accountId: [accountId] },
     order: [["createdAt", "desc"]],
     limit: 25,
     offset: 50,
-    select: { number: true },
+    select: { code: true },
 });
 ```
 
@@ -403,7 +403,7 @@ want less.
 
 A branch names its own `limit` and `offset` in its read arguments, and there they
 bound **each parent**, not the batch: `rows: { select: {…}, limit: 1 }` returns the
-first row of every invoice, not the first row of all invoices. A branch that names
+first row of each widget, not the first row of all widgets. A branch that names
 neither is unbounded. The resolver ranks a branch's rows per parent
 (`row_number()` over the parent key) and keeps each parent's window, so a batched
 branch still costs one query.
@@ -457,14 +457,14 @@ selected either with `true` — every scalar of the branch, unfiltered — or wi
 result, not `undefined`.
 
 ```ts
-const [invoice] = await queryInvoice(db, {
+const [widget] = await queryWidget(db, {
     filter: { tenantId: [tenantId] },
     select: {
-        number: true,
-        // The same arguments `queryInvoiceRow` takes, applied to this invoice's rows.
+        code: true,
+        // The same arguments `queryWidgetRow` takes, applied to this widget's rows.
         rows: {
-            select: { description: true, totalAmount: true },
-            order: [["totalAmount", "desc"]],
+            select: { description: true, subtotal: true },
+            order: [["subtotal", "desc"]],
             limit: 3,
         },
     },
@@ -488,9 +488,9 @@ type Scalar<T> =
 ```
 
 The brand is load-bearing. A structural `extends object` test cannot tell a
-scalar from an entity: `Money`, `InvoiceId`, and `Version` are branded
-primitives and all satisfy `extends object`, exactly like `InvoiceRow`. Without
-the brand, `select: { totalAmount: { … } }` would type-check and recurse into a
+scalar from an entity: `Money`, `WidgetId`, and `Version` are branded
+primitives and all satisfy `extends object`, exactly like `WidgetRow`. Without
+the brand, `select: { subtotal: { … } }` would type-check and recurse into a
 decimal.
 
 ## A read, generated
@@ -504,18 +504,18 @@ keeps filters and projection explicit.
 A call site narrows exactly:
 
 ```ts
-const [invoice] = await queryInvoice(db, {
+const [widget] = await queryWidget(db, {
     filter: { tenantId: [tenantId], id: [id] },
     select: {
         id: true,
-        number: true,
-        totalAmount: true,
-        rows: { select: { description: true, totalAmount: true } },
+        code: true,
+        subtotal: true,
+        rows: { select: { description: true, subtotal: true } },
     },
 });
-// invoice.rows![0].totalAmount  ✓
-// invoice.rows![0].taxAmount    ✗  not selected
-// invoice.notes                 ✗  not selected
+// widget.rows![0].subtotal      ✓
+// widget.rows![0].surcharge      ✗  not selected
+// widget.notes                ✗  not selected
 ```
 
 The compiler rejects a field that is not on the entity, a nested selection on a
@@ -542,19 +542,19 @@ logic — they name a table as a string and delegate.
 
 ## Selecting a branch means three different things
 
-`Invoice.rows`, `Invoice.customer`, and `InvoiceSent.customer` nest identically
+`Widget.rows`, `Widget.account`, and `WidgetSnapshot.account` nest identically
 at the call site and are not the same storage:
 
 | Nested field | Annotation | Storage | SQL |
 | --- | --- | --- | --- |
-| `Invoice.rows` | `@children` | child table, FK `invoiceId` | join |
-| `Invoice.customer` | `@relation` | FK `customerId` | join to the **live** row |
-| `InvoiceSent.customer` | `@inlined` | flattened `customerName`, `customerEmail`, … | no join, prefix columns |
+| `Widget.rows` | `@children` | child table, FK `widgetId` | join |
+| `Widget.account` | `@relation` | FK `accountId` | join to the **live** row |
+| `WidgetSnapshot.account` | `@inlined` | flattened `accountName`, `accountEmail`, … | no join, prefix columns |
 
 An inlined branch is not a join: its columns are already on the row. The
-freshness differs too — a relation reads the current record, an inlined value is
-the frozen snapshot — and the call site cannot tell them apart. See
-`docs/invoice-snapshotting.md`. An inlined branch still takes a `select`, but its
+freshness differs too — a relation reads the current record, while an inlined
+value is copied from a snapshot entity into the row at write time — and the call
+site cannot tell them apart. An inlined branch still takes a `select`, but its
 other read arguments have nowhere to apply: there is no separate statement to
 filter, order, or page, so they are ignored for an inlined branch.
 
@@ -562,19 +562,20 @@ The generator records the distinction in `queryModel`, from the branch tags the
 table model already carries (`packages/backend/scripts/postgres-model.ts`):
 
 ```ts
-customer: { kind: "relation", table: "customer", column: "customerId" }
-rows:     { kind: "children", table: "invoice_row", column: "invoiceId" }
-snapshot: { kind: "inlined", columns: { name: "customerName" } }
+account:  { kind: "relation", table: "account", column: "accountId" }
+rows:     { kind: "children", table: "widget_row", column: "widgetId" }
+snapshot: { kind: "inlined", columns: { name: "accountName" } }
 ```
 
 The resolver types these as a union on `kind`, so a branch to another table always
 carries its `table` and `column`, and an inlined one only its `columns`.
 
 Relation and inlined columns are not the same here. Inlined columns are excluded
-from the table's selectable `fields`, because the spec never declares them. A
-relation's foreign key *is* excluded from nothing: it is the `@foreignKey` field
-the interface declares, so `Invoice.customerId` is a selectable field and — with
-`@queryFilter` — an ordinary filter. `InvoiceRow.invoiceId` is the same thing.
+from the table's selectable `fields`, because they are not fields of the
+interface. A relation's foreign key *is* excluded from nothing: it is the
+`@foreignKey` field the interface declares, so `Widget.accountId` is a selectable
+field and — with `@queryFilter` — an ordinary filter. `WidgetRow.widgetId` is the
+same thing.
 
 ## The resolver reads one query per branch
 
@@ -609,7 +610,7 @@ branch per level. The resolver holds no domain knowledge — it only reads
 Arguments filter by set membership: the generated filters are the scalar fields
 that carry `@queryFilter` (plus every `@primaryKey` field), and a relation's
 `@foreignKey` field is one of them. An unknown filter field throws rather than
-silently dropping a clause, as does a non-array value, and a filter the spec marks
+silently dropping a clause, as does a non-array value, and a filter marked
 `required` throws when the read does not name it. `String`, `Date`, and
 `decimal` values pass through unchanged.
 
@@ -631,7 +632,7 @@ because the ranked window orders each parent's rows before they are grouped.
 ## Gotchas
 
 - **Every selected key is optional.** `Selected` marks each selected key `?`, so
-  `Selected<Invoice, { number: true }>` is `{ number?: string }`. A `null` column
+  `Selected<Widget, { code: true }>` is `{ code?: string }`. A `null` column
   is omitted rather than carried as `null`, so a value is present only when the
   column has one: selection narrows the type, and the runtime object lacks a key
   it did not select or that was `null`.
@@ -662,18 +663,18 @@ because the ranked window orders each parent's rows before they are grouped.
 - **Filters come only from `@queryFilter`, plus the primary key.** A field
   without the tag is not filterable, each `@primaryKey` field is a filter without
   it, and a branch field may not carry it. A parent is not filtered by a related
-  record's columns, such as `customer.name`; a branch's own `filter` narrows the
-  branch, and the foreign key is a scalar field, so `customerId` is filterable.
+  record's columns, such as `account.name`; a branch's own `filter` narrows the
+  branch, and the foreign key is a scalar field, so `accountId` is filterable.
 - **A default fills a hole, it does not narrow by itself.** `@queryFilter
   default=<value>` applies when a read omits the filter; a read that names it
   overrides the declared value. This is how a nullable `deletedAt` reads live rows
   by default (`docs/soft-delete.md`).
 - **A required filter is a precondition, not a filter value.** `@queryFilter
-  required` narrows nothing by itself; it makes the caller name the field. Every
+  required` narrows nothing by itself; it makes the caller name the field. A
   tenant-owned entity marks its `tenantId` that way, so a read cannot quietly span
-  tenants, while `Tenant`, `Translation`, and `AuditLog` — the entities without a
-  tenant — stay unscoped. A scoped foreign key is what keeps a *write* from
-  linking two tenants; see `docs/tenancy.md`.
+  tenants, while an entity that carries no tenant, such as `Locale`, stays
+  unscoped. A scoped foreign key is what keeps a *write* from linking two
+  tenants; see `docs/tenancy.md`.
 - **A composite key has no single row key for branch attachment.** The resolver
   identifies a row by one column, so an entity whose `@primaryKey` is several
   fields cannot be the target of a `@foreignKey` — and so cannot be reached by a
@@ -683,12 +684,12 @@ because the ranked window orders each parent's rows before they are grouped.
   column purely as the alias a row is projected under; no join reads it, because
   nothing can name the table as a branch target. Grouping children by a full
   composite key is not implemented.
-- **The brand is an internal.** `Scalar` reads the spec's `Brand` alias, whose
+- **The brand is an internal.** `Scalar` reads the `Brand` alias, whose
   only dependency is a type-only Zod import. The fallback, if that ever moves, is
   separate `select` (scalars) and `with` (branches) keys, which needs no brand
   but reads worse.
 - **A branch `true` on an entity with no relations is safe; a cycle is not.**
-  `InvoiceRow.invoiceId` is a scalar alias, not a `@relation`, so today's
+  `WidgetRow.widgetId` is a scalar alias, not a `@relation`, so the
   recursion terminates. A `@relation` back to the parent would need a depth cap
   in both `Selection` and the resolver.
 - **Ordering comes only from `@queryOrderBy`.** A field without the tag cannot
@@ -720,21 +721,21 @@ is written once, holds no domain names, and reads generated data — which is wh
 logic N times.
 
 Writing the WHERE per query is the alternative — the args shape is known at
-build time, so a generator could emit `[["customerId", "=", args.customerId]]`
+build time, so a generator could emit `[["accountId", "=", args.accountId]]`
 and leave only projection and shaping to the resolver. That is a reasonable
 middle ground if the args logic grows past equality.
 
 ## Deliberately not implemented
 
 - **Comparing or filtering a parent by a branch's columns.** `@queryWhere` and
-  `@queryFilter` are scalar-only, so `queryInvoice` cannot compare or filter on a
-  related record's columns, such as `customer.name`. A branch's own `filter` and
+  `@queryFilter` are scalar-only, so `queryWidget` cannot compare or filter on a
+  related record's columns, such as `account.name`. A branch's own `filter` and
   `where` narrow the branch, not the parent; the foreign key is a scalar field, so
-  `customerId` filters the parent.
+  `accountId` filters the parent.
 - **More comparison operators.** The vocabulary is `eq ne gt gte lt lte`. `like`,
   `isNull`, and a case-insensitive match would each be another entry.
 - **Comparisons across fields.** A `where` value is a literal, not a column
-  reference, so `totalAmount > netAmount` is not expressible.
+  reference, so `startsAt < endsAt` is not expressible.
 - **A row at most, not exactly one.** There is no `limit 1` shorthand; a caller
   takes the first result, which fetches a whole page.
 - **Cursor pagination and a total count.** `limit`/`offset` page a read, but

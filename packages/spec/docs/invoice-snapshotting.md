@@ -89,7 +89,7 @@ consequences:
   the two parties flattens every scalar field, so
   `customerCreatedAt`, `customerUpdatedAt`, `sellerCreatedAt`,
   `sellerUpdatedAt`, `customerLanguage`, and `sellerLanguage` land on
-  `invoice_sent` too. See `docs/timestamps.md` and `docs/invoice-sending.md`.
+  `invoice_sent` too. See `docs/timestamps.md` and `packages/spec/docs/invoice-sending.md`.
 
 ## Deliberately not implemented
 

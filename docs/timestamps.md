@@ -1,14 +1,9 @@
 # Timestamps
 
-Every mutable domain model carries `createdAt` and `updatedAt`, both `Date`
-(`timestamptz`):
-
-- `Customer` — `createdAt`, `updatedAt`
-- `Seller` — `createdAt`, `updatedAt`
-- `Invoice` — `createdAt`, `updatedAt`
-- `InvoiceRow` — `createdAt`, `updatedAt`
-- `Email` — `createdAt`, `updatedAt`
-- `Tenant` — `createdAt`, `updatedAt`
+A field carrying `@createdAt` or `@updatedAt` is a clock, and its column is
+`Date` (`timestamptz`), not null. A mutable entity declares one of each — the
+`Widget` example does — so a row records when it appeared and when it last
+changed.
 
 Both are declared through a single tag each, rather than through `@computed`
 plus `@pgDefault`. A tag supplies the column's default, and the generated writes
@@ -18,7 +13,7 @@ use that default as the fallback for a row that omits the field.
 
 ```ts
 /**
- * The moment the customer record was created.
+ * The moment the account record was created.
  *
  * @fieldName Created at
  * @createdAt
@@ -49,7 +44,7 @@ Three things follow:
 
 ```ts
 /**
- * The moment the customer record was last updated.
+ * The moment the account record was last updated.
  *
  * @fieldName Updated at
  * @updatedAt
@@ -88,36 +83,37 @@ The generated statement knows which fields a row carries. It writes the value
 when the row supplies one and falls back to `now()` otherwise, which is the same
 choice the database would make, made where the information still exists.
 
-`now()` is written by the generator: the clock tags are the only place the spec
-declares a timestamp, so there is no expression to name and no registry to
+`now()` is written by the generator: the clock tags are the only place a
+timestamp is declared, so there is no expression to name and no registry to
 consult. See `docs/spec-annotations.md`.
 
 ## Cross-table writes
 
-The invoice's aggregate fields are maintained by `@pgTrigger` statements that run
-raw SQL when a child row changes:
+A parent row's aggregate fields are maintained by `@pgTrigger` statements that
+run raw SQL when a child row changes:
 
 ```sql
-update "invoice" set "netAmount" = …, "updatedAt" = now(), "version" = "version" + 1
+update "widget" set "subtotal" = …, "updatedAt" = now(), "version" = "version" + 1
 ```
 
 Those statements do not go through the generated `update`, so they maintain the
 clock and the version themselves. Any hand-written statement that changes a
 table carrying them must do the same; nothing in the database does it on the
-writer's behalf. (The invoice's `totalAmount` is a virtual generated column, so
+writer's behalf. (The `widget`'s `total` is a virtual generated column, so
 it needs no place in that trigger at all — it recomputes on read.)
 
 ## Why not the snapshots
 
-`InvoiceSent` and `InvoiceSentRow` carry neither field. They are frozen copies
-(`docs/invoice-snapshotting.md`): `sentAt` already records when the document was
-issued, and an `updatedAt` on a document that is not supposed to change states a
-contradiction the model should not express.
+A snapshot entity — one copied at write time rather than referenced — carries
+neither field. `WidgetSnapshot` and `WidgetSnapshotRow` are frozen when they are
+written: `frozenAt` already records when the snapshot was taken, and an
+`updatedAt` on a document that is not supposed to change states a contradiction
+the model should not express.
 
-They do inherit `customerCreatedAt` and `customerUpdatedAt`, because
+They do inherit `accountCreatedAt` and `accountUpdatedAt`, because
 `@inlined` flattens *every* scalar field of the target. Those are the
-customer's timestamps as of send time — correct snapshot behaviour, but audit
-columns about the customer rather than the invoice. There is no per-field opt-out
+account's timestamps as of the snapshot — correct snapshot behaviour, but audit
+columns about the account rather than the widget. There is no per-field opt-out
 from `@inlined`.
 
 ## Gotchas

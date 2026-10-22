@@ -18,11 +18,12 @@ schema uses, so the backend repositories, the REST API, the generated client, an
   from its `@zod` tag.
 - `packages/sdk/src/domain/<entity>Schema.ts` — one module per domain
   interface, exporting the entity's 1:1 schema alone (`<name>Schema`). It is the
-  whole entity, with every field the spec declares.
+  whole entity, with every field on the interface.
 - `packages/sdk/src/repositories/<entity>InsertSchema.ts` — the create
   schema and its type (`<name>InsertSchema`, `<Entity>Insert`).
 - `packages/sdk/src/repositories/<entity>UpsertSchema.ts` — the upsert
-  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).- `packages/sdk/src/repositories/<entity>PatchSchema.ts` — the update
+  schema and its type (`<name>UpsertSchema`, `<Entity>Upsert`).
+- `packages/sdk/src/repositories/<entity>PatchSchema.ts` — the update
   schema and its type (`<name>PatchSchema`, `<Entity>Patch`).
 - `packages/sdk/src/repositories/<entity>PrimaryKeySchema.ts` — the by-key
   schema and its type (`<name>PrimaryKeySchema`, `<Entity>PrimaryKey`), written
@@ -54,11 +55,12 @@ A write module derives from the domain module rather than restating the entity:
 each one imports `<name>Schema` from `../domain/<entity>Schema.ts` and projects it.
 The directory is what says "write"; a `domain/` module is never a write.
 
-The whole write set is generated for every entity, whatever its `@repository`
-tag names. The schemas are the shared write-type layer, and a create may inline
-another entity's insert shape, so the insert module has to exist even for an
-entity that names no create of its own. The repository generator and the REST
-table select from this set; see `docs/repositories.md` and `docs/rest-api.md`.
+An entity that carries `@entity` gets the whole write set, whatever its
+`@repository` tag names. The schemas are the shared write-type layer, and a
+create may inline another entity's insert shape, so the insert module has to
+exist even for an entity that names no create of its own. The repository
+generator and the REST table select from this set; see `docs/repositories.md`
+and `docs/rest-api.md`.
 
 The schemas live in `packages/sdk` beside the client and are consumed as
 TypeScript through the package's `exports` map, like every other package here.
@@ -84,22 +86,22 @@ unclassified body becomes `HttpError`. See `docs/errors.md`. The module imports
 nothing, so importing it still loads no `zod`.
 
 ```typescript
-export const invoiceSchema = z.object({
-    id: primitives.brandedIdSchema<"InvoiceId">(),
-    number: z.string().optional(),
-    customer: z.lazy(() => customerSchema).optional(),
-    rows: z.array(z.lazy(() => invoiceRowSchema)).optional(),
+export const widgetSchema = z.object({
+    id: primitives.brandedIdSchema<"WidgetId">(),
+    code: z.string().optional(),
+    account: z.lazy(() => accountSchema).optional(),
+    rows: z.array(z.lazy(() => widgetRowSchema)).optional(),
     version: primitives.versionSchema,
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export const invoicePatchSchema = invoiceSchema.partial().required({
+export const widgetPatchSchema = widgetSchema.partial().required({
     id: true,
     version: true,
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "rows"> & Required<Pick<Invoice, "id" | "version">>;
+export type WidgetPatch = Omit<Partial<Widget>, "account" | "rows"> & Required<Pick<Widget, "id" | "version">>;
 ```
 
 ## How a field maps
@@ -109,7 +111,7 @@ export type InvoicePatch = Omit<Partial<Invoice>, "customer" | "rows"> & Require
 | `string`, `number`, `boolean`, `bigint` | `z.string()`, `z.number()`, … |
 | `Date` | `z.date()` |
 | `@primitive` alias | the alias's `@zod` expression, referenced through `primitives` |
-| another type alias | resolved through its underlying type (`InvoiceId` → `BrandedId<"InvoiceId">`) |
+| another type alias | resolved through its underlying type (`WidgetId` → `BrandedId<"WidgetId">`) |
 | an entity (`@relation`, `@inlined`) | `z.lazy(() => <entity>Schema)` |
 | `@children` array | `z.array(z.lazy(() => <entity>Schema))` |
 | string-literal union | `z.enum([...])` |
@@ -137,9 +139,9 @@ export function brandedIdSchema<Name extends string>() {
 }
 ```
 
-A field typed `InvoiceId` resolves through `InvoiceId = BrandedId<"InvoiceId">`
-to `primitives.brandedIdSchema<"InvoiceId">()`, so the parsed value carries the
-`"InvoiceId"` brand rather than a bare `string`.
+A field typed `WidgetId` resolves through `WidgetId = BrandedId<"WidgetId">`
+to `primitives.brandedIdSchema<"WidgetId">()`, so the parsed value carries the
+`"WidgetId"` brand rather than a bare `string`.
 
 ## Patch schemas
 
@@ -152,20 +154,20 @@ A field whose column is nullable also accepts `null`, which clears it, so the
 schema is widened with `.extend()`:
 
 ```typescript
-export const invoicePatchSchema = invoiceSchema
+export const widgetPatchSchema = widgetSchema
     .omit({
-        customer: true,
-        seller: true,
-        netAmount: true,
-        taxAmount: true,
-        totalAmount: true,
+        account: true,
+        supplier: true,
+        subtotal: true,
+        discount: true,
+        total: true,
         rows: true,
         createdAt: true,
     })
     .partial()
     .extend({
-        number: invoiceSchema.shape.number.nullable(),
-        notes: invoiceSchema.shape.notes.nullable(),
+        code: widgetSchema.shape.code.nullable(),
+        notes: widgetSchema.shape.notes.nullable(),
     })
     .required({
         id: true,
@@ -203,13 +205,13 @@ writes the columns the database does not own, and a key the schema rejects is a
 400 rather than a field that is silently dropped on the way to the SQL.
 
 ```typescript
-export const invoiceInsertSchema = invoiceSchema
+export const widgetInsertSchema = widgetSchema
     .omit({
-        customer: true,
-        seller: true,
-        netAmount: true,
-        taxAmount: true,
-        totalAmount: true,
+        account: true,
+        supplier: true,
+        subtotal: true,
+        discount: true,
+        total: true,
         rows: true,
     })
     .partial({
@@ -218,8 +220,8 @@ export const invoiceInsertSchema = invoiceSchema
         version: true,
     })
     .extend({
-        number: invoiceSchema.shape.number.nullable(),
-        notes: invoiceSchema.shape.notes.nullable(),
+        code: widgetSchema.shape.code.nullable(),
+        notes: widgetSchema.shape.notes.nullable(),
     })
     .strict();
 ```
@@ -227,16 +229,16 @@ export const invoiceInsertSchema = invoiceSchema
 A field is omitted when the database owns it, from either annotation:
 
 - **A branch** — a `@relation` or a `@children` collection — is not a column, so
-  a create cannot write it. `customer`, `seller`, and `rows` are omitted.
+  a create cannot write it. `account`, `supplier`, and `rows` are omitted.
 - **A virtual generated column and an `@pgAutoIncrement` key** are the
   database's own: `@pgVirtual` is generated always, and the identity column is
   filled by its sequence. The assigned key is the one a create answers with
   (`docs/auto-increment.md`). `@pgVirtual` is omitted whether nullable or not.
 - **A stored computation** is left to its mechanism to derive, but only while the
   column is optional. A required one has no default and no nullable column, so the
-  insert has to carry it: `InvoiceSentRow.netAmount` and its siblings stay, while
-  `Invoice.netAmount` goes. Omitting a required one is a `not null` violation,
-  not a default.
+  insert has to carry it: `WidgetSnapshotRow.subtotal` and its siblings stay,
+  while `Widget.subtotal` goes. Omitting a required one is a `not null`
+  violation, not a default.
 
 A `@pgDefault` column is deliberately absent from the omit list, whether the
 expression sits on the field or comes from its type. A create may
@@ -247,9 +249,10 @@ clock tags and a defaulted `@version` follow the same rule: a create may claim a
 historical value, or omit the field and take `now()` / `0`.
 
 An `@inlined` field is the exception: it is a snapshot of another entity, so a
-create still writes it, nested as that entity's own insert schema. `InvoiceSent`
-therefore keeps `customer` and `seller`, each validated as `customerInsertSchema`
-— `docs/timestamps.md` explains why the snapshot carries the target's own audit
+create still writes it, nested as that entity's own insert schema.
+`WidgetSnapshot` therefore keeps `account` and `supplier`, each validated as
+its target's insert schema (`accountInsertSchema`, `supplierInsertSchema`) —
+`docs/timestamps.md` explains why the snapshot carries the target's own audit
 columns.
 
 A nullable column also accepts `null`, from `nullablePatchProperties`, so the
@@ -273,13 +276,13 @@ added to the spec narrows all three at once.
 `<Entity>Upsert` is the same field set at the type level:
 
 ```typescript
-export const invoiceUpsertSchema = invoiceSchema
+export const widgetUpsertSchema = widgetSchema
     .omit({
-        customer: true,
-        seller: true,
-        netAmount: true,
-        taxAmount: true,
-        totalAmount: true,
+        account: true,
+        supplier: true,
+        subtotal: true,
+        discount: true,
+        total: true,
         rows: true,
     })
     .partial({
@@ -287,12 +290,12 @@ export const invoiceUpsertSchema = invoiceSchema
         updatedAt: true,
     })
     .extend({
-        number: invoiceSchema.shape.number.nullable(),
-        notes: invoiceSchema.shape.notes.nullable(),
+        code: widgetSchema.shape.code.nullable(),
+        notes: widgetSchema.shape.notes.nullable(),
     })
     .strict();
 
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | …, "id" | "version", "number" | "notes" | …, "createdAt" | "updatedAt">;
+export type WidgetUpsert = Upsert<Widget, "account" | "supplier" | …, "id" | "version", "code" | "notes" | …, "createdAt" | "updatedAt">;
 ```
 
 The omit list is the create's, less everything a create leaves to the database
@@ -325,30 +328,30 @@ would ignore is a 400. `<Entity>PrimaryKey` is the matching type:
 
 ```typescript
 /** The key of one stored row: the shape a delete or other by-key write sends. */
-export const invoicePrimaryKeySchema = invoiceSchema.pick({ id: true }).strict();
+export const widgetPrimaryKeySchema = widgetSchema.pick({ id: true }).strict();
 
 /** The key of one stored row: what a delete or other by-key write addresses. */
-export type InvoicePrimaryKey = Pick<Invoice, "id">;
+export type WidgetPrimaryKey = Pick<Widget, "id">;
 ```
 
 A composite key projects every one of its columns, and requires all of them to
 address a row:
 
 ```typescript
-export const translationPrimaryKeySchema = translationSchema.pick({ lang: true, key: true }).strict();
-export type TranslationPrimaryKey = Pick<Translation, "lang" | "key">;
+export const widgetTagPrimaryKeySchema = widgetTagSchema.pick({ widgetId: true, tag: true }).strict();
+export type WidgetTagPrimaryKey = Pick<WidgetTag, "widgetId" | "tag">;
 ```
 
 A write that only addresses a stored row names this pair rather than the whole
 entity, so a caller cannot pass a field the statement would silently ignore. The
-repository's `delete` takes `InvoicePrimaryKey[]`, and the route that serves it
-validates with `z.array(invoicePrimaryKeySchema)` (`docs/repositories.md`). An
+repository's `delete` takes `WidgetPrimaryKey[]`, and the route that serves it
+validates with `z.array(widgetPrimaryKeySchema)` (`docs/repositories.md`). An
 interface with no `@primaryKey` field gets neither; the backend generator rejects
 it as a table before anything consumes it.
 
 ## Query schemas
 
-Every entity that carries `@queries query` gets a generated `query` read
+An entity that carries `@queries query` gets a generated `query` read
 (`docs/queries.md`), and a `query` args schema with it. A read takes one
 argument — its filters, its
 ordering, its comparisons, and `select` — so the schema is that object with the
@@ -357,34 +360,34 @@ entity's select schema added as a field. The filters come from the entity's
 keywords, and `Date` mapping) and always validated as a set: `z.array(…)`. The
 ordering keys come from the entity's `@queryOrderBy` fields, and the comparison
 fields and their operators from `@queryWhere`. The schema is named after the read:
-`Invoice` yields `queryInvoiceSchema` in
-`packages/sdk/src/queries/queryInvoice.ts`.
+`Widget` yields `queryWidgetSchema` in
+`packages/sdk/src/queries/queryWidget.ts`.
 ```typescript
-export const queryInvoiceSchema = z.strictObject({
+export const queryWidgetSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"InvoiceId">()).optional(),
+        id: z.array(primitives.brandedIdSchema<"WidgetId">()).optional(),
         tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
-        customerId: z.array(primitives.brandedIdSchema<"CustomerId">()).optional(),
-        sellerId: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
+        accountId: z.array(primitives.brandedIdSchema<"AccountId">()).optional(),
+        supplierId: z.array(primitives.brandedIdSchema<"SupplierId">()).optional(),
     }),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
     ).optional(),
     where: z.strictObject({
-        issueDate: z.strictObject({
+        startsAt: z.strictObject({
             gte: z.date().optional(),
             lte: z.date().optional(),
         }).optional(),
     }).optional(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
-    select: queryInvoiceSelectSchema,
+    select: queryWidgetSelectSchema,
 });
 ```
 
 Every filter is optional — mirroring the generated `Filters<…>` type — except the
 one `@queryFilter required` marks, which drops the `.optional()` on the field and
-on the `filter` object that holds it, so `queryInvoiceSchema` rejects a read that
+on the `filter` object that holds it, so `queryWidgetSchema` rejects a read that
 names no tenant. A `@queryFilter default=<value>` stays optional: the value
 is applied by the resolver when the read omits the field, so it needs no schema
 of its own. A filter over an optional field accepts a null test as well as a set,
@@ -414,12 +417,12 @@ into branches. So it is validated against a generated per-query schema,
 `packages/sdk/src/selection.ts`:
 
 ```typescript
-export const queryInvoiceSelectSchema = z.lazy(() =>
+export const queryWidgetSelectSchema = z.lazy(() =>
     z.strictObject({
         id: z.literal(true).optional(),
-        totalAmount: z.literal(true).optional(),
-        customer: z.union([z.literal(true), z.lazy(() => queryCustomerSchema)]).optional(),
-        rows: z.union([z.literal(true), z.lazy(() => queryInvoiceRowSchema)]).optional(),
+        total: z.literal(true).optional(),
+        account: z.union([z.literal(true), z.lazy(() => queryAccountSchema)]).optional(),
+        rows: z.union([z.literal(true), z.lazy(() => queryWidgetRowSchema)]).optional(),
     }),
 );
 ```
@@ -476,7 +479,7 @@ artifact; staleness is caught by running the generator, not by a test.
 
 ## Deliberately not implemented
 
-- **Stripping a system-assigned field from a create.** `InvoiceSchema` mirrors
+- **Stripping a system-assigned field from a create.** `WidgetSchema` mirrors
   the interface as written, so `id` and the timestamps are required exactly as
   the type declares them. A create-payload schema that omits an
   application-assigned field is a separate, policy-bearing decision.
@@ -484,7 +487,7 @@ artifact; staleness is caught by running the generator, not by a test.
   string does not parse as a date. Coercion is a boundary decision, not a
   property of the type.
 - **A type-parity assertion.** Nothing asserts that `z.infer<typeof
-  invoiceSchema>` is assignable to `Invoice`. The two are generated from the same
+  widgetSchema>` is assignable to `Widget`. The two are generated from the same
   annotations, but the compiler is not asked to prove it. The write types are
   built from the spec type and the omit lists, not `z.infer`, so a patch or
   insert keeps the entity's own branded primitives and the repository can read a

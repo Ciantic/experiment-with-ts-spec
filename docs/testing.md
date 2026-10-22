@@ -16,10 +16,10 @@ domain currently happens to contain. Concretely:
 
 ## Why
 
-The domain is a moving target. `Invoice`, `InvoiceRow`, and their fields have
-changed repeatedly. A test that asserted "an invoice with two rows totals X"
-would have been rewritten every time a type changed, and would have taught
-nothing about the generator. Fixture-driven tests survived all of it.
+The domain is a moving target: entities, fields, and aggregates change. A test
+that asserted "a widget with two rows totals X" would have been rewritten every
+time a type changed, and would have taught nothing about the generator.
+Fixture-driven tests survive all of it.
 
 The same reasoning removed a behavioural suite that exercised trigger semantics
 against PGlite: it hardcoded rounding examples, trigger ordering, and the status
@@ -116,11 +116,11 @@ values, all of which are domain decisions rather than code behaviour.
   client, the generated route table, and a live server. It takes the rows a seeded
   server answers with from `spec/mockdata`, and names no domain type, so a change
   to the model does not touch it.
-- `packages/backend/src/operations/sendInvoice.test.ts` — the operation over a
-  schema seeded with `spec/mockdata`, so the send runs on the rows a development
-  server has. It asserts the sent invoice and queued email it writes, the
-  language it resolves from the draft, the customer, then the seller, the refusal
-  of an incomplete draft, and that a refused email write leaves no sent invoice.
+- `packages/backend/src/operations/sendInvoice.test.ts` — an operation over a
+  schema seeded with `spec/mockdata`, so the call runs on the rows a development
+  server has. It asserts the rows the operation writes, the value it resolves
+  when the caller omits it, the refusal of an incomplete input, and that a
+  refused second write leaves the first rolled back.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.

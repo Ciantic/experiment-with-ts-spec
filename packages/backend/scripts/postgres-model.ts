@@ -684,7 +684,7 @@ function attachScopedKeys(tables: Map<string, Table>, context: BuildContext): vo
                 context.reportField(table, column.name, "@foreignKey scope is the field itself");
                 continue;
             }
-            // A nullable scope would let the row skip the check entirely, since a composite reference with a null in it is not matched at all. See docs/tenancy.md.
+            // A nullable scope skips the check, since a composite reference with a null in it matches nothing. See docs/tenancy.md.
             const own = table.columns.find((candidate) => candidate.name === scope);
             if (own === undefined) {
                 context.reportField(

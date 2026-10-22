@@ -18,7 +18,7 @@ The split matters, because Finvoice does not send an invoice without a
 
 Putting the address on the operation instead would make every caller re-supply
 data the `Customer` already owns and store it nowhere — the duplication
-`docs/invoice-snapshotting.md` avoids by linking the `Customer` rather than
+`packages/spec/docs/invoice-snapshotting.md` avoids by linking the `Customer` rather than
 copying it into the call.
 
 ## The contract today
@@ -107,7 +107,7 @@ a live company record.
 - **The inlined parties leak their language.** `@inlined` on the customer and
   seller fields flatten every scalar field, so `customerLanguage` and
   `sellerLanguage` land on `invoice_sent` next to its own `language` column. See
-  `docs/invoice-snapshotting.md`.
+  `packages/spec/docs/invoice-snapshotting.md`.
 - **The delivery records nothing.** Neither `Invoice` nor `InvoiceSent` carries a
   format or channel, so the chosen delivery is invisible afterwards. The language
   is the exception: it is on both.

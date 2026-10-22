@@ -47,12 +47,11 @@ row take the same recovery: re-read, then retry (`docs/versioning.md`).
 client falls back to.
 
 The classes above are built in. A class a spec declares with `@throws` is written
-to `specErrors.ts` and joins the same table; `InvoiceDetailsError` is the one
-today:
+to `specErrors.ts` and joins the same table:
 
 | Class | Wire kind | Status | Declared by |
 | --- | --- | --- | --- |
-| `InvoiceDetailsError` | `invoice-details` | 422 | `InvoiceOperations.sendInvoice` |
+| `WidgetDetailsError` | `widget-details` | 422 | `WidgetOperations.sendWidget` |
 
 `UsageError` and `MockDataError` stay in `packages/backend/src/errors.ts`. They
 extend `AppError` but never reach an HTTP response — one is a command line the
@@ -66,7 +65,7 @@ body the SDK reads:
 
 ```json
 {
-  "error": "no row of seller is at the version this patch supplied for 3f…",
+  "error": "no row of widget is at the version this patch supplied for 3f…",
   "kind": "version-conflict",
   "path": [1, 0],
   "issues": ["…"]
@@ -95,7 +94,7 @@ becomes `HttpError`, which extends `AppError` and keeps the raw `body`. So:
 
 ```ts
 try {
-    await exec(http, updateSeller([patch]));
+    await exec(http, updateSupplier([patch]));
 } catch (thrown) {
     if (thrown instanceof VersionConflictError) {
         // re-read, then retry
@@ -141,10 +140,10 @@ function:
 
 ```ts
 /**
- * Patch `seller` rows at the version each row claims.
+ * Patch `supplier` rows at the version each row claims.
  * @throws {VersionConflictError} when a row is not at the version the patch supplied
  */
-export async function updateSeller(db: SqlExecutor, rows: SellerPatch[]): Promise<void> {
+export async function updateSupplier(db: SqlExecutor, rows: SupplierPatch[]): Promise<void> {
 ```
 
 The tag names the class and gives the reason it was thrown. A public function
@@ -171,23 +170,23 @@ their throws are fixtures and tooling failures rather than API contract.
 
 ```ts
 /**
- * @throws {InvoiceDetailsError} status=422 when the invoice doesn't have enough details to be sent
+ * @throws {WidgetDetailsError} status=422 when the widget doesn't have enough details to be sent
  */
-sendInvoice(ctx: T, opts: { invoice: Invoice }): Promise<InvoiceSent>;
+sendWidget(ctx: T, opts: { widget: Widget }): Promise<Widget>;
 ```
 
 becomes
 
 ```ts
-/** When the invoice doesn't have enough details to be sent. */
-export class InvoiceDetailsError extends AppError {
+/** When the widget doesn't have enough details to be sent. */
+export class WidgetDetailsError extends AppError {
     constructor(message: string, options: AppErrorOptions = {}) {
-        super(message, { kind: "invoice-details", status: 422 }, options);
+        super(message, { kind: "widget-details", status: 422 }, options);
     }
 }
 
 export const SPEC_ERROR_CLASSES: Record<string, new (message: string, options?: AppErrorOptions) => AppError> = {
-    "invoice-details": InvoiceDetailsError,
+    "widget-details": WidgetDetailsError,
 };
 ```
 
@@ -200,8 +199,8 @@ The tag carries everything the class needs:
 - **The rest of the tag** is the reason, and becomes the class's doc comment. It
   is documentation: the tag does not narrow the method's type, and the
   implementation is what throws the instance.
-- **The wire kind** is derived from the name — `InvoiceDetailsError` becomes
-  `invoice-details` — and is what a client rebuilds the class from.
+- **The wire kind** is derived from the name — `WidgetDetailsError` becomes
+  `widget-details` — and is what a client rebuilds the class from.
 
 The generator reports a name that is not a class name, a status outside the
 range, a parameter other than `status=`, and a name or kind a built-in error
