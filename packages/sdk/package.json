@@ -6,8 +6,7 @@
   "license": "ISC",
   "type": "module",
   "exports": {
-    "./*.ts": "./src/*.ts",
-    "./package.json": "./package.json"
+    "./*.ts": "./src/*.ts"
   },
   "scripts": {
     "generate:validation": "node scripts/generate-zod-schemas.ts",

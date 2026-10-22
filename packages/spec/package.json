@@ -8,8 +8,7 @@
   "exports": {
     "./*.ts": "./src/*.ts",
     "./mockdata/*.ts": "./mockdata/*.ts",
-    "./scripts/*.ts": "./scripts/*.ts",
-    "./package.json": "./package.json"
+    "./scripts/*.ts": "./scripts/*.ts"
   },
   "scripts": {
     "test": "vitest run",
