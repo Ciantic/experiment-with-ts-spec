@@ -70,8 +70,9 @@ The contract annotation is the point of the scaffold: the compiler checks the
 implementation against the spec's method once the body is replaced. The body
 throws `NotImplemented`, which is how a forgotten operation answers `501` rather
 than a null the client has to interpret. The doc comment carries the tag the
-lint rule requires for that throw; remove the tag together with the throw. See
-`docs/errors.md`.
+lint rule requires for that throw; remove the tag together with the throw. The
+`scaffold/no-not-implemented` Oxlint rule warns on a `throw new NotImplemented`,
+so a call left as its scaffold is visible in `pnpm lint`. See `docs/errors.md`.
 
 The scaffold fills the contract's type parameter with `unknown`, and that is the
 implementer's first edit. The generator has no opinion on what an operation
