@@ -2,7 +2,7 @@
 import type { Route } from "../router.ts";
 import { receiveInvoice } from "../../operations/receiveInvoice.ts";
 import { sendInvoice } from "../../operations/sendInvoice.ts";
-import { sendInvoiceInputSchema } from "sdk/schemas.ts";
+import { sendInvoiceSchema, type SendInvoiceInput } from "sdk/schemas.ts";
 import { z } from "zod";
 
 /** The calls the spec's `@restOperation` tags expose: each under its id, its verb, and its path. */
@@ -20,7 +20,7 @@ export const operationRoutes: Route[] = [
         method: "POST",
         path: "/invoice/send",
         source: "body",
-        input: sendInvoiceInputSchema,
-        handler: (ctx, body) => sendInvoice(ctx, body as Parameters<typeof sendInvoice>[1]),
+        input: sendInvoiceSchema,
+        handler: (ctx, body) => sendInvoice(ctx, body as SendInvoiceInput),
     },
 ];

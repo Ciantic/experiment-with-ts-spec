@@ -1004,6 +1004,17 @@ export interface InvoiceOperations<T> {
         });
     });
 
+    it("resolves the promise's argument as the result type", () => {
+        const spec = parse({ "Ops.ts": contract });
+
+        expect(spec.operations[0]).toMatchObject({
+            returnTypeText: "Promise<string>",
+            returnType: { kind: "reference", name: "Promise", arguments: ["string"] },
+            resultTypeText: "string",
+            resultType: { kind: "keyword", name: "string" },
+        });
+    });
+
     it("reads the class and reason of a @throws tag", () => {
         const spec = parse({ "Ops.ts": contract });
 

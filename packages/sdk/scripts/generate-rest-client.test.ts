@@ -379,22 +379,21 @@ describe("operation builders", () => {
         expect(generateRestClient(withOperations).has("widgetOperations.ts")).toBe(true);
     });
 
-    it("imports the contract, so the client names no context of its own", () => {
+    it("imports the operation types from the schema barrel, so the client names no context", () => {
         expect(module()).toContain(
-            'import type { WidgetOperations } from "spec/fixtures/WidgetOperations.ts";',
+            'import type { ResetWidgetsOutput, SendWidgetInput, SendWidgetOutput } from "../schemas.ts";',
         );
+        expect(module()).not.toContain("WidgetOperations");
         expect(module()).toContain('from "../client.ts"');
     });
 
-    it("types the input with the contract's parameter and the result with its return type", () => {
-        expect(module()).toContain(
-            'export function sendWidget(opts: Parameters<WidgetOperations<unknown>["sendWidget"]>[1]): Call<Awaited<ReturnType<WidgetOperations<unknown>["sendWidget"]>>> {',
-        );
+    it("types the input and the result with the names the schema module exports", () => {
+        expect(module()).toContain("export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput> {");
         expect(module()).toContain('"sendWidget", "POST", "/widget/send", opts);');
     });
 
     it("takes no argument when the operation declares none", () => {
-        expect(module()).toContain('export function resetWidgets(): Call<Awaited<ReturnType<WidgetOperations<unknown>["resetWidgets"]>>> {');
+        expect(module()).toContain("export function resetWidgets(): Call<ResetWidgetsOutput> {");
         expect(module()).toContain('"resetWidgets", "POST", "/widget/reset", undefined);');
     });
 

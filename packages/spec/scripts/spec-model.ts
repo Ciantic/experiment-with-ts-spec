@@ -414,6 +414,10 @@ export interface SpecOperation {
     returnTypeText: string;
     /** The return type as a shape. */
     returnType: SpecType;
+    /** The resolved type: `Promise<T>`'s `T`, else the return type itself. What the caller receives. */
+    resultType: SpecType;
+    /** The resolved type as written, e.g. `InvoiceSent`. */
+    resultTypeText: string;
     /** The errors the JSDoc declares, in the order written. */
     throws: SpecOperationError[];
     /** True when `@operation` marks it as an operation; a method carrying only `@restOperation` is a lint finding. */
@@ -1009,6 +1013,13 @@ function readOperation(
         .map((line) => line.replace(/^\*+/u, "").trim())
         .filter((line) => line !== "");
     const returnTypeNode = method.getReturnTypeNode();
+    // A promise wraps the value the caller receives; the generator writes a schema for that value, not the promise.
+    const returnReference = returnTypeNode?.asKind(SyntaxKind.TypeReference);
+    const promiseArgument =
+        returnReference?.getTypeName().getText() === "Promise"
+            ? returnReference.getTypeArguments()[0]
+            : undefined;
+    const resultTypeNode = promiseArgument ?? returnTypeNode;
     const filePath = contract.location.filePath;
     // The verb and the path are the tag's value; a malformed one stays absent so the linter reports it.
     const restTokens = (tags.written.byName.get("restOperation")?.[0]?.value ?? "").split(/\s+/u).filter(Boolean);
@@ -1030,6 +1041,8 @@ function readOperation(
         }),
         returnTypeText: returnTypeNode?.getText() ?? "",
         returnType: returnTypeNode ? readType(returnTypeNode) : { kind: "missing" },
+        resultType: resultTypeNode ? readType(resultTypeNode) : { kind: "missing" },
+        resultTypeText: resultTypeNode?.getText() ?? "",
         throws: (tags.written.byName.get("throws") ?? []).map((tag) => readThrowsTag(tag, filePath)),
         operation,
         rest,

@@ -7,7 +7,8 @@ import {
     querySchemaName,
     type ZodEntity,
     type ZodModel,
-    type ZodOperationInput,
+    type ZodOperation,
+    type ZodOperationSide,
     type ZodPrimitive,
     type ZodQuery,
 } from "./zod-model.ts";
@@ -194,27 +195,46 @@ export function generateQueriesIndex(queries: ZodQuery[]): string {
     return lines.join("\n") + "\n";
 }
 
-/** The directory holding the generated operation input schemas, under the output root. */
+/** The directory holding the generated operation schemas, under the output root. */
 const OPERATIONS_DIR = "operations";
+
+/** A type written across several lines, flattened so a one-line alias reads as the contract spells it. */
+function oneLine(typeText: string): string {
+    return typeText.replace(/\s*\n\s*/gu, " ").trim();
+}
 
 /** The barrel re-exporting every operation input schema, inside {@link OPERATIONS_DIR}. */
 const OPERATIONS_INDEX = join(OPERATIONS_DIR, "index.ts");
 
-/** sendInvoice -> operations/sendInvoiceInputSchema.ts. */
-export function operationInputFileName(name: string): string {
-    return join(OPERATIONS_DIR, `${name}InputSchema.ts`);
+/** sendInvoice -> operations/sendInvoiceSchema.ts, holding the operation's input and output contracts. */
+export function operationFileName(name: string): string {
+    return join(OPERATIONS_DIR, `${name}Schema.ts`);
 }
 
-/** Render one operation's input schema module: the argument the route validates. */
-export function generateOperationInputFile(
-    input: ZodOperationInput,
+/** Render one operation's module: its input schema, its output schema, and the types derived from each. */
+export function generateOperationFile(
+    operation: ZodOperation,
     entitiesByName: Map<string, ZodEntity>,
 ): string {
+    const sides = [operation.input, operation.output].filter(
+        (side): side is ZodOperationSide => side !== undefined,
+    );
     const lines: string[] = [HEADER, 'import { z } from "zod";'];
-    if (input.usesPrimitives) {
+    // The types are the spec's own text, so they stay identical to the contract under `exactOptionalPropertyTypes`.
+    const typeImports = new Map<string, string[]>();
+    for (const side of sides) {
+        for (const [specifier, names] of side.typeImports) {
+            typeImports.set(specifier, [...new Set([...(typeImports.get(specifier) ?? []), ...names])]);
+        }
+    }
+    for (const [specifier, names] of [...typeImports].sort(([a], [b]) => a.localeCompare(b))) {
+        lines.push(`import type { ${names.sort((a, b) => a.localeCompare(b)).join(", ")} } from "${specifier}";`);
+    }
+    if (sides.some((side) => side.usesPrimitives)) {
         lines.push('import * as primitives from "../primitives.ts";');
     }
-    for (const dependency of input.dependencies) {
+    const dependencies = new Set(sides.flatMap((side) => side.dependencies));
+    for (const dependency of [...dependencies].sort((a, b) => a.localeCompare(b))) {
         const target = entitiesByName.get(dependency);
         if (target) {
             lines.push(
@@ -222,17 +242,36 @@ export function generateOperationInputFile(
             );
         }
     }
-    lines.push("");
-    lines.push(`/** The argument \`${input.name}\` accepts, as the route validates it. */`);
-    lines.push(`export const ${input.schemaName} = ${input.expression};`);
+
+    if (operation.input) {
+        lines.push("");
+        lines.push(`/** The argument \`${operation.name}\` accepts, as the route validates it. */`);
+        lines.push(`export const ${operation.input.schemaName} = ${operation.input.expression};`);
+        lines.push("");
+        lines.push(`/** What \`${operation.name}\` takes, as the contract declares it. */`);
+        lines.push(`export type ${operation.input.typeName} = ${oneLine(operation.input.typeText)};`);
+    }
+    if (operation.output) {
+        lines.push("");
+        lines.push(`/** What \`${operation.name}\` answers; the route does not validate it. See docs/operations.md. */`);
+        lines.push(`export const ${operation.output.schemaName} = ${operation.output.expression};`);
+        lines.push("");
+        lines.push(`/** What \`${operation.name}\` returns, as the contract declares it. */`);
+        lines.push(`export type ${operation.output.typeName} = ${oneLine(operation.output.typeText)};`);
+    }
     return lines.join("\n") + "\n";
 }
 
-/** Render the barrel that re-exports every operation input schema module. */
-export function generateOperationsIndex(inputs: ZodOperationInput[]): string {
+/** The module specifier one operation's schemas live under, e.g. `sdk/schemas.ts` re-exports them. */
+export function operationFileSpecifier(name: string): string {
+    return `operations/${name}Schema.ts`;
+}
+
+/** Render the barrel that re-exports every operation's module. */
+export function generateOperationsIndex(operations: ZodOperation[]): string {
     const lines = [HEADER];
-    for (const input of inputs) {
-        lines.push(`export * from "./${input.name}InputSchema.ts";`);
+    for (const operation of operations) {
+        lines.push(`export * from "./${operation.name}Schema.ts";`);
     }
     return lines.join("\n") + "\n";
 }
@@ -542,7 +581,7 @@ export function generateSchemaBarrel(model: ZodModel): string {
     if (model.queries.length > 0) {
         lines.push('export * from "./queries/index.ts";');
     }
-    if (model.operationInputs.length > 0) {
+    if (model.operations.length > 0) {
         lines.push(`export * from "./${OPERATIONS_DIR}/index.ts";`);
     }
     return lines.join("\n") + "\n";
@@ -584,11 +623,11 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
         files.set(QUERIES_INDEX, generateQueriesIndex(model.queries));
     }
 
-    for (const input of model.operationInputs) {
-        files.set(operationInputFileName(input.name), generateOperationInputFile(input, byName));
+    for (const operation of model.operations) {
+        files.set(operationFileName(operation.name), generateOperationFile(operation, byName));
     }
-    if (model.operationInputs.length > 0) {
-        files.set(OPERATIONS_INDEX, generateOperationsIndex(model.operationInputs));
+    if (model.operations.length > 0) {
+        files.set(OPERATIONS_INDEX, generateOperationsIndex(model.operations));
     }
 
     files.set(SCHEMAS_FILE, generateSchemaBarrel(model));

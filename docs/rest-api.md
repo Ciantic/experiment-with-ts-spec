@@ -356,9 +356,9 @@ No mode reaches the statement unvalidated.
   OpenAPI document, so no such document is emitted. The fix when a non-JS
   consumer is real is `Accept` negotiation adding a JSON encoding, not a document
   that misdescribes the bytes.
-- **An operation's response schema.** An operation route validates its input and
-  types its result from the contract, but the result is not validated on the
-  wire, as with every other call.
+- **Validating an operation's response.** The route validates the input and has a
+  generated result schema, but the result is encoded unvalidated, as with every
+  other call.
 - **Cursor pagination and a total count.** A read pages with `limit`/`offset`
   (default 1000), and `order` is whitelisted by `@queryOrderBy`
   (`docs/queries.md`). There is no keyset cursor and no count of the matches.

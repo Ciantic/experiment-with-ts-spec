@@ -294,15 +294,14 @@ describe("renderOperationRoutes", () => {
         expect(code).toContain('id: "sendWidget"');
         expect(code).toContain('method: "POST"');
         expect(code).toContain('path: "/widget/send"');
-        expect(code).toContain("input: sendWidgetInputSchema");
+        expect(code).toContain("input: sendWidgetSchema");
     });
 
     it("hands the route's context straight to the operation, so the compiler checks it", () => {
         const code = renderOperationRoutes(withOperations.operations);
 
-        expect(code).toContain(
-            "handler: (ctx, body) => sendWidget(ctx, body as Parameters<typeof sendWidget>[1])",
-        );
+        expect(code).toContain("handler: (ctx, body) => sendWidget(ctx, body as SendWidgetInput)");
+        expect(code).toContain('import { sendWidgetSchema, type SendWidgetInput } from "sdk/schemas.ts";');
     });
 
     it("imports each operation module by file and validates a call with no input against undefined", () => {

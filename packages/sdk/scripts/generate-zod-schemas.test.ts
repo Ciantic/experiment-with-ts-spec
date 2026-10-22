@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildZodModel, type Diagnostic } from "./zod-model.ts";
-import { parseInMemorySpec, tsLoadGeneratedModule, tsStubImports } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec, tsLoadGeneratedModule, tsStubImports } from "spec/scripts/spec-model.ts";
 import {
     domainModuleName,
     generateDomainEntity,
@@ -1420,7 +1420,7 @@ describe("insert schemas over a nullable column", () => {
     });
 });
 
-describe("operation input schemas", () => {
+describe("operation schemas", () => {
     const OPERATIONS = `
 import type { Thing } from "./Thing.ts";
 
@@ -1431,7 +1431,7 @@ export interface ThingOperations<T> {
      * @operation
      * @restOperation POST /thing/update
      */
-    updateThing(ctx: T, opts: { thing: Thing; name?: string }): Promise<void>;
+    updateThing(ctx: T, opts: { thing: Thing; name?: string }): Promise<Thing>;
 
     /**
      * Reset.
@@ -1453,46 +1453,71 @@ export interface Thing {
 
     function render(files: Record<string, string>) {
         const spec = [
-            { filePath: "fixtures/primitives.ts", sourceFileText: PRIMITIVES },
+            { filePath: join(SPEC_SRC_ROOT, "fixtures/primitives.ts"), sourceFileText: PRIMITIVES },
             ...Object.entries(files).map(([name, sourceFileText]) => ({
-                filePath: `fixtures/${name}.ts`,
+                filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
                 sourceFileText,
             })),
         ];
-        const model = buildZodModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
+        const glob = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+        const model = buildZodModel(parseInMemorySpec(spec, { sourceGlob: glob }));
         return { model, files: generateZodSchemas(model) };
     }
 
-    it("validates the second parameter as a strict object, referencing the entity's schema", () => {
-        const code = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS }).files.get(
-            join("operations", "updateThingInputSchema.ts"),
-        ) ?? "";
+    function operationModule(files: Map<string, string>, name: string): string {
+        return files.get(join("operations", `${name}Schema.ts`)) ?? "";
+    }
 
-        expect(code).toContain("export const updateThingInputSchema = z.strictObject({");
+    it("writes one module per operation, holding both the input and the result", () => {
+        const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
+        const code = operationModule(files, "updateThing");
+
+        expect(code).toContain("export const updateThingSchema = z.strictObject({");
         expect(code).toContain("thing: z.lazy(() => thingSchema)");
         expect(code).toContain('import { thingSchema } from "../domain/thingSchema.ts";');
+        expect(code).toContain("export const updateThingOutputSchema = z.lazy(() => thingSchema);");
     });
 
-    it("writes no schema for an operation that takes no input", () => {
-        const { model, files } = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS });
-
-        expect(model.operationInputs.map((input) => input.name)).toEqual(["updateThing"]);
-        expect(files.has(join("operations", "resetThingsInputSchema.ts"))).toBe(false);
-    });
-
-    it("re-exports the schemas from the barrel", () => {
-        const { files } = render({ "Thing.ts": THING, "ThingOperations.ts": OPERATIONS });
-
-        expect(files.get(join("operations", "index.ts"))).toContain(
-            'export * from "./updateThingInputSchema.ts";',
+    it("names the types after the spec's own, so a caller imports one name", () => {
+        const code = operationModule(
+            render({ Thing: THING, ThingOperations: OPERATIONS }).files,
+            "updateThing",
         );
+
+        expect(code).toContain("export type UpdateThingInput = { thing: Thing; name?: string };");
+        expect(code).toContain("export type UpdateThingOutput = Thing;");
+        expect(code).toContain('import type { Thing } from "spec/fixtures/Thing.ts";');
+    });
+
+    it("takes the result from the promise's argument, so the type is the value and not the promise", () => {
+        const code = operationModule(
+            render({ Thing: THING, ThingOperations: OPERATIONS }).files,
+            "updateThing",
+        );
+
+        expect(code).not.toContain("Promise");
+    });
+
+    it("writes the output schema but no input schema for an operation that takes no argument", () => {
+        const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
+        const code = operationModule(files, "resetThings");
+
+        expect(code).toContain("export const resetThingsOutputSchema = z.void();");
+        expect(code).toContain("export type ResetThingsOutput = void;");
+        expect(code).not.toContain("Input");
+    });
+
+    it("re-exports the modules from the barrel", () => {
+        const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
+
+        expect(files.get(join("operations", "index.ts"))).toContain('export * from "./updateThingSchema.ts";');
         expect(files.get("schemas.ts")).toContain('export * from "./operations/index.ts";');
     });
 
     it("reports an input type it cannot render", () => {
         const { model } = render({
-            "Thing.ts": THING,
-            "Ops.ts": `
+            Thing: THING,
+            Ops: `
 export interface Ops<T> {
     /**
      * @operation
@@ -1504,6 +1529,24 @@ export interface Ops<T> {
 
         expect(model.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
             "`run`: unsupported input type `{ when: () => void }`",
+        ]);
+    });
+
+    it("reports a result type it cannot render", () => {
+        const { model } = render({
+            Thing: THING,
+            Ops: `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /op
+     */
+    run(ctx: T): Promise<() => void>;
+}`,
+        });
+
+        expect(model.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`run`: unsupported result type `() => void`",
         ]);
     });
 });

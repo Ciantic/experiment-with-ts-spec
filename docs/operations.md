@@ -173,8 +173,8 @@ same model as the entity routes:
     method: "POST",
     path: "/invoice/send",
     source: "body",
-    input: sendInvoiceInputSchema,
-    handler: (ctx, body) => sendInvoice(ctx, body as Parameters<typeof sendInvoice>[1]),
+    input: sendInvoiceSchema,
+    handler: (ctx, body) => sendInvoice(ctx, body as SendInvoiceInput),
 }
 ```
 
@@ -189,23 +189,50 @@ An operation with no input parameter validates the decoded argument with
 carries its input in `q`; every other verb carries it in the body, exactly as an
 entity write does.
 
-The argument schema is generated from the input parameter's type into
-`packages/sdk/src/operations/<name>InputSchema.ts` and exported from
-`sdk/schemas.ts`. A type the Zod resolver cannot render is a finding, so a REST
-operation is never left unvalidated.
+### The wire contract
+
+Each operation gets one module, `packages/sdk/src/operations/<name>Schema.ts`,
+holding its input schema, its result schema, and a named type for each:
+
+```ts
+/** The argument `sendInvoice` accepts, as the route validates it. */
+export const sendInvoiceSchema = z.strictObject({ invoice: z.lazy(() => invoiceSchema) });
+
+/** What `sendInvoice` takes, as the contract declares it. */
+export type SendInvoiceInput = { invoice: Invoice };
+
+/** What `sendInvoice` answers; the route does not validate it. */
+export const sendInvoiceOutputSchema = z.lazy(() => invoiceSentSchema);
+
+/** What `sendInvoice` returns, as the contract declares it. */
+export type SendInvoiceOutput = InvoiceSent;
+```
+
+The two schemas are rendered from the spec's types by the Zod resolver, and a
+type it cannot render is a finding: a REST operation is never left unvalidated.
+The two types are the spec's own type text, re-exported under a name the client
+and the route can import. Emitting the text rather than inferring from the schema
+keeps the type identical to the contract — a `z.infer` of an optional field is
+`string | undefined`, which is not assignable to `field?: string` under
+`exactOptionalPropertyTypes`. The input type is what the route hands the
+implementation, so it is the parsed value, not a pre-parse one.
+
+The output schema is generated but not applied: the route encodes the result
+unvalidated, as every other call does.
+
+The module is re-exported from `sdk/schemas.ts`, so a caller imports
+`SendInvoiceInput`, not a `Parameters<…>` expression.
 
 The client gets one builder per operation, in a module named after its contract:
 
 ```ts
-export function sendInvoice(
-    opts: Parameters<InvoiceOperations<unknown>["sendInvoice"]>[1],
-): Call<Awaited<ReturnType<InvoiceOperations<unknown>["sendInvoice"]>>> {
-    return call("sendInvoice", "POST", "/invoice/send", opts);
+export function sendInvoice(opts: SendInvoiceInput): Call<SendInvoiceOutput> {
+    return call<SendInvoiceOutput>("sendInvoice", "POST", "/invoice/send", opts);
 }
 ```
 
-The types are read off the contract, so the client never names the context and
-follows the spec when the return type changes.
+The builder names no contract and no context, so neither appears in the client's
+types.
 
 ## Errors
 
@@ -233,8 +260,8 @@ actually throws it.
 - **Per-operation context construction.** Every REST operation receives the one
   `RouteContext`; a dependency another context would need is added to the router,
   not resolved per operation.
-- **A response schema.** The result is encoded and typed by the contract, but not
-  validated, as with every other call.
+- **Validating the response.** The result schema is generated and exported, but
+  the route encodes the result unvalidated, as with every other call.
 - **Deleting an implementation the spec drops.** The generator reports the
   module and fails the run; deciding whether the code is still wanted is the
   author's.

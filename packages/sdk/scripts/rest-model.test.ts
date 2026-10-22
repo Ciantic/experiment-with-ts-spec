@@ -392,13 +392,15 @@ describe("@restOperation", () => {
         ]);
     });
 
-    it("names the contract and its type-parameter count", () => {
+    it("names the contract, the schemas, and the types a caller imports", () => {
         const send = withOperations.operations.find((operation) => operation.id === "sendInvoice");
 
         expect(send).toMatchObject({
             contract: "InvoiceOperations",
-            contractTypeParameters: 1,
-            inputSchemaName: "sendInvoiceInputSchema",
+            inputSchemaName: "sendInvoiceSchema",
+            inputTypeName: "SendInvoiceInput",
+            outputSchemaName: "sendInvoiceOutputSchema",
+            outputTypeName: "SendInvoiceOutput",
             hasInput: true,
         });
     });
@@ -415,6 +417,7 @@ describe("@restOperation", () => {
 
         expect(receive?.hasInput).toBe(false);
         expect(receive?.inputSchemaName).toBeUndefined();
+        expect(receive?.outputTypeName).toBe("ReceiveInvoiceOutput");
     });
 
     it("reports an operation whose path an entity route already serves", () => {

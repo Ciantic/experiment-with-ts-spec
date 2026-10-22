@@ -1,6 +1,7 @@
 /** Map the parsed spec to the Zod schema model the generator renders. See docs/validation.md. */
 import {
     autoIncrementProperties,
+    specImportSpecifier,
     defaultedInsertProperties,
     inlinedFromInsert,
     isCompareOperator,
@@ -87,17 +88,32 @@ export interface ZodPrimitive {
     expression: string;
 }
 
-/** The generated input schema for one `@restOperation`: the argument the wire carries. */
-export interface ZodOperationInput {
-    /** The operation's name, which names the file and the schema, e.g. `sendInvoice`. */
-    name: string;
+/** One generated half of an operation's wire contract: the schema, its type, and what it imports. */
+export interface ZodOperationSide {
+    /** The schema's name, e.g. `sendInvoiceSchema`. */
     schemaName: string;
-    /** The Zod expression validating the input. */
+    /** The type's name, e.g. `SendInvoiceInput`. */
+    typeName: string;
+    /** The type as the spec wrote it, so the generated type is the contract's and not a schema inference. */
+    typeText: string;
+    /** The spec declarations the type text names, keyed by module specifier. */
+    typeImports: Map<string, string[]>;
+    /** The Zod expression the schema is built from. */
     expression: string;
-    /** Entity names the input references, so the file imports their schemas. */
+    /** Entity names the expression references, so the file imports their schemas. */
     dependencies: string[];
-    /** True when the input resolves through a primitive schema. */
+    /** True when the expression resolves through a primitive schema. */
     usesPrimitives: boolean;
+}
+
+/** The generated schemas and types for one `@restOperation`: what the wire carries in, and what it answers. */
+export interface ZodOperation {
+    /** The operation's name, which names the module, e.g. `sendInvoice`. */
+    name: string;
+    /** The input, absent when the operation takes no argument. */
+    input?: ZodOperationSide;
+    /** The result, which a caller receives; not validated by the route. */
+    output?: ZodOperationSide;
 }
 
 /** The parsed spec, mapped to Zod schemas. */
@@ -105,7 +121,7 @@ export interface ZodModel {
     primitives: ZodPrimitive[];
     entities: ZodEntity[];
     queries: ZodQuery[];
-    operationInputs: ZodOperationInput[];
+    operations: ZodOperation[];
     diagnostics: Diagnostic[];
 }
 
@@ -186,9 +202,24 @@ export function upsertSchemaName(name: string): string {
     return `${lowerFirst(name)}UpsertSchema`;
 }
 
-/** sendInvoice -> sendInvoiceInputSchema. */
+/** sendInvoice -> sendInvoiceSchema, the argument the wire carries. */
 export function operationInputSchemaName(name: string): string {
-    return `${name}InputSchema`;
+    return `${name}Schema`;
+}
+
+/** sendInvoice -> sendInvoiceOutputSchema, the result the wire answers. */
+export function operationOutputSchemaName(name: string): string {
+    return `${name}OutputSchema`;
+}
+
+/** sendInvoice -> SendInvoiceInput. */
+export function operationInputTypeName(name: string): string {
+    return `${name.charAt(0).toUpperCase()}${name.slice(1)}Input`;
+}
+
+/** sendInvoice -> SendInvoiceOutput. */
+export function operationOutputTypeName(name: string): string {
+    return `${name.charAt(0).toUpperCase()}${name.slice(1)}Output`;
 }
 
 /** The shared half of a resolution: the spec maps, and where a diagnostic is written. */
@@ -551,37 +582,113 @@ export function buildZodModel(spec: SpecModel): ZodModel {
     // Entities resolve before queries, so their diagnostics are reported in that order.
     const entities = buildEntities(interfaces, resolver);
     const queries = buildQueries(interfaces, resolver);
-    const operationInputs = buildOperationInputs(spec, resolver);
+    const operations = buildOperations(spec, resolver);
 
-    return { primitives: buildPrimitives(aliases), entities, queries, operationInputs, diagnostics };
+    return { primitives: buildPrimitives(aliases), entities, queries, operations, diagnostics };
 }
 
-/** Build the input schema of every `@restOperation`: the second parameter, which is what the wire carries. */
-function buildOperationInputs(spec: SpecModel, resolver: Resolver): ZodOperationInput[] {
-    const inputs: ZodOperationInput[] = [];
+/** Every spec declaration a type shape names, keyed by the module specifier that imports it. */
+function typeReferences(type: SpecType, context: Resolver): Map<string, string[]> {
+    const imports = new Map<string, string[]>();
+    const visit = (current: SpecType): void => {
+        if (current.kind === "array") {
+            visit(current.element);
+            return;
+        }
+        if (current.kind === "union" || current.kind === "intersection") {
+            for (const member of current.members) {
+                visit(member);
+            }
+            return;
+        }
+        if (current.kind === "object") {
+            for (const member of current.members) {
+                visit(member.type);
+            }
+            return;
+        }
+        if (current.kind !== "reference") {
+            return;
+        }
+        const entity = context.interfaces.get(current.name);
+        const specifier = entity?.importSpecifier ?? context.aliases.get(current.name)?.filePath;
+        if (specifier === undefined) {
+            return;
+        }
+        const module = entity ? specifier : specImportSpecifier(specifier);
+        imports.set(module, [...(imports.get(module) ?? []), current.name]);
+    };
+    visit(type);
+    return imports;
+}
+
+/** Resolve one side of an operation to its schema and its type, or report why it cannot be rendered. */
+function operationSide(
+    name: string,
+    type: SpecType,
+    typeText: string,
+    location: SpecLocation,
+    schemaName: string,
+    typeName: string,
+    what: string,
+    resolver: Resolver,
+): ZodOperationSide | undefined {
+    const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
+    const expression = resolveTypeNode(type, context);
+    if (expression === undefined) {
+        resolver.report(location, `\`${name}\`: unsupported ${what} type \`${typeText}\``);
+        return undefined;
+    }
+    return {
+        schemaName,
+        typeName,
+        typeText,
+        typeImports: typeReferences(type, resolver),
+        expression,
+        dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
+        usesPrimitives: context.usesPrimitives,
+    };
+}
+
+/** Build the schemas and types of every `@restOperation`: the argument the wire carries and the result it answers. */
+function buildOperations(spec: SpecModel, resolver: Resolver): ZodOperation[] {
+    const operations: ZodOperation[] = [];
     for (const operation of spec.operations) {
         if (!operation.rest) {
             continue;
         }
-        // An operation may take no input; the route then validates `undefined`, so no schema is generated.
-        const input = operation.parameters[1];
-        if (input === undefined) {
+        // An operation may take no input; the route then validates `undefined`, so no input schema is generated.
+        const parameter = operation.parameters[1];
+        const input = parameter
+            ? operationSide(
+                  operation.name,
+                  parameter.type,
+                  parameter.typeText,
+                  parameter.location,
+                  operationInputSchemaName(operation.name),
+                  operationInputTypeName(operation.name),
+                  "input",
+                  resolver,
+              )
+            : undefined;
+        if (parameter !== undefined && input === undefined) {
             continue;
         }
-        const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
-        const expression = resolveTypeNode(input.type, context);
-        if (expression === undefined) {
-            resolver.report(input.location, `\`${operation.name}\`: unsupported input type \`${input.typeText}\``);
+        const output = operationSide(
+            operation.name,
+            operation.resultType,
+            operation.resultTypeText,
+            operation.location,
+            operationOutputSchemaName(operation.name),
+            operationOutputTypeName(operation.name),
+            "result",
+            resolver,
+        );
+        if (output === undefined) {
             continue;
         }
-        inputs.push({
-            name: operation.name,
-            schemaName: operationInputSchemaName(operation.name),
-            expression,
-            dependencies: [...context.dependencies].sort((a, b) => a.localeCompare(b)),
-            usesPrimitives: context.usesPrimitives,
-        });
+        operations.push({ name: operation.name, ...(input === undefined ? {} : { input }), output });
     }
-    inputs.sort((a, b) => a.name.localeCompare(b.name));
-    return inputs;
+    operations.sort((a, b) => a.name.localeCompare(b.name));
+    return operations;
 }

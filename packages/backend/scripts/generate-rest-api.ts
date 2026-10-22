@@ -153,8 +153,17 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
         const schemas = operations
             .flatMap((operation) => (operation.inputSchemaName === undefined ? [] : [operation.inputSchemaName]))
             .sort((a, b) => a.localeCompare(b));
-        if (schemas.length > 0) {
-            lines.push(`import { ${schemas.join(", ")} } from "${SCHEMAS_IMPORT}";`);
+        const types = [
+            ...new Set(
+                operations.flatMap((operation) =>
+                    operation.inputTypeName === undefined ? [] : [operation.inputTypeName],
+                ),
+            ),
+        ].sort((a, b) => a.localeCompare(b));
+        // One import per module: the schemas are values, the type names ride along as type-only specifiers.
+        const named = [...schemas, ...types.map((type) => `type ${type}`)];
+        if (named.length > 0) {
+            lines.push(`import { ${named.join(", ")} } from "${SCHEMAS_IMPORT}";`);
         }
         // A call with no input still validates the decoded argument, which is `undefined` for an empty body.
         if (operations.some((operation) => operation.inputSchemaName === undefined)) {
@@ -178,9 +187,9 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
         lines.push(`        input: ${operation.inputSchemaName ?? "z.undefined()"},`);
         // The context is the one every route receives; an operation that wanted another fails to compile here.
         lines.push(
-            operation.hasInput
-                ? `        handler: (ctx, body) => ${operation.id}(ctx, body as Parameters<typeof ${operation.id}>[1]),`
-                : `        handler: (ctx) => ${operation.id}(ctx),`,
+            operation.inputTypeName === undefined
+                ? `        handler: (ctx) => ${operation.id}(ctx),`
+                : `        handler: (ctx, body) => ${operation.id}(ctx, body as ${operation.inputTypeName}),`,
         );
         lines.push("    },");
     }

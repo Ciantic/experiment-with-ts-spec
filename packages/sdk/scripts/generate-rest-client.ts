@@ -33,6 +33,9 @@ const SELECTION_IMPORT = "../selection.ts";
 /** The directory the shared write types (`<Entity>Patch`, `<Entity>Insert`) are imported from, relative to `api/`. */
 const WRITE_TYPES_DIR = "..";
 
+/** The barrel the operation types (`<Operation>Input`, `<Operation>Output`) are imported from. */
+const OPERATION_TYPES_IMPORT = "../schemas.ts";
+
 /** `"id" | "customerId"`. */
 function filterKeys(filters: string[]): string {
     return filters.map((name) => JSON.stringify(name)).join(" | ");
@@ -210,11 +213,6 @@ export function operationModuleName(contract: string): string {
     return `${contract.charAt(0).toLowerCase()}${contract.slice(1)}.ts`;
 }
 
-/** The contract as a type a client can name without choosing the context, e.g. `InvoiceOperations<unknown>`. */
-function contractType(operation: RestOperationCall): string {
-    return operation.contractTypeParameters === 0 ? operation.contract : `${operation.contract}<unknown>`;
-}
-
 /** Render one contract's operation builders: one function per `@restOperation`. */
 export function renderOperationClientModule(contract: string, operations: RestOperationCall[]): string {
     const lines: string[] = [HEADER];
@@ -222,11 +220,19 @@ export function renderOperationClientModule(contract: string, operations: RestOp
     if (first === undefined) {
         return lines.join("\n") + "\n";
     }
-    lines.push(`import type { ${contract} } from "${first.contractImport}";`);
+    const types = [
+        ...new Set(
+            operations.flatMap((operation) =>
+                operation.inputTypeName === undefined
+                    ? [operation.outputTypeName]
+                    : [operation.inputTypeName, operation.outputTypeName],
+            ),
+        ),
+    ].sort((a, b) => a.localeCompare(b));
+    lines.push(`import type { ${types.join(", ")} } from "${OPERATION_TYPES_IMPORT}";`);
     lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
 
     for (const operation of operations) {
-        const signature = `${contractType(operation)}["${operation.id}"]`;
         lines.push("");
         if (operation.description.length > 0) {
             lines.push("/**");
@@ -235,11 +241,18 @@ export function renderOperationClientModule(contract: string, operations: RestOp
             }
             lines.push(" */");
         }
-        const parameters = operation.hasInput ? `opts: Parameters<${signature}>[1]` : "";
-        const result = `Awaited<ReturnType<${signature}>>`;
-        lines.push(`export function ${operation.id}(${parameters}): Call<${result}> {`);
-        const argument = operation.hasInput ? "opts" : "undefined";
-        lines.push(`    return call<${result}>("${operation.id}", "${operation.method}", "${operation.path}", ${argument});`);
+        if (operation.inputTypeName === undefined) {
+            lines.push(`export function ${operation.id}(): Call<${operation.outputTypeName}> {`);
+            lines.push(
+                `    return call<${operation.outputTypeName}>("${operation.id}", "${operation.method}", "${operation.path}", undefined);`,
+            );
+            lines.push("}");
+            continue;
+        }
+        lines.push(`export function ${operation.id}(opts: ${operation.inputTypeName}): Call<${operation.outputTypeName}> {`);
+        lines.push(
+            `    return call<${operation.outputTypeName}>("${operation.id}", "${operation.method}", "${operation.path}", opts);`,
+        );
         lines.push("}");
     }
     return lines.join("\n") + "\n";

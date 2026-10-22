@@ -64,16 +64,18 @@ export interface RestOperationCall {
     id: string;
     /** The contract interface that declares it, e.g. `InvoiceOperations`. */
     contract: string;
-    /** The module specifier that imports the contract. */
-    contractImport: string;
-    /** The contract's type-parameter count, so a client can name the same type without choosing the context. */
-    contractTypeParameters: number;
     method: RestMethod;
     path: string;
     /** Where the call carries its argument: a `GET` or a `DELETE` has no body, so it uses `q`. */
     source: RestSource;
     /** The schema the route validates the argument with; absent when the operation takes no input. */
     inputSchemaName?: string;
+    /** The type the input schema derives, e.g. `SendInvoiceInput`; absent when the operation takes no input. */
+    inputTypeName?: string;
+    /** The schema the result is described by; generated, but not validated by the route. */
+    outputSchemaName: string;
+    /** The type the output schema derives, e.g. `SendInvoiceOutput`. */
+    outputTypeName: string;
     /** The prose from the spec, copied into the generated doc comments. */
     description: string[];
     /** Whether the operation declares an input parameter, which is the argument the wire carries. */
@@ -204,12 +206,17 @@ function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (lo
         calls.push({
             id: operation.name,
             contract: operation.interfaceName,
-            contractImport: operation.importSpecifier,
-            contractTypeParameters: operation.interfaceTypeParameters.length,
             method: restMethod as RestMethod,
             path: restPath,
             source: restMethod === "GET" || restMethod === "DELETE" ? "query" : "body",
-            ...(operation.parameters.length > 1 ? { inputSchemaName: `${operation.name}InputSchema` } : {}),
+            ...(operation.parameters.length > 1
+                ? {
+                      inputSchemaName: `${operation.name}Schema`,
+                      inputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Input`,
+                  }
+                : {}),
+            outputSchemaName: `${operation.name}OutputSchema`,
+            outputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Output`,
             description: operation.description,
             hasInput: operation.parameters.length > 1,
         });
