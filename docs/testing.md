@@ -124,7 +124,7 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.
-- `scripts/oxlint/errors.test.js` — the two error-contract rules, with fixture
+- `scripts/oxlint/errors.test.ts` — the two error-contract rules, with fixture
   source strings: a documented throw passes, a missing or reasonless `@throws`
   fails, and a plain `Error` fails. It runs through Oxlint's own `RuleTester`, so
   the rule is exercised by the engine that will apply it.

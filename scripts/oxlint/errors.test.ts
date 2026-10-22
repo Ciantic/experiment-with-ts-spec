@@ -1,7 +1,7 @@
 /** Tests for the Oxlint error rules, driven by fixtures in memory. See docs/errors.md. */
 import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
-import plugin from "./errors.js";
+import plugin from "./errors.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -9,7 +9,7 @@ RuleTester.it = it;
 /** A rule tester over modern modules, parsing `.ts` fixtures when a case names one. */
 const tester = new RuleTester({ languageOptions: { sourceType: "module" } });
 
-tester.run("throws-jsdoc", plugin.rules["throws-jsdoc"], {
+tester.run("throws-jsdoc", plugin.rules["throws-jsdoc"]!, {
     valid: [
         {
             code: `
@@ -69,7 +69,7 @@ tester.run("throws-jsdoc", plugin.rules["throws-jsdoc"], {
     ],
 });
 
-tester.run("no-plain-error", plugin.rules["no-plain-error"], {
+tester.run("no-plain-error", plugin.rules["no-plain-error"]!, {
     valid: [
         {
             code: `export function specific(): void { throw new BoomError("no"); }`,

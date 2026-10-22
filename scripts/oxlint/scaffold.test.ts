@@ -1,7 +1,7 @@
 /** Tests for the Oxlint scaffold rule, driven by fixtures in memory. See docs/operations.md. */
 import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
-import plugin from "./scaffold.js";
+import plugin from "./scaffold.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -9,7 +9,7 @@ RuleTester.it = it;
 /** A rule tester over modern modules, parsing `.ts` fixtures. */
 const tester = new RuleTester({ languageOptions: { sourceType: "module" } });
 
-tester.run("no-not-implemented", plugin.rules["no-not-implemented"], {
+tester.run("no-not-implemented", plugin.rules["no-not-implemented"]!, {
     valid: [
         {
             code: `export function send(): void { throw new InvoiceDetailsError("missing details"); }`,

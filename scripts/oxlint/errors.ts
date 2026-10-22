@@ -1,9 +1,18 @@
 /** Oxlint rules for the error contract: a throw names its error in JSDoc, and never the base `Error`. See docs/errors.md. */
 
+import { definePlugin, type ESTree, type SourceCode } from "@oxlint/plugins";
+
 const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
+type FunctionNode = ESTree.Function | ESTree.ArrowFunctionExpression;
+
+/** Whether a node is a function whose JSDoc can carry `@throws` tags. */
+function isFunctionNode(node: ESTree.Node): node is FunctionNode {
+    return FUNCTION_TYPES.has(node.type);
+}
+
 /** The class a `throw` constructs, e.g. `VersionConflictError`; undefined for a rethrow. */
-function thrownClass(node) {
+function thrownClass(node: ESTree.Node | null | undefined): string | undefined {
     if (!node || node.type !== "NewExpression") {
         return undefined;
     }
@@ -18,12 +27,12 @@ function thrownClass(node) {
 }
 
 /** Whether a node constructs the base `Error` anywhere inside it, as `throw Object.assign(new Error(…))` does. */
-function constructsPlainError(node) {
+function constructsPlainError(node: unknown): boolean {
     if (!node || typeof node !== "object") {
         return false;
     }
-    if (node.type === "NewExpression") {
-        const callee = node.callee;
+    if ("type" in node && node.type === "NewExpression") {
+        const callee = (node as ESTree.NewExpression).callee;
         if (
             (callee.type === "Identifier" && callee.name === "Error") ||
             (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && callee.property.name === "Error")
@@ -47,8 +56,8 @@ function constructsPlainError(node) {
 }
 
 /** The node a function's leading JSDoc sits before: its declaration, export, property, or variable statement. */
-function documentedNode(fn) {
-    let node = fn;
+function documentedNode(fn: FunctionNode): ESTree.Node {
+    let node: ESTree.Node = fn;
     if (fn.type === "ArrowFunctionExpression" || fn.type === "FunctionExpression") {
         const parent = fn.parent;
         if (parent?.type === "VariableDeclarator" && parent.parent?.type === "VariableDeclaration") {
@@ -68,7 +77,7 @@ function documentedNode(fn) {
 }
 
 /** The JSDoc block immediately before a node, if the last leading comment is one. */
-function jsdocBefore(source, node) {
+function jsdocBefore(source: SourceCode, node: ESTree.Node): ESTree.Comment | undefined {
     const comments = source.getCommentsBefore(node);
     const last = comments.at(-1);
     if (!last || !source.getText(last).startsWith("/**")) {
@@ -78,8 +87,8 @@ function jsdocBefore(source, node) {
 }
 
 /** The `@throws {Type} reason` entries a JSDoc block declares. A blank reason stays blank. */
-function throwsTags(source, comment) {
-    const tags = new Map();
+function throwsTags(comment: ESTree.Comment | undefined): Map<string, string> {
+    const tags = new Map<string, string>();
     if (!comment) {
         return tags;
     }
@@ -89,21 +98,21 @@ function throwsTags(source, comment) {
         if (!match) {
             continue;
         }
-        for (const type of match[1].split("|")) {
-            tags.set(type.trim(), match[2].trim());
+        for (const type of (match[1] ?? "").split("|")) {
+            tags.set(type.trim(), (match[2] ?? "").trim());
         }
     }
     return tags;
 }
 
 /** Whether an enclosing function documents `name`; `"blank"` when the tag is there with no reason. */
-function documented(source, node, name) {
+function documented(source: SourceCode, node: ESTree.Node, name: string): boolean | "blank" {
     let blank = false;
-    for (let parent = node.parent; parent; parent = parent.parent) {
-        if (!FUNCTION_TYPES.has(parent.type)) {
+    for (let parent: ESTree.Node | null = node.parent; parent; parent = parent.parent) {
+        if (!isFunctionNode(parent)) {
             continue;
         }
-        const tags = throwsTags(source, jsdocBefore(source, documentedNode(parent)));
+        const tags = throwsTags(jsdocBefore(source, documentedNode(parent)));
         if (!tags.has(name)) {
             continue;
         }
@@ -116,7 +125,7 @@ function documented(source, node, name) {
 }
 
 /** The rules this plugin exports. */
-const plugin = {
+export default definePlugin({
     meta: { name: "errors" },
     rules: {
         "throws-jsdoc": {
@@ -167,6 +176,4 @@ const plugin = {
             },
         },
     },
-};
-
-export default plugin;
+});

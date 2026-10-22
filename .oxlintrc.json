@@ -1,6 +1,6 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "jsPlugins": ["./scripts/oxlint/errors.js", "./scripts/oxlint/comments.js", "./scripts/oxlint/scaffold.js"],
+    "jsPlugins": ["./scripts/oxlint/errors.ts", "./scripts/oxlint/comments.ts", "./scripts/oxlint/scaffold.ts"],
     "rules": {
         "errors/throws-jsdoc": "error",
         "errors/no-plain-error": "error",

@@ -150,7 +150,7 @@ The tag names the class and gives the reason it was thrown. A public function
 may document a throw inside a private or nested function it contains, so a
 generated repository documents the `throw` inside its `write` closure once.
 
-`pnpm lint` runs Oxlint with two rules from `scripts/oxlint/errors.js`:
+`pnpm lint` runs Oxlint with two rules from `scripts/oxlint/errors.ts`:
 
 - `errors/throws-jsdoc` reports a `throw new X(…)` when no enclosing function's
   JSDoc has `@throws {X} with a reason`. The rule walks the enclosing functions,

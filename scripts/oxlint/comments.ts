@@ -1,9 +1,11 @@
 /** Oxlint rule for the comment contract: one line of prose per comment, with JSDoc tags allowed after it. See docs/comments.md. */
 
+import { definePlugin, type Context, type ESTree, type SourceCode } from "@oxlint/plugins";
+
 const DEFAULT_MAX_WIDTH = 150;
 
 /** The content of a block comment, with the marker, the `*` margin, and surrounding whitespace removed. */
-function blockLines(comment) {
+function blockLines(comment: ESTree.Comment): string[] {
     return comment.value
         .split("\n")
         .map((line) => line.replace(/^\s*\*?\s?/, "").trim())
@@ -11,18 +13,18 @@ function blockLines(comment) {
 }
 
 /** Whether a JSDoc line is a tag, which may repeat and is exempt from the width limit. */
-function isTag(line) {
+function isTag(line: string): boolean {
     return line.startsWith("@");
 }
 
 /** Whether a line comment stands alone on its line rather than trailing code. */
-function standalone(source, comment) {
+function standalone(source: SourceCode, comment: ESTree.Comment): boolean {
     const line = source.lines[comment.loc.start.line - 1] ?? "";
     return line.slice(0, comment.loc.start.column).trim().length === 0;
 }
 
 /** Report prose that does not fit on one line or within the width limit. */
-function check(context, comment, lines, maxWidth, allowTags) {
+function check(context: Context, comment: ESTree.Comment, lines: string[], maxWidth: number, allowTags: boolean): void {
     const prose = allowTags ? lines.filter((line) => !isTag(line)) : lines;
     if (prose.length > 1) {
         context.report({
@@ -40,7 +42,7 @@ function check(context, comment, lines, maxWidth, allowTags) {
     }
 }
 
-const plugin = {
+const plugin = definePlugin({
     meta: { name: "comments" },
     rules: {
         "single-line": {
@@ -57,13 +59,14 @@ const plugin = {
             },
             create(context) {
                 const source = context.sourceCode;
-                const maxWidth = context.options[0]?.maxWidth ?? DEFAULT_MAX_WIDTH;
+                const options = context.options[0] as { maxWidth?: number } | undefined;
+                const maxWidth = options?.maxWidth ?? DEFAULT_MAX_WIDTH;
                 return {
                     Program() {
                         const comments = source.getAllComments();
                         let index = 0;
                         while (index < comments.length) {
-                            const comment = comments[index];
+                            const comment = comments[index]!;
                             if (comment.type === "Block") {
                                 check(context, comment, blockLines(comment), maxWidth, true);
                                 index++;
@@ -75,13 +78,16 @@ const plugin = {
                             }
                             const run = [comment.value.trim()];
                             index++;
-                            while (
-                                index < comments.length &&
-                                comments[index].type === "Line" &&
-                                comments[index].loc.start.line === comments[index - 1].loc.end.line + 1 &&
-                                standalone(source, comments[index])
-                            ) {
-                                run.push(comments[index].value.trim());
+                            while (index < comments.length) {
+                                const next = comments[index]!;
+                                if (
+                                    next.type !== "Line" ||
+                                    next.loc.start.line !== comments[index - 1]!.loc.end.line + 1 ||
+                                    !standalone(source, next)
+                                ) {
+                                    break;
+                                }
+                                run.push(next.value.trim());
                                 index++;
                             }
                             check(context, comment, run, maxWidth, false);
@@ -91,6 +97,6 @@ const plugin = {
             },
         },
     },
-};
+});
 
 export default plugin;

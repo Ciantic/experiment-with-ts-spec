@@ -8,7 +8,7 @@ left in the code.
 ## The rule
 
 `pnpm lint` runs Oxlint with `comments/single-line` from
-`scripts/oxlint/comments.js`:
+`scripts/oxlint/comments.ts`:
 
 - A block comment with more than one line of prose is reported.
 - A run of standalone `//` lines is reported as one multi-line comment.
@@ -20,5 +20,5 @@ line whatever code sits beside it, so consecutive trailing comments are not a
 run.
 
 The rule applies to every linted file, including tests and generated modules.
-`scripts/oxlint/comments.test.js` drives it with in-memory fixtures, so the test
+`scripts/oxlint/comments.test.ts` drives it with in-memory fixtures, so the test
 asserts the rule's contract rather than the repository's current comments.

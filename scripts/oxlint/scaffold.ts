@@ -1,7 +1,9 @@
 /** Oxlint rule for scaffolding: a call that still throws `NotImplemented` has no implementation. See docs/operations.md. */
 
+import { definePlugin, type ESTree } from "@oxlint/plugins";
+
 /** The class a `throw` constructs, e.g. `NotImplemented`; undefined for a rethrow. */
-function thrownClass(node) {
+function thrownClass(node: ESTree.Node | null | undefined): string | undefined {
     if (!node || node.type !== "NewExpression") {
         return undefined;
     }
@@ -16,7 +18,7 @@ function thrownClass(node) {
 }
 
 /** The rules this plugin exports. */
-const plugin = {
+const plugin = definePlugin({
     meta: { name: "scaffold" },
     rules: {
         "no-not-implemented": {
@@ -40,6 +42,6 @@ const plugin = {
             },
         },
     },
-};
+});
 
 export default plugin;

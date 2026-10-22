@@ -1,7 +1,7 @@
 /** Tests for the Oxlint comment rule, driven by fixtures in memory. See docs/comments.md. */
 import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
-import plugin from "./comments.js";
+import plugin from "./comments.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -11,7 +11,7 @@ const tester = new RuleTester({ languageOptions: { sourceType: "module" } });
 
 const longProse = "x".repeat(151);
 
-tester.run("single-line", plugin.rules["single-line"], {
+tester.run("single-line", plugin.rules["single-line"]!, {
     valid: [
         {
             code: `// one line of prose\nexport const value = 1;`,
