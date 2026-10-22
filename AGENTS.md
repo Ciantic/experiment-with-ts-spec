@@ -42,18 +42,18 @@
 
 ## Docs
 
+- Write about the design as it is. Explain how the system works, not how it came
+  to: no "this replaced X", no "previously", no record of an approach that was
+  rejected. Git history is where change is recorded.
 - One topic per file, named for the concept (`queries.md`, `versioning.md`), each
-  with a single `# Title`. `docs/` documents the mechanisms every generator
-  shares — the annotations, primitives, tenancy, versioning, timestamps — with
-  invented examples (`Widget`, `Account`), never the demo spec's own entities, so
-  a note outlives a change to it. `docs/examples.md` defines that vocabulary.
-  `packages/spec/docs/` holds the notes that are only about this spec's domain
-  (`invoice-sending.md`, `invoice-snapshotting.md`). There is no index;
+  with a single `# Title`. 
+- `docs/` documents the mechanisms every generator shares — the annotations,
+  primitives, tenancy, versioning, timestamps — with invented examples
+  (`Widget`, `Account`), never the demo spec's own entities, so a note outlives
+  a change to it. `docs/examples.md` defines that vocabulary.
   `docs/spec-annotations.md` is the entry point, since the tags are the contract
   every generator reads.
-- Write about the design as it is. A note explains how the system works, not how
-  it came to: no "this replaced X", no "previously", no record of an approach
-  that was rejected. Git history is where change is recorded.
+- `packages/spec/docs/` holds the notes that are only about this spec's domain.
 
 ## Testing
 
