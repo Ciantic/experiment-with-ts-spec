@@ -116,6 +116,11 @@ values, all of which are domain decisions rather than code behaviour.
   client, the generated route table, and a live server. It takes the rows a seeded
   server answers with from `spec/mockdata`, and names no domain type, so a change
   to the model does not touch it.
+- `packages/backend/src/operations/sendInvoice.test.ts` — the operation over a
+  schema seeded with `spec/mockdata`, so the send runs on the rows a development
+  server has. It asserts the sent invoice and queued email it writes, the
+  language it resolves from the draft, the customer, then the seller, the refusal
+  of an incomplete draft, and that a refused email write leaves no sent invoice.
 - `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.
@@ -130,7 +135,9 @@ values, all of which are domain decisions rather than code behaviour.
   through `parseInMemorySpec(files, { sourceGlob })`, so the model holds
   only what the test wrote, or the test becomes a domain test by accident. The
   end-to-end smoke test in `src/main.test.ts` is no exception: it draws its rows
-  from `spec/mockdata` and names no domain type.
+  from `spec/mockdata` and names no domain type. An operation test is the
+  exception: an operation is hand-written code over particular entities, so it
+  seeds `spec/mockdata` and asserts what the operation writes.
 - **Name the real file extension in imports.** `node` runs the TypeScript
   directly and resolves only `.ts` specifiers; `allowImportingTsExtensions` lets
   TypeScript accept them, and Vitest resolves them too.

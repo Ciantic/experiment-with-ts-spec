@@ -1,7 +1,7 @@
 # Invoice sending
 
 `sendInvoice` in `packages/spec/src/operations/InvoiceOperations.ts` issues a draft and
-delivers it. This note records the contract it declares today, the party data
+queues its delivery. This note records the contract it declares today, the party data
 sending depends on, and what is deferred.
 
 ## Options are call choices; routing is master data
@@ -24,13 +24,13 @@ copying it into the call.
 ## The contract today
 
 ```ts
-sendInvoice(ctx, { invoice }): Promise<InvoiceSent>
+sendInvoice(ctx, { invoice }): Promise<{ invoiceSentId: InvoiceSentId, emailId?: EmailId }>
 ```
 
 The call carries the draft and nothing else. The operation issues it, snapshots
-it, and answers the `InvoiceSent` it wrote. It raises `InvoiceDetailsError` when
-the draft lacks a party, a number, or another detail a send needs; see
-`docs/errors.md`.
+it, and answers the identifiers of the sent invoice and the queued email. It
+raises `InvoiceDetailsError` when the draft lacks a party, a number, a language,
+or another detail a send needs; see `docs/errors.md`.
 
 The backend module is scaffolded by the operations generator and implemented by
 hand. See `docs/operations.md`.
@@ -111,8 +111,10 @@ a live company record.
 - **The delivery records nothing.** Neither `Invoice` nor `InvoiceSent` carries a
   format or channel, so the chosen delivery is invisible afterwards. The language
   is the exception: it is on both.
-- **`InvoiceOperations` has only a scaffold.** `packages/backend/src/operations/sendInvoice.ts`
-  declares the contract and returns `null`; delivery is not implemented.
+- **`sendInvoice` stops at the queue.** `packages/backend/src/operations/sendInvoice.ts`
+  snapshots the invoice and queues an email in one transaction; nothing delivers
+  the email, and the demonstration sender is fixed because `Seller` has no email
+  field.
 
 ## Deliberately not implemented
 
