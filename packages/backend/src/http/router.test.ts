@@ -1,11 +1,22 @@
 /** Unit tests for the hand-written router, over fixture routes. See docs/testing.md. */
+import { Buffer } from "node:buffer";
+import type { IncomingMessage } from "node:http";
+import { Readable } from "node:stream";
 import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QueryError, ShortWriteError, VersionConflictError } from "sdk/errors.ts";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import type { AppContext } from "../context.ts";
+import { createTransactionalDb } from "../db/sql-executor.ts";
+import type { SqlPool, SqlSession } from "../db/sql-pool.ts";
 import { statusFor } from "./http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
+
+/** The request the server hands the router: a stream over `body`, plus the method and URL Node sets on it. */
+function request(method: string, url: string, body = ""): IncomingMessage {
+    const chunks = body === "" ? [] : [Buffer.from(body)];
+    return Object.assign(Readable.from(chunks), { method, url }) as unknown as IncomingMessage;
+}
 
 /** A schema stand-in that accepts any argument; the router test is not about Zod. */
 const accepts: RouteInput = {
@@ -17,28 +28,29 @@ const rejects: RouteInput = {
     safeParse: () => ({ success: false, error: { issues: ["bad"] } }),
 };
 
-/** A `SqlExecutor` over no database, recording the boundary a handler's own `transaction` opens. */
-function createDb() {
-    const boundaries: string[] = [];
-    const handle = (): SqlExecutor => ({
-        query: async () => ({ rows: [] }),
-        transaction: async (run) => {
-            boundaries.push("begin");
-            return await run(handle());
-        },
-        transactionWith: async () => {
-            throw new Error("no boundary here opens with modes");
-        },
-    });
-    return { db: handle(), boundaries };
+/** A pool over no database, recording every statement that runs through it. */
+function createPool() {
+    const statements: string[] = [];
+    const run = async (sql: string) => {
+        statements.push(sql);
+        return { rows: [] };
+    };
+    const session: SqlSession = { query: run, release: () => {} };
+    const pool: SqlPool = { query: run, connect: async () => session };
+    return { pool, statements };
 }
 
-let fake: ReturnType<typeof createDb>;
-let db: SqlExecutor;
+/** The context startup builds, over a recording pool, so a request's executor is observable. */
+function createApp() {
+    const { pool, statements } = createPool();
+    return { app: { pool, database: { ...createTransactionalDb(pool), close: async () => {} } }, statements };
+}
+
+let app: AppContext;
+let statements: string[];
 
 beforeEach(() => {
-    fake = createDb();
-    db = fake.db;
+    ({ app, statements } = createApp());
 });
 
 /** A route that echoes its argument back, so the codec round-trip is observable. */
@@ -69,88 +81,93 @@ const payload = { at: new Date("2026-01-02T03:04:05.000Z"), revision: 7n, name: 
 
 describe("createRouter", () => {
     it("answers 404 for a call the table does not expose", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle({ method: "POST", url: "/missing", body: "" });
+        const response = await router.handle(request("POST", "/missing"));
 
         expect(response.status).toBe(404);
     });
 
     it("matches on the method as well as the path", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle({ method: "PATCH", url: "/echo", body: "" });
+        const response = await router.handle(request("PATCH", "/echo"));
 
         expect(response.status).toBe(404);
     });
 
     it("serves a PUT, the verb an upsert reaches the server with", async () => {
-        const router = createRouter(db, [echoRoute({ method: "PUT" })]);
+        const router = createRouter(app, [echoRoute({ method: "PUT" })]);
 
-        const response = await router.handle({ method: "PUT", url: "/echo", body: stringify(payload) });
+        const response = await router.handle(request("PUT", "/echo", stringify(payload)));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual(payload);
     });
 
     it("answers 400 for a body that is not decodable", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: "not devalue" });
+        const response = await router.handle(request("POST", "/echo", "not devalue"));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
     });
 
-    it("answers 400 with the issues when the schema rejects", async () => {
-        const router = createRouter(db, [echoRoute({ input: rejects })]);
+    it("refuses a body past the transport's cap", async () => {
+        const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+        const response = await router.handle(request("POST", "/echo", "x".repeat(1_000_001)));
+
+        expect(response.status).toBe(413);
+        expect(JSON.parse(response.body)).toEqual({ error: "request body too large", kind: "payload-too-large" });
+    });
+
+    it("answers 400 with the issues when the schema rejects", async () => {
+        const router = createRouter(app, [echoRoute({ input: rejects })]);
+
+        const response = await router.handle(request("POST", "/echo"));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "invalid request", kind: "validation", issues: ["bad"] });
     });
 
     it("passes the decoded body to the handler and encodes the result", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: stringify(payload) });
+        const response = await router.handle(request("POST", "/echo", stringify(payload)));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual(payload);
     });
 
     it("decodes the query parameter for a call that carries its argument there", async () => {
-        const router = createRouter(db, [queryRoute()]);
+        const router = createRouter(app, [queryRoute()]);
 
-        const response = await router.handle({ method: "GET", url: queryUrl(payload), body: "" });
+        const response = await router.handle(request("GET", queryUrl(payload)));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual(payload);
     });
 
     it("reads the argument from where the route says, ignoring the other", async () => {
-        const router = createRouter(db, [queryRoute(), echoRoute()]);
+        const router = createRouter(app, [queryRoute(), echoRoute()]);
 
-        const fromQuery = await router.handle({
-            method: "GET",
-            url: queryUrl({ from: "query" }),
-            body: stringify({ from: "body" }),
-        });
-        const fromBody = await router.handle({
-            method: "POST",
-            url: queryUrl({ from: "query" }),
-            body: stringify({ from: "body" }),
-        });
+        const fromQuery = await router.handle(
+            request("GET", queryUrl({ from: "query" }), stringify({ from: "body" })),
+        );
+        const fromBody = await router.handle(
+            request("POST", queryUrl({ from: "query" }), stringify({ from: "body" })),
+        );
 
         expect(decode(fromQuery.body)).toEqual({ from: "query" });
         expect(decode(fromBody.body)).toEqual({ from: "body" });
     });
 
     it("answers 400 for a query parameter that is not decodable", async () => {
-        const router = createRouter(db, [queryRoute()]);
+        const router = createRouter(app, [queryRoute()]);
 
-        const response = await router.handle({ method: "GET", url: "/echo?q=not%20devalue", body: "" });
+        const response = await router.handle(request("GET", "/echo?q=not%20devalue"));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
@@ -166,38 +183,33 @@ describe("createRouter", () => {
                 },
             },
         });
-        const router = createRouter(db, [route]);
+        const router = createRouter(app, [route]);
 
-        const response = await router.handle({ method: "GET", url: "/echo", body: "" });
+        const response = await router.handle(request("GET", "/echo"));
 
         expect(response.status).toBe(200);
         expect(seen).toEqual([undefined]);
     });
 
     it("routes the handler's queries through the executor of the request", async () => {
-        const statements: string[] = [];
         const route = echoRoute({
             handler: async (ctx) => {
                 await ctx.db.query("select 1");
                 return null;
             },
         });
-        const own = createDb();
-        own.db.query = async (sql) => {
-            statements.push(sql);
-            return { rows: [] };
-        };
-        const router = createRouter(own.db, [route]);
+        const own = createApp();
+        const router = createRouter(own.app, [route]);
 
-        await router.handle({ method: "POST", url: "/echo", body: "" });
+        await router.handle(request("POST", "/echo"));
 
-        expect(statements).toEqual(["select 1"]);
+        expect(own.statements).toEqual(["select 1"]);
     });
 
     it("encodes an undefined result as null", async () => {
-        const router = createRouter(db, [echoRoute({ handler: async () => undefined })]);
+        const router = createRouter(app, [echoRoute({ handler: async () => undefined })]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+        const response = await router.handle(request("POST", "/echo"));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toBeNull();
@@ -209,9 +221,9 @@ describe("createRouter", () => {
                 throw Object.assign(new Error("version conflict"), { code: "40001" });
             },
         });
-        const router = createRouter(db, [route]);
+        const router = createRouter(app, [route]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+        const response = await router.handle(request("POST", "/echo"));
 
         expect(response.status).toBe(409);
         expect(JSON.parse(response.body)).toEqual({ error: "version conflict" });
@@ -225,7 +237,7 @@ describe("createRouter", () => {
         ];
 
         for (const { thrown, status } of cases) {
-            const router = createRouter(db, [
+            const router = createRouter(app, [
                 echoRoute({
                     handler: async () => {
                         throw thrown;
@@ -233,7 +245,7 @@ describe("createRouter", () => {
                 }),
             ]);
 
-            const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+            const response = await router.handle(request("POST", "/echo"));
 
             expect(response.status).toBe(status);
             expect(JSON.parse(response.body)).toEqual({ error: thrown.message, kind: thrown.kind });
@@ -241,14 +253,14 @@ describe("createRouter", () => {
     });
 
     it("maps a unique violation to 409 and an unknown failure to 500", async () => {
-        const violating = createRouter(db, [
+        const violating = createRouter(app, [
             echoRoute({
                 handler: async () => {
                     throw Object.assign(new Error("duplicate"), { code: "23505" });
                 },
             }),
         ]);
-        const broken = createRouter(db, [
+        const broken = createRouter(app, [
             echoRoute({
                 handler: async () => {
                     throw new Error("boom");
@@ -256,8 +268,8 @@ describe("createRouter", () => {
             }),
         ]);
 
-        expect((await violating.handle({ method: "POST", url: "/echo", body: "" })).status).toBe(409);
-        expect((await broken.handle({ method: "POST", url: "/echo", body: "" })).status).toBe(500);
+        expect((await violating.handle(request("POST", "/echo"))).status).toBe(409);
+        expect((await broken.handle(request("POST", "/echo"))).status).toBe(500);
     });
 
     it("maps a check violation to 400", async () => {
@@ -266,9 +278,9 @@ describe("createRouter", () => {
                 throw Object.assign(new Error("value rejected by a row constraint"), { code: "23514" });
             },
         });
-        const router = createRouter(db, [route]);
+        const router = createRouter(app, [route]);
 
-        const response = await router.handle({ method: "POST", url: "/echo", body: "" });
+        const response = await router.handle(request("POST", "/echo"));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "value rejected by a row constraint" });
@@ -281,36 +293,36 @@ describe("createRouter", () => {
     });
 
     it("opens a boundary when a handler asks for one, and no other", async () => {
-        const router = createRouter(db, [
+        const router = createRouter(app, [
             echoRoute({
                 handler: async (ctx) => await ctx.db.transaction(async () => null),
             }),
         ]);
 
-        await router.handle({ method: "POST", url: "/echo", body: "" });
+        await router.handle(request("POST", "/echo"));
 
-        expect(fake.boundaries).toEqual(["begin"]);
+        expect(statements).toEqual(["begin", "commit"]);
     });
 
     it("serves the group path, handing the body to the group handler", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
         const body = stringify({
             group: { kind: "batch", calls: [{ call: { operation: "echo", argument: { n: 1 } } }] },
         });
 
-        const response = await router.handle({ method: "POST", url: GROUP_PATH, body });
+        const response = await router.handle(request("POST", GROUP_PATH, body));
 
         expect(response.status).toBe(200);
         expect(decode(response.body)).toEqual([{ n: 1 }]);
     });
 
     it("resolves a group entry by its operation id, not its path", async () => {
-        const router = createRouter(db, [echoRoute()]);
+        const router = createRouter(app, [echoRoute()]);
         const body = stringify({
             group: { kind: "batch", calls: [{ call: { operation: "/echo", argument: { n: 1 } } }] },
         });
 
-        const response = await router.handle({ method: "POST", url: GROUP_PATH, body });
+        const response = await router.handle(request("POST", GROUP_PATH, body));
 
         expect(response.status).toBe(400);
         expect(JSON.parse(response.body)).toEqual({ error: "no operation `/echo`", kind: "bad-group", path: [0] });

@@ -6,9 +6,10 @@ Humans, this readme is for you.
 
 If you change the TypeScript spec, there is deterministic re-generation scripts that generate:
 
-- REST endpoints
-- Repository functions create, update and delete functions
+- Repository functions create, update, upsert and delete functions
+- Operation function stubs these should contain the business logic
 - Query function with granular control of which fields are filterable, orderable and so on
+- REST endpoints, generated from exposed repository functions and operations
 
 TODO: More specifics goes here.
 
@@ -61,3 +62,10 @@ flowchart LR
     backend --> sdk
 ```
 
+### Request data flow
+
+Data for the requests flows through two contexts:
+
+1. `AppContext` is application specific context, created once on startup.
+2. `RequestContext` is request specific context, created from `AppContext` for each request.
+3. REST endpoint functionality then use parts from the `RequestContext` such as `db: SqlExecutor` or request details like headers.

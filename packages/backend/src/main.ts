@@ -1,42 +1,13 @@
 /** The backend entry point: run an API server, optionally seeded with mock data. See docs/mockdata.md. */
-import { readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import { createTransactionalDb, type SqlExecutor } from "./db/sql-executor.ts";
+import { createAppContext, type AppOptions, type ServerDatabase } from "./context.ts";
 import { UsageError } from "./errors.ts";
 import { createApiServer } from "./http/server.ts";
 import { seedMockData } from "./mock/seed.ts";
-import { createPglite, createPglitePool } from "./postgres/pglite-setup.ts";
-
-/** The generated DDL, next to the driver setup. */
-const SCHEMA_URL = new URL("./postgres/schema.sql", import.meta.url);
 
 /** The port used when `--port` is absent. */
 const DEFAULT_PORT = 3000;
-
-/** The database a server runs on: the port, plus the lifecycle its owner closes. */
-export interface ServerDatabase extends SqlExecutor {
-    close(): Promise<void>;
-}
-
-/** How to build the database. */
-export interface DatabaseOptions {
-    /** Let PGlite print every statement it runs, the transaction boundaries it issues included. */
-    logSql?: boolean;
-}
-
-/** A fresh in-memory database with the generated schema applied. */
-export async function createDatabase(options: DatabaseOptions = {}): Promise<ServerDatabase> {
-    const driver = createPglite(options.logSql ? { debug: 1 } : {});
-    await driver.exec(readFileSync(SCHEMA_URL, "utf8"));
-    const db = createTransactionalDb(createPglitePool(driver));
-    return {
-        query: (sql, parameters) => db.query(sql, parameters),
-        transaction: (run) => db.transaction(run),
-        transactionWith: (options, run) => db.transactionWith(options, run),
-        close: () => driver.close(),
-    };
-}
 
 /** Listen on `port`; `0` picks a free one. Resolves with the bound port. */
 function listen(server: Server, port: number): Promise<number> {
@@ -50,7 +21,7 @@ function listen(server: Server, port: number): Promise<number> {
 }
 
 /** How a server is started. */
-export interface StartOptions extends DatabaseOptions {
+export interface StartOptions extends AppOptions {
     port?: number;
     seed?: boolean;
 }
@@ -62,15 +33,15 @@ export interface StartedServer {
     port: number;
 }
 
-/** Build a database, optionally seed it, and start the API server. */
+/** Build the database, optionally seed it, and start the API server over it. */
 export async function startServer(options: StartOptions = {}): Promise<StartedServer> {
-    const db = await createDatabase(options);
+    const app = await createAppContext(options);
     if (options.seed) {
-        await seedMockData(db);
+        await seedMockData(app.database);
     }
-    const server = createApiServer(db);
+    const server = createApiServer(app);
     const port = await listen(server, options.port ?? DEFAULT_PORT);
-    return { server, db, port };
+    return { server, db: app.database, port };
 }
 
 /**

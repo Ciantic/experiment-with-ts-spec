@@ -4,8 +4,9 @@ import * as api from "sdk/api/index.ts";
 import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
+import { createAppContext } from "./context.ts";
 import { routes } from "./http/routes/index.ts";
-import { createDatabase, parseArgs, startServer, type StartedServer } from "./main.ts";
+import { parseArgs, startServer, type StartedServer } from "./main.ts";
 
 /** A generated builder, as this test sees it: pure data, so calling one makes no request. */
 type Builder = (argument: unknown) => Call<unknown>;
@@ -229,10 +230,10 @@ describe("--log-sql", () => {
 
     it("shows both what the server runs and the boundaries the executor issues", async () => {
         const printed = await capture(async () => {
-            const db = await createDatabase({ logSql: true });
-            await db.query("select 1 as one");
-            await db.transaction((tx) => tx.query("select 2 as two"));
-            await db.close();
+            const app = await createAppContext({ logSql: true });
+            await app.database.query("select 1 as one");
+            await app.database.transaction((tx) => tx.query("select 2 as two"));
+            await app.database.close();
         });
 
         expect(printed.some((line) => line.includes("select 1 as one"))).toBe(true);
@@ -243,9 +244,9 @@ describe("--log-sql", () => {
 
     it("stays quiet without the flag, so an ordinary run prints no SQL", async () => {
         const printed = await capture(async () => {
-            const db = await createDatabase();
-            await db.query("select 3 as three");
-            await db.close();
+            const app = await createAppContext();
+            await app.database.query("select 3 as three");
+            await app.database.close();
         });
 
         expect(printed.some((line) => line.includes("select 3 as three"))).toBe(false);

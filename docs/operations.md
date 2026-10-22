@@ -149,14 +149,19 @@ The context is the implementer's choice, and the generator deliberately does not
 choose one: it writes `unknown`, which compiles because the annotation supplies
 the parameter types, and says plainly that the implementation must decide.
 
-Every route handler receives one context, `RouteContext` in
-`packages/backend/src/http/router.ts`, whose only field is `db`. An operation
-annotated `InvoiceOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it
-unchanged. An operation that wanted more, such as `<{ db: SqlExecutor; clock:
-Clock }>`, would fail to compile in the generated route, because the HTTP layer
-cannot build a clock. Widening `RouteContext` is therefore a deliberate change:
-it is where a request-level dependency is introduced, and the router that
-constructs it is hand-written for that reason.
+Every route handler receives one context, `RequestContext` in
+`packages/backend/src/context.ts`, whose only field is `db`. Startup calls
+`createAppContext` once, which opens the in-memory database and applies the
+schema; the router calls `createRequestContext(app, request)` per request, which
+gives that request its own executor over the shared pool. An operation annotated
+`InvoiceOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
+An operation that wanted more, such as `<{ db: SqlExecutor; clock: Clock }>`,
+would fail to compile in the generated route, because the HTTP layer cannot build
+a clock. Widening `RequestContext` is therefore a deliberate change: it is where
+a request-level dependency is introduced, and `createRequestContext` is
+hand-written for that reason. A resource that outlives one request belongs on
+`AppContext` instead, because a fresh PGlite instance per request would lose its
+data.
 
 An operation that writes more than one row opens its own boundary with
 `ctx.db.transaction(…)`. An operation that only computes takes nothing.
@@ -257,9 +262,9 @@ actually throws it.
 
 ## Deliberately not implemented
 
-- **Per-operation context construction.** Every REST operation receives the one
-  `RouteContext`; a dependency another context would need is added to the router,
-  not resolved per operation.
+- **Per-operation context construction.** Every REST operation receives the
+  `RequestContext` built for its request; a dependency another context would
+  need is added to `createRequestContext`, not resolved per operation.
 - **Validating the response.** The result schema is generated and exported, but
   the route encodes the result unvalidated, as with every other call.
 - **Deleting an implementation the spec drops.** The generator reports the
@@ -281,7 +286,7 @@ actually throws it.
   function, so an unused context parameter is reported by the linter's
   unused-variable rule.
 - **The scaffold's context is `unknown`.** It compiles, but `ctx` is unusable
-  until the implementer narrows the type argument. Widening it past `RouteContext`
+  until the implementer narrows the type argument. Widening it past `RequestContext`
   makes the generated route fail to compile, which is the intended pressure.
 - **A route without an input sends nothing.** A `POST` with no body decodes to
   `undefined`, which the generated `z.undefined()` accepts; the route ignores the

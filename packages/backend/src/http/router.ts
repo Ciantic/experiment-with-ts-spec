@@ -1,11 +1,33 @@
-/** The hand-written request handler: match one request to its route, decode, check, run, and encode. See docs/rest-api.md. */
+/** The hand-written request handler: match one request to its route, read, decode, check, run, and encode. See docs/rest-api.md. */
+import { Buffer } from "node:buffer";
+import type { IncomingMessage } from "node:http";
 import { parse as decode, stringify as encode } from "devalue";
-import { NotFoundError, RequestError, ValidationError } from "sdk/errors.ts";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import { NotFoundError, PayloadTooLargeError, RequestError, ValidationError } from "sdk/errors.ts";
+import { createRequestContext, type AppContext, type RequestContext } from "../context.ts";
 import { GROUP_PATH, handleGroup } from "./group-handler.ts";
 import { errorFrom, type HttpResponse } from "./http-response.ts";
 
 export type { HttpResponse };
+
+/** The largest request body accepted, in bytes. */
+const MAX_BODY_BYTES = 1_000_000;
+
+/**
+ * Read a request body, refusing one larger than {@link MAX_BODY_BYTES}.
+ * @throws {PayloadTooLargeError} when the body passes the byte cap
+ */
+async function readBody(request: IncomingMessage): Promise<string> {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of request as AsyncIterable<Buffer>) {
+        size += chunk.length;
+        if (size > MAX_BODY_BYTES) {
+            throw new PayloadTooLargeError("request body too large");
+        }
+        chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+}
 
 /** The verbs the route table uses. */
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -15,12 +37,6 @@ export interface RouteInput {
     safeParse(
         value: unknown,
     ): { success: true; data: unknown } | { success: false; error: { issues: unknown } };
-}
-
-/** What a route handler receives: the backend's context for one request. See docs/operations.md. */
-export interface RouteContext {
-    /** The executor the call runs on; a group hands the boundary its kind opened. */
-    db: SqlExecutor;
 }
 
 /** One exposed call: an HTTP route a single request matches, and an id a group entry names. */
@@ -34,47 +50,45 @@ export interface Route {
     /** Validates the decoded argument. */
     input: RouteInput;
     /** Runs the call; it receives the request's context and may open a boundary on it. See docs/transactions.md. */
-    handler: (ctx: RouteContext, argument: unknown) => Promise<unknown>;
+    handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
 }
 
-/** One request, with the body already read into a string. */
-export interface HttpRequest {
-    method: string;
-    /** The path and query string, e.g. `/invoice/query?q=…`. */
-    url: string;
-    body: string;
-}
-
-/** A router over a route table, reusing one `db` for every call. */
-export function createRouter(db: SqlExecutor, routes: Route[]) {
-    // One context per server, so a route never reaches for a dependency the router did not hand it.
-    const context: RouteContext = { db };
+/** A router over a route table, building one request context per call over the app's shared pool. */
+export function createRouter(app: AppContext, routes: Route[]) {
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
     const byId = new Map(routes.map((route) => [route.id, route]));
     /** Resolve a single request and a group entry out of one table, so the two cannot disagree. */
     const resolve = (method: string, path: string) => byKey.get(`${method} ${path}`);
 
     return {
-        /** Match, decode, validate, call, and encode one request. Never throws. */
-        async handle(request: HttpRequest): Promise<HttpResponse> {
-            const url = new URL(request.url, "http://localhost");
-            if (request.method === "POST" && url.pathname === GROUP_PATH) {
-                // A group entry names an operation rather than a verb and a path, so it resolves by id.
-                return await handleGroup(db, (id) => byId.get(id), request.body);
+        /** Match, read, decode, validate, call, and encode one request. Never throws. */
+        async handle(request: IncomingMessage): Promise<HttpResponse> {
+            const url = new URL(request.url ?? "/", "http://localhost");
+            // A missing method is read as `GET`, the method a request without one carries.
+            const method = request.method ?? "GET";
+            // One context per request, so a route never reaches for a dependency the router did not hand it.
+            const context = await createRequestContext(app, request);
+
+            let body: string;
+            try {
+                body = await readBody(request);
+            } catch (thrown) {
+                return errorFrom(thrown);
             }
 
-            const route = resolve(request.method, url.pathname);
+            if (method === "POST" && url.pathname === GROUP_PATH) {
+                // A group entry names an operation rather than a verb and a path, so it resolves by id.
+                return await handleGroup(context.db, (id) => byId.get(id), body);
+            }
+
+            const route = resolve(method, url.pathname);
             if (!route) {
                 return errorFrom(new NotFoundError("no route"));
             }
 
             // A `query` call carries its argument in `q`; a `body` call in the request body.
             const encoded =
-                route.source === "query"
-                    ? (url.searchParams.get("q") ?? undefined)
-                    : request.body === ""
-                        ? undefined
-                        : request.body;
+                route.source === "query" ? (url.searchParams.get("q") ?? undefined) : body === "" ? undefined : body;
 
             let value: unknown;
             try {

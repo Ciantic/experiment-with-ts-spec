@@ -75,10 +75,12 @@ call and the body for a `body` call, and ignores the other. A group entry carrie
 its argument as a field of the tree, so it is the one place `source` does not
 apply.
 
-A route handler receives one `RouteContext`, whose only field is `db`; a
+A route handler receives one `RequestContext`, whose only field is `db`; a
 generated entity route reads `ctx.db`, and a generated operation route passes
 `ctx` itself to the module, so the operation's chosen context is compile-checked
-against it. See `docs/operations.md`.
+against it. `createAppContext` in `packages/backend/src/context.ts` builds the
+process's context once at startup, and `createRequestContext(app, request)` builds
+a request's context over it. See `docs/operations.md`.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by
@@ -264,7 +266,7 @@ Two rules follow from the codec:
   server encodes `null`; the generated signature types the call as `void`.
 - **Decode, never evaluate.** `devalue.parse` reconstructs plain values and
   executes nothing. `uneval`/`eval` must never be used, and the transport is a
-  parser of untrusted input: the server caps the body at 1 MB.
+  parser of untrusted input: the router caps the body at 1 MB.
 
 ## Status mapping
 
@@ -341,8 +343,8 @@ No mode reaches the statement unvalidated.
   rather than a silent skip. An id that is not there answers the same way.
   `upsert` requires one too, and answers the same way when the stored row is at
   another version.
-- **The server reads no configuration.** `createApiServer(db)` takes the
-  executor; the caller owns the port, TLS, and the driver.
+- **The server reads no configuration.** `createApiServer(app)` takes the context
+  startup built; the caller owns the port and TLS.
 
 ## Deliberately not implemented
 
