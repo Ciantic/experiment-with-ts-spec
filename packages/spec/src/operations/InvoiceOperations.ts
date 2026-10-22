@@ -1,5 +1,6 @@
+import type { EmailId } from "../domain/Email.ts";
 import type { Invoice } from "../domain/Invoice.ts";
-import type { InvoiceSent } from "../domain/InvoiceSent.ts";
+import type { InvoiceSentId } from "../domain/InvoiceSent.ts";
 
 export interface InvoiceOperations<T> {
     /** 
@@ -12,13 +13,5 @@ export interface InvoiceOperations<T> {
      **/
     sendInvoice(ctx: T, opts: {
         invoice: Invoice;
-    }): Promise<InvoiceSent>;
-
-    /**
-     * Receive an invoice from the system.
-     * 
-     * @operation
-     * @restOperation POST /invoice/receive
-     */
-    receiveInvoice(ctx: T): Promise<void>;
+    }): Promise<{ invoiceSentId: InvoiceSentId, emailId?: EmailId }>;
 }

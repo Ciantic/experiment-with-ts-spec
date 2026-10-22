@@ -1,7 +1,6 @@
 // Generated for implementation by: scripts/generate-operations.ts
 import type { InvoiceOperations } from "spec/operations/InvoiceOperations.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
-import type { InvoiceSent } from "spec/domain/InvoiceSent.ts";
 import { NotImplemented } from "sdk/errors.ts";
 
 /**
