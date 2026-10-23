@@ -1,8 +1,8 @@
 /** Unit tests for the server route renderer, driven by self-contained fixtures. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
-import { buildRestModel, type RestEntity, type RestModel } from "../../sdk/scripts/rest-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
+import { buildRestModel, type RestEntity, type RestModel } from "../sdk/rest-model.ts";
 import {
     renderEntityRoutes,
     renderOperationRoutes,
@@ -10,7 +10,7 @@ import {
     renderRoutesIndex,
 } from "./generate-rest-api.ts";
 // The drift check drives both generators from one model, so it lives here with the server's renderer.
-import { generateRestClient } from "../../sdk/scripts/generate-rest-client.ts";
+import { generateRestClient } from "../sdk/generate-rest-client.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");

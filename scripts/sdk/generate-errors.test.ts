@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "../spec/spec-model.ts";
 import { buildErrorModel, errorKind, renderErrorModule, run } from "./generate-errors.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */

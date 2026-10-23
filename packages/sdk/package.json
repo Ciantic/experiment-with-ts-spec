@@ -9,9 +9,6 @@
     "./*.ts": "./src/*.ts"
   },
   "scripts": {
-    "generate:validation": "node scripts/generate-zod-schemas.ts",
-    "generate:errors": "node scripts/generate-errors.ts",
-    "generate:rest-client": "node scripts/generate-rest-client.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -23,7 +20,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
-    "ts-morph": "^28.0.0",
     "vitest": "^5.0.2"
   }
 }

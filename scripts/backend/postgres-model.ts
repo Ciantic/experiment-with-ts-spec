@@ -1,5 +1,4 @@
 /** Map the parsed spec to the Postgres table model shared by the generators. See docs/schema-generation.md. */
-import { dirname } from "node:path";
 import {
     isCompareOperator,
     isInsertable,
@@ -24,13 +23,10 @@ import {
     type WriteOperation,
     assignsColumn,
     triggerLevel,
-} from "spec/scripts/spec-model.ts";
-import { DEFAULT_PG_TYPES } from "spec/scripts/pg-types.ts";
+} from "../spec/spec-model.ts";
+import { DEFAULT_PG_TYPES } from "../spec/pg-types.ts";
 
 export type { Diagnostic };
-
-/** This package's root, so paths do not depend on the current working directory. */
-export const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 /** The storage types an identity column accepts: Postgres allows an integer type and nothing else. */
 const IDENTITY_TYPES = ["smallint", "integer", "bigint", "int2", "int4", "int8"];

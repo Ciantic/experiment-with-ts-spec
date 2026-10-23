@@ -5,11 +5,11 @@ the same spec. Nothing about the surface is written by hand except the three fil
 that must not be generated: the router, the transport, and the entry re-exporting
 the transport.
 
-- `packages/sdk/scripts/rest-model.ts` — the shared model. Paths, methods,
+- `scripts/sdk/rest-model.ts` — the shared model. Paths, methods,
   operation ids, filters, the operations each entity exposes, and the calls a
   `@restOperation` declares. Hand-written.
-- `packages/backend/scripts/generate-rest-api.ts` — the server generator.
-- `packages/sdk/scripts/generate-rest-client.ts` — the client generator.
+- `scripts/backend/generate-rest-api.ts` — the server generator.
+- `scripts/sdk/generate-rest-client.ts` — the client generator.
 - `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
   each a `Route[]` for that collection, plus `operationRoutes.ts` for the calls a
   `@restOperation` declares, and the `index.ts` barrel concatenating them into
@@ -144,12 +144,11 @@ the meaning they usually do.
 
 ## Two generators over one model
 
-`packages/sdk/scripts/rest-model.ts` holds everything both sides must agree on:
+`scripts/sdk/rest-model.ts` holds everything both sides must agree on:
 the method, the path, where the argument travels, and the filter fields. Neither
-generator may re-derive any of it — that is the way the two would drift. It lives
-with the client generator, in the package the surface describes, and the server
-generator imports it from there; the drift check drives both and stays with the
-server.
+generator may re-derive any of it — that is the way the two would drift. It sits
+beside the client generator in `scripts/sdk`, and the server generator imports
+it from there; the drift check drives both and stays with the server.
 
 The model is mapped from the parsed spec, the same `parseSpec` the validation
 generator reads, so the REST pair and the Postgres generators each depend on the
@@ -161,7 +160,7 @@ have different import rules:
 | | `generate-rest-api.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
 | May import | `sdk/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `../selection.ts` and `../repositories/*`, and its own `../client.ts` |
-| Lives in | `packages/backend/scripts` | `packages/sdk/scripts` |
+| Lives in | `scripts/backend` | `scripts/sdk` |
 | Emits | `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the

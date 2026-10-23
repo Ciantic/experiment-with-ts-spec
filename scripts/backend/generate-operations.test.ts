@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "../spec/spec-model.ts";
 import {
     declaresContract,
     isScaffold,

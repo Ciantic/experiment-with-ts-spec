@@ -1,10 +1,10 @@
 # Schema generation
 
-`packages/backend/scripts/generate-postgres-schema.ts` turns the entities in
+`scripts/backend/generate-postgres-schema.ts` turns the entities in
 `packages/spec/src/` into Postgres DDL.
 
-The spec is parsed by `packages/spec/scripts/spec-model.ts`; the Postgres table
-model is built by `packages/backend/scripts/postgres-model.ts`, which both this
+The spec is parsed by `scripts/spec/spec-model.ts`; the Postgres table
+model is built by `scripts/backend/postgres-model.ts`, which both this
 generator and the repository generator consume. Only the rendering differs; see
 `docs/repositories.md`.
 
@@ -31,7 +31,7 @@ mapping lives in `packages/spec/src/primitives/`, not in the generator. Adding a
 primitive is a spec-only change. The tag is checked rather than trusted: the
 linter reads the same vocabulary, and requires the named type to select as the
 JavaScript type the alias resolves to. The vocabulary and the built-in defaults
-below are `packages/spec/scripts/pg-types.ts`, which both the linter and this
+below are `scripts/spec/pg-types.ts`, which both the linter and this
 generator read:
 
 - The keyword types `string` → `text`, `number` → `float8`, `boolean` →
@@ -170,7 +170,7 @@ generation error, because that child's writes would leave the aggregate stale.
 
 Two test files:
 
-- `packages/backend/scripts/generate-postgres-schema.test.ts` — the generator's
+- `scripts/backend/generate-postgres-schema.test.ts` — the generator's
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. The fixture's sources go through
   `parseInMemorySpec(files, { sourceGlob })`, so a fixture is generated

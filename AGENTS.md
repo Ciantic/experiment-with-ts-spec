@@ -13,16 +13,22 @@
 
 - `scripts/*` must never be tightly coupled to spec domain names. Read what you
   need from an annotation on the spec (e.g. `@pgType`) via a generic helper in
-  `packages/spec/scripts/spec-model.ts`. A new domain type must not require
+  `scripts/spec/spec-model.ts`. A new domain type must not require
   editing a generator. We should invent more annotations if need be.
-- Only `packages/spec/scripts/spec-model.ts` reads the spec through ts-morph. A
+- Only `scripts/spec/spec-model.ts` reads the spec through ts-morph. A
   generator, its model, and the linter read the parsed `SpecModel` — including
   each field's `SpecType`, `location`, and tags — and never walk a syntax tree
   themselves.
-- A generator lives in the package that owns its artifact: the schema,
-  repository, and query generators in `packages/backend/scripts` because they
-  share the table model, the Zod and REST client generators in
-  `packages/sdk/scripts` because they write the SDK.
+- Every generator lives at the root, in the directory named for the package
+  whose artifact it writes: `scripts/backend` for the schema, repository, and
+  query generators because they share the table model, `scripts/sdk` for the
+  Zod and REST client generators because they write the SDK, and `scripts/spec`
+  for the parser and the linter. The artifact still belongs to its package;
+  `scripts/paths.ts` anchors every output root.
+- The root `package.json` carries the dependencies the scripts need —
+  `ts-morph`, `vitest`, `zod`, and PGlite — so a package keeps only what its
+  `src` imports at runtime. Scripts that read a module in `packages/*/src` import
+  it by relative path, so the root does not depend on any workspace package.
 - Each generator exports `run(spec, argv)`, so the root `scripts/generate.ts` can
   load the spec once and pass the same `SpecModel` to every step. That driver
   owns no artifact and holds no domain knowledge; it lints first, then orders

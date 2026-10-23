@@ -207,6 +207,9 @@ importers:
 
   .:
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@oxlint/plugins':
         specifier: ^1.89.0
         version: 1.89.0
@@ -216,6 +219,15 @@ importers:
       oxlint:
         specifier: ^1.88.0
         version: 1.88.0
+      ts-morph:
+        specifier: ^28.0.0
+        version: 28.0.0
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/backend:
     dependencies:
@@ -244,9 +256,6 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
-      ts-morph:
-        specifier: ^28.0.0
-        version: 28.0.0
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
@@ -266,9 +275,6 @@ importers:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
-      ts-morph:
-        specifier: ^28.0.0
-        version: 28.0.0
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
@@ -282,12 +288,6 @@ importers:
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
-      ts-morph:
-        specifier: ^28.0.0
-        version: 28.0.0
-      vitest:
-        specifier: ^5.0.2
-        version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
 
 packages:
 

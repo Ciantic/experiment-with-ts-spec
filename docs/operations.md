@@ -52,7 +52,7 @@ A method the spec adds gets a module that compiles and fails the contract at
 runtime rather than at the compiler:
 
 ```ts
-// Generated for implementation by: scripts/generate-operations.ts
+// Generated for implementation by: scripts/backend/generate-operations.ts
 import type { WidgetOperations } from "spec/operations/…";
 import { NotImplemented } from "sdk/errors.ts";
 

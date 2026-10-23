@@ -1,5 +1,5 @@
 /** Parse `spec/src` into the model shared by the generators and the linter. See docs/spec-annotations.md. */
-import { dirname, join, relative as relativePath } from "node:path";
+import { join, relative as relativePath } from "node:path";
 import {
     Node,
     Project,
@@ -9,10 +9,9 @@ import {
     type JSDocTag,
     type MethodSignature,
 } from "ts-morph";
+import { SPEC_PACKAGE_ROOT } from "../paths.ts";
+import type { FilterDefault } from "../../packages/sdk/src/selection.ts";
 import { DEFAULT_PG_TYPES } from "./pg-types.ts";
-
-/** The `spec` package root, derived from this file's location rather than the cwd. */
-export const SPEC_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 /** The spec `src` directory; a source path under it maps back to its package export specifier. */
 export const SPEC_SRC_ROOT = join(SPEC_PACKAGE_ROOT, "src");
@@ -171,11 +170,8 @@ export function isNullOperator(value: string): value is NullOperator {
     return (NULL_OPERATORS as readonly string[]).includes(value);
 }
 
-/** The value a filter matches when a read omits it: a literal, or a null test such as `isNull`. See docs/queries.md. */
-export type FilterDefault =
-    | { kind: "isNull" }
-    | { kind: "isNotNull" }
-    | { kind: "literal"; value: string | number | boolean };
+/** The value a filter matches when a read omits it, shared with the SDK's read types. See docs/queries.md. */
+export type { FilterDefault };
 
 /** The write operations `@repository` and `@restRepository` may name, in canonical order. */
 export const WRITE_OPERATIONS = ["create", "upsert", "update", "delete"] as const;

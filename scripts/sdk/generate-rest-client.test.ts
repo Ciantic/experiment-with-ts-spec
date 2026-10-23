@@ -1,7 +1,7 @@
 /** Unit tests for the client renderer, driven by fixtures; the emitted imports are the invariant. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
 

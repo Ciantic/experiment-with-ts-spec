@@ -68,7 +68,7 @@ carries `null` where a spec may carry an absent field.
 
 ## Generation
 
-`packages/backend/scripts/postgres-model.ts` makes a defaulted column `not null`
+`scripts/backend/postgres-model.ts` makes a defaulted column `not null`
 whatever the field says, and a generator reads the tag, never the field name —
 so adding an entity never edits a generator. A field is therefore optional
 exactly when its column is nullable.

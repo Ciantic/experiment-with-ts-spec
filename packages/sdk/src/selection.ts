@@ -1,6 +1,11 @@
 /** Read types: the column-limiting selection, the filter arguments, and the ordering clauses. See docs/queries.md. */
 import type { Brand } from "spec/primitives/Brand.ts";
-export type { FilterDefault } from "spec/scripts/spec-model.ts";
+
+/** The value a filter matches when a read omits it: a literal, or a null test such as `isNull`. See docs/queries.md. */
+export type FilterDefault =
+    | { kind: "isNull" }
+    | { kind: "isNotNull" }
+    | { kind: "literal"; value: string | number | boolean };
 
 /** A leaf column: a keyword, a branded primitive, a `Date`, or a union of those. */
 type Scalar<T> = NonNullable<T> extends string | number | boolean | bigint | Date | Brand<any>

@@ -246,16 +246,16 @@ matched before the generated code rejects the call
 
 1. `packages/spec/src/primitives/Version.ts` defines the brand; `@version` and
    `@pgDefault 0` go on the field.
-2. `packages/backend/scripts/postgres-model.ts` maps `Version` to `int8` and sets
+2. `scripts/backend/postgres-model.ts` maps `Version` to `int8` and sets
    `Column.version` from the tag.
-3. `packages/backend/scripts/generate-postgres-schema.ts` emits the column and no
+3. `scripts/backend/generate-postgres-schema.ts` emits the column and no
    version trigger.
-4. `packages/backend/scripts/generate-repositories.ts` writes the column on
+4. `scripts/backend/generate-repositories.ts` writes the column on
    insert, claims it on upsert, and predicates on it while incrementing it on
    update.
-5. `packages/sdk/scripts/generate-zod-schemas.ts` relaxes the column on a create,
+5. `scripts/sdk/generate-zod-schemas.ts` relaxes the column on a create,
    and makes it required for the upsert and the patch.
-6. `packages/spec/scripts/lint-spec.ts` requires `@version` on a `Version` field,
+6. `scripts/spec/lint-spec.ts` requires `@version` on a `Version` field,
    at most one per interface, exclusive with `@computed`,
    `@createdAt`, and `@updatedAt`.
 

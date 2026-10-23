@@ -1,7 +1,7 @@
 /** Unit tests for the REST model, driven by self-contained fixtures. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec } from "spec/scripts/spec-model.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */

@@ -5,5 +5,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "mockdata/**/*.ts"]
+  "include": ["src/**/*.ts", "mockdata/**/*.ts"]
 }

@@ -15,7 +15,7 @@ import {
     VersionConflictError,
     apiErrorBody,
     apiErrorFromBody,
-} from "../src/errors.ts";
+} from "../../packages/sdk/src/errors.ts";
 
 /** Every error the wire can name, so the registry is checked against the classes it claims. */
 const WIRE_ERRORS = [

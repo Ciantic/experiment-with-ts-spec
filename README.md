@@ -24,23 +24,33 @@ flowchart TD
 
     specs --> specModel
 
+    subgraph scripts["Root scripts"]
+        direction TB
+        zod["<b>Zod schema generator</b><br/>Validation schemas and Insert/Patch types<br/>Error types"]
+        restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
+        pgSchema["<b>Postgres schema generator</b><br/>Tables, columns, constraints and triggers"]
+        repositories["<b>Repository generator</b><br/>Create, update and delete functions"]
+        queries["<b>Query generator</b><br/>Typed query functions and query metadata"]
+        restApi["<b>REST API generator</b><br/>Server route table"]
+    end
+
     subgraph packages["Packages"]
         direction TB
         subgraph sdkPkg["sdk"]
-            zod["<b>Zod schema generator</b><br/>Validation schemas and Insert/Patch types<br/>Error types"]
-            restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
             sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
         subgraph backendPkg["backend"]
-            pgSchema["<b>Postgres schema generator</b><br/>Tables, columns, constraints and triggers"]
-            repositories["<b>Repository generator</b><br/>Create, update and delete functions"]
-            queries["<b>Query generator</b><br/>Typed query functions and query metadata"]
-            restApi["<b>REST API generator</b><br/>Server route table"]
+            backendArtifacts["<b>Generated schema, repositories,<br/>queries and routes</b>"]
         end
     end
 
-    specModel --> packages
+    specModel --> scripts
+    zod --> sdkApi
     restClient --> sdkApi
+    pgSchema --> backendArtifacts
+    repositories --> backendArtifacts
+    queries --> backendArtifacts
+    restApi --> backendArtifacts
 ```
 
 ### Packages

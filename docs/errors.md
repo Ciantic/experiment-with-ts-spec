@@ -14,7 +14,7 @@ it from a response name one class, not two mirrors.
 - `builtinErrors.ts` — the classes this package raises itself: a request the
   router refuses, a write that matched no row, a driver result it cannot read.
 - `specErrors.ts` — the classes the spec's `@throws` tags declare, written by
-  `packages/sdk/scripts/generate-errors.ts`.
+  `scripts/sdk/generate-errors.ts`.
 
 `errors.ts` is the entry: it re-exports both sets, merges their registries into
 one kind table, and rebuilds an error from a response body. The split keeps

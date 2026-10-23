@@ -1,10 +1,9 @@
 # Validation
 
-`packages/sdk/scripts/generate-zod-schemas.ts` turns the entities in
+`scripts/sdk/generate-zod-schemas.ts` turns the entities in
 `packages/spec/src` into Zod schemas and the matching write types, written
-to `packages/sdk/src`. The generator lives in the package that owns its
-artifact, so `pnpm --filter sdk run generate:validation` regenerates the
-schemas without the backend. A schema is what validates a value at the boundary
+to `packages/sdk/src`. The root `scripts/` owns the generator, so
+`pnpm run generate:validation` regenerates the schemas without the backend. A schema is what validates a value at the boundary
 — an HTTP body, a job payload — against the same annotations the database schema
 and the repositories are generated from; the write types are what a caller passes
 in process. A write type is the spec's own type narrowed by the same omit list its
@@ -184,7 +183,7 @@ the refresh. So a patch rejects the same branches and derivable values a create
 does, and `.strict()` turns a key the update would silently ignore into a 400.
 
 The lists are `omittedFromPatch` and `nullablePatchProperties`
-(`packages/spec/scripts/spec-model.ts`), and the `<Entity>Patch` type is rendered
+(`scripts/spec/spec-model.ts`), and the `<Entity>Patch` type is rendered
 from them into the same module as the patch schema, so the repository type taking
 it, the client sending it, and the wire schema accepting it all permit exactly
 the same fields. The type is built by `Patch` (`packages/sdk/src/patch.ts`),
@@ -455,20 +454,20 @@ a read validates its selection too.
 The generator reads only annotations: `@primitive`, `@zod`, `@version`, and
 `@queryFilter` (which `spec-model.ts` defaults on every `@primaryKey` field, with
 `required` as the one option). It never names a domain type. The parsing and tag
-vocabulary live in `packages/spec/scripts/spec-model.ts`; a new domain type is a
+vocabulary live in `scripts/spec/spec-model.ts`; a new domain type is a
 spec-only change unless it introduces a type the mapper cannot express, which is
 reported as a diagnostic.
 
 ## Commands
 
-- `pnpm generate:validation` — writes `packages/sdk/src`. It runs in the
-  `sdk` package, which owns the generator (`scripts/generate-zod-schemas.ts`).
+- `pnpm generate:validation` — writes `packages/sdk/src`. It runs from the root,
+  which owns the generator (`scripts/sdk/generate-zod-schemas.ts`).
 - `pnpm generate:validation --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm run generate` — runs it after the schema, repository, and query generators.
 
 ## Validation
 
-- `packages/sdk/scripts/generate-zod-schemas.test.ts` drives the mapper
+- `scripts/sdk/generate-zod-schemas.test.ts` drives the mapper
   and the renderer with self-contained fixtures, never the real spec. It also
   evaluates `primitives.ts` against Zod to prove the emitted schemas parse.
 - `pnpm run typecheck` compiles the generated `src`, so a schema that does not

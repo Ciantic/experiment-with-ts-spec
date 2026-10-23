@@ -1,6 +1,6 @@
 # Repositories
 
-`packages/backend/scripts/generate-repositories.ts` writes one module per
+`scripts/backend/generate-repositories.ts` writes one module per
 operation into `packages/backend/src/db/repositories/`, named after the function
 it exports: `createWidget.ts`, `upsertWidget.ts`, `updateWidget.ts`,
 `deleteWidget.ts`. An entity generates only the operations its `@repository`
@@ -240,7 +240,7 @@ them, because the statement writes the rows it matches before the rejection is
 raised. See `docs/transactions.md`.
 
 `<Entity>Patch` and `<name>PatchSchema` are the same set: both are built from
-`omittedFromPatch` and `nullablePatchProperties` (`packages/spec/scripts/spec-model.ts`)
+`omittedFromPatch` and `nullablePatchProperties` (`scripts/spec/spec-model.ts`)
 into one `packages/sdk` module, so the repository type and the wire schema
 cannot drift apart. A field neither writes is a 400 on the wire and a type error
 in process, rather than a field that quietly does nothing (`docs/validation.md`).
@@ -364,8 +364,8 @@ statement agree on what a delete carries (`docs/rest-api.md`).
 
 The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
-`packages/backend/scripts/postgres-model.ts`, which maps the parsed spec
-(`packages/spec/scripts/spec-model.ts`) to columns. One interpretation of
+`scripts/backend/postgres-model.ts`, which maps the parsed spec
+(`scripts/spec/spec-model.ts`) to columns. One interpretation of
 `@pgTable`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
 key tags, and type mapping feeds both the DDL and the repositories, so a
 repository cannot name a column the schema does not have.

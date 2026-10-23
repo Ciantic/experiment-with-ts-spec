@@ -214,7 +214,7 @@ together — so the linter refuses a tag the mapping does not know, and one whos
 select type is a different JavaScript type than the alias resolves to. `type
 Money = Decimal & Brand<"Money">` resolves through its brands to `string`, so it
 may declare `decimal` but not `int8`, whose select type is `bigint`.
-`packages/spec/scripts/pg-types.ts` holds that vocabulary and no more, so the
+`scripts/spec/pg-types.ts` holds that vocabulary and no more, so the
 backend can read it without the parser. `spec-model.ts` owns the resolution:
 `readType` turns a written type into a `SpecType` shape, and `resolveType` walks
 that shape through the alias graph and reports both what it is stored as and what
@@ -627,7 +627,7 @@ Rationale is in `docs/primitives.md`.
 3. `@createdAt` and `@updatedAt` become a `default now()`; the generated writes
    supply a value or fall back to it, and no clock trigger is emitted.
 
-`packages/backend/scripts/generate-postgres-schema.ts` implements all of the
+`scripts/backend/generate-postgres-schema.ts` implements all of the
 above. See `docs/schema-generation.md`.
 
 ## Why the expressions live in the spec
@@ -671,7 +671,7 @@ total?: Money;
 
 ## Linting
 
-`pnpm lint:spec` runs `packages/spec/scripts/lint-spec.ts` over the parsed
+`pnpm lint:spec` runs `scripts/spec/lint-spec.ts` over the parsed
 `SpecModel`, the same one the generators read. Run it whenever a tag changes.
 
 The linter reads the tags as written: `Tags.written` holds a `SpecTag` per
@@ -784,7 +784,7 @@ Gotchas:
   tag is accepted and the generator emits nothing for it. That is the escape
   hatch for a derivation that is not yet implemented, and it is why the linter
   does not require a mechanism.
-- **Node 24 runs the script directly.** `node scripts/lint-spec.ts` relies on
+- **Node 24 runs the script directly.** `node scripts/spec/lint-spec.ts` relies on
   native type stripping; there is no build step and no `tsx`.
 - **Statically decidable only.** The linter checks the tags, not whether an
   expression is semantically right for its field, nor whether the SQL is

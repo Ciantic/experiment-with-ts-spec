@@ -27,24 +27,24 @@ values, all of which are domain decisions rather than code behaviour.
 
 ## How it looks here
 
-- `packages/backend/scripts/generate-postgres-schema.test.ts` — drives
+- `scripts/backend/generate-postgres-schema.test.ts` — drives
   `generateSchema` with self-contained fixtures, parsed by `parseInMemorySpec`
   from the sources the test writes, so it never has to touch the real spec.
   Its trigger group also executes the generated triggers in PGlite over
   `Parent`/`ChildA`/`ChildB` fixtures, asserting which child drives which parent
   column: the SQL text cannot show a trigger attached to the wrong table, because
   that trigger is still valid and still runs.
-- `packages/sdk/scripts/generate-zod-schemas.test.ts` — drives the schema
+- `scripts/sdk/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
-- `packages/sdk/scripts/rest-model.test.ts` — drives `buildRestModel` with
+- `scripts/sdk/rest-model.test.ts` — drives `buildRestModel` with
   in-memory fixtures, asserting the paths, operation ids, filters, and exposed
   operations both REST generators render.
-- `packages/sdk/scripts/generate-rest-client.test.ts` — drives the client
+- `scripts/sdk/generate-rest-client.test.ts` — drives the client
   renderer with fixtures and asserts the invariant that makes it worth
   generating: the emitted modules import `spec`, the type-only schema types, and
   their own modules, and nothing else.
-- `packages/sdk/scripts/errors.test.ts` — the shared error contract:
+- `scripts/sdk/errors.test.ts` — the shared error contract:
   `apiErrorBody` names the wire kind, `apiErrorFromBody` rebuilds every kind with
   the response's status, and an unknown kind or an unclassified body stays
   undefined. The class list is a fixture, so a new kind is added there once.
@@ -56,16 +56,16 @@ values, all of which are domain decisions rather than code behaviour.
   and asserts it reaches only the transport and the error contract, so a schema
   module added to the entry fails the test instead of pulling `zod` into the
   client runtime.
-- `packages/backend/scripts/generate-rest-api.test.ts` — drives the route
+- `scripts/backend/generate-rest-api.test.ts` — drives the route
   renderer with fixtures, and drives the client renderer from the same model to
   assert both expose exactly the same calls, so the pair cannot drift.
-- `packages/backend/scripts/generate-repositories.test.ts` — drives the repository
+- `scripts/backend/generate-repositories.test.ts` — drives the repository
   renderer with table fixtures built by hand, so it exercises no ts-morph and no
   domain. A second group transpiles the generated module, builds a matching
   `create table` from the fixture's column metadata, and runs create/upsert/
   update/delete against PGlite. It asserts the generated SQL *executes*, not what
   the data means.
-- `packages/spec/scripts/spec-model.ts` — its `tsLoadGeneratedModule` and
+- `scripts/spec/spec-model.ts` — its `tsLoadGeneratedModule` and
   `tsStubImports` are test support the generator suites share: they transpile a
   module of generated TypeScript to CommonJS and run it with the imports the test
   names standing in for its own, so an unstubbed runtime import fails the test
@@ -121,7 +121,7 @@ values, all of which are domain decisions rather than code behaviour.
   server has. It asserts the rows the operation writes, the value it resolves
   when the caller omits it, the refusal of an incomplete input, and that a
   refused second write leaves the first rolled back.
-- `packages/spec/scripts/lint-spec.test.ts` — linter rules, with fixture source
+- `scripts/spec/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.
 - `scripts/oxlint/errors.test.ts` — the two error-contract rules, with fixture

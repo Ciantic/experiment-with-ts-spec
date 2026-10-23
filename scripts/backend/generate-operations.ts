@@ -1,17 +1,15 @@
 /** Scaffold one backend module per `@operation`, and verify each hand-written one still declares its contract. See docs/operations.md. */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
+import { BACKEND_PACKAGE_ROOT } from "../paths.ts";
 import {
     loadSpec,
     type Diagnostic,
     type SpecModel,
     type SpecOperation,
-} from "spec/scripts/spec-model.ts";
+} from "../spec/spec-model.ts";
 
 export type { Diagnostic };
-
-/** This package's root, so paths do not depend on the current working directory. */
-const BACKEND_PACKAGE_ROOT = dirname(import.meta.dirname);
 
 /** Where the operation modules are written when no `--out` is given. */
 const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/operations");
@@ -20,7 +18,7 @@ const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/operations");
 const PLACEHOLDER_CONTEXT = "unknown";
 
 /** The first line of a scaffold: it names the generator that started the file, and who finishes it. */
-export const SCAFFOLD_MARKER = "// Generated for implementation by: scripts/generate-operations.ts";
+export const SCAFFOLD_MARKER = "// Generated for implementation by: scripts/backend/generate-operations.ts";
 
 /** The shared errors module the scaffold throws from. */
 const ERRORS_IMPORT = "sdk/errors.ts";

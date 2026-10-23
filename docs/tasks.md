@@ -14,10 +14,10 @@ runs, in order:
 
 1. `pnpm run generate` — `node scripts/generate.ts`, which lints the spec and
    then writes every generated artifact: `generate:operations`,
-   `generate:schema`, `generate:repositories`, `generate:queries`,
-   `generate:rest-api`, and `generate:rest-client` in `packages/backend`, plus
-   `generate:errors` and `generate:validation` in `packages/sdk`, which owns the
-   generators for its own modules.
+   `generate:schema`, `generate:repositories`, `generate:queries`, and
+   `generate:rest-api` under `packages/backend`, plus `generate:errors` and
+   `generate:validation` under `packages/sdk`. The generators run from
+   `scripts/`, but each artifact belongs to its package.
 2. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
@@ -48,15 +48,15 @@ generators last. Errors go before operations because an operation's scaffold
 documents the classes its `@throws` tags declare. Operations go before the REST
 pair because the generated route imports the module the scaffold writes. The driver parses the
 spec once through
-`packages/spec/scripts/spec-model.ts` and hands the same `SpecModel` to every
+`scripts/spec/spec-model.ts` and hands the same `SpecModel` to every
 step, because that parse dominates a generate run; each generator keeps a
 standalone `generate:*` script for a single artifact, and `pnpm run lint` runs
 the linter alone. All of them read the
 spec through that same model: the schema, repository, and
 query generators map it to columns in
-`packages/backend/scripts/postgres-model.ts`, the validation generator maps it to
-Zod schemas in `packages/sdk/scripts/zod-model.ts`, and the REST pair maps
-it to the HTTP surface in `packages/sdk/scripts/rest-model.ts`. The error
+`scripts/backend/postgres-model.ts`, the validation generator maps it to
+Zod schemas in `scripts/sdk/zod-model.ts`, and the REST pair maps
+it to the HTTP surface in `scripts/sdk/rest-model.ts`. The error
 generator reads the `@throws` tags and writes `specErrors.ts`; the operations
 generator reads the parsed `@operation` methods and writes only the modules that
 do not exist yet. See `docs/errors.md` and `docs/operations.md`. The API
@@ -67,29 +67,28 @@ order between them is presentational — it mirrors the order the artifacts appe
 in the repository. A step that reports a finding or a diagnostic returns a
 failing exit code, and the driver stops rather than running the steps after it.
 
-A generator lives in the package that owns its artifact. The schema,
-repository, and query generators stay in `packages/backend/scripts`, because
-they share `postgres-model.ts` and write the backend's own tables and modules.
-The Zod generator and the REST client generator live in `packages/sdk/scripts`,
-with the client artifact they render and, for the REST pair, the `rest-model.ts`
-both read; the server generator imports that model from the SDK rather than
-owning a second copy. The drift check drives both generators, so it stays in
-`packages/backend/scripts` beside the route renderer.
+A generator lives under `scripts/<package>`, named for the package whose
+artifact it writes. The schema, repository, and query generators are in
+`scripts/backend`, because they share `postgres-model.ts` and write the
+backend's own tables and modules. The Zod generator and the REST client
+generator are in `scripts/sdk`, with the client artifact they render and, for
+the REST pair, the `rest-model.ts` both read; the server generator imports that
+model rather than owning a second copy. The drift check drives both generators,
+so it stays in `scripts/backend` beside the route renderer. `scripts/paths.ts`
+derives each package root, so an output path never depends on the cwd.
 
 ## Adding a generator
 
 A generator module exports `run(spec, argv): number`, which reads the model,
 writes its artifact, and returns the process exit code. Its own
 `if (import.meta.main)` block calls `run(loadSpec(), process.argv)`, so the
-package script still works standalone and still accepts its flags. Adding one to
-the pipeline is two lines in `scripts/generate.ts`: the import and the position
-in the driver's list. The driver passes no `argv`, so a generator's flags never
-reach the whole-pipeline run.
+root `generate:*` script still works standalone and still accepts its flags.
+Adding one to the pipeline is two lines in `scripts/generate.ts`: the import and
+the position in the driver's list. The driver passes no `argv`, so a generator's
+flags never reach the whole-pipeline run.
 
-The driver is the only consumer of another package's generator, so `backend` and
-`sdk` do not export `scripts/`: it imports those two by relative path.
-`spec` keeps its `scripts/` export, because the driver and the generators in both
-of those packages read `spec/scripts/spec-model.ts` through it.
+The generators are siblings under `scripts/`, so the driver imports them by
+relative path, and no package exposes them through its `exports` map.
 
 The linter is a step in that same list, so it shares the parse and no longer
 needs a separate entry point in `check`. It takes no argv, and the driver stops
@@ -129,6 +128,6 @@ exists. `--if-present` makes the step opt-in per package: a package without a
 - **`pnpm run build` is recursive, the others are not.** `lint` and `generate`
   target specific packages by name; `build` fans out to all of them.
 - **Adding a linter** means wiring it into `lint` and into the driver's step
-  list, since `check` reaches a linter through `pnpm run generate`. Only the spec
-  package has one today, so `lint` is a single delegation rather than a recursive
-  fan-out.
+  list, since `check` reaches a linter through `pnpm run generate`. `scripts/spec`
+  holds the only one today, so `lint` is a single delegation rather than a
+  recursive fan-out.

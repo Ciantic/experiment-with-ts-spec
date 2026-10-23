@@ -11,7 +11,7 @@ See "Why the resolver is hand-written".
   `Where` clauses. Hand-written; the resolver and the generated REST client
   import their types from it, so the read contract has one definition. See
   `docs/rest-api.md`.
-- `packages/backend/scripts/generate-queries.ts` — the generator.
+- `scripts/backend/generate-queries.ts` — the generator.
 - `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per `@queries` entity), `index.ts` (barrel).
 - `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
@@ -559,7 +559,7 @@ other read arguments have nowhere to apply: there is no separate statement to
 filter, order, or page, so they are ignored for an inlined branch.
 
 The generator records the distinction in `queryModel`, from the branch tags the
-table model already carries (`packages/backend/scripts/postgres-model.ts`):
+table model already carries (`scripts/backend/postgres-model.ts`):
 
 ```ts
 account:  { kind: "relation", table: "account", column: "accountId" }

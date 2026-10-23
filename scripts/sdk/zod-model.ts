@@ -17,7 +17,7 @@ import {
     type SpecType,
     type SpecTypeAlias,
     type SpecTypeMember,
-} from "spec/scripts/spec-model.ts";
+} from "../spec/spec-model.ts";
 
 export type { Diagnostic };
 

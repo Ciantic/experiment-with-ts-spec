@@ -1,15 +1,14 @@
 /** Lint the spec, then run every generator from one parse; this driver only orders the steps. See docs/spec-annotations.md. */
-import { loadSpec, type SpecModel } from "../packages/spec/scripts/spec-model.ts";
-import { run as runLint } from "../packages/spec/scripts/lint-spec.ts";
-// A generator package keeps its scripts/ off its exports map, so the driver imports them by path. See docs/tasks.md.
-import { run as runPostgresSchema } from "../packages/backend/scripts/generate-postgres-schema.ts";
-import { run as runRepositories } from "../packages/backend/scripts/generate-repositories.ts";
-import { run as runQueries } from "../packages/backend/scripts/generate-queries.ts";
-import { run as runOperations } from "../packages/backend/scripts/generate-operations.ts";
-import { run as runRestApi } from "../packages/backend/scripts/generate-rest-api.ts";
-import { run as runRestClient } from "../packages/sdk/scripts/generate-rest-client.ts";
-import { run as runValidation } from "../packages/sdk/scripts/generate-zod-schemas.ts";
-import { run as runErrors } from "../packages/sdk/scripts/generate-errors.ts";
+import { loadSpec, type SpecModel } from "./spec/spec-model.ts";
+import { run as runLint } from "./spec/lint-spec.ts";
+import { run as runPostgresSchema } from "./backend/generate-postgres-schema.ts";
+import { run as runRepositories } from "./backend/generate-repositories.ts";
+import { run as runQueries } from "./backend/generate-queries.ts";
+import { run as runOperations } from "./backend/generate-operations.ts";
+import { run as runRestApi } from "./backend/generate-rest-api.ts";
+import { run as runRestClient } from "./sdk/generate-rest-client.ts";
+import { run as runValidation } from "./sdk/generate-zod-schemas.ts";
+import { run as runErrors } from "./sdk/generate-errors.ts";
 
 /** One step of the run: read the spec, do its job, and report the exit code. */
 type Step = (spec: SpecModel, argv: readonly string[]) => number;

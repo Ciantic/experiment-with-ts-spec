@@ -1,4 +1,4 @@
-// Generated for implementation by: scripts/generate-operations.ts
+// Generated for implementation by: scripts/backend/generate-operations.ts
 import type { InvoiceOperations } from "spec/operations/InvoiceOperations.ts";
 import type { EmailAddress } from "spec/primitives/EmailAddress.ts";
 import { createEmail, createInvoiceSent } from "../db/repositories/index.ts";

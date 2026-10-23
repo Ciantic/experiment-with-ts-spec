@@ -26,7 +26,7 @@ export type BrandedId<Name extends string> = UUIDv7 & Brand<Name>;
   spec-only change. The linter checks the tag against the alias's own type: the
   type it names must select as the JavaScript type the alias resolves to, so
   `Decimal` may declare `decimal` (a string) but not `int8` (a `bigint`), and a
-  name outside `packages/spec/scripts/pg-types.ts` is reported.
+  name outside `scripts/spec/pg-types.ts` is reported.
 - `@zod` is the type's Zod schema, written verbatim. The tag is text a generator
   consumes; the schema is never evaluated in this package. It is what gives a
   brand that exists only in the type system a runtime counterpart that can

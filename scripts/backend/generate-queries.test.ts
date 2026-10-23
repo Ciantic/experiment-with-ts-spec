@@ -1,6 +1,6 @@
 /** Unit tests for the query generator, driven by self-contained fixtures. See docs/testing.md. */
 import { describe, expect, it } from "vitest";
-import { WRITE_OPERATIONS } from "spec/scripts/spec-model.ts";
+import { WRITE_OPERATIONS } from "../spec/spec-model.ts";
 import type { Column, Table } from "./postgres-model.ts";
 import {
     buildQueryModel,
