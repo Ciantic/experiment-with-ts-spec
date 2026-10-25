@@ -19,38 +19,71 @@ TODO: More specifics goes here.
 
 ```mermaid
 flowchart TD
-    specs["<b>Specs</b><br/>Domain models, related interfaces and business logic skeleton"]
-    specModel["<b>Spec model</b><br/>Parsed description of the domain"]
+    specs["<b>Specs</b><br/>packages/spec/src<br/>Domain models, related interfaces and business logic skeleton"]
+    specModel["<b>Spec model</b><br/>scripts/spec/spec-model.ts<br/>One ts-morph parse of the domain"]
 
     specs --> specModel
 
-    subgraph scripts["Root scripts"]
+    subgraph scripts["scripts/"]
         direction TB
-        zod["<b>Zod schema generator</b><br/>Validation schemas and Insert/Patch types<br/>Error types"]
-        restClient["<b>REST client generator</b><br/>Type-safe SDK calls"]
-        pgSchema["<b>Postgres schema generator</b><br/>Tables, columns, constraints and triggers"]
-        repositories["<b>Repository generator</b><br/>Create, update and delete functions"]
-        queries["<b>Query generator</b><br/>Typed query functions and query metadata"]
-        restApi["<b>REST API generator</b><br/>Server route table"]
+        lint["<b>Spec linter</b><br/>scripts/spec/lint-spec.ts<br/>Gates every generator"]
+
+        pgModel["<b>Postgres model</b><br/>scripts/backend/postgres-model.ts"]
+        zodModel["<b>Zod model</b><br/>scripts/sdk/zod-model.ts"]
+        restModel["<b>REST model</b><br/>scripts/sdk/rest-model.ts"]
+
+        subgraph backendScripts["backend/"]
+            direction TB
+            operations["<b>Operation scaffolder</b><br/>generate-operations.ts<br/>One module per @operation"]
+            pgSchema["<b>Postgres schema generator</b><br/>generate-postgres-schema.ts<br/>Tables, columns, constraints and triggers"]
+            repositories["<b>Repository generator</b><br/>generate-repositories.ts<br/>Create, update, upsert and delete functions"]
+            queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and query metadata"]
+            restApi["<b>REST API generator</b><br/>generate-rest-api.ts<br/>Server route table"]
+        end
+
+        subgraph sdkScripts["sdk/"]
+            direction TB
+            errors["<b>Error generator</b><br/>generate-errors.ts<br/>One class per @throws"]
+            validation["<b>Zod schema generator</b><br/>generate-zod-schemas.ts<br/>Validation schemas and Insert/Patch types"]
+            restClient["<b>REST client generator</b><br/>generate-rest-client.ts<br/>Type-safe SDK calls"]
+        end
     end
 
     subgraph packages["Packages"]
         direction TB
         subgraph sdkPkg["sdk"]
+            sdkSchemas["<b>Generated schemas and types</b><br/>Domain, repository, operation and query schemas<br/>Insert, Patch and Upsert types"]
+            sdkErrors["<b>Generated error classes</b>"]
             sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
         subgraph backendPkg["backend"]
-            backendArtifacts["<b>Generated schema, repositories,<br/>queries and routes</b>"]
+            backendSchema["<b>Generated schema.sql</b>"]
+            backendData["<b>Generated repositories and queries</b>"]
+            backendRoutes["<b>Generated route table</b>"]
+            backendOperations["<b>Operation scaffolds</b><br/>Business logic filled in by hand"]
         end
     end
 
-    specModel --> scripts
-    zod --> sdkApi
+    specModel --> lint
+    specModel --> pgModel
+    specModel --> zodModel
+    specModel --> restModel
+    specModel --> operations
+    specModel --> errors
+    pgModel --> pgSchema
+    pgModel --> repositories
+    pgModel --> queries
+    zodModel --> validation
+    restModel --> restApi
+    restModel --> restClient
+    errors --> sdkErrors
+    validation --> sdkSchemas
     restClient --> sdkApi
-    pgSchema --> backendArtifacts
-    repositories --> backendArtifacts
-    queries --> backendArtifacts
-    restApi --> backendArtifacts
+    pgSchema --> backendSchema
+    repositories --> backendData
+    queries --> backendData
+    restApi --> backendRoutes
+    operations --> backendOperations
 ```
 
 ### Packages
