@@ -92,8 +92,6 @@ flowchart TD
 - `sdk` - Type-safe REST API SDK, shared validation schemas, and shared types
 - `spec` - Domain models
 
-Also backend is kind of big, maybe breaking it to infra and services or something like that would be warranted.
-
 ```mermaid
 flowchart LR
     spec["<b>spec</b><br/>Domain interfaces and primitives"]
