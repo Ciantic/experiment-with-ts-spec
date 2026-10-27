@@ -1,4 +1,4 @@
-import type { EmailId } from "../Email.ts";
+import type { EmailId } from "../../emailing-service/Email.ts";
 import type { Invoice } from "../Invoice.ts";
 import type { InvoiceSentId } from "../InvoiceSent.ts";
 
