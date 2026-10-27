@@ -350,7 +350,7 @@ export interface SpecInterface {
     pgTableName: string;
     filePath: string;
     location: SpecLocation;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
+    /** The module specifier that imports the entity, e.g. `spec/Widget.ts`. */
     importSpecifier: string;
     /** The interface's type parameters as written, e.g. `["T"]`; an operation contract takes its context here. */
     typeParameters: string[];
@@ -396,7 +396,7 @@ export interface SpecOperationError {
 export interface SpecOperation {
     /** The contract interface that declares it, e.g. `InvoiceOperations`. */
     interfaceName: string;
-    /** The module specifier that imports the contract, e.g. `spec/operations/InvoiceOperations.ts`. */
+    /** The module specifier that imports the contract, e.g. `spec/WidgetOperations.ts`. */
     importSpecifier: string;
     /** The contract's type parameters, which a generator fills with the context it supplies. */
     interfaceTypeParameters: string[];

@@ -1,5 +1,5 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
-import type { EmailAddress } from "../primitives/EmailAddress.ts";
+import type { EmailAddress } from "./primitives/EmailAddress.ts";
 import type { Version } from "../primitives/Version.ts";
 import type { TenantId } from "./Tenant.ts";
 

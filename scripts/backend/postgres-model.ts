@@ -100,7 +100,7 @@ export interface Trigger {
 export interface Table {
     name: string;
     interfaceName: string;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
+    /** The module specifier that imports the entity, e.g. `spec/Widget.ts`. */
     importSpecifier: string;
     columns: Column[];
     /** Branch fields, keyed by the interface field name. See docs/queries.md. */

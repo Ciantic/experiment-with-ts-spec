@@ -39,7 +39,7 @@ export interface RestEntity {
     entity: string;
     /** The lower-cased module name, e.g. `invoice`. */
     module: string;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
+    /** The module specifier that imports the entity, e.g. `spec/Widget.ts`. */
     importSpecifier: string;
     /** The collection path, e.g. `/invoice`, taken from the `@pgTable` name. */
     path: string;

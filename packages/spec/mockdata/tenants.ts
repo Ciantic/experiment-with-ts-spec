@@ -1,4 +1,4 @@
-import type { Tenant, TenantId } from "../src/domain/Tenant.ts";
+import type { Tenant, TenantId } from "../src/invoicing-service/Tenant.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample tenants for a seeded development database. See docs/mockdata.md. */

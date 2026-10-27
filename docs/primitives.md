@@ -1,13 +1,18 @@
 # Primitives
 
-Value types carrying `@primitive`, in `packages/spec/src/`. These are scalars,
-not entities; an entity is an interface carrying `@entity`, which may sit in any
-file under `packages/spec/src/`. See "Discovery" in `docs/spec-annotations.md`.
+Value types carrying `@primitive`, anywhere under `packages/spec/src/`. These
+are scalars, not entities; an entity is an interface carrying `@entity`, which
+may sit in any file under `packages/spec/src/`. See "Discovery" in
+`docs/spec-annotations.md`.
+
+A primitive serving every spec sits in `packages/spec/src/primitives/`; one that
+names a value of a single service's domain sits in that service's `primitives/`,
+beside the entities that use it.
 
 ## Annotations
 
-Every alias in `packages/spec/src/primitives/` carries three type-level tags,
-described in `docs/spec-annotations.md`, and may carry a fourth:
+Every primitive carries three type-level tags, described in
+`docs/spec-annotations.md`, and may carry a fourth:
 
 ```typescript
 /**

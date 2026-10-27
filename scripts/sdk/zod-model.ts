@@ -42,7 +42,7 @@ export interface ZodEntity {
     primaryKeyName: string;
     /** The schema validating an upsert: what a create carries, plus the `@version` it claims. */
     upsertName: string;
-    /** The module specifier that imports the entity, e.g. `spec/domain/Invoice.ts`. */
+    /** The module specifier that imports the entity, e.g. `spec/Widget.ts`. */
     importSpecifier: string;
     fields: ZodField[];
     /** Field names a create omits, rendered as an `.omit()` of the entity schema. */

@@ -1,6 +1,6 @@
-import type { Customer, CustomerId } from "../src/domain/Customer.ts";
-import type { TenantId } from "../src/domain/Tenant.ts";
-import type { EInvoiceAddress } from "../src/primitives/EInvoiceAddress.ts";
+import type { Customer, CustomerId } from "../src/invoicing-service/Customer.ts";
+import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { EInvoiceAddress } from "../src/invoicing-service/primitives/EInvoiceAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample customers for a seeded development database. See docs/mockdata.md. */

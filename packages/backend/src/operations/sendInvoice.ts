@@ -1,6 +1,6 @@
 // Generated for implementation by: scripts/backend/generate-operations.ts
-import type { InvoiceOperations } from "spec/operations/InvoiceOperations.ts";
-import type { EmailAddress } from "spec/primitives/EmailAddress.ts";
+import type { InvoiceOperations } from "spec/invoicing-service/operations/InvoiceOperations.ts";
+import type { EmailAddress } from "spec/invoicing-service/primitives/EmailAddress.ts";
 import { createEmail, createInvoiceSent } from "../db/repositories/index.ts";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import { InvoiceDetailsError, ShortWriteError } from "sdk/errors.ts";

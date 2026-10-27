@@ -27,7 +27,7 @@ server canonicalises them, and `information_schema.columns` reports the canonica
 name back.
 
 Named spec types are mapped by the `@pgType` tag their alias declares, so the
-mapping lives in `packages/spec/src/primitives/`, not in the generator. Adding a
+mapping lives on the primitive, not in the generator. Adding a
 primitive is a spec-only change. The tag is checked rather than trusted: the
 linter reads the same vocabulary, and requires the named type to select as the
 JavaScript type the alias resolves to. The vocabulary and the built-in defaults

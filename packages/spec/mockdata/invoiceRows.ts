@@ -1,9 +1,9 @@
-import type { InvoiceId } from "../src/domain/Invoice.ts";
-import type { InvoiceRow, InvoiceRowId } from "../src/domain/InvoiceRow.ts";
-import type { TenantId } from "../src/domain/Tenant.ts";
-import type { Money } from "../src/primitives/Money.ts";
-import type { Quantity } from "../src/primitives/Quantity.ts";
-import type { TaxRate } from "../src/primitives/TaxRate.ts";
+import type { InvoiceId } from "../src/invoicing-service/Invoice.ts";
+import type { InvoiceRow, InvoiceRowId } from "../src/invoicing-service/InvoiceRow.ts";
+import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { Money } from "../src/invoicing-service/primitives/Money.ts";
+import type { Quantity } from "../src/invoicing-service/primitives/Quantity.ts";
+import type { TaxRate } from "../src/invoicing-service/primitives/TaxRate.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample invoice rows for a seeded development database. See docs/mockdata.md. */

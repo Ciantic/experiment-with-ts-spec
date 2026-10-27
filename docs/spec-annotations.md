@@ -40,7 +40,7 @@ tags decide what it is. No directory does:
 - A **primitive** is a type alias carrying `@primitive`. Every other alias is
   read too, since a field's type resolves through it.
 - An interface carrying no `@entity` is a **contract**, such as the ones in
-  `src/operations/`; the entity generators ignore it. A method carrying
+  `src/<app>/operations/`; the entity generators ignore it. A method carrying
   `@operation` is read by the operations generator instead, which scaffolds one
   backend module per operation. An entity tag on a contract is a lint finding,
   not a silent omission. See `docs/operations.md`.
@@ -169,8 +169,7 @@ Interface tags:
 Type tags:
 
 - `@primitive` — a bare marker on a type alias that identifies it as a scalar
-  value type rather than an entity. Applied to the aliases in
-  `packages/spec/src/primitives/`. A `@primitive` type must carry a matching
+  value type rather than an entity. A `@primitive` type must carry a matching
   `@zod` and `@pgType`; the marker itself takes no value. See `docs/primitives.md`.
 - `@zod <expression>` — the type's Zod schema, written verbatim and never
   evaluated by the spec, such as `z.uuidv7()` or

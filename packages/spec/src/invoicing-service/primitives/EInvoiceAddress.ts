@@ -1,4 +1,4 @@
-import type { Brand } from "./Brand.ts";
+import type { Brand } from "../../primitives/Brand.ts";
 
 /**
  * A Finnish e-invoice address (verkkolaskuosoite / OVT): the operator prefix followed by the business id. See packages/spec/docs/invoice-sending.md.

@@ -53,7 +53,7 @@ runtime rather than at the compiler:
 
 ```ts
 // Generated for implementation by: scripts/backend/generate-operations.ts
-import type { WidgetOperations } from "spec/operations/…";
+import type { WidgetOperations } from "spec/<app>/operations/…";
 import { NotImplemented } from "sdk/errors.ts";
 
 /**

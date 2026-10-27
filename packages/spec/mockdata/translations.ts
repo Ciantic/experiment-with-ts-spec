@@ -1,4 +1,4 @@
-import type { Translation } from "../src/domain/Translation.ts";
+import type { Translation } from "../src/invoicing-service/Translation.ts";
 
 /** Sample translations for a seeded development database. See docs/mockdata.md. */
 export const translations: Translation[] = [

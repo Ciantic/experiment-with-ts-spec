@@ -1,6 +1,6 @@
 # Invoice snapshotting
 
-`packages/spec/src/domain/InvoiceSent.ts` is an invoice as issued. `Invoice` is the working
+`packages/spec/src/invoicing-service/InvoiceSent.ts` is an invoice as issued. `Invoice` is the working
 draft; `InvoiceSent` is a frozen copy made at send time. The column mechanics of
 copying an entity come from the `@inlined` tag — see `docs/spec-annotations.md`.
 

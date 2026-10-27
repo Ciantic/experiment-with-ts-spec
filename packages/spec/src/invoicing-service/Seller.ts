@@ -1,7 +1,7 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
-import type { EInvoiceAddress } from "../primitives/EInvoiceAddress.ts";
-import type { EInvoiceOperator } from "../primitives/EInvoiceOperator.ts";
-import type { Language } from "../primitives/Language.ts";
+import type { EInvoiceAddress } from "./primitives/EInvoiceAddress.ts";
+import type { EInvoiceOperator } from "./primitives/EInvoiceOperator.ts";
+import type { Language } from "./primitives/Language.ts";
 import type { Version } from "../primitives/Version.ts";
 import type { TenantId } from "./Tenant.ts";
 

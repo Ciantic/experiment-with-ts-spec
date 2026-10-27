@@ -1,7 +1,7 @@
 /** Tests for the `sendInvoice` operation, over the seeded mock data. See docs/testing.md and docs/operations.md. */
 import { afterEach, describe, expect, it } from "vitest";
-import type { Invoice } from "spec/domain/Invoice.ts";
-import type { Money } from "spec/primitives/Money.ts";
+import type { Invoice } from "spec/invoicing-service/Invoice.ts";
+import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
 import { createAppContext } from "../context.ts";

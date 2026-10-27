@@ -1,6 +1,6 @@
-import type { Email, EmailId } from "../src/domain/Email.ts";
-import type { TenantId } from "../src/domain/Tenant.ts";
-import type { EmailAddress } from "../src/primitives/EmailAddress.ts";
+import type { Email, EmailId } from "../src/invoicing-service/Email.ts";
+import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { EmailAddress } from "../src/invoicing-service/primitives/EmailAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 
 /** Sample queued emails for a seeded development database. See docs/mockdata.md. */

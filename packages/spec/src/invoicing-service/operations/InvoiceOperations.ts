@@ -1,6 +1,6 @@
-import type { EmailId } from "../domain/Email.ts";
-import type { Invoice } from "../domain/Invoice.ts";
-import type { InvoiceSentId } from "../domain/InvoiceSent.ts";
+import type { EmailId } from "../Email.ts";
+import type { Invoice } from "../Invoice.ts";
+import type { InvoiceSentId } from "../InvoiceSent.ts";
 
 export interface InvoiceOperations<T> {
     /** 

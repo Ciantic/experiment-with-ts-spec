@@ -1,6 +1,6 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
-import type { Language } from "../primitives/Language.ts";
-import type { Money } from "../primitives/Money.ts";
+import type { Language } from "./primitives/Language.ts";
+import type { Money } from "./primitives/Money.ts";
 import type { Customer } from "./Customer.ts";
 import type { InvoiceId } from "./Invoice.ts";
 import type { InvoiceSentRow } from "./InvoiceSentRow.ts";

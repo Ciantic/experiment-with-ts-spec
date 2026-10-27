@@ -1,4 +1,4 @@
-import type { Brand } from "./Brand.ts";
+import type { Brand } from "../../primitives/Brand.ts";
 
 /**
  * An email address.

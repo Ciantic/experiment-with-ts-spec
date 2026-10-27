@@ -1,8 +1,8 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
-import type { Money } from "../primitives/Money.ts";
-import type { Quantity } from "../primitives/Quantity.ts";
-import type { TaxRate } from "../primitives/TaxRate.ts";
-import type { Unit } from "../primitives/Unit.ts";
+import type { Money } from "./primitives/Money.ts";
+import type { Quantity } from "./primitives/Quantity.ts";
+import type { TaxRate } from "./primitives/TaxRate.ts";
+import type { Unit } from "./primitives/Unit.ts";
 import type { InvoiceSentId } from "./InvoiceSent.ts";
 import type { TenantId } from "./Tenant.ts";
 

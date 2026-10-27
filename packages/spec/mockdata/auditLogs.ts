@@ -1,4 +1,4 @@
-import type { AuditLog, AuditLogId } from "../src/domain/AuditLog.ts";
+import type { AuditLog, AuditLogId } from "../src/invoicing-service/AuditLog.ts";
 
 /** Sample audit entries for a seeded development database; the identity sequence assigns the ids. See docs/mockdata.md. */
 export const auditLogs: AuditLog[] = [

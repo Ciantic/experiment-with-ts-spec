@@ -1,9 +1,9 @@
-import type { InvoiceSentId } from "../src/domain/InvoiceSent.ts";
-import type { InvoiceSentRow, InvoiceSentRowId } from "../src/domain/InvoiceSentRow.ts";
-import type { TenantId } from "../src/domain/Tenant.ts";
-import type { Money } from "../src/primitives/Money.ts";
-import type { Quantity } from "../src/primitives/Quantity.ts";
-import type { TaxRate } from "../src/primitives/TaxRate.ts";
+import type { InvoiceSentId } from "../src/invoicing-service/InvoiceSent.ts";
+import type { InvoiceSentRow, InvoiceSentRowId } from "../src/invoicing-service/InvoiceSentRow.ts";
+import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { Money } from "../src/invoicing-service/primitives/Money.ts";
+import type { Quantity } from "../src/invoicing-service/primitives/Quantity.ts";
+import type { TaxRate } from "../src/invoicing-service/primitives/TaxRate.ts";
 
 /** Sample sent invoice rows for a seeded development database. See docs/mockdata.md. */
 export const invoiceSentRows: InvoiceSentRow[] = [

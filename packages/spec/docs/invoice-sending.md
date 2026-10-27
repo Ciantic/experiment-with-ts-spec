@@ -1,6 +1,6 @@
 # Invoice sending
 
-`sendInvoice` in `packages/spec/src/operations/InvoiceOperations.ts` issues a draft and
+`sendInvoice` in `packages/spec/src/invoicing-service/operations/InvoiceOperations.ts` issues a draft and
 queues its delivery. This note records the contract it declares today, the party data
 sending depends on, and what is deferred.
 
