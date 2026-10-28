@@ -7,6 +7,8 @@ export * from "./queryInvoice.ts";
 export * from "./queryInvoiceRow.ts";
 export * from "./queryInvoiceSent.ts";
 export * from "./queryInvoiceSentRow.ts";
+export * from "./queryLoginLink.ts";
 export * from "./querySeller.ts";
 export * from "./queryTenant.ts";
 export * from "./queryTranslation.ts";
+export * from "./queryUser.ts";

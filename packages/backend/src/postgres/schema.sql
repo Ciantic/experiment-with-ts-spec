@@ -7,6 +7,18 @@ create table "audit_log" (
     constraint "audit_log_pkey" primary key ("id")
 );
 
+create table "login_link" (
+    "id" uuid not null default uuidv7(),
+    "email" text not null,
+    "tokenHash" text not null unique,
+    "expiresAt" timestamptz not null,
+    "consumedAt" timestamptz,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "login_link_pkey" primary key ("id")
+);
+
 create table "tenant" (
     "id" uuid not null default uuidv7(),
     "name" text not null,
@@ -21,6 +33,17 @@ create table "translation" (
     "key" text not null,
     "value" text,
     constraint "translation_pkey" primary key ("lang", "key")
+);
+
+create table "user" (
+    "id" uuid not null default uuidv7(),
+    "email" text not null unique,
+    "emailVerifiedAt" timestamptz,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "deletedAt" timestamptz,
+    "version" int8 not null default 0,
+    constraint "user_pkey" primary key ("id")
 );
 
 create table "customer" (

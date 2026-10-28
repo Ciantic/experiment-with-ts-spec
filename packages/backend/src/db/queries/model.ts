@@ -215,6 +215,31 @@ export const queryModel: QueryModel = {
             },
             "relations": {}
         },
+        "login_link": {
+            "name": "login_link",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "email": "email",
+                "tokenHash": "tokenHash",
+                "expiresAt": "expiresAt",
+                "consumedAt": "consumedAt",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "version": "version"
+            },
+            "relations": {},
+            "where": {
+                "expiresAt": [
+                    "gt",
+                    "lte"
+                ],
+                "consumedAt": [
+                    "isNull",
+                    "isNotNull"
+                ]
+            }
+        },
         "seller": {
             "name": "seller",
             "key": "id",
@@ -253,6 +278,31 @@ export const queryModel: QueryModel = {
                 "value": "value"
             },
             "relations": {}
+        },
+        "user": {
+            "name": "user",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "email": "email",
+                "emailVerifiedAt": "emailVerifiedAt",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "deletedAt": "deletedAt",
+                "version": "version"
+            },
+            "relations": {},
+            "where": {
+                "emailVerifiedAt": [
+                    "isNull",
+                    "isNotNull"
+                ]
+            },
+            "filterDefaults": {
+                "deletedAt": {
+                    "kind": "isNull"
+                }
+            }
         }
     }
 };

@@ -10,6 +10,7 @@ import { invoiceSentRowRoutes } from "./invoiceSentRowRoutes.ts";
 import { sellerRoutes } from "./sellerRoutes.ts";
 import { tenantRoutes } from "./tenantRoutes.ts";
 import { translationRoutes } from "./translationRoutes.ts";
+import { userRoutes } from "./userRoutes.ts";
 import { operationRoutes } from "./operationRoutes.ts";
 
 /** Every exposed call: id, verb, and path, as the router and the group resolve them. */
@@ -24,5 +25,6 @@ export const routes: Route[] = [
     ...sellerRoutes,
     ...tenantRoutes,
     ...translationRoutes,
+    ...userRoutes,
     ...operationRoutes,
 ];
