@@ -3,7 +3,6 @@ import { z } from "zod";
 import type { EmailId } from "spec/emailing-service/Email.ts";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { InvoiceSentId } from "spec/invoicing-service/InvoiceSent.ts";
-import * as primitives from "../primitives.ts";
 import { invoiceSchema } from "../domain/invoiceSchema.ts";
 
 /** The argument `sendInvoice` accepts, as the route validates it. */
@@ -12,8 +11,5 @@ export const sendInvoiceSchema = z.strictObject({ invoice: z.lazy(() => invoiceS
 /** What `sendInvoice` takes, as the contract declares it. */
 export type SendInvoiceInput = { invoice: Invoice; };
 
-/** What `sendInvoice` answers; the route does not validate it. See docs/operations.md. */
-export const sendInvoiceOutputSchema = z.strictObject({ invoiceSentId: primitives.brandedIdSchema<"InvoiceSentId">(), emailId: primitives.brandedIdSchema<"EmailId">().optional() });
-
-/** What `sendInvoice` returns, as the contract declares it. */
+/** What `sendInvoice` returns, as the contract declares it; the route does not validate it. */
 export type SendInvoiceOutput = { invoiceSentId: InvoiceSentId, emailId?: EmailId };
