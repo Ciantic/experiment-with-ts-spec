@@ -1,6 +1,7 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
 import type { EmailAddress } from "../emailing-service/primitives/EmailAddress.ts";
 import type { Version } from "../primitives/Version.ts";
+import type { LoginLinkTokenHash } from "./primitives/LoginLinkTokenHash.ts";
 
 /** The unique identifier for a login magic link. */
 export type LoginLinkId = BrandedId<"LoginLinkId">;
@@ -40,7 +41,7 @@ export interface LoginLink {
      * @queryFilter
      * @widget text
      */
-    tokenHash: string;
+    tokenHash: LoginLinkTokenHash;
 
     /**
      * The moment the link stops being redeemable.

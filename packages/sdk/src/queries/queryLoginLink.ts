@@ -20,7 +20,7 @@ export const queryLoginLinkSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"LoginLinkId">()).optional(),
         email: z.array(primitives.emailAddressSchema).optional(),
-        tokenHash: z.array(z.string()).optional(),
+        tokenHash: z.array(primitives.loginLinkTokenHashSchema).optional(),
     }).optional(),
     where: z.strictObject({
         expiresAt: z.strictObject({

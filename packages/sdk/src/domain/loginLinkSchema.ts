@@ -5,7 +5,7 @@ import * as primitives from "../primitives.ts";
 export const loginLinkSchema = z.object({
     id: primitives.brandedIdSchema<"LoginLinkId">(),
     email: primitives.emailAddressSchema,
-    tokenHash: z.string(),
+    tokenHash: primitives.loginLinkTokenHashSchema,
     expiresAt: z.date(),
     consumedAt: z.date().optional(),
     createdAt: z.date(),

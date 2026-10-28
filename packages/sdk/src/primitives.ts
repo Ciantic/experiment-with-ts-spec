@@ -21,6 +21,8 @@ export const emailAddressSchema = z.email().brand<"EmailAddress">();
 
 export const languageSchema = z.enum(["fi", "sv", "en"]).or(z.string());
 
+export const loginLinkTokenHashSchema = z.string().regex(/^[a-f0-9]{64}$/).brand<"LoginLinkTokenHash">();
+
 export const moneySchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"Money">();
 
 export const quantitySchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal">().brand<"Quantity">();
