@@ -2214,7 +2214,6 @@ describe("lintSpec over a project", () => {
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
             "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
             "`label`: missing @fieldName",
             "`label`: missing @widget",
         ]);
@@ -2239,7 +2238,6 @@ describe("lintSpec over a project", () => {
         expect(interfaces).toBe(1);
         expect(messages(findings)).toEqual([
             "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
             "`label`: missing @fieldName",
             "`label`: missing @widget",
         ]);
@@ -2332,7 +2330,7 @@ export interface Invoice {
         expect(findings).toEqual([]);
     });
 
-    it("reports a missing @repository and @restRepository", () => {
+    it("reports a missing @repository, which every entity generates", () => {
         const findings = lintEntity(`/**
  * @entity
  * @pgTable invoice
@@ -2340,8 +2338,17 @@ export interface Invoice {
 
         expect(findings).toEqual([
             "`Invoice`: missing @repository, naming at least one of: create, upsert, update, delete",
-            "`Invoice`: missing @restRepository, naming at least one of: create, upsert, update, delete",
         ]);
+    });
+
+    it("accepts an entity that keeps its writes off the REST surface", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create upsert update delete
+ * @queries query
+ */`);
+
+        expect(findings).toEqual([]);
     });
 
     it("reports an operation that is not one of the four writes", () => {

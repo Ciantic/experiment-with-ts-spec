@@ -237,17 +237,7 @@ export function buildRestModel(spec: SpecModel): RestModel {
     const entities: RestEntity[] = [];
     for (const entitySpec of interfaces.values()) {
         const entity = restEntityFor(entitySpec);
-        // A write addresses a row by its key, so a keyless entity has no delete or patch.
-        if (entity.keys.length === 0) {
-            report(entitySpec.location, `\`${entitySpec.name}\`: no \`@primaryKey\` field`);
-        }
-        // The two tags are required, and REST can only expose a repository function that exists.
-        if (entitySpec.repositoryOperations.length === 0) {
-            report(entitySpec.location, `\`${entitySpec.name}\`: @repository names no operation`);
-        }
-        if (entitySpec.restRepositoryOperations.length === 0) {
-            report(entitySpec.location, `\`${entitySpec.name}\`: @restRepository names no operation`);
-        }
+        // REST can only serve a function that exists, so an exposed operation must be a declared one.
         for (const operation of entitySpec.restRepositoryOperations) {
             if (!entitySpec.repositoryOperations.includes(operation)) {
                 report(
@@ -264,6 +254,17 @@ export function buildRestModel(spec: SpecModel): RestModel {
                     `\`${entitySpec.name}\`: @restQueries \`${operation}\` is not in @queries`,
                 );
             }
+        }
+        // An entity that exposes no call has no surface: no path, and no route or client module.
+        if (entity.operations.length === 0) {
+            continue;
+        }
+        // A write addresses a row by its key, so a keyless entity has no delete or patch.
+        if (entity.keys.length === 0) {
+            report(entitySpec.location, `\`${entitySpec.name}\`: no \`@primaryKey\` field`);
+        }
+        if (entitySpec.repositoryOperations.length === 0) {
+            report(entitySpec.location, `\`${entitySpec.name}\`: @repository names no operation`);
         }
         entities.push(entity);
     }

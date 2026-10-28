@@ -150,8 +150,9 @@ Interface tags:
   below.
 - `@restRepository <operation>…` — the subset of `@repository` that the route
   table and the generated SDK expose. A write may be generated and not exposed,
-  so a seed or a group can still call it. Required on each entity. See
-  "`@repository`, `@restRepository`, and the read tags" below.
+  so a seed or a group can still call it. Optional, like `@restQueries`: an
+  entity that exposes no operation has no path, no route module, and no client
+  module. See "`@repository`, `@restRepository`, and the read tags" below.
 - `@queries <operation>…` — the read operations whose query modules the generator
   writes. `query` is the only read operation; the tag is a list so another read
   can be added without a new tag. Optional: an entity that declares no read gets
@@ -287,10 +288,12 @@ serves; neither may name an operation its declaring tag omits, since a route
 would call a function that does not exist. A write may be generated and not
 exposed — a seed or a group can still call it — and so may a read.
 
-`@repository` and `@restRepository` are required on each entity; an entity with
-no writes is not a shape the tags allow, and naming the four makes the surface
-explicit rather than implied. The read pair is optional: an entity that declares
-no read gets no `query<Entity>` and no read route. All four are validated as a
+`@repository` is required on each entity; an entity with no writes is not a shape
+the tags allow, and naming the four makes what it generates explicit. The other
+three are optional, and the exposure pair is how an entity stays off the wire: an
+entity that declares no read gets no `query<Entity>`, and one that names no
+exposed operation gets no path, no route module, and no client module, so its
+repositories stay callable by backend code alone. All four are validated as a
 group: the linter reports a missing required tag, an empty list, a token that is
 not in that tag's vocabulary, a token named twice, a tag that appears twice, and
 an exposed operation the declaring tag does not contain. Each list is the whole
@@ -760,10 +763,10 @@ Enforced:
   test needs an optional field. See `docs/queries.md`.
 - `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
   operations: the write tags one or more of `create`, `upsert`, `update`,
-  `delete`, the read tags one or more of `query`. `@repository` and
-  `@restRepository` are required on each entity; the read pair is optional. An
-  unknown token, a token named twice, an empty list, a tag that appears twice,
-  and a `@restRepository` or `@restQueries` operation its declaring tag does not
+  `delete`, the read tags one or more of `query`. `@repository` alone is
+  required on each entity; the other three are optional. An unknown token, a
+  token named twice, an empty list, a tag that appears twice, and a
+  `@restRepository` or `@restQueries` operation its declaring tag does not
   contain are each reported. See "`@repository`, `@restRepository`, and the read
   tags".
 - Tags may not repeat on a field.

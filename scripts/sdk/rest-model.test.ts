@@ -271,10 +271,11 @@ export interface Bad {
         ]);
     });
 
-    it("reports an entity that carries neither operation tag", () => {
+    it("reports an entity that exposes a write it does not generate", () => {
         const unannotated = `
 /**
  * @pgTable plain
+ * @restRepository create
  * @entity
  */
 export interface Plain {
@@ -285,9 +286,28 @@ export interface Plain {
         const diagnostics = build({ Plain: unannotated }).diagnostics;
 
         expect(diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
+            "`Plain`: @restRepository `create` is not in @repository",
             "`Plain`: @repository names no operation",
-            "`Plain`: @restRepository names no operation",
         ]);
+    });
+
+    it("leaves an entity with no exposed call out of the surface", () => {
+        const internal = `
+/**
+ * @pgTable internal
+ * @repository create upsert update delete
+ * @queries query
+ * @entity
+ */
+export interface Internal {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+        const model = build({ Internal: internal });
+
+        expect(model.entities).toEqual([]);
+        expect(model.diagnostics).toEqual([]);
     });
 
     it("leaves out the read when the entity does not carry @restQueries", () => {

@@ -39,13 +39,15 @@ entity leaves no route module and no client module behind.
 
 ## The surface
 
-One collection per entity, at the `@pgTable` name. The collection exposes the
-operations its `@restQueries` and `@restRepository` tags name: a write
-`@repository` generates but `@restRepository` omits is reachable to backend
-callers and absent from the route table and the SDK, and an entity that carries
-no `@restQueries query` has no read route. See `docs/spec-annotations.md`. A read
-and a delete carry their argument in a single `q` query parameter; a write
-carries it in the body.
+One collection per entity that exposes one. The collection sits at the
+`@pgTable` name and exposes the operations its `@restQueries` and
+`@restRepository` tags name: a write `@repository` generates but
+`@restRepository` omits is reachable to backend callers and absent from the
+route table and the SDK, and an entity that carries no `@restQueries query` has
+no read route. An entity that names no exposed operation at all has no
+collection: no path, no route module, and no client module. See
+`docs/spec-annotations.md`. A read and a delete carry their argument in a single
+`q` query parameter; a write carries it in the body.
 
 | Call | Id | Method | Path | Argument |
 | --- | --- | --- | --- | --- |

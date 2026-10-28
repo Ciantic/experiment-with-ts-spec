@@ -334,7 +334,7 @@ interface OperationTag {
 /** The four surface tags, in the order their findings are reported. */
 const SURFACE_TAGS: OperationTag[] = [
     { name: "repository", vocabulary: WRITE_OPERATIONS, required: true },
-    { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: true },
+    { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: false },
     { name: "queries", vocabulary: READ_OPERATIONS, required: false },
     { name: "restQueries", vocabulary: READ_OPERATIONS, required: false },
 ];
