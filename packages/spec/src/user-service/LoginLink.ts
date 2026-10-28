@@ -1,5 +1,5 @@
 import type { BrandedId } from "../primitives/BrandedId.ts";
-import type { EmailAddress } from "../emailing-service/primitives/EmailAddress.ts";
+import type { EmailAddress } from "../primitives/EmailAddress.ts";
 import type { Version } from "../primitives/Version.ts";
 import type { LoginLinkTokenHash } from "./primitives/LoginLinkTokenHash.ts";
 
