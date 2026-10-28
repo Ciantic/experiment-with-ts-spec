@@ -14,6 +14,7 @@ import {
     type SpecInterface,
     type SpecLocation,
     type SpecModel,
+    type SpecOperation,
     type SpecType,
     type SpecTypeAlias,
     type SpecTypeMember,
@@ -88,8 +89,8 @@ export interface ZodPrimitive {
     expression: string;
 }
 
-/** One generated half of an operation's wire contract: the schema, its type, and what it imports. */
-export interface ZodOperationSide {
+/** The argument an operation accepts: the schema the route validates it with, the type, and what the file imports. */
+export interface ZodOperationInput {
     /** The schema's name, e.g. `sendInvoiceSchema`. */
     schemaName: string;
     /** The type's name, e.g. `SendInvoiceInput`. */
@@ -106,14 +107,24 @@ export interface ZodOperationSide {
     usesPrimitives: boolean;
 }
 
+/** What an operation answers: the type alone, since a route never validates its own result. See docs/operations.md. */
+export interface ZodOperationOutput {
+    /** The type's name, e.g. `SendInvoiceOutput`. */
+    typeName: string;
+    /** The type as the spec wrote it, so the generated type is the contract's and not a schema inference. */
+    typeText: string;
+    /** The spec declarations the type text names, keyed by module specifier. */
+    typeImports: Map<string, string[]>;
+}
+
 /** The generated schemas and types for one `@restOperation`: what the wire carries in, and what it answers. */
 export interface ZodOperation {
     /** The operation's name, which names the module, e.g. `sendInvoice`. */
     name: string;
     /** The input, absent when the operation takes no argument. */
-    input?: ZodOperationSide;
-    /** The result, which a caller receives; not validated by the route. */
-    output?: ZodOperationSide;
+    input?: ZodOperationInput;
+    /** The result, which a caller receives; not validated by the route, so it is a type and not a schema. */
+    output: ZodOperationOutput;
 }
 
 /** The parsed spec, mapped to Zod schemas. */
@@ -205,11 +216,6 @@ export function upsertSchemaName(name: string): string {
 /** sendInvoice -> sendInvoiceSchema, the argument the wire carries. */
 export function operationInputSchemaName(name: string): string {
     return `${name}Schema`;
-}
-
-/** sendInvoice -> sendInvoiceOutputSchema, the result the wire answers. */
-export function operationOutputSchemaName(name: string): string {
-    return `${name}OutputSchema`;
 }
 
 /** sendInvoice -> SendInvoiceInput. */
@@ -622,21 +628,20 @@ function typeReferences(type: SpecType, context: Resolver): Map<string, string[]
     return imports;
 }
 
-/** Resolve one side of an operation to its schema and its type, or report why it cannot be rendered. */
-function operationSide(
+/** Resolve an operation's argument to its schema and its type, or report why it cannot be rendered. */
+function operationInput(
     name: string,
     type: SpecType,
     typeText: string,
     location: SpecLocation,
     schemaName: string,
     typeName: string,
-    what: string,
     resolver: Resolver,
-): ZodOperationSide | undefined {
+): ZodOperationInput | undefined {
     const context: ResolveContext = { ...resolver, dependencies: new Set(), usesPrimitives: false };
     const expression = resolveTypeNode(type, context);
     if (expression === undefined) {
-        resolver.report(location, `\`${name}\`: unsupported ${what} type \`${typeText}\``);
+        resolver.report(location, `\`${name}\`: unsupported input type \`${typeText}\``);
         return undefined;
     }
     return {
@@ -650,6 +655,15 @@ function operationSide(
     };
 }
 
+/** The result an operation answers: its declared type alone, resolved only for the imports the type text needs. */
+function operationResult(operation: SpecOperation, resolver: Resolver): ZodOperationOutput {
+    return {
+        typeName: operationOutputTypeName(operation.name),
+        typeText: operation.resultTypeText,
+        typeImports: typeReferences(operation.resultType, resolver),
+    };
+}
+
 /** Build the schemas and types of every `@restOperation`: the argument the wire carries and the result it answers. */
 function buildOperations(spec: SpecModel, resolver: Resolver): ZodOperation[] {
     const operations: ZodOperation[] = [];
@@ -660,34 +674,24 @@ function buildOperations(spec: SpecModel, resolver: Resolver): ZodOperation[] {
         // An operation may take no input; the route then validates `undefined`, so no input schema is generated.
         const parameter = operation.parameters[1];
         const input = parameter
-            ? operationSide(
+            ? operationInput(
                   operation.name,
                   parameter.type,
                   parameter.typeText,
                   parameter.location,
                   operationInputSchemaName(operation.name),
                   operationInputTypeName(operation.name),
-                  "input",
                   resolver,
               )
             : undefined;
         if (parameter !== undefined && input === undefined) {
             continue;
         }
-        const output = operationSide(
-            operation.name,
-            operation.resultType,
-            operation.resultTypeText,
-            operation.location,
-            operationOutputSchemaName(operation.name),
-            operationOutputTypeName(operation.name),
-            "result",
-            resolver,
-        );
-        if (output === undefined) {
-            continue;
-        }
-        operations.push({ name: operation.name, ...(input === undefined ? {} : { input }), output });
+        operations.push({
+            name: operation.name,
+            ...(input === undefined ? {} : { input }),
+            output: operationResult(operation, resolver),
+        });
     }
     operations.sort((a, b) => a.name.localeCompare(b.name));
     return operations;

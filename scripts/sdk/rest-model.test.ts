@@ -412,17 +412,17 @@ describe("@restOperation", () => {
         ]);
     });
 
-    it("names the contract, the schemas, and the types a caller imports", () => {
+    it("names the contract, the input schema, and the types a caller imports", () => {
         const send = withOperations.operations.find((operation) => operation.id === "sendInvoice");
 
         expect(send).toMatchObject({
             contract: "InvoiceOperations",
             inputSchemaName: "sendInvoiceSchema",
             inputTypeName: "SendInvoiceInput",
-            outputSchemaName: "sendInvoiceOutputSchema",
             outputTypeName: "SendInvoiceOutput",
             hasInput: true,
         });
+        expect(send).not.toHaveProperty("outputSchemaName");
     });
 
     it("lets a GET carry its input in the query string and a POST in the body", () => {

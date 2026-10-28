@@ -203,7 +203,7 @@ entity write does.
 ### The wire contract
 
 Each operation gets one module, `packages/sdk/src/operations/<name>Schema.ts`,
-holding its input schema, its result schema, and a named type for each:
+holding its input schema and a named type for each side:
 
 ```ts
 /** The argument `sendWidget` accepts, as the route validates it. */
@@ -212,24 +212,24 @@ export const sendWidgetSchema = z.strictObject({ widget: z.lazy(() => widgetSche
 /** What `sendWidget` takes, as the contract declares it. */
 export type SendWidgetInput = { widget: Widget };
 
-/** What `sendWidget` answers; the route does not validate it. */
-export const sendWidgetOutputSchema = z.lazy(() => widgetSnapshotSchema);
-
-/** What `sendWidget` returns, as the contract declares it. */
+/** What `sendWidget` returns, as the contract declares it; the route does not validate it. */
 export type SendWidgetOutput = WidgetSnapshot;
 ```
 
-The two schemas are rendered from the spec's types by the Zod resolver, and a
-type it cannot render is a finding: a REST operation is never left unvalidated.
-The two types are the spec's own type text, re-exported under a name the
-client and the route can import. Emitting the text rather than inferring from
-the schema keeps the type identical to the contract — a `z.infer` of an optional
-field is `string | undefined`, which is not assignable to `field?: string` under
-`exactOptionalPropertyTypes`. The input type is what the route hands the
-implementation, so it is the parsed value, not a pre-parse one.
+Only the input gets a schema, because only the input crosses the wire inbound and
+needs refusing before it reaches a handler. The result is the spec's own type
+text under a name the client and the route can import; a route that never
+validates its own answer has nothing to gain from a schema for it. Emitting the
+text rather than inferring from a schema keeps the type identical to the
+contract — a `z.infer` of an optional field is `string | undefined`, which is not
+assignable to `field?: string` under `exactOptionalPropertyTypes`. The input type
+is what the route hands the implementation, so it is the parsed value, not a
+pre-parse one.
 
-The output schema is generated but not applied: the route encodes the result
-unvalidated, as every other call does.
+A result type is therefore not resolved into a schema, and any type the spec can
+write is admissible: an entity, a primitive, a plain alias, `void`, or a union. A
+projection such as `Pick<Widget, "id" | "code">` needs no generator support,
+since only its text is copied.
 
 The module is re-exported from `sdk/schemas.ts`, so a caller imports
 `SendWidgetInput`, not a `Parameters<…>` expression.
@@ -271,8 +271,8 @@ actually throws it.
 - **Per-operation context construction.** Every REST operation receives the
   `RequestContext` built for its request; a dependency another context would
   need is added to `createRequestContext`, not resolved per operation.
-- **Validating the response.** The result schema is generated and exported, but
-  the route encodes the result unvalidated, as with every other call.
+- **Validating the response.** The route encodes the result unvalidated, as with
+  every other call, so no result schema is generated.
 - **Deleting an implementation for a removed operation.** The generator reports
   the module and fails the run; deciding whether the code is still wanted is the
   author's.

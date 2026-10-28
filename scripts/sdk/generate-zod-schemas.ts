@@ -9,7 +9,6 @@ import {
     type ZodEntity,
     type ZodModel,
     type ZodOperation,
-    type ZodOperationSide,
     type ZodPrimitive,
     type ZodQuery,
 } from "./zod-model.ts";
@@ -209,30 +208,29 @@ export function operationFileName(name: string): string {
     return join(OPERATIONS_DIR, `${name}Schema.ts`);
 }
 
-/** Render one operation's module: its input schema, its output schema, and the types derived from each. */
+/** Render one operation's module: the input schema, and the types for what it takes and what it answers. */
 export function generateOperationFile(
     operation: ZodOperation,
     entitiesByName: Map<string, ZodEntity>,
 ): string {
-    const sides = [operation.input, operation.output].filter(
-        (side): side is ZodOperationSide => side !== undefined,
-    );
-    const lines: string[] = [HEADER, 'import { z } from "zod";'];
+    const lines: string[] = [HEADER];
+    if (operation.input) {
+        lines.push('import { z } from "zod";');
+    }
     // The types are the spec's own text, so they stay identical to the contract under `exactOptionalPropertyTypes`.
     const typeImports = new Map<string, string[]>();
-    for (const side of sides) {
-        for (const [specifier, names] of side.typeImports) {
+    for (const side of [operation.input, operation.output]) {
+        for (const [specifier, names] of side?.typeImports ?? []) {
             typeImports.set(specifier, [...new Set([...(typeImports.get(specifier) ?? []), ...names])]);
         }
     }
     for (const [specifier, names] of [...typeImports].sort(([a], [b]) => a.localeCompare(b))) {
         lines.push(`import type { ${names.sort((a, b) => a.localeCompare(b)).join(", ")} } from "${specifier}";`);
     }
-    if (sides.some((side) => side.usesPrimitives)) {
+    if (operation.input?.usesPrimitives) {
         lines.push('import * as primitives from "../primitives.ts";');
     }
-    const dependencies = new Set(sides.flatMap((side) => side.dependencies));
-    for (const dependency of [...dependencies].sort((a, b) => a.localeCompare(b))) {
+    for (const dependency of new Set(operation.input?.dependencies ?? [])) {
         const target = entitiesByName.get(dependency);
         if (target) {
             lines.push(
@@ -249,14 +247,10 @@ export function generateOperationFile(
         lines.push(`/** What \`${operation.name}\` takes, as the contract declares it. */`);
         lines.push(`export type ${operation.input.typeName} = ${oneLine(operation.input.typeText)};`);
     }
-    if (operation.output) {
-        lines.push("");
-        lines.push(`/** What \`${operation.name}\` answers; the route does not validate it. See docs/operations.md. */`);
-        lines.push(`export const ${operation.output.schemaName} = ${operation.output.expression};`);
-        lines.push("");
-        lines.push(`/** What \`${operation.name}\` returns, as the contract declares it. */`);
-        lines.push(`export type ${operation.output.typeName} = ${oneLine(operation.output.typeText)};`);
-    }
+    // The result is always present: an operation that answers nothing declares `void`.
+    lines.push("");
+    lines.push(`/** What \`${operation.name}\` returns, as the contract declares it; the route does not validate it. */`);
+    lines.push(`export type ${operation.output.typeName} = ${oneLine(operation.output.typeText)};`);
     return lines.join("\n") + "\n";
 }
 

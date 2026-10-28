@@ -1468,14 +1468,20 @@ export interface Thing {
         return files.get(join("operations", `${name}Schema.ts`)) ?? "";
     }
 
-    it("writes one module per operation, holding both the input and the result", () => {
+    it("writes one module per operation, holding the input schema and the result type", () => {
         const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
         const code = operationModule(files, "updateThing");
 
         expect(code).toContain("export const updateThingSchema = z.strictObject({");
         expect(code).toContain("thing: z.lazy(() => thingSchema)");
         expect(code).toContain('import { thingSchema } from "../domain/thingSchema.ts";');
-        expect(code).toContain("export const updateThingOutputSchema = z.lazy(() => thingSchema);");
+        expect(code).toContain("export type UpdateThingOutput = Thing;");
+    });
+
+    it("generates no result schema, since the route never validates what it answers", () => {
+        const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
+
+        expect(operationModule(files, "updateThing")).not.toContain("OutputSchema");
     });
 
     it("names the types after the spec's own, so a caller imports one name", () => {
@@ -1498,13 +1504,13 @@ export interface Thing {
         expect(code).not.toContain("Promise");
     });
 
-    it("writes the output schema but no input schema for an operation that takes no argument", () => {
+    it("writes only the result type for an operation that takes no argument", () => {
         const { files } = render({ Thing: THING, ThingOperations: OPERATIONS });
         const code = operationModule(files, "resetThings");
 
-        expect(code).toContain("export const resetThingsOutputSchema = z.void();");
         expect(code).toContain("export type ResetThingsOutput = void;");
         expect(code).not.toContain("Input");
+        expect(code).not.toContain('from "zod"');
     });
 
     it("re-exports the modules from the barrel", () => {
@@ -1532,8 +1538,8 @@ export interface Ops<T> {
         ]);
     });
 
-    it("reports a result type it cannot render", () => {
-        const { model } = render({
+    it("takes any result type the spec declares, since the type is copied rather than rendered", () => {
+        const { model, files } = render({
             Thing: THING,
             Ops: `
 export interface Ops<T> {
@@ -1545,8 +1551,7 @@ export interface Ops<T> {
 }`,
         });
 
-        expect(model.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
-            "`run`: unsupported result type `() => void`",
-        ]);
+        expect(model.diagnostics).toEqual([]);
+        expect(operationModule(files, "run")).toContain("export type RunOutput = () => void;");
     });
 });

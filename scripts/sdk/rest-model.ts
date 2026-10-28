@@ -72,9 +72,7 @@ export interface RestOperationCall {
     inputSchemaName?: string;
     /** The type the input schema derives, e.g. `SendInvoiceInput`; absent when the operation takes no input. */
     inputTypeName?: string;
-    /** The schema the result is described by; generated, but not validated by the route. */
-    outputSchemaName: string;
-    /** The type the output schema derives, e.g. `SendInvoiceOutput`. */
+    /** The type the operation answers, e.g. `SendInvoiceOutput`; the route does not validate it. */
     outputTypeName: string;
     /** The prose from the spec, copied into the generated doc comments. */
     description: string[];
@@ -215,7 +213,6 @@ function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (lo
                       inputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Input`,
                   }
                 : {}),
-            outputSchemaName: `${operation.name}OutputSchema`,
             outputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Output`,
             description: operation.description,
             hasInput: operation.parameters.length > 1,
