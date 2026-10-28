@@ -54,6 +54,7 @@ export const INTERFACE_TAGS = [
     "restRepository",
     "queries",
     "restQueries",
+    "todo",
 ] as const;
 
 /** Tags a type alias may carry. */
@@ -307,6 +308,8 @@ export interface Tags {
     queryOrderBy?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
     queryWhere?: string[];
+    /** The `@todo` text that defers an interface or operation from generation. See docs/spec-annotations.md. */
+    todo?: string;
 }
 
 /** One member of an object type literal, e.g. the `count: number` in `{ count: number }`. */
@@ -367,6 +370,8 @@ export interface SpecInterface {
     queries: ReadOperation[];
     /** The read operations `@restQueries` exposes; empty when the tag is absent. See docs/rest-api.md. */
     restQueries: ReadOperation[];
+    /** The `@todo` text when the interface is deferred from generation; absent when it is generated. */
+    todo?: string;
 }
 
 /** One parameter of a contract method, as written. */
@@ -424,6 +429,10 @@ export interface SpecOperation {
     restMethod?: RestMethod;
     /** The path `@restOperation` names, e.g. `/invoice/send`; absent when the tag is malformed. */
     restPath?: string;
+    /** The `@todo` text when the operation is deferred from generation; absent when it is generated. */
+    todo?: string;
+    /** The method's tags as written, which the linter alone reads. */
+    tags: WrittenTags;
     location: SpecLocation;
 }
 
@@ -445,8 +454,12 @@ export interface SpecModel {
     interfaces: Map<string, SpecInterface>;
     /** Interfaces carrying no `@entity`, which the linter alone reads to report an entity tag on a contract. */
     nonEntityInterfaces: SpecInterface[];
+    /** Entities carrying `@todo`, which no generator reads. See docs/spec-annotations.md. */
+    todoInterfaces: SpecInterface[];
     /** Every `@operation` method, in name order. See docs/operations.md. */
     operations: SpecOperation[];
+    /** Operations carrying `@todo`, which no generator reads. See docs/spec-annotations.md. */
+    todoOperations: SpecOperation[];
     aliases: Map<string, SpecTypeAlias>;
 }
 
@@ -895,6 +908,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "restQueries":
                     if (tags.restQueries === undefined) tags.restQueries = parseReadOperations(value);
                     break;
+                case "todo":
+                    tags.todo ??= (value ?? "").trim();
+                    break;
                 case "zod":
                     if (value !== undefined) tags.zod ??= value;
                     break;
@@ -1017,6 +1033,8 @@ function readOperation(
             : undefined;
     const resultTypeNode = promiseArgument ?? returnTypeNode;
     const filePath = contract.location.filePath;
+    // A contract marked @todo defers its operations with it, so the tag need not repeat on every method.
+    const todo = tags.written.byName.has("todo") ? (tags.todo ?? "") : contract.todo;
     // The verb and the path are the tag's value; a malformed one stays absent so the linter reports it.
     const restTokens = (tags.written.byName.get("restOperation")?.[0]?.value ?? "").split(/\s+/u).filter(Boolean);
     const restMethod = restTokens[0];
@@ -1044,6 +1062,8 @@ function readOperation(
         rest,
         ...(restMethod !== undefined && isRestMethod(restMethod) ? { restMethod } : {}),
         ...(restTokens[1] !== undefined && restTokens[1].startsWith("/") ? { restPath: restTokens[1] } : {}),
+        ...(todo === undefined ? {} : { todo }),
+        tags: tags.written,
         location: locationOf(method),
     };
 }
@@ -1264,6 +1284,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     const sourceGlob = options.sourceGlob ?? SPEC_GLOB;
     const interfaces = new Map<string, SpecInterface>();
     const entities: SpecInterface[] = [];
+    const todoInterfaces: SpecInterface[] = [];
     const nonEntityInterfaces: SpecInterface[] = [];
     const operations: SpecOperation[] = [];
     const aliases = new Map<string, SpecTypeAlias>();
@@ -1316,6 +1337,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 restRepositoryOperations: declarationTags.restRepository ?? [],
                 queries: declarationTags.queries ?? [],
                 restQueries: declarationTags.restQueries ?? [],
+                ...(declarationTags.written.byName.has("todo") ? { todo: declarationTags.todo ?? "" } : {}),
             };
             if (declarationTags.pgTrigger !== undefined) {
                 entity.trigger = declarationTags.pgTrigger;
@@ -1326,10 +1348,13 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                     operations.push(operation);
                 }
             }
-            if (declarationTags.entity) {
-                entities.push(entity);
-            } else {
+            // @todo defers the declaration whether or not its text is filled in; the linter reports an empty one.
+            if (!declarationTags.entity) {
                 nonEntityInterfaces.push(entity);
+            } else if (declarationTags.written.byName.has("todo")) {
+                todoInterfaces.push(entity);
+            } else {
+                entities.push(entity);
             }
         }
     }
@@ -1339,9 +1364,14 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
         interfaces.set(entity.name, entity);
     }
     nonEntityInterfaces.sort((a, b) => a.name.localeCompare(b.name));
+    todoInterfaces.sort((a, b) => a.name.localeCompare(b.name));
     operations.sort((a, b) => a.name.localeCompare(b.name) || a.interfaceName.localeCompare(b.interfaceName));
 
-    return { interfaces, nonEntityInterfaces, operations, aliases };
+    // A deferred operation reaches no scaffold, route, client call, or error, so the generated set leaves it out.
+    const generated = operations.filter((operation) => operation.todo === undefined);
+    const todoOperations = operations.filter((operation) => operation.todo !== undefined);
+
+    return { interfaces, nonEntityInterfaces, todoInterfaces, operations: generated, todoOperations, aliases };
 }
 
 /** The tsconfig the generators read, with every spec source added to it. */

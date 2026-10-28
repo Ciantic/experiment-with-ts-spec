@@ -35,6 +35,7 @@ import {
     type SpecInterface,
     type SpecModel,
     type SpecProperty,
+    type SpecLocation,
     type SpecTag,
     type SpecTypeAlias,
     type WrittenTags,
@@ -61,6 +62,9 @@ const ENTITY_TAG = "entity";
 
 /** The marker tag that identifies the tenancy root. See docs/tenancy.md. */
 const TENANT_TAG = "tenant";
+
+/** The tag that defers an interface or operation from generation. See docs/spec-annotations.md. */
+const TODO_TAG = "todo";
 
 /** The tag that names the column scoping an interface, such as `@tenantOwned tenantId`. See docs/tenancy.md. */
 const TENANT_OWNED_TAG = "tenantOwned";
@@ -161,8 +165,9 @@ function lintInterfaceTags(spec: SpecInterface, findings: Diagnostic[]): void {
 /** Check an interface without `@entity`: an entity tag on it is a forgotten marker, reported rather than ignored. */
 function lintContract(spec: SpecInterface, findings: Diagnostic[]): void {
     lintInterfaceTags(spec, findings);
+    // @todo is not an entity tag: it defers the contract's operations, so a contract may carry it.
     const entityTag = spec.tags.written.all.find(
-        (tag) => tag.name !== ENTITY_TAG && ALLOWED_INTERFACE_TAGS.has(tag.name),
+        (tag) => tag.name !== ENTITY_TAG && tag.name !== TODO_TAG && ALLOWED_INTERFACE_TAGS.has(tag.name),
     );
     if (entityTag) {
         findings.push({
@@ -208,6 +213,32 @@ function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
                 report("@throws names the error class, as `@throws {InvoiceDetailsError} why`", thrown.location.line);
             } else if (thrown.reason === "") {
                 report(`@throws {${thrown.name}} needs a reason`, thrown.location.line);
+            }
+        }
+    }
+}
+
+/** `@todo` with no text defers a declaration silently, so every occurrence must say what is left to do. */
+function lintTodo(spec: SpecModel, findings: Diagnostic[]): void {
+    const deferred: { name: string; location: SpecLocation; tags: WrittenTags }[] = [
+        ...spec.todoInterfaces.map((entity) => ({ name: entity.name, location: entity.location, tags: entity.tags.written })),
+        ...spec.nonEntityInterfaces
+            .filter((contract) => contract.todo !== undefined)
+            .map((contract) => ({ name: contract.name, location: contract.location, tags: contract.tags.written })),
+        ...spec.todoOperations.map((operation) => ({
+            name: operation.name,
+            location: operation.location,
+            tags: operation.tags,
+        })),
+    ];
+    for (const entry of deferred) {
+        for (const tag of entry.tags.byName.get(TODO_TAG) ?? []) {
+            if (!(tag.value ?? "").trim()) {
+                findings.push({
+                    filePath: entry.location.filePath,
+                    line: tag.line,
+                    message: `\`${entry.name}\`: @${TODO_TAG} needs the text saying what is left to do`,
+                });
             }
         }
     }
@@ -1179,6 +1210,7 @@ function lintModel(spec: SpecModel, whole: boolean): { findings: Diagnostic[]; p
     }
 
     lintOperations(spec, findings);
+    lintTodo(spec, findings);
 
     // The tenancy graph is spread over several interfaces, so only a whole model can be judged by it.
     if (whole) {

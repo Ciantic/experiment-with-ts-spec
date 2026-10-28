@@ -2341,6 +2341,50 @@ export interface Invoice {
         ]);
     });
 
+    it("accepts an entity deferred with @todo, which needs no other tag", () => {
+        const findings = lintSpec(
+            parse({
+                "/src/domain/Draft.ts": `/**
+ * @entity
+ * @todo decide the fields
+ */
+export interface Draft { label: string; }`,
+            }),
+        ).findings;
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a @todo that says nothing", () => {
+        const findings = lintSpec(
+            parse({
+                "/src/domain/Draft.ts": `/**
+ * @entity
+ * @todo
+ */
+export interface Draft { }`,
+            }),
+        ).findings;
+
+        expect(messages(findings)).toEqual(["`Draft`: @todo needs the text saying what is left to do"]);
+    });
+
+    it("reports a @todo on an operation that says nothing", () => {
+        const findings = lintSpec(
+            parse({
+                "/src/operations/Ops.ts": `export interface Ops<T> {
+    /**
+     * @operation
+     * @todo
+     */
+    sendInvoice(ctx: T): Promise<string>;
+}`,
+            }),
+        ).findings;
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @todo needs the text saying what is left to do"]);
+    });
+
     it("accepts an entity that keeps its writes off the REST surface", () => {
         const findings = lintEntity(`/**
  * @entity

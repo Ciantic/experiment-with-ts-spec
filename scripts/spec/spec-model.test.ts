@@ -1004,6 +1004,51 @@ export interface InvoiceOperations<T> {
         });
     });
 
+    it("defers an entity carrying @todo from the generated set", () => {
+        const spec = parse({
+            "Draft.ts": "/**\n * @entity\n * @todo decide the fields\n */\nexport interface Draft { id: string; }",
+            "Ready.ts": "/** @entity */\nexport interface Ready { id: string; }",
+        });
+
+        expect([...spec.interfaces.keys()]).toEqual(["Ready"]);
+        expect(spec.todoInterfaces.map((entity) => [entity.name, entity.todo])).toEqual([["Draft", "decide the fields"]]);
+    });
+
+    it("defers an operation carrying @todo, keeping it out of the generated set", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface InvoiceOperations<T> {
+    /** @operation */
+    sendInvoice(ctx: T): Promise<string>;
+
+    /**
+     * @operation
+     * @todo settle the input shape
+     */
+    voidInvoice(ctx: T): Promise<string>;
+}`,
+        });
+
+        expect(spec.operations.map((operation) => operation.name)).toEqual(["sendInvoice"]);
+        expect(spec.todoOperations.map((operation) => [operation.name, operation.todo])).toEqual([
+            ["voidInvoice", "settle the input shape"],
+        ]);
+    });
+
+    it("defers every operation of a contract carrying @todo", () => {
+        const spec = parse({
+            "Ops.ts": `
+/** @todo finish the area */
+export interface InvoiceOperations<T> {
+    /** @operation */
+    sendInvoice(ctx: T): Promise<string>;
+}`,
+        });
+
+        expect(spec.operations).toEqual([]);
+        expect(spec.todoOperations.map((operation) => operation.name)).toEqual(["sendInvoice"]);
+    });
+
     it("resolves the promise's argument as the result type", () => {
         const spec = parse({ "Ops.ts": contract });
 

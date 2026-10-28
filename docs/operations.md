@@ -38,6 +38,10 @@ written out rather than derived from the name; `@operation` is what makes it an
 operation. A REST operation takes the context and at most one input, since the
 wire carries one argument.
 
+A method carrying `@todo` is deferred: it gets no scaffold, no route, no client
+call, and no error class, so an operation can be declared before it is designed.
+See "Deferring a declaration" in `docs/spec-annotations.md`.
+
 `@throws {Class} [status=<code>] reason` names an error the operation raises and
 says why. `generate:errors` writes the class itself, so a tag is all it takes to
 declare one; the scaffold only copies the tag into its doc comment. See

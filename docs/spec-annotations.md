@@ -159,6 +159,10 @@ Interface tags:
   none. See `docs/queries.md`.
 - `@restQueries <operation>…` — the subset of `@queries` that the route table and
   the generated SDK expose. Optional, like `@queries`. See `docs/rest-api.md`.
+- `@todo <text>` — the entity is not generated: no table, repository, query,
+  schema, route, or client module, and none of the entity rules apply to it. The
+  text says what is left to do, and the linter reports an empty one. See
+  "Deferring a declaration" below.
 - `@pgTrigger <statement>` or `@pgTrigger <header>: <statement>` — a trigger that runs
   for the table rather than for one field, so it may not assign a column (there is
   no field to claim) and may not carry `on` (it is already attached). The header
@@ -205,6 +209,9 @@ Method tags:
   the wire kind derived from the name and the status defaulting to `400`; the
   operations scaffold copies the tag into its module's doc comment. See
   `docs/errors.md`.
+- `@todo <text>` — the operation is not generated: no scaffold, route, client
+  call, or declared error. The text says what is left to do, and the linter
+  reports an empty one. See "Deferring a declaration" below.
 
 A method never carries a field, interface, or type tag.
 
@@ -298,6 +305,40 @@ group: the linter reports a missing required tag, an empty list, a token that is
 not in that tag's vocabulary, a token named twice, a tag that appears twice, and
 an exposed operation the declaring tag does not contain. Each list is the whole
 set, so the entity that wants the full surface names every operation in both.
+
+## Deferring a declaration
+
+`@todo` keeps an unfinished declaration in the spec without letting it reach an
+artifact. It is a marker with text, not a comment: the generators read the tag,
+so nothing is generated for what carries it.
+
+```ts
+/**
+ * A widget a future release adds.
+ *
+ * @entity
+ * @todo decide the fields and the repository surface
+ */
+export interface DraftWidget {
+    id: string;
+}
+```
+
+On an interface, the entity leaves the generated set entirely, and the entity
+rules are not applied to it either: it needs no `@repository`, no `@fieldName`,
+and no `@widget`, because there is no table to shape. On a method, the operation
+reaches no scaffold, no route, no client call, and no `@throws` error class. A
+contract tagged `@todo` defers every operation it declares, so an area is
+deferred once rather than method by method.
+
+The tag defers on presence, so a bare `@todo` still defers even though the
+linter reports it: the text is what a reader needs, and an empty one is a
+finding rather than a different meaning.
+
+Deferral is not deletion. The declaration stays in the spec for the linter to
+read and for a writer to finish, and removing the tag is what puts it back into
+the generated set. A generated entity that references a deferred one is a
+finding, since the table it points at does not exist.
 
 ## `@primaryKey` and `@foreignKey`
 
@@ -761,6 +802,10 @@ Enforced:
 - `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`, `isNull`, `isNotNull`; a branch field may not carry it, and a null
   test needs an optional field. See `docs/queries.md`.
+- `@todo` may sit on an interface or a method, and must carry the text saying
+  what is left to do. A field, a type alias, and a contract's own tags report it
+  as unrecognised, like any other tag in the wrong place. See "Deferring a
+  declaration".
 - `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
   operations: the write tags one or more of `create`, `upsert`, `update`,
   `delete`, the read tags one or more of `query`. `@repository` alone is
