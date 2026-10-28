@@ -47,3 +47,7 @@ export * from "./userInsertSchema.ts";
 export * from "./userUpsertSchema.ts";
 export * from "./userPatchSchema.ts";
 export * from "./userPrimaryKeySchema.ts";
+export * from "./userSessionInsertSchema.ts";
+export * from "./userSessionUpsertSchema.ts";
+export * from "./userSessionPatchSchema.ts";
+export * from "./userSessionPrimaryKeySchema.ts";

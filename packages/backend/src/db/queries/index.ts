@@ -12,3 +12,4 @@ export * from "./querySeller.ts";
 export * from "./queryTenant.ts";
 export * from "./queryTranslation.ts";
 export * from "./queryUser.ts";
+export * from "./queryUserSession.ts";

@@ -303,6 +303,31 @@ export const queryModel: QueryModel = {
                     "kind": "isNull"
                 }
             }
+        },
+        "user_session": {
+            "name": "user_session",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "userId": "userId",
+                "tokenHash": "tokenHash",
+                "expiresAt": "expiresAt",
+                "revokedAt": "revokedAt",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "version": "version"
+            },
+            "relations": {},
+            "where": {
+                "expiresAt": [
+                    "gt",
+                    "lte"
+                ],
+                "revokedAt": [
+                    "isNull",
+                    "isNotNull"
+                ]
+            }
         }
     }
 };

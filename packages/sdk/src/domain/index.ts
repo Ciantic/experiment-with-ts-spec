@@ -11,3 +11,4 @@ export * from "./sellerSchema.ts";
 export * from "./tenantSchema.ts";
 export * from "./translationSchema.ts";
 export * from "./userSchema.ts";
+export * from "./userSessionSchema.ts";

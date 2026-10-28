@@ -42,3 +42,6 @@ export * from "./deleteTranslation.ts";
 export * from "./createUser.ts";
 export * from "./updateUser.ts";
 export * from "./deleteUser.ts";
+export * from "./createUserSession.ts";
+export * from "./updateUserSession.ts";
+export * from "./deleteUserSession.ts";

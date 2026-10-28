@@ -97,6 +97,18 @@ create table "seller" (
     constraint "seller_tenantId_id_key" unique ("tenantId", "id")
 );
 
+create table "user_session" (
+    "id" uuid not null default uuidv7(),
+    "userId" uuid not null references "user"("id"),
+    "tokenHash" text not null unique,
+    "expiresAt" timestamptz not null,
+    "revokedAt" timestamptz,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "user_session_pkey" primary key ("id")
+);
+
 create table "invoice" (
     "id" uuid not null default uuidv7(),
     "tenantId" uuid not null references "tenant"("id"),

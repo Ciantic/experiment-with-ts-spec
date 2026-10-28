@@ -31,6 +31,8 @@ export const taxRateSchema = z.string().regex(/^-?\d+(\.\d+)?$/).brand<"Decimal"
 
 export const unitSchema = z.enum(["hours", "pieces", "kg", "liters", "meters"]).or(z.string());
 
+export const userSessionTokenHashSchema = z.string().regex(/^[a-f0-9]{64}$/).brand<"UserSessionTokenHash">();
+
 export const uuidv7Schema = z.uuidv7();
 
 export const versionSchema = z.bigint().brand<"Version">();
