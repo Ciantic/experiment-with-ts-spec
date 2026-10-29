@@ -1,5 +1,5 @@
 /** Tests for the Oxlint comment rule, driven by fixtures in memory. See docs/comments.md. */
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "./comments.ts";
 

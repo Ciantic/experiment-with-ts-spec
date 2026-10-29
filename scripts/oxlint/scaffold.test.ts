@@ -1,5 +1,5 @@
 /** Tests for the Oxlint scaffold rule, driven by fixtures in memory. See docs/operations.md. */
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "./scaffold.ts";
 

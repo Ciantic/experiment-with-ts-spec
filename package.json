@@ -4,7 +4,7 @@
   "description": "",
   "private": true,
   "scripts": {
-    "test": "pnpm -r run test && vitest run && node --test scripts/oxlint/errors.test.ts scripts/oxlint/comments.test.ts scripts/oxlint/scaffold.test.ts",
+    "test": "pnpm -r run test && vitest run",
     "typecheck": "tsc --noEmit && pnpm -r run typecheck",
     "lint": "pnpm run lint:spec && pnpm run lint:spec-tests && pnpm run lint:oxlint",
     "lint:spec": "node scripts/spec/lint-spec.ts",

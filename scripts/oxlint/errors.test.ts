@@ -1,5 +1,5 @@
 /** Tests for the Oxlint error rules, driven by fixtures in memory. See docs/errors.md. */
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { RuleTester } from "oxlint/plugins-dev";
 import plugin from "./errors.ts";
 
