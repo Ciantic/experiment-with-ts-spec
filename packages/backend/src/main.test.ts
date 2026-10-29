@@ -209,16 +209,21 @@ describe("a live server", () => {
 });
 
 describe("--log-sql", () => {
-    /** Everything `run` prints to `console.log`. */
+    /** Everything `run` prints to any console channel: PGlite's log arrives on all four. */
     async function capture(run: () => Promise<void>): Promise<string[]> {
         const printed: string[] = [];
-        const log = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
-            printed.push(args.map(String).join(" "));
-        });
+        const spies = [vi.spyOn(console, "log"), vi.spyOn(console, "debug"), vi.spyOn(console, "warn"), vi.spyOn(console, "error")];
+        for (const spy of spies) {
+            spy.mockImplementation((...args: unknown[]) => {
+                printed.push(args.map(String).join(" "));
+            });
+        }
         try {
             await run();
         } finally {
-            log.mockRestore();
+            for (const spy of spies) {
+                spy.mockRestore();
+            }
         }
         return printed;
     }
