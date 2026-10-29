@@ -12,6 +12,9 @@ import {
     type RestOperationCall,
 } from "./rest-model.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 export type { Diagnostic } from "./rest-model.ts";
 
 /** Where the client is written when no `--out` is given. */
@@ -307,11 +310,11 @@ function pruneStale(outDir: string, keep: Set<string>): void {
 }
 
 /** Write the client modules for a parsed spec and return the exit code. */
-export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const model = buildRestModel(spec);
 
     for (const diagnostic of model.diagnostics) {
-        console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
+        output.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
     if (model.diagnostics.length > 0) {
         return 1;
@@ -320,7 +323,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     const outIndex = argv.indexOf("--out");
     const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
-        console.error("--out needs a directory");
+        output.error("--out needs a directory");
         return 1;
     }
 
@@ -331,7 +334,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
         writeFileSync(target, content);
     }
     pruneStale(outDir, new Set(files.keys()));
-    console.log(`wrote ${files.size} files to ${outDir}`);
+    output.log(`wrote ${files.size} files to ${outDir}`);
     return 0;
 }
 

@@ -2,7 +2,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "../spec/spec-model.ts";
 import {
     isSpecTestScaffold,
@@ -12,6 +12,9 @@ import {
     SPEC_TEST_MARKER,
     SPEC_TEST_SUFFIX,
 } from "./generate-spec-tests.ts";
+
+/** The generator's two channels with nothing behind them, so an assertion reads the exit code. */
+const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
@@ -87,7 +90,6 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) {
         rmSync(dir, { recursive: true, force: true });
     }
-    vi.restoreAllMocks();
 });
 
 /** A fresh directory the generator can write into. */
@@ -95,13 +97,6 @@ function tempDir(): string {
     const dir = mkdtempSync(join(tmpdir(), "spec-tests-"));
     dirs.push(dir);
     return dir;
-}
-
-/** Run the generator with its console output silenced, so assertions read the exit code. */
-function quietly(spec: SpecModel, argv: string[]): number {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    return run(spec, argv);
 }
 
 describe("parse", () => {
@@ -294,7 +289,7 @@ describe("run", () => {
     it("writes the spec test beside the operation, and nothing for an operation without tags", () => {
         const dir = tempDir();
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(true);
         expect(existsSync(join(dir, `readWidget${SPEC_TEST_SUFFIX}`))).toBe(false);
@@ -303,9 +298,9 @@ describe("run", () => {
     it("rewrites an unedited scaffold when the spec adds a row", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
         expect(readFileSync(file, "utf8")).toContain("records who froze it");
     });
@@ -313,13 +308,13 @@ describe("run", () => {
     it("keeps an edited spec test that still declares the tests the spec declares", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(
             file,
             `import { describe, expect, it } from "vitest";\n\ndescribe("freezing a widget", () => {\n    it("refuses a widget that is already frozen", () => {\n        expect(true).toBe(true);\n    });\n});\n`,
         );
 
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
 
         expect(readFileSync(file, "utf8")).toContain("expect(true).toBe(true);");
     });
@@ -327,7 +322,7 @@ describe("run", () => {
     it("fails when an edited spec test drops a test the spec declares", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         const edited = `import { describe, expect, it } from "vitest";
 
 describe("freezing a widget", () => {
@@ -338,17 +333,17 @@ describe("freezing a widget", () => {
 `;
         writeFileSync(file, edited);
 
-        expect(quietly(build(), ["--out", dir])).toBe(1);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(1);
         expect(readFileSync(file, "utf8")).toBe(edited);
     });
 
     it("rewrites a scaffold that only gained a comment, since its bodies still throw", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(file, `${readFileSync(file, "utf8")}// notes to self\n`);
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
         expect(readFileSync(file, "utf8")).not.toContain("// notes to self");
         expect(readFileSync(file, "utf8")).toContain("records who froze it");
@@ -356,19 +351,19 @@ describe("freezing a widget", () => {
 
     it("removes the scaffold of an operation that no longer declares tests", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
-        expect(run(build(WITHOUT_TESTS), ["--out", dir])).toBe(0);
+        expect(run(build(WITHOUT_TESTS), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(false);
     });
 
     it("keeps an edited spec test whose tags are gone, and reports it", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(file, "import { it } from \"vitest\";\nit(\"mine\", () => {});\n");
 
-        expect(quietly(build(WITHOUT_TESTS), ["--out", dir])).toBe(1);
+        expect(run(build(WITHOUT_TESTS), ["--out", dir], SILENT)).toBe(1);
         expect(existsSync(file)).toBe(true);
     });
 
@@ -377,7 +372,7 @@ describe("freezing a widget", () => {
         const handWritten = join(dir, "freezeWidget.test.ts");
         writeFileSync(handWritten, "import { it } from \"vitest\";\nit(\"mine\", () => {});\n");
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
         expect(existsSync(handWritten)).toBe(true);
     });
@@ -386,56 +381,56 @@ describe("freezing a widget", () => {
 describe("--check", () => {
     it("passes when the files declare the tests the spec declares", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
-        expect(quietly(build(), ["--check", "--out", dir])).toBe(0);
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(0);
     });
 
     it("passes for an edited file whose tests are still the spec's", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(
             file,
             `import { describe, expect, it } from "vitest";\n\ndescribe("freezing a widget", () => {\n    it("refuses a widget that is already frozen", () => {\n        expect(true).toBe(true);\n    });\n});\n`,
         );
 
-        expect(quietly(build(ONE_ROW), ["--check", "--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--check", "--out", dir], SILENT)).toBe(0);
     });
 
     it("fails when a file adds a test the spec does not declare", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(
             file,
             `${readFileSync(file, "utf8")}
 describe("a block of my own", () => {\n    it("my own test", () => {});\n});\n`,
         );
 
-        expect(quietly(build(ONE_ROW), ["--check", "--out", dir])).toBe(1);
+        expect(run(build(ONE_ROW), ["--check", "--out", dir], SILENT)).toBe(1);
     });
 
     it("fails when a file is missing a test the spec declares", () => {
         const dir = tempDir();
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(file, readFileSync(file, "utf8").replace(/\s*describe\("a frozen widget"[\s\S]*$/u, "\n"));
 
-        expect(quietly(build(), ["--check", "--out", dir])).toBe(1);
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
     });
 
     it("fails when the spec declares tests and no file exists", () => {
-        expect(quietly(build(), ["--check", "--out", tempDir()])).toBe(1);
+        expect(run(build(), ["--check", "--out", tempDir()], SILENT)).toBe(1);
     });
 
     it("writes nothing, leaving a drifting scaffold for the author to regenerate", () => {
         const dir = tempDir();
-        expect(run(build(ONE_ROW), ["--out", dir])).toBe(0);
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
         const file = join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`);
         const before = readFileSync(file, "utf8");
 
-        expect(quietly(build(), ["--check", "--out", dir])).toBe(1);
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
 
         expect(readFileSync(file, "utf8")).toBe(before);
         expect(existsSync(join(dir, `readWidget${SPEC_TEST_SUFFIX}`))).toBe(false);
@@ -443,9 +438,9 @@ describe("a block of my own", () => {\n    it("my own test", () => {});\n});\n`,
 
     it("reports a spec test whose operation no longer declares any", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
-        expect(quietly(build(WITHOUT_TESTS), ["--check", "--out", dir])).toBe(1);
+        expect(run(build(WITHOUT_TESTS), ["--check", "--out", dir], SILENT)).toBe(1);
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(true);
     });
 });
@@ -462,7 +457,7 @@ export interface WidgetOperations<T> {
 }
 `);
 
-        expect(quietly(spec, ["--out", tempDir()])).toBe(1);
+        expect(run(spec, ["--out", tempDir()], SILENT)).toBe(1);
     });
 
     it("fails when the tags sit on a method that is not an operation", () => {
@@ -476,7 +471,7 @@ export interface WidgetOperations<T> {
 }
 `);
 
-        expect(quietly(spec, ["--out", tempDir()])).toBe(1);
+        expect(run(spec, ["--out", tempDir()], SILENT)).toBe(1);
     });
 
     it("writes nothing when the spec itself is refused", () => {
@@ -491,7 +486,7 @@ export interface WidgetOperations<T> {
 }
 `);
 
-        expect(quietly(spec, ["--out", dir])).toBe(1);
+        expect(run(spec, ["--out", dir], SILENT)).toBe(1);
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(false);
     });
 });

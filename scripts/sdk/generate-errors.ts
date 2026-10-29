@@ -10,6 +10,9 @@ import {
     type SpecModel,
 } from "../spec/spec-model.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 export type { Diagnostic };
 
 /** Where the generated module is written when no `--out` is given. */
@@ -156,28 +159,28 @@ export function renderErrorModule(errors: GeneratedError[]): string {
 }
 
 /** Write the module for a parsed spec and return the exit code. */
-export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const { errors, diagnostics } = buildErrorModel(spec);
 
     if (diagnostics.length > 0) {
         diagnostics.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
         for (const diagnostic of diagnostics) {
-            console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
+            output.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
         }
-        console.error(`\n${diagnostics.length} problem(s) in the spec's @throws tags`);
+        output.error(`\n${diagnostics.length} problem(s) in the spec's @throws tags`);
         return 1;
     }
 
     const outIndex = argv.indexOf("--out");
     const outFile = outIndex === -1 ? DEFAULT_OUT_FILE : argv[outIndex + 1];
     if (!outFile) {
-        console.error("--out needs a file");
+        output.error("--out needs a file");
         return 1;
     }
 
     mkdirSync(dirname(outFile), { recursive: true });
     writeFileSync(outFile, renderErrorModule(errors));
-    console.log(`wrote ${errors.length} error class(es) to ${outFile}`);
+    output.log(`wrote ${errors.length} error class(es) to ${outFile}`);
     return 0;
 }
 

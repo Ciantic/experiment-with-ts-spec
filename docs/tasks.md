@@ -79,20 +79,25 @@ derives each package root, so an output path never depends on the cwd.
 
 ## Adding a generator
 
-A generator module exports `run(spec, argv): number`, which reads the model,
-writes its artifact, and returns the process exit code. Its own
+A generator module exports `run(spec, argv, output): number`, which reads the
+model, writes its artifact, and returns the process exit code. Its own
 `if (import.meta.main)` block calls `run(loadSpec(), process.argv)`, so the
 root `generate:*` script still works standalone and still accepts its flags.
-Adding one to the pipeline is two lines in `scripts/generate.ts`: the import and
-the position in the driver's list. The driver passes no `argv`, so a generator's
-flags never reach the whole-pipeline run.
+`output` is the two channels a run reports on, `Pick<Console, "log" | "error">`,
+and defaults to the console; a caller that supplies its own takes over the
+reporting, so a silent sink leaves the exit code as the whole report. Each
+generator declares that type itself, since it is the console's shape with a
+narrower minimum. A generator's own artifact flags are unaffected: the schema's
+`--stdout` still prints the SQL. Adding one to the pipeline is two lines in
+`scripts/generate.ts`: the import and the position in the driver's list. The
+driver passes no `argv`, so a generator's flags never reach the whole-pipeline
+run.
 
 The generators are siblings under `scripts/`, so the driver imports them by
 relative path, and no package exposes them through its `exports` map.
 
-The linter is a step in that same list, so it shares the parse and no longer
-needs a separate entry point in `check`. It takes no argv, and the driver stops
-at its first finding.
+The linter is a step in that same list, so it shares the parse with the
+generators. The driver stops at its first finding.
 
 ## Why `--if-present`
 

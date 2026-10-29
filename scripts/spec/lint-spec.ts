@@ -44,6 +44,9 @@ import {
 } from "./spec-model.ts";
 import { selectJsType } from "./pg-types.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 export type { Diagnostic };
 
 /** Tags a field may carry. Anything else is rejected, including retired tags. */
@@ -1270,21 +1273,21 @@ export function lintSourceText(text: string, filePath = "fixture.ts"): Diagnosti
 }
 
 /** Lint a parsed spec, report the findings, and return the exit code. */
-export function run(spec: SpecModel): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const { findings, interfaces, properties } = lintSpec(spec);
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
 
     for (const finding of findings) {
-        console.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
+        output.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
     }
 
     const summary = `${interfaces} interfaces, ${properties} fields`;
     if (findings.length === 0) {
-        console.log(`spec annotations OK (${summary})`);
+        output.log(`spec annotations OK (${summary})`);
         return 0;
     }
 
-    console.error(`\n${findings.length} problem(s) in ${summary}`);
+    output.error(`\n${findings.length} problem(s) in ${summary}`);
     return 1;
 }
 

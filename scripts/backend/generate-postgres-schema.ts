@@ -11,6 +11,9 @@ import {
     type Trigger,
 } from "./postgres-model.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 /** The SQL clause each `@foreignKey` action maps to. */
 const REFERENTIAL_ACTION_SQL: Record<ReferentialAction, string> = {
     cascade: "cascade",
@@ -207,11 +210,11 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
 }
 
 /** Write the schema for a parsed spec and return the exit code. */
-export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const { sql, diagnostics } = generateSchema(spec);
 
     for (const diagnostic of diagnostics) {
-        console.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
+        output.error(`${diagnostic.filePath}:${diagnostic.line}: ${diagnostic.message}`);
     }
 
     if (diagnostics.length > 0) {
@@ -226,13 +229,13 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     const outIndex = argv.indexOf("--out");
     const outPath = outIndex === -1 ? DEFAULT_OUT : argv[outIndex + 1];
     if (!outPath) {
-        console.error("--out needs a path");
+        output.error("--out needs a path");
         return 1;
     }
 
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, sql);
-    console.log(`wrote ${outPath}`);
+    output.log(`wrote ${outPath}`);
     return 0;
 }
 

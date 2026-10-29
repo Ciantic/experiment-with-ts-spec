@@ -4,6 +4,9 @@ import { join, relative } from "node:path";
 import { BACKEND_PACKAGE_ROOT } from "../paths.ts";
 import { loadSpec, type Diagnostic, type SpecModel, type SpecOperation } from "../spec/spec-model.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 export type { Diagnostic };
 
 /** Where the spec tests are written when no `--out` is given: beside the operation modules they exercise. */
@@ -155,12 +158,12 @@ function validate(spec: SpecModel): Diagnostic[] {
 }
 
 /** Print the findings in source order, then the count of operations they leave unscaffolded. */
-function report(findings: Diagnostic[], operations: number): void {
+function report(findings: Diagnostic[], operations: number, output: Output): void {
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
     for (const finding of findings) {
-        console.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
+        output.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
     }
-    console.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
+    output.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
 }
 
 /** Remove the spec tests the spec no longer declares, and report the implementations it drops. */
@@ -193,13 +196,13 @@ function pruneStale(outDir: string, keep: Set<string>, findings: Diagnostic[], r
 }
 
 /** Write a spec test for every operation that declares one, keep the edited ones, and prune the rest. */
-export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     // `--check` writes nothing: it is the lint step that reports a file the spec no longer describes.
     const check = argv.includes("--check");
     const outIndex = argv.indexOf("--out");
     const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
-        console.error("--out needs a directory");
+        output.error("--out needs a directory");
         return 1;
     }
 
@@ -209,7 +212,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     const tested = declared.filter((operation) => operation.tests.length > 0);
     const findings = validate(spec);
     if (findings.length > 0) {
-        report(findings, declared.length);
+        report(findings, declared.length, output);
         return 1;
     }
     if (tested.length > 0 && !check) {
@@ -264,15 +267,15 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     const removed = existsSync(outDir) ? pruneStale(outDir, keep, findings, !check) : 0;
 
     if (findings.length > 0) {
-        report(findings, declared.length);
+        report(findings, declared.length, output);
         return 1;
     }
 
     if (check) {
-        console.log(`spec tests OK (${verified} file(s) declare the spec's tests)`);
+        output.log(`spec tests OK (${verified} file(s) declare the spec's tests)`);
         return 0;
     }
-    console.log(`spec tests OK (${created} created, ${regenerated} regenerated, ${verified} verified, ${removed} removed)`);
+    output.log(`spec tests OK (${created} created, ${regenerated} regenerated, ${verified} verified, ${removed} removed)`);
     return 0;
 }
 

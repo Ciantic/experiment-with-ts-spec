@@ -13,6 +13,9 @@ import {
     SCAFFOLD_MARKER,
 } from "./generate-operations.ts";
 
+/** The generator's two channels with nothing behind them, so an assertion reads the exit code. */
+const SILENT = { log: () => undefined, error: () => undefined };
+
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
@@ -75,7 +78,6 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) {
         rmSync(dir, { recursive: true, force: true });
     }
-    vi.restoreAllMocks();
 });
 
 /** A fresh directory the generator can write into. */
@@ -83,13 +85,6 @@ function tempDir(): string {
     const dir = mkdtempSync(join(tmpdir(), "operations-"));
     dirs.push(dir);
     return dir;
-}
-
-/** Run the generator with its console output silenced, so assertions read the exit code. */
-function quietly(spec: SpecModel, argv: string[]): number {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    return run(spec, argv);
 }
 
 describe("renderOperationFile", () => {
@@ -212,10 +207,10 @@ export const sendInvoice: Ops["sendInvoice"] = async (ctx) => {
 describe("pruning", () => {
     it("removes the scaffold of an operation the spec no longer declares", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(true);
 
-        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(0);
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(false);
     });
 
@@ -226,7 +221,7 @@ describe("pruning", () => {
             `export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {\n    throw new NotImplemented("not implemented");\n};\n`,
         );
 
-        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(0);
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(false);
     });
 
@@ -238,7 +233,7 @@ describe("pruning", () => {
             `export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx, opts) => {\n    return await deliver(ctx.db, opts);\n};\n`,
         );
 
-        expect(quietly(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(1);
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir], SILENT)).toBe(1);
         expect(existsSync(file)).toBe(true);
     });
 
@@ -247,7 +242,7 @@ describe("pruning", () => {
         const helper = join(dir, "clock.ts");
         writeFileSync(helper, "export const now = () => new Date();\n");
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(helper)).toBe(true);
     });
 
@@ -263,17 +258,17 @@ export const sendInvoice: InvoiceOperations<unknown>["sendInvoice"] = async (ctx
 `,
         );
 
-        expect(quietly(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir])).toBe(1);
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--out", dir], SILENT)).toBe(1);
         expect(existsSync(file)).toBe(true);
     });
 
     it("keeps a declared operation's module however its body looks", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         const file = join(dir, "sendInvoice.ts");
         writeFileSync(file, readFileSync(file, "utf8").replace("throw new NotImplemented", "// throw new NotImplemented"));
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         expect(existsSync(file)).toBe(true);
     });
 });
@@ -313,7 +308,7 @@ describe("run", () => {
     it("writes one module per operation", () => {
         const dir = tempDir();
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
         expect(readFileSync(join(dir, "sendInvoice.ts"), "utf8")).toContain("export const sendInvoice:");
     });
@@ -321,19 +316,19 @@ describe("run", () => {
     it("leaves a committed module alone on the next run", () => {
         const dir = tempDir();
         const file = join(dir, "sendInvoice.ts");
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(file, `${readFileSync(file, "utf8")}// implemented by hand\n`);
 
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         expect(readFileSync(file, "utf8")).toContain("// implemented by hand");
     });
 
     it("fails when a committed module no longer declares the contract", () => {
         const dir = tempDir();
-        expect(run(build(), ["--out", dir])).toBe(0);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
         writeFileSync(join(dir, "sendInvoice.ts"), "export const sendInvoice = async () => null;\n");
 
-        expect(quietly(build(), ["--out", dir])).toBe(1);
+        expect(run(build(), ["--out", dir], SILENT)).toBe(1);
     });
 
 
@@ -347,7 +342,7 @@ export interface Ops<T> {
 }`,
         });
 
-        expect(quietly(code, ["--out", tempDir()])).toBe(1);
+        expect(run(code, ["--out", tempDir()], SILENT)).toBe(1);
     });
 
     it("fails when the contract takes more than one type parameter", () => {
@@ -360,7 +355,7 @@ export interface Ops<T, U> {
 }`,
         });
 
-        expect(quietly(code, ["--out", tempDir()])).toBe(1);
+        expect(run(code, ["--out", tempDir()], SILENT)).toBe(1);
     });
 
     it("writes nothing when the spec itself is refused", () => {
@@ -379,7 +374,25 @@ export interface Other<T> {
 }`,
         });
 
-        expect(quietly(code, ["--out", dir])).toBe(1);
+        expect(run(code, ["--out", dir], SILENT)).toBe(1);
         expect(() => readFileSync(join(dir, "sendInvoice.ts"), "utf8")).toThrow();
+    });
+});
+
+describe("output", () => {
+    it("reports the summary through the log channel", () => {
+        const log = vi.fn();
+
+        expect(run(build(), ["--out", tempDir()], { log, error: vi.fn() })).toBe(0);
+        expect(log).toHaveBeenCalledWith("operations OK (1 created, 0 verified, 0 removed)");
+    });
+
+    it("reports a refusal through the error channel, so a silent sink sees neither", () => {
+        const error = vi.fn();
+
+        expect(run(build(), ["--out"], { log: vi.fn(), error })).toBe(1);
+        expect(error).toHaveBeenCalledWith("--out needs a directory");
+
+        expect(run(build(), ["--out"], SILENT)).toBe(1);
     });
 });

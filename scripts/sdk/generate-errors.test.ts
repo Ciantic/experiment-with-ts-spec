@@ -2,9 +2,12 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "../spec/spec-model.ts";
 import { buildErrorModel, errorKind, renderErrorModule, run } from "./generate-errors.ts";
+
+/** The generator's two channels with nothing behind them, so an assertion reads the exit code. */
+const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
@@ -42,7 +45,6 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) {
         rmSync(dir, { recursive: true, force: true });
     }
-    vi.restoreAllMocks();
 });
 
 /** A fresh directory the generator can write into. */
@@ -50,13 +52,6 @@ function tempDir(): string {
     const dir = mkdtempSync(join(tmpdir(), "errors-"));
     dirs.push(dir);
     return dir;
-}
-
-/** Run the generator with its console output silenced, so assertions read the exit code. */
-function quietly(spec: SpecModel, argv: string[]): number {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    return run(spec, argv);
 }
 
 describe("errorKind", () => {
@@ -216,14 +211,14 @@ describe("run", () => {
     it("writes the module to the file it is given", () => {
         const file = join(tempDir(), "specErrors.ts");
 
-        expect(run(build("     * @throws {InvoiceDetailsError} it lacks details"), ["--out", file])).toBe(0);
+        expect(run(build("     * @throws {InvoiceDetailsError} it lacks details"), ["--out", file], SILENT)).toBe(0);
         expect(readFileSync(file, "utf8")).toContain("export class InvoiceDetailsError");
     });
 
     it("writes nothing when a tag cannot become a class", () => {
         const file = join(tempDir(), "specErrors.ts");
 
-        expect(quietly(build("     * @throws {ValidationError} it is invalid"), ["--out", file])).toBe(1);
+        expect(run(build("     * @throws {ValidationError} it is invalid"), ["--out", file], SILENT)).toBe(1);
         expect(() => readFileSync(file, "utf8")).toThrow();
     });
 });

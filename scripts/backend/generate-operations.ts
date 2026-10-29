@@ -9,6 +9,9 @@ import {
     type SpecOperation,
 } from "../spec/spec-model.ts";
 
+/** The channels a run reports on: the console, or a caller's own sink. */
+type Output = Pick<Console, "log" | "error">;
+
 export type { Diagnostic };
 
 /** Where the operation modules are written when no `--out` is given. */
@@ -156,27 +159,27 @@ function validate(spec: SpecModel): Diagnostic[] {
 }
 
 /** Print the findings in source order, then the count of operations they leave ungenerated. */
-function report(findings: Diagnostic[], operations: number): void {
+function report(findings: Diagnostic[], operations: number, output: Output): void {
     findings.sort((a, b) => a.filePath.localeCompare(b.filePath) || a.line - b.line);
     for (const finding of findings) {
-        console.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
+        output.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
     }
-    console.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
+    output.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
 }
 
 /** Write a scaffold for every operation the spec adds, and check the modules already committed still meet their contract. */
-export function run(spec: SpecModel, argv: readonly string[] = process.argv): number {
+export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const outIndex = argv.indexOf("--out");
     const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
-        console.error("--out needs a directory");
+        output.error("--out needs a directory");
         return 1;
     }
 
     const findings = validate(spec);
     const operations = spec.operations.filter((operation) => operation.operation);
     if (findings.length > 0) {
-        report(findings, operations.length);
+        report(findings, operations.length, output);
         return 1;
     }
     mkdirSync(outDir, { recursive: true });
@@ -205,11 +208,11 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv): nu
     const removed = pruneStale(outDir, new Set(operations.map((operation) => `${operation.name}.ts`)), findings);
 
     if (findings.length > 0) {
-        report(findings, operations.length);
+        report(findings, operations.length, output);
         return 1;
     }
 
-    console.log(`operations OK (${created} created, ${verified} verified, ${removed} removed)`);
+    output.log(`operations OK (${created} created, ${verified} verified, ${removed} removed)`);
     return 0;
 }
 

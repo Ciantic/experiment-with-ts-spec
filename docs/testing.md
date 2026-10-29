@@ -153,6 +153,10 @@ values, all of which are domain decisions rather than code behaviour.
 - **Tag placement matters in fixtures.** JSDoc on the same line as a field is not
   attached to the node. Inline `/** @unique */ f: string;` is silently ignored;
   it must be its own line.
+- **Generator output stays out of a test run.** A generator's `run` takes its
+  `output` channels as a third argument, so a suite passes a silent sink
+  alongside `--out` and asserts on the exit code. A test that checks what a run
+  reports passes recording channels instead of spying on the console.
 
 ## Deliberately not implemented
 
