@@ -7,9 +7,7 @@ import type { Seller, SellerId } from "spec/invoicing-service/Seller.ts";
 import type { TenantId } from "spec/invoicing-service/Tenant.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
-import { createAppContext } from "../context.ts";
-import { createInvoice, createTenant } from "../db/repositories/index.ts";
-import { resultRows, type SqlExecutor } from "../db/sql-executor.ts";
+import { createAppContext, createInvoice, createTenant, resultRows, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 const tenantId = "0192f0b0-0000-7000-8000-000000000001" as TenantId;

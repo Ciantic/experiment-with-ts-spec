@@ -14,17 +14,19 @@ runs, in order:
 
 1. `pnpm run generate` — `node scripts/generate.ts`, which lints the spec and
    then writes every generated artifact: `generate:operations`,
-   `generate:schema`, `generate:repositories`, `generate:queries`, and
-   `generate:rest-api` under `packages/backend`, plus `generate:errors` and
-   `generate:validation` under `packages/sdk`. The generators run from
-   `scripts/`, but each artifact belongs to its package.
+   `generate:operation-routes`, and `generate:spec-tests` under
+   `packages/backend`; `generate:schema`, `generate:repositories`,
+   `generate:queries`, and `generate:entity-routes` under `packages/infra`; and
+   `generate:errors` and `generate:validation` under `packages/sdk`. The
+   generators run from `scripts/`, but each artifact belongs to its package.
 2. `pnpm run build` — `pnpm -r --if-present run build`, so every package that
    defines a `build` runs it, in dependency order.
 
 Step 2 is a no-op today: no package emits. `packages/spec` is consumed as `.ts`
-through its `exports` map, and `packages/backend` is `noEmit` because `node` runs
-its TypeScript directly. The step exists so that adding a `build` script to any
-package joins the pipeline without touching the root.
+through its `exports` map, and `packages/infra` and `packages/backend` are
+`noEmit` because `node` runs their TypeScript directly. The step exists so that
+adding a `build` script to any package joins the pipeline without touching the
+root.
 
 ## Ordering
 
@@ -54,13 +56,13 @@ standalone `generate:*` script for a single artifact, and `pnpm run lint` runs
 the spec linter plus the generators' read-only `--check` passes. All of them read the
 spec through that same model: the schema, repository, and
 query generators map it to columns in
-`scripts/backend/postgres-model.ts`, the validation generator maps it to
+`scripts/infra/postgres-model.ts`, the validation generator maps it to
 Zod schemas in `scripts/sdk/zod-model.ts`, and the REST pair maps
 it to the HTTP surface in `scripts/sdk/rest-model.ts`. The error
 generator reads the `@throws` tags and writes `specErrors.ts`; the operations
 generator reads the parsed `@operation` methods and writes only the modules that
-do not exist yet. See `docs/errors.md` and `docs/operations.md`. The API
-generator references the validation schemas by name, which is why it runs after
+do not exist yet. See `docs/errors.md` and `docs/operations.md`. The route
+generators reference the validation schemas by name, which is why they run after
 them. None reads another's
 output, so the
 order between them is presentational — it mirrors the order the artifacts appear
@@ -68,14 +70,17 @@ in the repository. A step that reports a finding or a diagnostic returns a
 failing exit code, and the driver stops rather than running the steps after it.
 
 A generator lives under `scripts/<package>`, named for the package whose
-artifact it writes. The schema, repository, and query generators are in
-`scripts/backend`, because they share `postgres-model.ts` and write the
-backend's own tables and modules. The Zod generator and the REST client
+artifact it writes. The schema, repository, query, and entity-route generators
+are in `scripts/infra`, because they share `postgres-model.ts` or the REST model
+and write infra's own tables, modules, and servable route table. The operation,
+spec-test, and operation-route generators are in `scripts/backend`, beside the
+implementation they wire. The Zod generator and the REST client
 generator are in `scripts/sdk`, with the client artifact they render and, for
-the REST pair, the `rest-model.ts` both read; the server generator imports that
-model rather than owning a second copy. The drift check drives both generators,
-so it stays in `scripts/backend` beside the route renderer. `scripts/paths.ts`
-derives each package root, so an output path never depends on the cwd.
+the REST pair, the `rest-model.ts` both read; the route generators import that
+model rather than owning a second copy. The drift check drives every route
+generator, so it stays in `scripts/backend` beside the table that joins them.
+`scripts/paths.ts` derives each package root, so an output path never depends on
+the cwd.
 
 ## Adding a generator
 

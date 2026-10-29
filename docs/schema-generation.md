@@ -1,14 +1,14 @@
 # Schema generation
 
-`scripts/backend/generate-postgres-schema.ts` turns the entities in
+`scripts/infra/generate-postgres-schema.ts` turns the entities in
 `packages/spec/src/` into Postgres DDL.
 
 The spec is parsed by `scripts/spec/spec-model.ts`; the Postgres table
-model is built by `scripts/backend/postgres-model.ts`, which both this
+model is built by `scripts/infra/postgres-model.ts`, which both this
 generator and the repository generator consume. Only the rendering differs; see
 `docs/repositories.md`.
 
-- `pnpm generate:schema` — writes `packages/backend/src/postgres/schema.sql`.
+- `pnpm generate:schema` — writes `packages/infra/src/postgres/schema.sql`.
 - `pnpm generate:schema --out <path>` — writes elsewhere. A missing directory is created.
 - `pnpm generate:schema:stdout` — prints to stdout instead of writing.
 
@@ -170,7 +170,7 @@ generation error, because that child's writes would leave the aggregate stale.
 
 Two test files:
 
-- `scripts/backend/generate-postgres-schema.test.ts` — the generator's
+- `scripts/infra/generate-postgres-schema.test.ts` — the generator's
   behaviour, driven by self-contained in-memory fixtures. It does not read the real
   spec, so it stays valid as the domain changes. The fixture's sources go through
   `parseInMemorySpec(files, { sourceGlob })`, so a fixture is generated
@@ -178,10 +178,10 @@ Two test files:
   Its trigger group also executes the generated triggers in PGlite, which is the
   one place the attachment is observable: a trigger on the wrong table is valid
   SQL, so no text assertion can see it.
-- `packages/backend/src/postgres/schema.test.ts` — one check: the committed file
+- `packages/infra/src/postgres/schema.test.ts` — one check: the committed file
   executes in Postgres.
 
-Nothing checks that `packages/backend/src/postgres/schema.sql` is up to date. It is a generated
+Nothing checks that `packages/infra/src/postgres/schema.sql` is up to date. It is a generated
 artifact, and staleness is caught by remembering to run `pnpm generate:schema`,
 not by a test. A drift test is the obvious way to enforce it if that becomes a
 problem.
@@ -210,7 +210,7 @@ expression is only checked by reading it.
 Gotchas found by running the DDL:
 
 - **PGlite parses `int8` to a JS number by default,** which silently loses
-  precision above 2^53. The parsers in `packages/backend/src/postgres/pglite-setup.ts` map it to
+  precision above 2^53. The parsers in `packages/infra/src/postgres/pglite-setup.ts` map it to
   `bigint`, so an `int8` column arrives as a `bigint` however large its value.
 - **The fragments must be `NEW`-qualified** (see above). Running the DDL is what
   revealed this.
@@ -234,9 +234,9 @@ The schema says what the columns are; the drivers also need to hand back the
 right JavaScript types. Both are ported from
 https://github.com/Ciantic/pg-unified-mapping.
 
-- `packages/backend/src/postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an
+- `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an
   instance configured with result parsers.
-- `packages/backend/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
+- `packages/infra/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
   `types` option for `new pg.Client(...)`, and `createPgPool(pg, config)` builds a
   `Pool` with that option applied.
 

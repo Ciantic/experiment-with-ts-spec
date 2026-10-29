@@ -8,7 +8,7 @@ client has something to read without a fixture being written per test.
   array it exports (`widgets.ts` exports `widgets`).
 - `packages/spec/mockdata/index.ts` — the barrel, plus `mockTables`, the
   ordered list of `{ entity, rows }`.
-- `packages/backend/src/mock/seed.ts` — `seedMockData(db)`.
+- `packages/infra/src/mock/seed.ts` — `seedMockData(db)`.
 - `packages/backend/src/main.ts` — the server entry, optionally seeded.
 
 The `mockTables` are ordered so foreign keys resolve: the tenancy root every row

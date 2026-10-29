@@ -2,8 +2,7 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AppContext } from "../context.ts";
 import { errorFrom } from "./http-response.ts";
-import { routes } from "./routes/index.ts";
-import { createRouter, type HttpResponse } from "./router.ts";
+import { createRouter, type HttpResponse, type Route } from "./router.ts";
 
 /** Write a router response. */
 function write(response: ServerResponse, result: HttpResponse): void {
@@ -11,8 +10,8 @@ function write(response: ServerResponse, result: HttpResponse): void {
     response.end(result.body);
 }
 
-/** A server exposing the generated route table; `app` is what startup built and every request's context is built over. */
-export function createApiServer(app: AppContext): Server {
+/** A server exposing `routes`; `app` is what startup built and every request's context is built over. */
+export function createApiServer(app: AppContext, routes: Route[]): Server {
     const router = createRouter(app, routes);
     return createServer((request, response) => {
         void (async () => {

@@ -63,7 +63,7 @@ and `docs/rest-api.md`.
 
 The schemas live in `packages/sdk` beside the client and are consumed as
 TypeScript through the package's `exports` map, like every other package here.
-`packages/backend` depends on `packages/sdk`: a repository imports one write type
+`packages/infra` depends on `packages/sdk`: a repository imports one write type
 from its `repositories/<entity><Kind>Schema.ts` module, the route table validates
 with the schemas through `schemas.ts`, and the generated client imports the same
 write types type-only, so `zod` never enters the client runtime. The frontend

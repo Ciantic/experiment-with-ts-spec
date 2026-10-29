@@ -1,8 +1,7 @@
 // Generated for implementation by: scripts/backend/generate-operations.ts
 import type { InvoiceOperations } from "spec/invoicing-service/operations/InvoiceOperations.ts";
 import type { EmailAddress } from "spec/primitives/EmailAddress.ts";
-import { createEmail, createInvoiceSent } from "../db/repositories/index.ts";
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import { createEmail, createInvoiceSent, type SqlExecutor } from "infra";
 import { InvoiceDetailsError, ShortWriteError } from "sdk/errors.ts";
 
 // The seller has no email field, so the demonstration uses one fixed sender.

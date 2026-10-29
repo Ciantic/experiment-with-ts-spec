@@ -58,5 +58,5 @@ domain:
   on is `tenantId` whatever the spec calls its root.
 
 A real path is written as it is, too. When a note points at
-`scripts/backend/generate-repositories.ts`, it means that file; only
+`scripts/infra/generate-repositories.ts`, it means that file; only
 the entities and fields inside an example are placeholders.

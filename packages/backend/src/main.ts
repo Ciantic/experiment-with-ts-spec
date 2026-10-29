@@ -1,10 +1,15 @@
 /** The backend entry point: run an API server, optionally seeded with mock data. See docs/mockdata.md. */
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import { createAppContext, type AppOptions, type ServerDatabase } from "./context.ts";
-import { UsageError } from "./errors.ts";
-import { createApiServer } from "./http/server.ts";
-import { seedMockData } from "./mock/seed.ts";
+import {
+    createApiServer,
+    createAppContext,
+    seedMockData,
+    UsageError,
+    type AppOptions,
+    type ServerDatabase,
+} from "infra";
+import { routes } from "./http/routes/index.ts";
 
 /** The port used when `--port` is absent. */
 const DEFAULT_PORT = 3000;
@@ -39,7 +44,7 @@ export async function startServer(options: StartOptions = {}): Promise<StartedSe
     if (options.seed) {
         await seedMockData(app.database);
     }
-    const server = createApiServer(app);
+    const server = createApiServer(app, routes);
     const port = await listen(server, options.port ?? DEFAULT_PORT);
     return { server, db: app.database, port };
 }

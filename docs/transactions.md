@@ -354,7 +354,7 @@ is hand-written in `sdk/src/client.ts` next to the transport in `sdk/src/http.ts
 — the same split as the server, where the router is hand-written and the route
 table is generated.
 The SDK declares its own `Method` union rather than importing the router's, so
-the client still imports nothing from the backend.
+the client still imports nothing from infra or the backend.
 
 Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
@@ -520,7 +520,7 @@ caller cannot know which of the earlier writes landed.
 The wire shape is exactly the value the SDK already holds, so nothing encodes a
 call twice: `toWire` in `sdk/src/client.ts` walks the group into the tree the
 group handler reads, and `devalue` carries it as the body. As with a single call,
-the client imports nothing from the backend.
+the client imports nothing from infra or the backend.
 
 ## Gotchas
 
@@ -554,8 +554,8 @@ the client imports nothing from the backend.
   because a builder is not thenable. `exec` is the only function that makes a
   call, and the generated modules take no `HttpClient`.
 - **Both sides declare the group contract.** `GROUP_PATH` and the verb list are
-  written twice, in `sdk/src/client.ts` and in `src/http/group-handler.ts`, because
-  the client may not import the backend. No generated artifact keeps them in step, so
+  written twice, in `sdk/src/client.ts` and in `infra/src/http/group-handler.ts`, because
+  the client may not import infra or the backend. No generated artifact keeps them in step, so
   the end-to-end test is what does: a group is the only call whose path is not
   derived from `scripts/sdk/rest-model.ts`.
 - **A void write answers `null`; a create and an upsert answer their keys.** A

@@ -28,17 +28,22 @@ flowchart TD
         direction TB
         lint["<b>Spec linter</b><br/>scripts/spec/lint-spec.ts<br/>Gates every generator"]
 
-        pgModel["<b>Postgres model</b><br/>scripts/backend/postgres-model.ts"]
+        pgModel["<b>Postgres model</b><br/>scripts/infra/postgres-model.ts"]
         zodModel["<b>Zod model</b><br/>scripts/sdk/zod-model.ts"]
         restModel["<b>REST model</b><br/>scripts/sdk/rest-model.ts"]
+
+        subgraph infraScripts["infra/"]
+            direction TB
+            pgSchema["<b>Postgres schema generator</b><br/>generate-postgres-schema.ts<br/>Tables, columns, constraints and triggers"]
+            repositories["<b>Repository generator</b><br/>generate-repositories.ts<br/>Create, update, upsert and delete functions"]
+            queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and query metadata"]
+            entityRoutes["<b>Entity route generator</b><br/>generate-entity-routes.ts<br/>Route table for repositories and queries"]
+        end
 
         subgraph backendScripts["backend/"]
             direction TB
             operations["<b>Operation scaffolder</b><br/>generate-operations.ts<br/>One module per @operation"]
-            pgSchema["<b>Postgres schema generator</b><br/>generate-postgres-schema.ts<br/>Tables, columns, constraints and triggers"]
-            repositories["<b>Repository generator</b><br/>generate-repositories.ts<br/>Create, update, upsert and delete functions"]
-            queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and query metadata"]
-            restApi["<b>REST API generator</b><br/>generate-rest-api.ts<br/>Server route table"]
+            operationRoutes["<b>Operation route generator</b><br/>generate-operation-routes.ts<br/>Operation routes and the combined table"]
         end
 
         subgraph sdkScripts["sdk/"]
@@ -56,11 +61,16 @@ flowchart TD
             sdkErrors["<b>Generated error classes</b>"]
             sdkApi["<b>Generated API modules</b><br/>Consumed by the hand-written transport"]
         end
+        subgraph infraPkg["infra"]
+            infraSchema["<b>Generated schema.sql</b>"]
+            infraData["<b>Generated repositories and queries</b>"]
+            infraRoutes["<b>Generated entity route table</b>"]
+            infraRuntime["<b>Context, router, server and mock seed</b>"]
+        end
         subgraph backendPkg["backend"]
-            backendSchema["<b>Generated schema.sql</b>"]
-            backendData["<b>Generated repositories and queries</b>"]
-            backendRoutes["<b>Generated route table</b>"]
+            backendRoutes["<b>Generated operation routes and table</b>"]
             backendOperations["<b>Operation scaffolds</b><br/>Business logic filled in by hand"]
+            backendMain["<b>Process entry point</b>"]
         end
     end
 
@@ -74,31 +84,40 @@ flowchart TD
     pgModel --> repositories
     pgModel --> queries
     zodModel --> validation
-    restModel --> restApi
+    restModel --> entityRoutes
+    restModel --> operationRoutes
     restModel --> restClient
     errors --> sdkErrors
     validation --> sdkSchemas
     restClient --> sdkApi
-    pgSchema --> backendSchema
-    repositories --> backendData
-    queries --> backendData
-    restApi --> backendRoutes
+    pgSchema --> infraSchema
+    repositories --> infraData
+    queries --> infraData
+    entityRoutes --> infraRoutes
+    operationRoutes --> backendRoutes
     operations --> backendOperations
 ```
 
 ### Packages
 
-- `backend` - Implementation with REST API, database repositories etc.
+- `infra` - Postgres schema, generated repositories, queries and entity routes,
+  plus the request contexts and HTTP runtime.
+- `backend` - The application implementation: operation logic and the process
+  entry point over `infra`.
 - `sdk` - Type-safe REST API SDK, shared validation schemas, and shared types
 - `spec` - Domain models
 
 ```mermaid
 flowchart LR
     spec["<b>spec</b><br/>Domain interfaces and primitives"]
-    backend["<b>backend</b><br/>Postgres schema, repositories, routes"]
     sdk["<b>sdk</b><br/>Generated REST client, Zod schemas,<br/>shared write and read types"]
+    infra["<b>infra</b><br/>Postgres schema, repositories,<br/>queries, contexts and HTTP runtime"]
+    backend["<b>backend</b><br/>Operations and process entry point"]
 
     sdk --> spec
+    infra --> spec
+    infra --> sdk
+    backend --> infra
     backend --> spec
     backend --> sdk
 ```

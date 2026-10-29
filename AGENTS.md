@@ -6,8 +6,11 @@
   and shared Patch/Insert/read types, the shared API error classes, and the
   hand-written transport and package entry. Consumed by the backend and,
   eventually, the frontend. Owns the generator that writes the schemas.
-- `packages/backend/` — Postgres schema, generated repositories, and result
-  mapping for the spec.
+- `packages/infra/` — Postgres schema, generated repositories, queries and
+  entity routes, the request contexts, the HTTP router and server, and the mock
+  seed. Consumed by the backend.
+- `packages/backend/` — The application implementation: the operation logic and
+  the process entry point (`main`) over `infra`.
 
 ## Scripts
 
@@ -20,8 +23,10 @@
   each field's `SpecType`, `location`, and tags — and never walk a syntax tree
   themselves.
 - Every generator lives at the root, in the directory named for the package
-  whose artifact it writes: `scripts/backend` for the schema, repository, and
-  query generators because they share the table model, `scripts/sdk` for the
+  whose artifact it writes: `scripts/infra` for the schema, repository, query,
+  and entity-route generators because they share the table and REST models,
+  `scripts/backend` for the operation, spec-test, and operation-route
+  generators because they write the implementation, `scripts/sdk` for the
   Zod and REST client generators because they write the SDK, and `scripts/spec`
   for the parser and the linter. The artifact still belongs to its package;
   `scripts/paths.ts` anchors every output root.
@@ -42,8 +47,8 @@
 - Errors are `AppError` subclasses, the one contract the backend and the client
   share: the built-in ones in `packages/sdk/src/builtinErrors.ts`, and the ones a
   spec declares with `@throws` generated into
-  `packages/sdk/src/specErrors.ts`; only errors that never reach the wire stay in
-  the backend (`docs/errors.md`). Every `throw new X` documents `@throws {X} why`
+  `packages/sdk/src/specErrors.ts`; only errors that never reach the wire stay
+  in infra (`docs/errors.md`). Every `throw new X` documents `@throws {X} why`
   on an enclosing function, and `pnpm lint` enforces it.
 
 ## Docs

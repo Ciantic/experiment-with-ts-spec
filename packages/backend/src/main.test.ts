@@ -4,7 +4,7 @@ import * as api from "sdk/api/index.ts";
 import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
-import { createAppContext } from "./context.ts";
+import { createAppContext } from "infra";
 import { routes } from "./http/routes/index.ts";
 import { parseArgs, startServer, type StartedServer } from "./main.ts";
 

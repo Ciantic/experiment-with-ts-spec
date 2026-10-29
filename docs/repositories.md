@@ -1,7 +1,7 @@
 # Repositories
 
-`scripts/backend/generate-repositories.ts` writes one module per
-operation into `packages/backend/src/db/repositories/`, named after the function
+`scripts/infra/generate-repositories.ts` writes one module per
+operation into `packages/infra/src/db/repositories/`, named after the function
 it exports: `createWidget.ts`, `upsertWidget.ts`, `updateWidget.ts`,
 `deleteWidget.ts`. An entity generates only the operations its `@repository`
 tag names, so a table that is appended to and never changed has a create module
@@ -46,7 +46,7 @@ repository.** There is no `getById`, no list, no query builder. Those belong to
 whatever reads the data — a projection, a report, a view — and are deliberately
 not part of a repository, because their shape is a product decision rather than
 a mapping of the spec. Reads are generated separately from the entities in
-`packages/backend/src/db/queries/`; see `docs/queries.md`.
+`packages/infra/src/db/queries/`; see `docs/queries.md`.
 
 `SqlExecutor` (`src/db/sql-executor.ts`) is the whole database surface:
 `query(sql, parameters?)`, `transaction(run)`, and `transactionWith(options, run)`
@@ -364,7 +364,7 @@ statement agree on what a delete carries (`docs/rest-api.md`).
 
 The generator does not read `schema.sql` and does not re-parse the spec: it
 consumes the same table model as the schema generator, from
-`scripts/backend/postgres-model.ts`, which maps the parsed spec
+`scripts/infra/postgres-model.ts`, which maps the parsed spec
 (`scripts/spec/spec-model.ts`) to columns. One interpretation of
 `@pgTable`, `@relation`, `@children`, `@inlined`, the `@primaryKey`/`@foreignKey`
 key tags, and type mapping feeds both the DDL and the repositories, so a
@@ -486,7 +486,7 @@ it was handed with the planner's, so the two cannot drift.
 ## Deliberately not implemented
 
 - **Queries.** Reads are generated from the entities in
-  `packages/backend/src/db/queries/`, not in a repository; see `docs/queries.md`.
+  `packages/infra/src/db/queries/`, not in a repository; see `docs/queries.md`.
 - **Cascade delete inferred from `@children`.** The parent's `@children` field
   adds no `on delete cascade`; the action lives on the child's `@foreignKey`, so
   a parent with children cannot be deleted unless the child declares it.

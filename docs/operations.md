@@ -171,7 +171,7 @@ choose one: it writes `unknown`, which compiles because the annotation supplies
 the parameter types, and says plainly that the implementation must decide.
 
 Every route handler receives one context, `RequestContext` in
-`packages/backend/src/context.ts`, whose only field is `db`. Startup calls
+`packages/infra/src/context.ts`, whose only field is `db`. Startup calls
 `createAppContext` once, which opens the in-memory database and applies the
 schema; the router calls `createRequestContext(app, request)` per request, which
 gives that request its own executor over the shared pool. An operation annotated

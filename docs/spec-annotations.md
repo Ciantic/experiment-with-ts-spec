@@ -674,7 +674,7 @@ Rationale is in `docs/primitives.md`.
 3. `@createdAt` and `@updatedAt` become a `default now()`; the generated writes
    supply a value or fall back to it, and no clock trigger is emitted.
 
-`scripts/backend/generate-postgres-schema.ts` implements all of the
+`scripts/infra/generate-postgres-schema.ts` implements all of the
 above. See `docs/schema-generation.md`.
 
 ## Why the expressions live in the spec

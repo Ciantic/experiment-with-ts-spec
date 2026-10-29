@@ -3,9 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
-import { createAppContext } from "../context.ts";
-import { createCustomer, createInvoice, createSeller, createTenant } from "../db/repositories/index.ts";
-import { resultRows, type SqlExecutor } from "../db/sql-executor.ts";
+import { createAppContext, createCustomer, createInvoice, createSeller, createTenant, resultRows, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 /** A database with the mock tenants, parties, and drafts written, and the executor the operation runs on. */

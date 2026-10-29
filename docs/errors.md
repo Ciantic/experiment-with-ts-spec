@@ -53,7 +53,7 @@ to `specErrors.ts` and joins the same table:
 | --- | --- | --- | --- |
 | `WidgetDetailsError` | `widget-details` | 422 | `WidgetOperations.sendWidget` |
 
-`UsageError` and `MockDataError` stay in `packages/backend/src/errors.ts`. They
+`UsageError` and `MockDataError` stay in `packages/infra/src/errors.ts`. They
 extend `AppError` but never reach an HTTP response — one is a command line the
 entry point cannot interpret, the other is spec mock data with no generated
 create repository — so no client class mirrors them.
@@ -115,9 +115,9 @@ so a caller can tell a tolerated version conflict from any other failure
 (`docs/transactions.md`). It is a plain object, not an `AppError` instance,
 because it did not fail the request.
 
-## The backend
+## The response
 
-`errorFrom` in `packages/backend/src/http/http-response.ts` is the one place a
+`errorFrom` in `packages/infra/src/http/http-response.ts` is the one place a
 thrown error becomes a response: `statusFor` picks the status, and
 `apiErrorBody` writes the body. `statusFor` returns an `AppError`'s own status
 first; only an error that is not one is matched against the driver's `code`

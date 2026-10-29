@@ -8,17 +8,21 @@ the transport.
 - `scripts/sdk/rest-model.ts` — the shared model. Paths, methods,
   operation ids, filters, the operations each entity exposes, and the calls a
   `@restOperation` declares. Hand-written.
-- `scripts/backend/generate-rest-api.ts` — the server generator.
+- `scripts/infra/generate-entity-routes.ts` — the entity route generator.
+- `scripts/backend/generate-operation-routes.ts` — the operation route
+  generator, and the table that joins both route sets.
 - `scripts/sdk/generate-rest-client.ts` — the client generator.
-- `packages/backend/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
-  each a `Route[]` for that collection, plus `operationRoutes.ts` for the calls a
-  `@restOperation` declares, and the `index.ts` barrel concatenating them into
-  the table the router matches a request on and the group handler resolves an id
-  in. See `docs/operations.md`.
-- `packages/backend/src/http/router.ts` — the request handler. Hand-written.
-- `packages/backend/src/http/http-response.ts` — the response shape, and the
+- `packages/infra/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
+  each a `Route[]` for that collection, plus the `index.ts` barrel exporting
+  `entityRoutes`.
+- `packages/backend/src/http/routes/` — generated: `operationRoutes.ts` for the
+  calls a `@restOperation` declares, plus the `index.ts` barrel joining infra's
+  `entityRoutes` with them into the table the router matches a request on and
+  the group handler resolves an id in. See `docs/operations.md`.
+- `packages/infra/src/http/router.ts` — the request handler. Hand-written.
+- `packages/infra/src/http/http-response.ts` — the response shape, and the
   plain-JSON failures a handler answers with. Hand-written.
-- `packages/backend/src/http/server.ts` — a `node:http` server. Hand-written.
+- `packages/infra/src/http/server.ts` — a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
   re-exporting them. Imported by name, not re-exported by the entry.
 - `packages/sdk/src/index.ts` — the package entry: the call model and the
@@ -26,10 +30,12 @@ the transport.
 - `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
   combinators. Hand-written.
 - `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
-- `packages/backend/src/http/group-handler.ts` — the group entry point.
+- `packages/infra/src/http/group-handler.ts` — the group entry point.
   Hand-written; see `docs/transactions.md`.
 
-- `pnpm generate:rest-api` — writes the route table.
+- `pnpm generate:entity-routes` — writes infra's entity route modules.
+- `pnpm generate:operation-routes` — writes the operation routes and the
+  combined table.
 - `pnpm generate:rest-client` — writes the client.
 - Either accepts `--out <dir>`; a missing directory is created.
 
@@ -80,7 +86,7 @@ apply.
 A route handler receives one `RequestContext`, whose only field is `db`; a
 generated entity route reads `ctx.db`, and a generated operation route passes
 `ctx` itself to the module, so the operation's chosen context is compile-checked
-against it. `createAppContext` in `packages/backend/src/context.ts` builds the
+against it. `createAppContext` in `packages/infra/src/context.ts` builds the
 process's context once at startup, and `createRequestContext(app, request)` builds
 a request's context over it. See `docs/operations.md`.
 
@@ -149,8 +155,8 @@ the meaning they usually do.
 `scripts/sdk/rest-model.ts` holds everything both sides must agree on:
 the method, the path, where the argument travels, and the filter fields. Neither
 generator may re-derive any of it — that is the way the two would drift. It sits
-beside the client generator in `scripts/sdk`, and the server generator imports
-it from there; the drift check drives both and stays with the server.
+beside the client generator in `scripts/sdk`, and the route generators import it
+from there; the drift check drives them all and stays with the backend's table.
 
 The model is mapped from the parsed spec, the same `parseSpec` the validation
 generator reads, so the REST pair and the Postgres generators each depend on the
@@ -159,14 +165,14 @@ spec rather than on each other.
 The generators are split, rather than one writing both, because their outputs
 have different import rules:
 
-| | `generate-rest-api.ts` | `generate-rest-client.ts` |
+| | `generate-entity-routes.ts` / `generate-operation-routes.ts` | `generate-rest-client.ts` |
 | --- | --- | --- |
-| May import | `sdk/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts` | `spec/*`, type-only `../selection.ts` and `../repositories/*`, and its own `../client.ts` |
-| Lives in | `scripts/backend` | `scripts/sdk` |
-| Emits | `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
+| May import | `sdk/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts`, `infra` | `spec/*`, type-only `../selection.ts` and `../repositories/*`, and its own `../client.ts` |
+| Lives in | `scripts/infra`, `scripts/backend` | `scripts/sdk` |
+| Emits | `packages/infra/src/http/routes/*.ts`, `packages/backend/src/http/routes/*.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
-generated client imports nothing from the backend.** It cannot reach a table
+generated client imports nothing from infra or the backend.** It cannot reach a table
 name, a column, a driver, or `zod`. Its imports of the schema modules are
 type-only: the read types (`Selection`, `Selected`, `Filters`, `Order`, `Where`)
 come from `../selection.ts` and the write types (`<Entity>Patch`,
@@ -345,8 +351,9 @@ No mode reaches the statement unvalidated.
   rather than a silent skip. An id that is not there answers the same way.
   `upsert` requires one too, and answers the same way when the stored row is at
   another version.
-- **The server reads no configuration.** `createApiServer(app)` takes the context
-  startup built; the caller owns the port and TLS.
+- **The server reads no configuration.** `createApiServer(app, routes)` takes the
+  context startup built and the assembled route table; the caller owns the port
+  and TLS.
 
 ## Deliberately not implemented
 

@@ -11,10 +11,10 @@ See "Why the resolver is hand-written".
   `Where` clauses. Hand-written; the resolver and the generated REST client
   import their types from it, so the read contract has one definition. See
   `docs/rest-api.md`.
-- `scripts/backend/generate-queries.ts` — the generator.
-- `packages/backend/src/db/queries/` — generated: `model.ts` (metadata),
+- `scripts/infra/generate-queries.ts` — the generator.
+- `packages/infra/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per `@queries` entity), `index.ts` (barrel).
-- `packages/backend/src/db/resolvers.ts` — the reader. Hand-written.
+- `packages/infra/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/sdk/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.
 
@@ -559,7 +559,7 @@ other read arguments have nowhere to apply: there is no separate statement to
 filter, order, or page, so they are ignored for an inlined branch.
 
 The generator records the distinction in `queryModel`, from the branch tags the
-table model already carries (`scripts/backend/postgres-model.ts`):
+table model already carries (`scripts/infra/postgres-model.ts`):
 
 ```ts
 account:  { kind: "relation", table: "account", column: "accountId" }
@@ -579,7 +579,7 @@ same thing.
 
 ## The resolver reads one query per branch
 
-`resolveMany` (`packages/backend/src/db/resolvers.ts`) builds the SQL at run
+`resolveMany` (`packages/infra/src/db/resolvers.ts`) builds the SQL at run
 time from `queryModel` plus the selection:
 
 - **Scalars** — projected into the root query.
@@ -706,9 +706,9 @@ because the ranked window orders each parent's rows before they are grouped.
   cursor, which is not implemented.
 - **The read types are shared, the reader is not.** `Selection`, `Selected`,
   `QueryArgs`, `Filters`, `Order`, and `Where` are pure types with no query in
-  them, so they live in `packages/sdk/src/selection.ts` and both the
-  backend and the generated REST client import them from there. The SQL, the
-  resolver, and the metadata stay in the backend.
+  them, so they live in `packages/sdk/src/selection.ts` and both infra and the
+  generated REST client import them from there. The SQL, the resolver, and the
+  metadata stay in infra.
 
 ## Why the resolver is hand-written
 

@@ -26,8 +26,8 @@ the risk. A version is infrastructure: it is compared and incremented, and
 string.
 
 - **`bigint`, not `number`.** The drivers already return `int8` as a `bigint`
-  (`packages/backend/src/postgres/pglite-setup.ts`,
-  `packages/backend/src/postgres/pg-setup.ts`), so no mapper change is needed.
+  (`packages/infra/src/postgres/pglite-setup.ts`,
+  `packages/infra/src/postgres/pg-setup.ts`), so no mapper change is needed.
   `number` would map to `float8` and reintroduce the precision loss the counter
   exists to avoid.
 - **Branded, not an alias.** `1n` is a plausible version and a plausible count;
@@ -246,11 +246,11 @@ matched before the generated code rejects the call
 
 1. `packages/spec/src/primitives/Version.ts` defines the brand; `@version` and
    `@pgDefault 0` go on the field.
-2. `scripts/backend/postgres-model.ts` maps `Version` to `int8` and sets
+2. `scripts/infra/postgres-model.ts` maps `Version` to `int8` and sets
    `Column.version` from the tag.
-3. `scripts/backend/generate-postgres-schema.ts` emits the column and no
+3. `scripts/infra/generate-postgres-schema.ts` emits the column and no
    version trigger.
-4. `scripts/backend/generate-repositories.ts` writes the column on
+4. `scripts/infra/generate-repositories.ts` writes the column on
    insert, claims it on upsert, and predicates on it while incrementing it on
    update.
 5. `scripts/sdk/generate-zod-schemas.ts` relaxes the column on a create,

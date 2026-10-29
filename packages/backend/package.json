@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Postgres schema generation and result mapping for the spec.",
+  "description": "The application implementation: operation logic and the process entry point over the infra package.",
   "license": "ISC",
   "type": "module",
   "scripts": {
@@ -12,16 +12,12 @@
     "example:server": "node src/main.ts"
   },
   "dependencies": {
-    "devalue": "^5.3.2",
+    "infra": "workspace:*",
     "sdk": "workspace:*",
-    "spec": "workspace:*",
-    "zod": "^4.6.5"
+    "spec": "workspace:*"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^26.6.2",
-    "@types/pg": "^8.23.1",
-    "pg": "^8.23.1",
     "vitest": "^5.0.2"
   }
 }

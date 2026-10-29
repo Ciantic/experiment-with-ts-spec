@@ -1,12 +1,13 @@
 /** Lint the spec, then run every generator from one parse; this driver only orders the steps. See docs/spec-annotations.md. */
 import { loadSpec, type SpecModel } from "./spec/spec-model.ts";
 import { run as runLint } from "./spec/lint-spec.ts";
-import { run as runPostgresSchema } from "./backend/generate-postgres-schema.ts";
-import { run as runRepositories } from "./backend/generate-repositories.ts";
-import { run as runQueries } from "./backend/generate-queries.ts";
+import { run as runPostgresSchema } from "./infra/generate-postgres-schema.ts";
+import { run as runRepositories } from "./infra/generate-repositories.ts";
+import { run as runQueries } from "./infra/generate-queries.ts";
+import { run as runEntityRoutes } from "./infra/generate-entity-routes.ts";
 import { run as runOperations } from "./backend/generate-operations.ts";
 import { run as runSpecTests } from "./backend/generate-spec-tests.ts";
-import { run as runRestApi } from "./backend/generate-rest-api.ts";
+import { run as runOperationRoutes } from "./backend/generate-operation-routes.ts";
 import { run as runRestClient } from "./sdk/generate-rest-client.ts";
 import { run as runValidation } from "./sdk/generate-zod-schemas.ts";
 import { run as runErrors } from "./sdk/generate-errors.ts";
@@ -27,7 +28,8 @@ const steps: Step[] = [
     runRepositories,
     runQueries,
     runValidation,
-    runRestApi,
+    runEntityRoutes,
+    runOperationRoutes,
     runRestClient,
 ];
 

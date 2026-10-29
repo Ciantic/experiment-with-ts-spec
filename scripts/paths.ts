@@ -10,5 +10,8 @@ export const SPEC_PACKAGE_ROOT = join(REPO_ROOT, "packages/spec");
 /** The `backend` package root. */
 export const BACKEND_PACKAGE_ROOT = join(REPO_ROOT, "packages/backend");
 
+/** The `infra` package root. */
+export const INFRA_PACKAGE_ROOT = join(REPO_ROOT, "packages/infra");
+
 /** The `sdk` package root. */
 export const SDK_PACKAGE_ROOT = join(REPO_ROOT, "packages/sdk");
