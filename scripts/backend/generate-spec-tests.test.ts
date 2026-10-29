@@ -2,7 +2,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec, type SpecModel } from "../spec/spec-model.ts";
 import {
     isSpecTestScaffold,
@@ -442,6 +442,22 @@ describe("a block of my own", () => {\n    it("my own test", () => {});\n});\n`,
 
         expect(run(build(WITHOUT_TESTS), ["--check", "--out", dir], SILENT)).toBe(1);
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(true);
+    });
+
+    it("reports a stale scaffold as one to regenerate, rather than as drift in hand-written tests", () => {
+        const dir = tempDir();
+        expect(run(build(ONE_ROW), ["--out", dir], SILENT)).toBe(0);
+        const error = vi.fn();
+
+        expect(run(build(), ["--check", "--out", dir], { log: vi.fn(), error })).toBe(1);
+        expect(error.mock.calls.map(([line]) => line).join("\n")).toContain("run pnpm generate to rewrite it");
+    });
+
+    it("does not create the output directory, so a check run leaves the tree untouched", () => {
+        const dir = join(tempDir(), "missing");
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
+        expect(existsSync(dir)).toBe(false);
     });
 });
 

@@ -79,8 +79,12 @@ packages/backend/src/operations/freezeWidget.spec.test.ts:1: `freezeWidget`: the
 
 `pnpm lint` runs the same check through `pnpm lint:spec-tests`, which is
 `generate:spec-tests --check`: it writes nothing, so it reports drift without
-repairing it. The names are read as string literals, which is how the scaffold
-writes them; a name assembled at runtime is not a name the check can compare.
+repairing it. What it reports depends on the file, because what a generate run
+would do depends on it too: a hand-written file whose tests differ from the
+spec's is a drift the author repairs, while a scaffold that no longer matches
+what the renderer writes is reported as one to regenerate. The names are read as
+string literals, which is how the scaffold writes them; a name assembled at
+runtime is not a name the check can compare.
 
 A test's body is free: hooks, fixtures, and extra assertions inside a declared
 `it` are the author's code, and the check reads only the names. It reads them

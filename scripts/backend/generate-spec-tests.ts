@@ -1,6 +1,6 @@
 /** Scaffold one `{operation}.spec.test.ts` per `@testDescribe`/`@testIt`, and verify a hand-written one declares those tests. See docs/spec-tests.md. */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { BACKEND_PACKAGE_ROOT } from "../paths.ts";
 import { loadSpec, type Diagnostic, type SpecModel, type SpecOperation } from "../spec/spec-model.ts";
 
@@ -166,39 +166,182 @@ function report(findings: Diagnostic[], operations: number, output: Output): voi
     output.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
 }
 
-/** Remove the spec tests the spec no longer declares, and report the implementations it drops. */
-function pruneStale(outDir: string, keep: Set<string>, findings: Diagnostic[], remove: boolean): number {
-    let removed = 0;
+/** How the file on disk answers one operation's declared tests; only a drift needs its reason carried. */
+type SpecTestStatus =
+    | { operation: SpecOperation; file: string; state: "missing" | "stale" | "current" }
+    | { operation: SpecOperation; file: string; state: "drifted"; drift: string };
+
+/** Read every file once, so a check run and a generate run decide on the same facts. */
+function inspect(tested: readonly SpecOperation[], outDir: string): SpecTestStatus[] {
+    return tested.map((operation) => {
+        const file = join(outDir, `${operation.name}${SPEC_TEST_SUFFIX}`);
+        if (!existsSync(file)) {
+            return { operation, file, state: "missing" as const };
+        }
+        const existing = readFileSync(file, "utf8");
+        if (existing === renderSpecTestFile(operation)) {
+            return { operation, file, state: "current" as const };
+        }
+        if (isSpecTestScaffold(existing)) {
+            // A scaffold follows the spec; from the first assertion the file is the author's.
+            return { operation, file, state: "stale" as const };
+        }
+        // The spec defines which tests the file declares, so a drift is a finding rather than a silent merge.
+        const drift = specTestDrift(existing, operation);
+        return drift === undefined
+            ? { operation, file, state: "current" as const }
+            : { operation, file, state: "drifted" as const, drift };
+    });
+}
+
+/** The file names the spec still declares, so pruning leaves them alone. */
+function keepFiles(tested: readonly SpecOperation[]): Set<string> {
+    return new Set(tested.map((operation) => `${operation.name}${SPEC_TEST_SUFFIX}`));
+}
+
+/** The finding for an operation that declares tests and has no file. */
+function missingFile(file: string, operation: SpecOperation): Diagnostic {
+    const shown = relative(process.cwd(), file);
+    return {
+        filePath: shown,
+        line: 1,
+        message: `\`${operation.name}\`: the spec declares its tests but ${shown} is missing; run pnpm generate`,
+    };
+}
+
+/** The finding for a scaffold the renderer would rewrite, either because the spec moved or the file was edited. */
+function staleScaffold(file: string, operation: SpecOperation): Diagnostic {
+    const shown = relative(process.cwd(), file);
+    return {
+        filePath: shown,
+        line: 1,
+        message: `\`${operation.name}\`: ${shown} no longer matches the scaffold this generator writes; run pnpm generate to rewrite it`,
+    };
+}
+
+/** The finding for a hand-written file that declares other tests than the spec does. */
+function driftedTests(file: string, operation: SpecOperation, drift: string): Diagnostic {
+    return {
+        filePath: relative(process.cwd(), file),
+        line: 1,
+        message: `\`${operation.name}\`: ${drift}; the spec defines the tests, so the file must match it`,
+    };
+}
+
+/** The finding for a spec test whose operation no longer declares any. */
+function staleSpecTest(file: string, deletable: boolean): Diagnostic {
+    const name = basename(file, SPEC_TEST_SUFFIX);
+    const shown = relative(process.cwd(), file);
+    return {
+        filePath: shown,
+        line: 1,
+        message: deletable
+            ? `\`${name}\` no longer declares @testDescribe and @testIt; run pnpm generate to remove its scaffold`
+            : `\`${name}\` no longer declares @testDescribe and @testIt; delete ${shown} or restore the spec`,
+    };
+}
+
+/** Split the files the spec no longer describes into scaffolds a generate run deletes and implementations it reports. */
+function staleFiles(outDir: string, keep: Set<string>): { scaffolds: string[]; findings: Diagnostic[] } {
+    const scaffolds: string[] = [];
+    const findings: Diagnostic[] = [];
     for (const entry of readdirSync(outDir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith(SPEC_TEST_SUFFIX) || keep.has(entry.name)) {
             continue;
         }
         const file = join(outDir, entry.name);
-        const name = entry.name.slice(0, -SPEC_TEST_SUFFIX.length);
-        const shown = relative(process.cwd(), file);
+        // An implemented spec test is the author's, so the generator reports it rather than deleting it.
         if (isSpecTestScaffold(readFileSync(file, "utf8"))) {
-            if (remove) {
-                rmSync(file);
-                removed += 1;
-            } else {
-                findings.push({ filePath: shown, line: 1, message: `\`${name}\` no longer declares @testDescribe and @testIt; run pnpm generate to remove its scaffold` });
-            }
+            scaffolds.push(file);
             continue;
         }
-        // An implemented spec test is the author's, so the generator reports it rather than deleting it.
-        findings.push({
-            filePath: shown,
-            line: 1,
-            message: `\`${name}\` no longer declares @testDescribe and @testIt; delete ${shown} or restore the spec`,
-        });
+        findings.push(staleSpecTest(file, false));
     }
-    return removed;
+    return { scaffolds, findings };
 }
 
-/** Write a spec test for every operation that declares one, keep the edited ones, and prune the rest. */
+/** Report the files that no longer match the spec, writing and deleting nothing. */
+function checkRun(
+    declared: readonly SpecOperation[],
+    tested: readonly SpecOperation[],
+    outDir: string,
+    output: Output,
+): number {
+    const findings: Diagnostic[] = [];
+    let verified = 0;
+    for (const status of inspect(tested, outDir)) {
+        switch (status.state) {
+            case "current":
+                verified += 1;
+                break;
+            case "missing":
+                findings.push(missingFile(status.file, status.operation));
+                break;
+            case "stale":
+                findings.push(staleScaffold(status.file, status.operation));
+                break;
+            case "drifted":
+                findings.push(driftedTests(status.file, status.operation, status.drift));
+                break;
+        }
+    }
+    if (existsSync(outDir)) {
+        const stale = staleFiles(outDir, keepFiles(tested));
+        // A generate run deletes a stale scaffold, so a check run reports it with the same advice.
+        findings.push(...stale.findings, ...stale.scaffolds.map((file) => staleSpecTest(file, true)));
+    }
+    if (findings.length > 0) {
+        report(findings, declared.length, output);
+        return 1;
+    }
+    output.log(`spec tests OK (${verified} file(s) declare the spec's tests)`);
+    return 0;
+}
+
+/** Write the missing scaffolds, rewrite the stale ones, and delete the files the spec no longer declares. */
+function generateRun(declared: readonly SpecOperation[], tested: readonly SpecOperation[], outDir: string, output: Output): number {
+    if (tested.length > 0) {
+        mkdirSync(outDir, { recursive: true });
+    }
+    const findings: Diagnostic[] = [];
+    let created = 0;
+    let regenerated = 0;
+    let verified = 0;
+    for (const status of inspect(tested, outDir)) {
+        switch (status.state) {
+            case "current":
+                verified += 1;
+                break;
+            case "missing":
+                writeFileSync(status.file, renderSpecTestFile(status.operation));
+                created += 1;
+                break;
+            case "stale":
+                writeFileSync(status.file, renderSpecTestFile(status.operation));
+                regenerated += 1;
+                break;
+            case "drifted":
+                findings.push(driftedTests(status.file, status.operation, status.drift));
+                break;
+        }
+    }
+    const stale = existsSync(outDir) ? staleFiles(outDir, keepFiles(tested)) : { scaffolds: [], findings: [] };
+    findings.push(...stale.findings);
+    for (const file of stale.scaffolds) {
+        rmSync(file);
+    }
+    if (findings.length > 0) {
+        report(findings, declared.length, output);
+        return 1;
+    }
+    output.log(
+        `spec tests OK (${created} created, ${regenerated} regenerated, ${verified} verified, ${stale.scaffolds.length} removed)`,
+    );
+    return 0;
+}
+
+/** Scaffold the tests the spec declares, or with `--check`, report the files that no longer match it and write nothing. */
 export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
-    // `--check` writes nothing: it is the lint step that reports a file the spec no longer describes.
-    const check = argv.includes("--check");
     const outIndex = argv.indexOf("--out");
     const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
     if (!outDir) {
@@ -215,68 +358,10 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
         report(findings, declared.length, output);
         return 1;
     }
-    if (tested.length > 0 && !check) {
-        mkdirSync(outDir, { recursive: true });
-    }
-
-    let created = 0;
-    let regenerated = 0;
-    let verified = 0;
-    for (const operation of tested) {
-        const file = join(outDir, `${operation.name}${SPEC_TEST_SUFFIX}`);
-        const rendered = renderSpecTestFile(operation);
-        const existing = existsSync(file) ? readFileSync(file, "utf8") : undefined;
-        if (existing === undefined) {
-            if (check) {
-                const shown = relative(process.cwd(), file);
-                findings.push({
-                    filePath: shown,
-                    line: 1,
-                    message: `\`${operation.name}\`: the spec declares its tests but ${shown} is missing; run pnpm generate`,
-                });
-                continue;
-            }
-            writeFileSync(file, rendered);
-            created += 1;
-            continue;
-        }
-        // An unedited scaffold follows the spec; an edited one is hand-written from here on and is only verified.
-        if (existing === rendered) {
-            verified += 1;
-            continue;
-        }
-        if (!check && isSpecTestScaffold(existing)) {
-            writeFileSync(file, rendered);
-            regenerated += 1;
-            continue;
-        }
-        // The spec defines which tests the file declares, so a drift is a finding rather than a silent merge.
-        const drift = specTestDrift(existing, operation);
-        if (drift !== undefined) {
-            findings.push({
-                filePath: relative(process.cwd(), file),
-                line: 1,
-                message: `\`${operation.name}\`: ${drift}; the spec defines the tests, so the file must match it`,
-            });
-            continue;
-        }
-        verified += 1;
-    }
-
-    const keep = new Set(tested.map((operation) => `${operation.name}${SPEC_TEST_SUFFIX}`));
-    const removed = existsSync(outDir) ? pruneStale(outDir, keep, findings, !check) : 0;
-
-    if (findings.length > 0) {
-        report(findings, declared.length, output);
-        return 1;
-    }
-
-    if (check) {
-        output.log(`spec tests OK (${verified} file(s) declare the spec's tests)`);
-        return 0;
-    }
-    output.log(`spec tests OK (${created} created, ${regenerated} regenerated, ${verified} verified, ${removed} removed)`);
-    return 0;
+    // The mode picks the whole procedure: a check run reports what a generate run would repair.
+    return argv.includes("--check")
+        ? checkRun(declared, tested, outDir, output)
+        : generateRun(declared, tested, outDir, output);
 }
 
 if (import.meta.main) {
