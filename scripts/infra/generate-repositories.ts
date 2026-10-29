@@ -283,7 +283,7 @@ export function generateCreate(table: Table): string {
     const primaryKeys = table.columns.filter((column) => column.primaryKey);
     const lines = modulePrologue(
         [`${entity}Insert`, `${entity}PrimaryKey`],
-        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         'import { ShortWriteError } from "sdk/errors.ts";',
     );
 
@@ -314,7 +314,7 @@ export function generateCreate(table: Table): string {
     lines.push(...bindArrays(arrays));
     lines.push(...chunkQuery(statement));
     // An insert writes every row it carries, so a short count is lost data rather than a caller's mistake. See docs/repositories.md.
-    lines.push("            const written = resultRows(result);");
+    lines.push("            const written = result.rows;");
     lines.push("            if (written.length !== chunk.length) {");
     lines.push(
         `                throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' ${table.name} rows this create supplied');`,
@@ -386,7 +386,7 @@ export function generateUpdate(table: Table): string {
     const conflict = version === undefined ? "NoMatchingRowError" : "VersionConflictError";
     const lines = modulePrologue(
         `${entity}Patch`,
-        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         `import { ${conflict} } from "sdk/errors.ts";`,
     );
 
@@ -420,7 +420,7 @@ export function generateUpdate(table: Table): string {
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
     lines.push(...bindArrays(arrays));
     lines.push(...chunkQuery(statement));
-    lines.push(`            const written = new Set(resultRows(result).map((row) => ${returnedKeyExpression(primaryKeys)}));`);
+    lines.push(`            const written = new Set(result.rows.map((row) => ${returnedKeyExpression(primaryKeys)}));`);
     // A patch that wrote fewer rows than the chunk carried is a rejected call. See docs/versioning.md.
     lines.push("            if (written.size !== chunk.length) {");
     lines.push("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
@@ -507,7 +507,7 @@ export function generateUpsert(table: Table): string {
     const conflict = version === undefined ? "ShortWriteError" : "VersionConflictError";
     const lines = modulePrologue(
         [`${entity}Upsert`, `${entity}PrimaryKey`],
-        'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+        'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         `import { ${conflict} } from "sdk/errors.ts";`,
     );
 
@@ -544,7 +544,7 @@ export function generateUpsert(table: Table): string {
     lines.push("            const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);");
     lines.push(...bindArrays(arrays));
     lines.push(...chunkQuery(statement));
-    lines.push("            const written = resultRows(result);");
+    lines.push("            const written = result.rows;");
     if (version === undefined) {
         // Every conflicting row is replaced, so a short count is lost data rather than a stale claim.
         lines.push("            if (written.length !== chunk.length) {");

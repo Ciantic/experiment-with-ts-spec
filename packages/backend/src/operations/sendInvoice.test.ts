@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
-import { createAppContext, createCustomer, createInvoice, createPgliteDriver, createSeller, createTenant, createTransactionalDb, resultRows, type SqlExecutor } from "infra";
+import { createAppContext, createCustomer, createInvoice, createPgliteDriver, createSeller, createTenant, createTransactionalDb, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 /** The mock invoices with the parties each names, which is the draft a caller supplies. */
@@ -60,7 +60,7 @@ function refusing(db: SqlExecutor, refuse: RegExp): SqlExecutor {
 
 /** The rows one table holds. */
 async function rows(db: SqlExecutor, sql: string): Promise<Array<Record<string, unknown>>> {
-    return resultRows(await db.query(sql));
+    return (await db.query(sql)).rows;
 }
 
 const SENT_ROWS = 'select "id", "invoiceId", "number", "language", "notes", "customerEmail" from "invoice_sent"';

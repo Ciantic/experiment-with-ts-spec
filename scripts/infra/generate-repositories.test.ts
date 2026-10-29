@@ -133,13 +133,16 @@ function moduleCodes(table: Table): string[] {
 /** A db that records the SQL it is handed and echoes the keys a one-row write reads back. */
 function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlExecutor {
     const handle: SqlExecutor = {
-        query: async (sql, parameters) => {
+        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+            sql: string,
+            parameters?: unknown[],
+        ) => {
             statements.push(sql);
             const arrays = Array.isArray(parameters?.[0]) ? (parameters as unknown[][]) : [];
             const rows = (arrays[0] ?? []).map((_, index) =>
                 Object.fromEntries(keyColumns.map((name, position) => [name, arrays[position]?.[index]])),
             );
-            return { affectedRows: rows.length, rows };
+            return { rows: rows as Row[], affectedRows: rows.length };
         },
         transaction: (run) => run(handle),
         transactionWith: (_options, run) => run(handle),
@@ -430,11 +433,11 @@ describe("generateCreate", () => {
         // A delete is one statement, so it takes the executor type alone; a create reads its keys back, so it takes the helpers too.
         expect(generateDelete(customer)).toContain('import type { SqlExecutor } from "../sql-executor.ts";');
         expect(generateCreate(customer)).toContain(
-            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         );
         // A patch reads the rows a statement wrote back, so it takes the port's runtime helpers with it.
         expect(generateUpdate(customer)).toContain(
-            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         );
         expect(generateUpdate(customer)).not.toContain('import type { SqlExecutor } from "../sql-executor.ts";');
     });
@@ -556,7 +559,7 @@ describe("generateCreate", () => {
         const code = generateCreate(customer);
 
         expect(code).toContain("const result = await tx.query(");
-        expect(code).toContain("const written = resultRows(result);");
+        expect(code).toContain("const written = result.rows;");
         expect(code).toContain("if (written.length !== chunk.length) {");
         expect(code).toContain(
             "throw new ShortWriteError('the insert wrote ' + written.length + ' of the ' + chunk.length + ' customer rows this create supplied');",
@@ -617,7 +620,7 @@ describe("generateUpdate", () => {
         const code = generateUpdate(customer);
 
         expect(code).toContain('\'returning u."id"\',');
-        expect(code).toContain('            const written = new Set(resultRows(result).map((row) => String(row["id"])));');
+        expect(code).toContain('            const written = new Set(result.rows.map((row) => String(row["id"])));');
         expect(code).toContain("            if (written.size !== chunk.length) {");
         expect(code).toContain("                const missed = chunk.filter((row) => !written.has(keyOf(row)));");
         expect(code).toContain(
@@ -691,7 +694,7 @@ describe("generateUpdate", () => {
         );
 
         expect(code).toContain('const keyOf = (row: TranslationPatch): string => String(row.lang + "/" + row.key);');
-        expect(code).toContain('new Set(resultRows(result).map((row) => String(row["lang"]) + "/" + String(row["key"])))');
+        expect(code).toContain('new Set(result.rows.map((row) => String(row["lang"]) + "/" + String(row["key"])))');
     });
 
     it("reads each column through its recorded accessor, and tests the outer field for an inlined one", () => {
@@ -802,7 +805,7 @@ describe("generateUpsert", () => {
         // Nothing to compare, so the target needs no alias and no predicate.
         expect(snapshot).not.toContain("as u");
         expect(snapshot).toContain('returning "invoice_sent"."id"');
-        expect(snapshot).toContain("            const written = resultRows(result);");
+        expect(snapshot).toContain("            const written = result.rows;");
         expect(snapshot).toContain("if (written.length !== chunk.length) {");
         expect(snapshot).toContain(
             "throw new ShortWriteError('the upsert wrote ' + written.length + ' of the ' + chunk.length + ' invoice_sent rows this upsert supplied');",
@@ -876,10 +879,10 @@ describe("generateUpsert", () => {
 
     it("takes the port helpers its own check uses, and no more", () => {
         expect(generateUpsert(customer)).toContain(
-            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         );
         expect(generateUpsert(versioned)).toContain(
-            'import { MAX_STATEMENT_PARAMETERS, resultRows, type SqlExecutor } from "../sql-executor.ts";',
+            'import { MAX_STATEMENT_PARAMETERS, type SqlExecutor } from "../sql-executor.ts";',
         );
     });
 

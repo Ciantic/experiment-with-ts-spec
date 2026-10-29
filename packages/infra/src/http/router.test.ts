@@ -32,7 +32,7 @@ function createDriver() {
     const statements: string[] = [];
     const run = async (sql: string) => {
         statements.push(sql);
-        return { rows: [] };
+        return { rows: [], affectedRows: 0 };
     };
     const session: SqlSession = { query: run, release: () => {} };
     const driver: SqlDriver = { query: run, connect: async () => session, exec: async () => {}, close: async () => {} };

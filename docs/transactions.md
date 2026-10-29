@@ -31,7 +31,10 @@ caller can run statements in.
 type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
 export interface SqlExecutor {
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     /** The boundary, opened with no modes. */
     transaction<T>(run: Run<T>): Promise<T>;
     /** The boundary, opened with the modes the call names. */
@@ -47,7 +50,10 @@ export interface TransactionOptions {
 
 /** One session borrowed from the driver; `release` returns it. */
 export interface SqlSession {
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     release(): void;
 }
 
@@ -56,7 +62,7 @@ export interface SqlDriver {
     query<Row extends Record<string, unknown> = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[] }>;
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     connect(): Promise<SqlSession>;
     exec(sql: string): Promise<unknown>;
     close(): Promise<void>;
@@ -75,17 +81,12 @@ applies the generated DDL through the driver's `exec`, and `createTransactionalD
 takes the driver and uses only `query` and `connect` — so a boundary never
 reaches the batch or the shutdown, and `context.ts` names no driver.
 
-`SqlExecutor.query` returns `unknown` because the result is the driver's, and a
-generated write may read either rows or a count. Two readers
-(`src/db/sql-executor.ts`) take the two shapes out of it: `resultRows` answers
-the `rows` array both drivers carry, which the result mapping and every generated
-write read, and `affectedRows` answers the count from whichever name the driver
-used — `affectedRows` on PGlite, `rowCount` on `pg`. A result that carries
-neither is a driver the port does not know, so the reader throws rather than
-answering no rows or `0`, which would read as a statement that matched nothing. A
-generated create, patch, or upsert reads the rows it wrote, both to reject a
-chunk that wrote fewer (`docs/versioning.md`) and to answer a create or an upsert
-with the keys it wrote (`docs/repositories.md`).
+`SqlExecutor.query` answers `{ rows: Row[]; affectedRows: number }`. Both drivers
+report the write count: PGlite calls it `affectedRows`, and `pg`'s `rowCount` is
+mapped onto the same name; a `select` reports `0`. A generated create or upsert
+answers the keys it wrote (`docs/repositories.md`), and a patch or upsert rejects
+a chunk that wrote fewer rows (`docs/versioning.md`), both from `rows`; the count
+is what a statement that writes without `returning` reports.
 
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
 over a driver:

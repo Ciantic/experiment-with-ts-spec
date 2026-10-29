@@ -89,6 +89,11 @@ export interface PgPoolModule extends PgModule {
     Pool: new (config: PoolConfig) => Pool;
 }
 
+/** The rows a `pg` result says the statement wrote; a row-returning statement wrote none. */
+function writtenRows(result: { command?: string; rowCount: number | null }): number {
+    return result.command === "SELECT" ? 0 : result.rowCount ?? 0;
+}
+
 /** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
 export function createPgDriver(pg: PgPoolModule, config: PoolConfig = {}): SqlDriver {
     // The mapper's `types` wins over one the caller passes, so the pool cannot silently lose the spec types.
@@ -97,8 +102,23 @@ export function createPgDriver(pg: PgPoolModule, config: PoolConfig = {}): SqlDr
         query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
             sql: string,
             parameters?: unknown[],
-        ) => pool.query<Row>(sql, parameters),
-        connect: () => pool.connect(),
+        ) => {
+            const result = await pool.query<Row>(sql, parameters);
+            return { rows: result.rows, affectedRows: writtenRows(result) };
+        },
+        connect: async () => {
+            const client = await pool.connect();
+            return {
+                query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+                    sql: string,
+                    parameters?: unknown[],
+                ) => {
+                    const result = await client.query<Row>(sql, parameters);
+                    return { rows: result.rows, affectedRows: writtenRows(result) };
+                },
+                release: () => client.release(),
+            };
+        },
         exec: (sql) => pool.query(sql),
         close: () => pool.end(),
     };

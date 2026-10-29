@@ -1,5 +1,5 @@
 /** The `SqlExecutor` port over a driver: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
-import { DriverResultError, SavepointOptionsError } from "sdk/errors.ts";
+import { SavepointOptionsError } from "sdk/errors.ts";
 import type { SqlDriver, SqlSession } from "./sql-driver.ts";
 
 /** The callback one boundary runs, on the handle that boundary owns. */
@@ -7,8 +7,11 @@ type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
 /** One handle: statements, and the boundary a caller can run them in. */
 export interface SqlExecutor {
-    /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    /** Run one statement, answering its rows and its write count; the connection is not pinned across calls. */
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     /** Run the callback in one boundary on one connection; nested, that boundary is a savepoint. */
     transaction<T>(run: Run<T>): Promise<T>;
     /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */
@@ -17,32 +20,6 @@ export interface SqlExecutor {
 
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */
 export const MAX_STATEMENT_PARAMETERS = 32767;
-
-/**
- * Get affected rows, compatible with both PGlite (`affectedRows`) and `pg` (`rowCount`).
- * @throws {DriverResultError} when the result carries no count
- */
-export function affectedRows(result: unknown): number {
-    // `rowCount` is `number | null` in `pg`, so it is accepted only when it is a number.
-    const counts = (result ?? {}) as { affectedRows?: unknown; rowCount?: unknown };
-    const count = counts.affectedRows ?? counts.rowCount;
-    if (typeof count !== "number") {
-        throw new DriverResultError("the executor did not return an affected-row count");
-    }
-    return count;
-}
-
-/**
- * Get the rows a statement returned, which both PGlite and `pg` answer under `rows`.
- * @throws {DriverResultError} when the result carries no rows array
- */
-export function resultRows(result: unknown): Array<Record<string, unknown>> {
-    const returned = (result ?? {}) as { rows?: unknown };
-    if (!Array.isArray(returned.rows)) {
-        throw new DriverResultError("the executor did not return rows");
-    }
-    return returned.rows as Array<Record<string, unknown>>;
-}
 
 /** The isolation levels a boundary may open at, the literals `ISOLATION LEVEL` takes; a caller that validates untrusted input checks against these. */
 export const ISOLATION_LEVELS = ["serializable", "repeatable read", "read committed", "read uncommitted"] as const;
@@ -81,7 +58,10 @@ export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
      */
     function handle(session: SqlSession): SqlExecutor {
         return {
-            query: (sql, parameters) => session.query(sql, parameters),
+            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => session.query<Row>(sql, parameters),
             transaction: (run) => savepoint(session, run),
             transactionWith: async () => {
                 throw new SavepointOptionsError(
@@ -124,7 +104,10 @@ export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
     }
 
     return {
-        query: (sql, parameters) => driver.query(sql, parameters),
+        query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+            sql: string,
+            parameters?: unknown[],
+        ) => driver.query<Row>(sql, parameters),
         transaction: (run) => boundary(undefined, run),
         transactionWith: (options, run) => boundary(options, run),
     };

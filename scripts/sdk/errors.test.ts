@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vitest";
 import {
     BadGroupError,
-    DriverResultError,
     NoMatchingRowError,
     NotFoundError,
     NotImplemented,
@@ -28,7 +27,6 @@ const WIRE_ERRORS = [
     new VersionConflictError("version"),
     new NoMatchingRowError("no row"),
     new ShortWriteError("short"),
-    new DriverResultError("driver"),
     new SavepointOptionsError("savepoint"),
     new NotImplemented("not implemented"),
 ];

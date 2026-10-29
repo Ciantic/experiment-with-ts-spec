@@ -2,9 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { createPgliteDriver } from "../postgres/pglite-setup.ts";
-import { DriverResultError } from "sdk/errors.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { affectedRows, createTransactionalDb, resultRows } from "./sql-executor.ts";
+import { createTransactionalDb } from "./sql-executor.ts";
 import type { SqlDriver } from "./sql-driver.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
@@ -16,64 +15,21 @@ async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> 
 
 /** The ids stored, in order. */
 async function ids(db: SqlExecutor): Promise<unknown[]> {
-    const result = (await db.query("select id from widget order by id")) as { rows: { id: string }[] };
+    const result = await db.query<{ id: string }>("select id from widget order by id");
     return result.rows.map((row) => row.id);
 }
 
-describe("affectedRows", () => {
-    it("reads the count each driver names", () => {
-        expect(affectedRows({ affectedRows: 1 })).toBe(1);
-        expect(affectedRows({ rowCount: 0 })).toBe(0);
-        // A zero count is a real answer, so it must not fall through to the other name.
-        expect(affectedRows({ affectedRows: 0, rowCount: 7 })).toBe(0);
-    });
+describe("query", () => {
+    it("answers the rows a statement returned, empty ones included", async () => {
+        const { db, close } = await fixture();
+        await db.query("insert into widget (id) values ('a'), ('b')");
 
-    it("throws on a result that carries neither count, rather than reading as a conflict", () => {
-        expect(() => affectedRows({ rows: [] })).toThrow("the executor did not return an affected-row count");
-        expect(() => affectedRows({ rows: [] })).toThrow(DriverResultError);
-        expect(() => affectedRows({ rowCount: null })).toThrow();
-        expect(() => affectedRows(undefined)).toThrow();
-        expect(() => affectedRows(null)).toThrow();
-    });
+        const updated = await db.query<{ id: string }>("update widget set id = id where id = 'a' returning id");
+        const matchedNothing = await db.query<{ id: string }>("update widget set id = id where id = 'gone' returning id");
 
-    it("counts the rows of a statement over a real driver", async () => {
-        const driver = createPgliteDriver(PGlite);
-        await driver.query("create table widget (id text primary key)");
-        await driver.query("insert into widget (id) values ('a'), ('b')");
-
-        const updated = await driver.query("update widget set id = 'a' where id = 'a'");
-        const matchedNothing = await driver.query("update widget set id = 'x' where id = 'gone'");
-
-        expect(affectedRows(updated)).toBe(1);
-        expect(affectedRows(matchedNothing)).toBe(0);
-        await driver.close();
-    });
-});
-
-describe("resultRows", () => {
-    it("reads the rows a result carries, empty ones included", () => {
-        expect(resultRows({ rows: [{ id: "a" }] })).toEqual([{ id: "a" }]);
-        expect(resultRows({ rows: [] })).toEqual([]);
-    });
-
-    it("throws on a result that carries no rows, rather than reading as a statement that wrote none", () => {
-        expect(() => resultRows({ affectedRows: 1 })).toThrow("the executor did not return rows");
-        expect(() => resultRows({ affectedRows: 1 })).toThrow(DriverResultError);
-        expect(() => resultRows(undefined)).toThrow();
-        expect(() => resultRows(null)).toThrow();
-    });
-
-    it("reads the rows a statement returned over a real driver", async () => {
-        const driver = createPgliteDriver(PGlite);
-        await driver.query("create table widget (id text primary key)");
-        await driver.query("insert into widget (id) values ('a'), ('b')");
-
-        const updated = await driver.query("update widget set id = id where id = 'a' returning id");
-        const matchedNothing = await driver.query("update widget set id = id where id = 'gone' returning id");
-
-        expect(resultRows(updated)).toEqual([{ id: "a" }]);
-        expect(resultRows(matchedNothing)).toEqual([]);
-        await driver.close();
+        expect(updated).toEqual({ rows: [{ id: "a" }], affectedRows: 1 });
+        expect(matchedNothing).toEqual({ rows: [], affectedRows: 0 });
+        await close();
     });
 });
 
@@ -202,7 +158,7 @@ function fakeDriver(): { driver: SqlDriver; statements: string[]; releases: () =
     let releases = 0;
     const record = async (sql: string) => {
         statements.push(sql);
-        return { rows: [] };
+        return { rows: [], affectedRows: 0 };
     };
     return {
         driver: {
@@ -327,17 +283,17 @@ describe("the modes a boundary is opened with", () => {
         const { db, close } = await fixture();
 
         await db.transactionWith({ isolationLevel: "serializable", accessMode: "read only" }, async (tx) => {
-            expect(resultRows(await tx.query("show transaction_isolation"))).toEqual([
+            expect((await tx.query("show transaction_isolation")).rows).toEqual([
                 { transaction_isolation: "serializable" },
             ]);
-            expect(resultRows(await tx.query("show transaction_read_only"))).toEqual([
+            expect((await tx.query("show transaction_read_only")).rows).toEqual([
                 { transaction_read_only: "on" },
             ]);
         });
-        expect(resultRows(await db.query("show transaction_isolation"))).toEqual([
+        expect((await db.query("show transaction_isolation")).rows).toEqual([
             { transaction_isolation: "read committed" },
         ]);
-        expect(resultRows(await db.query("show transaction_read_only"))).toEqual([{ transaction_read_only: "off" }]);
+        expect((await db.query("show transaction_read_only")).rows).toEqual([{ transaction_read_only: "off" }]);
         await close();
     });
 

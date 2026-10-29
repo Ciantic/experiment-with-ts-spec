@@ -2,7 +2,10 @@
 
 /** The session a boundary is pinned to: statements, and the release that hands the connection on. */
 export interface SqlSession {
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     release(): void;
 }
 
@@ -12,7 +15,7 @@ export interface SqlDriver {
     query<Row extends Record<string, unknown> = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[] }>;
+    ): Promise<{ rows: Row[]; affectedRows: number }>;
     /** Pin one connection to the returned session until it is released. */
     connect(): Promise<SqlSession>;
     /** Run a batch of statements, the generated DDL included. */
@@ -23,7 +26,7 @@ export interface SqlDriver {
 
 /** The statements, batch, and shutdown one connection supplies; this serialises them behind a checkout. */
 export function createSingleConnectionDriver(driver: {
-    query(sql: string, parameters?: unknown[]): Promise<{ rows: unknown[] }>;
+    query(sql: string, parameters?: unknown[]): Promise<{ rows: unknown[]; affectedRows?: number }>;
     exec(sql: string): Promise<unknown>;
     close(): Promise<void>;
 }): SqlDriver {
@@ -39,7 +42,13 @@ export function createSingleConnectionDriver(driver: {
         await previous;
         let released = false;
         return {
-            query: (sql, parameters) => driver.query(sql, parameters),
+            query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => {
+                const result = await driver.query(sql, parameters);
+                return { rows: result.rows as Row[], affectedRows: result.affectedRows ?? 0 };
+            },
             release: () => {
                 if (released) {
                     return;
@@ -58,7 +67,7 @@ export function createSingleConnectionDriver(driver: {
         ) => {
             const session = await take();
             try {
-                return (await session.query(sql, parameters)) as { rows: Row[] };
+                return await session.query<Row>(sql, parameters);
             } finally {
                 session.release();
             }

@@ -101,6 +101,42 @@ describe("createPgDriver", () => {
         expect(config().types?.getTypeParser(20)("42")).toBe(42n);
     });
 
+    it("maps pg's rowCount into affectedRows on the pool and on a checkout", async () => {
+        class CountingPool {
+            async query(sql: string) {
+                return sql.startsWith("select")
+                    ? { command: "SELECT", rows: [{ id: "pool" }], rowCount: 1 }
+                    : { command: "UPDATE", rows: [{ id: "pool" }], rowCount: 2 };
+            }
+            async connect() {
+                return {
+                    query: async (sql: string) =>
+                        sql.startsWith("select")
+                            ? { command: "SELECT", rows: [{ id: "session" }], rowCount: 1 }
+                            : { command: "UPDATE", rows: [{ id: "session" }], rowCount: 3 },
+                    release: () => {},
+                };
+            }
+            async end() {
+                return;
+            }
+        }
+        const module = { ...pgModule, Pool: CountingPool as unknown as PgPoolModule["Pool"] };
+        const driver = createPgDriver(module);
+
+        expect(await driver.query("select 1")).toEqual({ rows: [{ id: "pool" }], affectedRows: 0 });
+        expect(await driver.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], affectedRows: 2 });
+
+        const session = await driver.connect();
+        expect(await session.query("select 1")).toEqual({ rows: [{ id: "session" }], affectedRows: 0 });
+        expect(await session.query("update widget set id = id")).toEqual({
+            rows: [{ id: "session" }],
+            affectedRows: 3,
+        });
+        session.release();
+        await driver.close();
+    });
+
     it("builds the statement, checkout, batch, and shutdown surface over the mapped pool", async () => {
         const driver = createPgDriver(pgModule);
 

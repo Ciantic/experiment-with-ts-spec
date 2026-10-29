@@ -8,7 +8,7 @@ import type { Seller, SellerId } from "spec/invoicing-service/Seller.ts";
 import type { TenantId } from "spec/invoicing-service/Tenant.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
-import { createAppContext, createInvoice, createPgliteDriver, createTenant, createTransactionalDb, resultRows, type SqlExecutor } from "infra";
+import { createAppContext, createInvoice, createPgliteDriver, createTenant, createTransactionalDb, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 const tenantId = "0192f0b0-0000-7000-8000-000000000001" as TenantId;
@@ -68,7 +68,7 @@ function without<T extends object, K extends keyof T>(value: T, key: K): Omit<T,
 
 /** The rows one table holds. */
 async function rows(db: SqlExecutor, sql: string): Promise<Array<Record<string, unknown>>> {
-    return resultRows(await db.query(sql));
+    return (await db.query(sql)).rows;
 }
 
 /** A fresh schema holding the tenant and invoice the send refers to. */

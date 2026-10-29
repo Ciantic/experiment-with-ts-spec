@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { createPgliteDriver } from "../postgres/pglite-setup.ts";
 import { attempt, attemptWith, batch, transaction, transactionWith, type Attempted, type Step } from "./group.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb, resultRows } from "./sql-executor.ts";
+import { createTransactionalDb } from "./sql-executor.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -37,7 +37,7 @@ function refuse(id: string): Step {
 
 /** A step that answers the transaction setting `name` as the boundary sees it. */
 function setting(name: string): Step {
-    return async (db) => resultRows(await db.query(`show ${name}`))[0]?.[name];
+    return async (db) => (await db.query(`show ${name}`)).rows[0]?.[name];
 }
 
 /** One statement PGlite logged: the SQL, and the values it ran with. */

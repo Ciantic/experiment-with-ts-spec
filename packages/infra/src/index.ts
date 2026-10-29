@@ -14,7 +14,7 @@ export type { SqlDriver } from "./db/sql-driver.ts";
 export { UsageError } from "./errors.ts";
 
 // Database exports
-export { createTransactionalDb, resultRows } from "./db/sql-executor.ts";
+export { createTransactionalDb } from "./db/sql-executor.ts";
 export type { SqlExecutor } from "./db/sql-executor.ts";
 
 // Router exports

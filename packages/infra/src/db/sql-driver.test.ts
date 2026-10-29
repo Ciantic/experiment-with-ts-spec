@@ -105,6 +105,25 @@ describe("createSingleConnectionDriver", () => {
         expect(ran).toEqual(["boom", "after"]);
     });
 
+    it("answers the write count, defaulting it to zero when the connection reports none", async () => {
+        const counted = createSingleConnectionDriver({
+            query: async () => ({ rows: [], affectedRows: 3 }),
+            exec: async () => undefined,
+            close: async () => {},
+        });
+        const bare = createSingleConnectionDriver({
+            query: async () => ({ rows: [] }),
+            exec: async () => undefined,
+            close: async () => {},
+        });
+
+        expect(await counted.query("update widget set id = id")).toEqual({ rows: [], affectedRows: 3 });
+
+        const session = await bare.connect();
+        expect(await session.query("select 1")).toEqual({ rows: [], affectedRows: 0 });
+        session.release();
+    });
+
     it("passes the batch and shutdown through to the connection", async () => {
         const calls: string[] = [];
         const driver = createSingleConnectionDriver({

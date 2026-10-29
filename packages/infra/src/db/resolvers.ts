@@ -1,7 +1,7 @@
 /** Generic read resolver: turns a `Selection` and a table's generated metadata into SQL. See docs/queries.md. */
 import type { Direction, FilterDefault, Selection, Selected } from "sdk/selection.ts";
 import { QueryError } from "sdk/errors.ts";
-import { resultRows, type SqlExecutor } from "./sql-executor.ts";
+import type { SqlExecutor } from "./sql-executor.ts";
 
 /** A branch that reads another table: `relation` is to-one, `children` is to-many. */
 export interface TableRelation {
@@ -711,7 +711,7 @@ async function fetchRows(
         read.match && read.page
             ? pagedBranchSql(plan, clauses, read.page)
             : plainSql(plan, clauses, read.page);
-    const fetched = resultRows(await db.query(sql, clauses.params)).map((row) => mapRow(plan, row));
+    const fetched = (await db.query(sql, clauses.params)).rows.map((row) => mapRow(plan, row));
 
     await attachToOne(model, db, table, plan.projection.toOne, fetched);
     await attachToMany(model, db, table, plan.projection.toMany, fetched);

@@ -96,20 +96,15 @@ writer must do the same. The generated writes state it in their `set` clause.
 ## A predicate that matches nothing rejects the call
 
 `update … from unnest(…) … returning …` reports the rows it wrote, so the
-generated patch reads them back — `resultRows` in `docs/transactions.md`, since
-both drivers answer a result with a `rows` array — and throws when it wrote fewer
-rows than the statement's chunk carried:
+generated patch reads `result.rows` and throws when it wrote fewer rows than the
+statement's chunk carried:
 
 ```ts
-const written = new Set(resultRows(result).map((row) => String(row["id"])));
+const written = new Set(result.rows.map((row) => String(row["id"])));
 if (written.size !== chunk.length) {
     throw new VersionConflictError(…);
 }
 ```
-
-The reader throws too, rather than answering no rows, when a result carries no
-`rows` array: a driver the port does not know must not report every patch as a
-conflict.
 
 A statement carries a chunk of rows, so a short write names the rows it left out
 by their keys. `ConflictError` carries `code: "40001"`, the SQLSTATE clients

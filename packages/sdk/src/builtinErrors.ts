@@ -74,13 +74,6 @@ export class ShortWriteError extends AppError {
     }
 }
 
-/** A driver answered a result in a shape the port does not understand. */
-export class DriverResultError extends AppError {
-    constructor(message: string, options: AppErrorOptions = {}) {
-        super(message, { kind: "driver-result", status: 500 }, options);
-    }
-}
-
 /** A nested boundary was asked for transaction options, which only a root boundary can take. */
 export class SavepointOptionsError extends AppError {
     constructor(message: string, options: AppErrorOptions = {}) {
@@ -106,7 +99,6 @@ export const BUILTIN_ERROR_CLASSES: Record<string, ErrorClass> = {
     "version-conflict": VersionConflictError,
     "no-matching-row": NoMatchingRowError,
     "short-write": ShortWriteError,
-    "driver-result": DriverResultError,
     "savepoint-options": SavepointOptionsError,
     "not-implemented": NotImplemented,
 };
