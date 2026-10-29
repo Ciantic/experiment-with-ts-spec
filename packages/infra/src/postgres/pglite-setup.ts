@@ -1,6 +1,6 @@
-/** PGlite configuration and result type mapping. See docs/schema-generation.md. */
-import { PGlite, type DebugLevel, type ParserOptions } from "@electric-sql/pglite";
-import { createSingleConnectionPool, type SqlPool } from "../db/sql-pool.ts";
+/** PGlite configuration, result type mapping, and the driver the app injects. See docs/schema-generation.md. */
+import type { DebugLevel, PGlite, ParserOptions } from "@electric-sql/pglite";
+import { createSingleConnectionDriver, type SqlDriver } from "../db/sql-driver.ts";
 
 /** Postgres type OIDs, from src/include/catalog/pg_type.dat. */
 const OID = {
@@ -18,12 +18,11 @@ export function createPgliteParsers(): ParserOptions {
     };
 }
 
-/** A PGlite instance whose results match the spec types. `debug` is PGlite's own log level. */
-export function createPglite(options: { debug?: DebugLevel } = {}): PGlite {
-    return new PGlite({ parsers: createPgliteParsers(), debug: options.debug ?? 0 });
-}
+/** The PGlite class, taken as a parameter so the package stays a development dependency of infra. */
+export type PgliteConstructor = typeof PGlite;
 
-/** PGlite as a `SqlPool`: one connection, so a checkout is what keeps a boundary from interleaving. */
-export function createPglitePool(pglite: PGlite): SqlPool {
-    return createSingleConnectionPool((sql, parameters) => pglite.query(sql, parameters));
+/** A PGlite driver whose results match the spec types, over one serialized connection. `debug` is PGlite's own log level. */
+export function createPgliteDriver(Pglite: PgliteConstructor, options: { debug?: DebugLevel } = {}): SqlDriver {
+    const pglite = new Pglite({ parsers: createPgliteParsers(), debug: options.debug ?? 0 });
+    return createSingleConnectionDriver(pglite);
 }

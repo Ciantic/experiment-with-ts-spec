@@ -1,5 +1,6 @@
 // Generated for implementation by: scripts/backend/generate-spec-tests.ts
 import { afterEach, describe, expect, it } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
 import type { Customer, CustomerId } from "spec/invoicing-service/Customer.ts";
 import type { Invoice, InvoiceId } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
@@ -7,7 +8,7 @@ import type { Seller, SellerId } from "spec/invoicing-service/Seller.ts";
 import type { TenantId } from "spec/invoicing-service/Tenant.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
-import { createAppContext, createInvoice, createTenant, resultRows, type SqlExecutor } from "infra";
+import { createAppContext, createInvoice, createPgliteDriver, createTenant, createTransactionalDb, resultRows, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 const tenantId = "0192f0b0-0000-7000-8000-000000000001" as TenantId;
@@ -72,10 +73,11 @@ async function rows(db: SqlExecutor, sql: string): Promise<Array<Record<string, 
 
 /** A fresh schema holding the tenant and invoice the send refers to. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
-    const app = await createAppContext();
-    await createTenant(app.database, [{ id: tenantId, name: "Fixture tenant" }]);
-    await createInvoice(app.database, [{ id: invoiceId, tenantId }]);
-    return { db: app.database, close: () => app.database.close() };
+    const { driver } = await createAppContext({ driver: createPgliteDriver(PGlite) });
+    const db = createTransactionalDb(driver);
+    await createTenant(db, [{ id: tenantId, name: "Fixture tenant" }]);
+    await createInvoice(db, [{ id: invoiceId, tenantId }]);
+    return { db, close: () => driver.close() };
 }
 
 let open: { db: SqlExecutor; close: () => Promise<void> } | undefined;

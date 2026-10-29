@@ -1,4 +1,4 @@
-/** The pool port, and the one-connection pool a single-session driver reaches it through. See docs/transactions.md. */
+/** The driver port, and the one-connection adapter a single-session driver reaches it through. See docs/transactions.md. */
 
 /** The session a boundary is pinned to: statements, and the release that hands the connection on. */
 export interface SqlSession {
@@ -6,16 +6,27 @@ export interface SqlSession {
     release(): void;
 }
 
-/** The whole surface a boundary is built on: statements, and a checkout that pins one session to it. */
-export interface SqlPool {
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+/** The process's driver: statements, checkouts, the DDL batch, and shutdown. */
+export interface SqlDriver {
+    /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[] }>;
+    /** Pin one connection to the returned session until it is released. */
     connect(): Promise<SqlSession>;
+    /** Run a batch of statements, the generated DDL included. */
+    exec(sql: string): Promise<unknown>;
+    /** Release the driver's resources. */
+    close(): Promise<void>;
 }
 
-/** A pool over one connection: a checkout holds it, so a boundary cannot interleave with another. */
-export function createSingleConnectionPool(
-    run: (sql: string, parameters?: unknown[]) => Promise<unknown>,
-): SqlPool {
+/** The statements, batch, and shutdown one connection supplies; this serialises them behind a checkout. */
+export function createSingleConnectionDriver(driver: {
+    query(sql: string, parameters?: unknown[]): Promise<{ rows: unknown[] }>;
+    exec(sql: string): Promise<unknown>;
+    close(): Promise<void>;
+}): SqlDriver {
     let turn: Promise<void> = Promise.resolve();
 
     /** Wait for the current turn, then hold the connection until the session is released. */
@@ -28,7 +39,7 @@ export function createSingleConnectionPool(
         await previous;
         let released = false;
         return {
-            query: (sql, parameters) => run(sql, parameters),
+            query: (sql, parameters) => driver.query(sql, parameters),
             release: () => {
                 if (released) {
                     return;
@@ -41,14 +52,19 @@ export function createSingleConnectionPool(
 
     return {
         // A plain statement takes the same turn, so it cannot slip inside an open boundary.
-        query: async (sql, parameters) => {
+        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+            sql: string,
+            parameters?: unknown[],
+        ) => {
             const session = await take();
             try {
-                return await session.query(sql, parameters);
+                return (await session.query(sql, parameters)) as { rows: Row[] };
             } finally {
                 session.release();
             }
         },
         connect: take,
+        exec: (sql) => driver.exec(sql),
+        close: () => driver.close(),
     };
 }

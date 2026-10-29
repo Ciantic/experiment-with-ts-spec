@@ -1,7 +1,9 @@
 /** Unit tests for the repository generator, driven by self-contained table fixtures. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as sharedErrors from "../../packages/sdk/src/errors.ts";
-import { createPglite, createPglitePool } from "../../packages/infra/src/postgres/pglite-setup.ts";
+import { PGlite } from "@electric-sql/pglite";
+import { createPgliteDriver } from "../../packages/infra/src/postgres/pglite-setup.ts";
+import type { SqlDriver } from "../../packages/infra/src/db/sql-driver.ts";
 import * as sqlExecutor from "../../packages/infra/src/db/sql-executor.ts";
 import type { SqlExecutor } from "../../packages/infra/src/db/sql-executor.ts";
 import { createTransactionalDb } from "../../packages/infra/src/db/sql-executor.ts";
@@ -1030,7 +1032,7 @@ const MARKER_ID_OVERRIDDEN = "00000000-0000-0000-0000-0000000000dd";
 const WIDGET_ID_OTHER = "00000000-0000-0000-0000-0000000000ee";
 
 describe("generated repositories against PGlite", () => {
-    let driver: ReturnType<typeof createPglite>;
+    let driver: SqlDriver;
     let db: SqlExecutor;
     let owners: GeneratedRepository;
     let widgets: GeneratedRepository;
@@ -1041,8 +1043,8 @@ describe("generated repositories against PGlite", () => {
     let tickets: GeneratedRepository;
 
     beforeAll(async () => {
-        driver = createPglite();
-        db = createTransactionalDb(createPglitePool(driver));
+        driver = createPgliteDriver(PGlite);
+        db = createTransactionalDb(driver);
         await driver.exec(fixtureDdl(owner));
         await driver.exec(fixtureDdl(widget));
         await driver.exec(fixtureDdl(translation));
@@ -1414,14 +1416,14 @@ describe("generated repositories against PGlite", () => {
         const [created] = (await tickets.create(db, [{ label: "before" }])) as Array<{ id: number }>;
 
         await tickets.update(db, [{ id: created?.id, label: "after" }]);
-        const patched = await driver.query<{ label: string }>('select "label" from "ticket"');
+        const { rows: patched } = await driver.query<{ label: string }>('select "label" from "ticket"');
 
-        expect(patched.rows).toEqual([{ label: "after" }]);
+        expect(patched).toEqual([{ label: "after" }]);
 
         await tickets.delete(db, [{ id: created?.id }]);
-        const remaining = await driver.query('select "id" from "ticket"');
+        const { rows: remaining } = await driver.query('select "id" from "ticket"');
 
-        expect(remaining.rows).toEqual([]);
+        expect(remaining).toEqual([]);
     });
 
     it("replaces the row an upsert claims, rather than inserting a second one at a fresh key", async () => {

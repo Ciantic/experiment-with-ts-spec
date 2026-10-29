@@ -52,10 +52,10 @@ a mapping of the spec. Reads are generated separately from the entities in
 `query(sql, parameters?)`, `transaction(run)`, and `transactionWith(options, run)`
 where the caller names the modes its own boundary opens with
 (`docs/transactions.md`). The generated modules never import a driver, so `pg`
-stays an optional dependency. A driver reaches the port as a `SqlPool`
-(`src/db/sql-pool.ts`): `pg`'s `Pool` satisfies it directly, and PGlite through
-`createPglitePool`. Tests assert both fits, so the structural types cannot drift
-away from the drivers.
+stays an optional dependency. The process owns a `SqlDriver`
+(`src/db/sql-driver.ts`), built by `createPgDriver` over `pg`'s mapped `Pool` or
+by `createPgliteDriver` over PGlite; a boundary receives the `SqlExecutor` the
+context derives from it.
 
 ## What a write returns
 

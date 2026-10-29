@@ -1,13 +1,15 @@
 /** The backend entry point: run an API server, optionally seeded with mock data. See docs/mockdata.md. */
 import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
 import {
     createApiServer,
     createAppContext,
+    createPgliteDriver,
+    createTransactionalDb,
     seedMockData,
     UsageError,
-    type AppOptions,
-    type ServerDatabase,
+    type AppContext,
 } from "infra";
 import { routes } from "./http/routes/index.ts";
 
@@ -26,27 +28,31 @@ function listen(server: Server, port: number): Promise<number> {
 }
 
 /** How a server is started. */
-export interface StartOptions extends AppOptions {
+export interface StartOptions {
     port?: number;
     seed?: boolean;
+    /** Let PGlite print every statement it runs, the transaction boundaries it issues included. */
+    logSql?: boolean;
 }
 
-/** A running server and the database behind it. */
+/** A running server and the context behind it. */
 export interface StartedServer {
     server: Server;
-    db: ServerDatabase;
+    app: AppContext;
     port: number;
 }
 
 /** Build the database, optionally seed it, and start the API server over it. */
 export async function startServer(options: StartOptions = {}): Promise<StartedServer> {
-    const app = await createAppContext(options);
+    // The process is the composition root: it picks PGlite and hands infra the driver.
+    const driver = createPgliteDriver(PGlite, options.logSql ? { debug: 1 } : {});
+    const app = await createAppContext({ driver });
     if (options.seed) {
-        await seedMockData(app.database);
+        await seedMockData(createTransactionalDb(app.driver));
     }
     const server = createApiServer(app, routes);
     const port = await listen(server, options.port ?? DEFAULT_PORT);
-    return { server, db: app.database, port };
+    return { server, app, port };
 }
 
 /**

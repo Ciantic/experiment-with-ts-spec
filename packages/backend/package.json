@@ -12,6 +12,7 @@
     "example:server": "node src/main.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "infra": "workspace:*",
     "sdk": "workspace:*",
     "spec": "workspace:*"

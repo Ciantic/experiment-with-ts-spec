@@ -53,7 +53,7 @@ export interface Route {
     handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
 }
 
-/** A router over a route table, building one request context per call over the app's shared pool. */
+/** A router over a route table, building one request context per call over the app's driver. */
 export function createRouter(app: AppContext, routes: Route[]) {
     const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
     const byId = new Map(routes.map((route) => [route.id, route]));

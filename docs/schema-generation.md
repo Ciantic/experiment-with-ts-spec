@@ -234,11 +234,11 @@ The schema says what the columns are; the drivers also need to hand back the
 right JavaScript types. Both are ported from
 https://github.com/Ciantic/pg-unified-mapping.
 
-- `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `createPglite()` returns an
-  instance configured with result parsers.
+- `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `createPgliteDriver(Pglite, options)`
+  builds an instance configured with result parsers and makes it the app's driver.
 - `packages/infra/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
-  `types` option for `new pg.Client(...)`, and `createPgPool(pg, config)` builds a
-  `Pool` with that option applied.
+  `types` option for `new pg.Client(...)`, and `createPgDriver(pg, config)` builds a
+  mapped `Pool` and makes it the app's driver.
 
 The rules are the same in both:
 
@@ -251,10 +251,12 @@ The rules are the same in both:
 
 Gotchas:
 
-- **`pg-setup.ts` does not import `pg` at runtime.** The module is taken as a
-  parameter and typed structurally, and the `pg` types it names are type-only, so
-  `pg` stays a development dependency. A test passes the real module, so the
-  mapping is exercised against the driver rather than described.
+- **Neither setup imports its driver at runtime.** `pg-setup.ts` takes the module as
+  a parameter and `pglite-setup.ts` takes the `PGlite` class, both typed with
+  type-only imports, so each driver stays a development dependency of infra. The
+  process that constructs one — the backend does for PGlite — depends on the
+  package itself. A test passes the real driver, so the mapping is exercised
+  against it rather than described.
 - **The installed `pg` types are behind the driver on one member.** `@types/pg`
   still describes `types.arrayParser` as a callable, while the runtime exports
   `{ create }`, which is what the mapper reads. The test asserts the runtime

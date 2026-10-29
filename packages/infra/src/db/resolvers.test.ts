@@ -1,6 +1,7 @@
 /** Unit tests for the read resolver, driven by hand-built metadata and PGlite. See docs/testing.md. */
 import { beforeAll, describe, expect, it } from "vitest";
-import { createPglite, createPglitePool } from "../postgres/pglite-setup.ts";
+import { PGlite } from "@electric-sql/pglite";
+import { createPgliteDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
 import { createTransactionalDb } from "./sql-executor.ts";
 import type { FilterDefault } from "sdk/selection.ts";
@@ -88,8 +89,8 @@ function counting(inner: SqlExecutor): SqlExecutor & { count: () => number } {
 }
 
 beforeAll(async () => {
-    const pglite = createPglite();
-    await pglite.exec(`
+    const driver = createPgliteDriver(PGlite);
+    await driver.exec(`
         create table customer (id text primary key, name text not null, email text not null);
         create table invoice (
             id text primary key,
@@ -133,7 +134,7 @@ beforeAll(async () => {
             ('t2', 'open', 2, '2026-10-17T12:00:00Z'),
             ('t3', 'done', 0, null);
     `);
-    db = createTransactionalDb(createPglitePool(pglite));
+    db = createTransactionalDb(driver);
 });
 
 describe("resolveMany", () => {

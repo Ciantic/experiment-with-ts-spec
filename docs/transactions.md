@@ -45,27 +45,38 @@ export interface TransactionOptions {
     readonly deferrable?: boolean;
 }
 
-/** One session borrowed from a pool; `release` returns it. */
+/** One session borrowed from the driver; `release` returns it. */
 export interface SqlSession {
     query(sql: string, parameters?: unknown[]): Promise<unknown>;
     release(): void;
 }
 
-/** The whole surface a boundary is built on: statements, and a checkout that pins one session to it. */
-export interface SqlPool {
-    query(sql: string, parameters?: unknown[]): Promise<unknown>;
+/** The process's driver: statements, checkouts, the DDL batch, and shutdown. */
+export interface SqlDriver {
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[] }>;
     connect(): Promise<SqlSession>;
+    exec(sql: string): Promise<unknown>;
+    close(): Promise<void>;
 }
 ```
 
-`SqlPool` is structural rather than a named driver, so a `pg` `Pool` satisfies it
-as it stands and the port names no driver: `createPgPool`
-(`src/postgres/pg-setup.ts`) is a `pg` pool with the generated result mapping
-applied. A one-connection driver reaches it through
-`createSingleConnectionPool` (`src/db/sql-pool.ts`), which serialises its one
-session; `createPglitePool` (`src/postgres/pglite-setup.ts`) is PGlite over it.
+`SqlDriver` is an interface rather than a named driver class, and each adapter
+builds one over its pool: `createPgDriver` (`src/postgres/pg-setup.ts`) constructs
+a `pg` `Pool` with the generated result mapping applied and adds the statements,
+checkouts, DDL batch, and `end`. `createSingleConnectionDriver`
+(`src/db/sql-driver.ts`) serialises a one-connection source;
+`createPgliteDriver` is PGlite over it.
 
-`query` returns `unknown` because the result is the driver's. Two readers
+The process owns the driver; a boundary owns only a checkout. `createAppContext`
+applies the generated DDL through the driver's `exec`, and `createTransactionalDb`
+takes the driver and uses only `query` and `connect` — so a boundary never
+reaches the batch or the shutdown, and `context.ts` names no driver.
+
+`SqlExecutor.query` returns `unknown` because the result is the driver's, and a
+generated write may read either rows or a count. Two readers
 (`src/db/sql-executor.ts`) take the two shapes out of it: `resultRows` answers
 the `rows` array both drivers carry, which the result mapping and every generated
 write read, and `affectedRows` answers the count from whichever name the driver
@@ -77,7 +88,7 @@ chunk that wrote fewer (`docs/versioning.md`) and to answer a create or an upser
 with the keys it wrote (`docs/repositories.md`).
 
 `createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
-over a pool:
+over a driver:
 
 - **A checkout pins the session, and that is what the boundary rests on.** A `pg`
   pool hands out a `PoolClient`, so `begin`…`commit` covers exactly the
@@ -220,7 +231,7 @@ as well, and its `transaction` opens a savepoint rather than a second
 transaction. Its `transactionWith` is refused — a savepoint opens with no modes.
 
 ```ts
-export function createTransactionalDb(pool: SqlPool): SqlExecutor {
+export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
     let savepoints = 0;
     async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
@@ -236,7 +247,7 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
         }
     }
     async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
-        const session = await pool.connect();
+        const session = await driver.connect();
         try {
             await session.query(begin(options));
             const value = await run(handle(session));
@@ -250,7 +261,7 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
         }
     }
     return {
-        query: (sql, parameters) => pool.query(sql, parameters),
+        query: (sql, parameters) => driver.query(sql, parameters),
         transaction: (run) => boundary(undefined, run),
         transactionWith: (options, run) => boundary(options, run),
     };

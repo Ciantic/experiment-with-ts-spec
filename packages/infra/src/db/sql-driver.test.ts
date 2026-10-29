@@ -1,15 +1,19 @@
-/** Checks the one-connection pool a single-session driver reaches the port through. See docs/transactions.md. */
+/** Checks the one-connection adapter a single-session database reaches the driver port through. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
-import { createSingleConnectionPool } from "./sql-pool.ts";
+import { createSingleConnectionDriver } from "./sql-driver.ts";
 
-/** A pool over a statement that records what it ran, so the ordering is observable. */
-function echo(): { pool: ReturnType<typeof createSingleConnectionPool>; ran: string[] } {
+/** A driver over a statement that records what it ran, so the ordering is observable. */
+function echo(): { driver: ReturnType<typeof createSingleConnectionDriver>; ran: string[] } {
     const ran: string[] = [];
-    const pool = createSingleConnectionPool(async (sql) => {
-        ran.push(sql);
-        return { rows: [{ sql }] };
+    const driver = createSingleConnectionDriver({
+        query: async (sql) => {
+            ran.push(sql);
+            return { rows: [{ sql }] };
+        },
+        exec: async () => undefined,
+        close: async () => {},
     });
-    return { pool, ran };
+    return { driver, ran };
 }
 
 /** Let every already-scheduled microtask run. */
@@ -17,13 +21,13 @@ function settle(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("createSingleConnectionPool", () => {
+describe("createSingleConnectionDriver", () => {
     it("holds the connection across a checkout, so a second one waits for its release", async () => {
-        const { pool, ran } = echo();
+        const { driver, ran } = echo();
 
-        const first = await pool.connect();
+        const first = await driver.connect();
         let second: string | undefined;
-        void pool.connect().then((session) => {
+        void driver.connect().then((session) => {
             second = "taken";
             session.release();
         });
@@ -40,16 +44,16 @@ describe("createSingleConnectionPool", () => {
     });
 
     it("hands the turn on once, so a double release does not let a second taker through", async () => {
-        const { pool } = echo();
+        const { driver } = echo();
 
-        const first = await pool.connect();
+        const first = await driver.connect();
         let secondTaken = false;
         let thirdTaken = false;
-        const second = pool.connect().then((session) => {
+        const second = driver.connect().then((session) => {
             secondTaken = true;
             return session;
         });
-        const third = pool.connect().then((session) => {
+        const third = driver.connect().then((session) => {
             thirdTaken = true;
             return session;
         });
@@ -69,10 +73,10 @@ describe("createSingleConnectionPool", () => {
     });
 
     it("gives a plain query the same turn, so it cannot run inside an open checkout", async () => {
-        const { pool, ran } = echo();
+        const { driver, ran } = echo();
 
-        const held = await pool.connect();
-        void pool.query("inside");
+        const held = await driver.connect();
+        void driver.query("inside");
         await settle();
         expect(ran).toEqual([]);
 
@@ -83,17 +87,39 @@ describe("createSingleConnectionPool", () => {
 
     it("frees the turn when a statement throws", async () => {
         const ran: string[] = [];
-        const pool = createSingleConnectionPool(async (sql) => {
-            ran.push(sql);
-            if (sql === "boom") {
-                throw new Error("boom");
-            }
-            return { rows: [] };
+        const driver = createSingleConnectionDriver({
+            query: async (sql) => {
+                ran.push(sql);
+                if (sql === "boom") {
+                    throw new Error("boom");
+                }
+                return { rows: [] };
+            },
+            exec: async () => undefined,
+            close: async () => {},
         });
 
-        await expect(pool.query("boom")).rejects.toThrow("boom");
-        await pool.query("after");
+        await expect(driver.query("boom")).rejects.toThrow("boom");
+        await driver.query("after");
 
         expect(ran).toEqual(["boom", "after"]);
+    });
+
+    it("passes the batch and shutdown through to the connection", async () => {
+        const calls: string[] = [];
+        const driver = createSingleConnectionDriver({
+            query: async () => ({ rows: [] }),
+            exec: async () => {
+                calls.push("exec");
+            },
+            close: async () => {
+                calls.push("close");
+            },
+        });
+
+        await driver.exec("create table widget ()");
+        await driver.close();
+
+        expect(calls).toEqual(["exec", "close"]);
     });
 });

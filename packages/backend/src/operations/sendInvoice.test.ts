@@ -1,16 +1,11 @@
 /** The `sendInvoice` behaviour the spec does not declare, over the seeded mock data. See docs/testing.md and docs/operations.md. */
 import { afterEach, describe, expect, it } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
-import { createAppContext, createCustomer, createInvoice, createSeller, createTenant, resultRows, type SqlExecutor } from "infra";
+import { createAppContext, createCustomer, createInvoice, createPgliteDriver, createSeller, createTenant, createTransactionalDb, resultRows, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
-
-/** A database with the mock tenants, parties, and drafts written, and the executor the operation runs on. */
-interface Fixture {
-    db: SqlExecutor;
-    close: () => Promise<void>;
-}
 
 /** The mock invoices with the parties each names, which is the draft a caller supplies. */
 const drafts: Invoice[] = invoices.map((invoice) => {
@@ -27,13 +22,19 @@ const drafts: Invoice[] = invoices.map((invoice) => {
 const first = drafts[0]!;
 
 /** Open a fresh schema and write the mock tenants, customers, sellers, and invoices. */
+interface Fixture {
+    db: SqlExecutor;
+    close: () => Promise<void>;
+}
+
 async function fixture(): Promise<Fixture> {
-    const app = await createAppContext();
-    await createTenant(app.database, tenants);
-    await createCustomer(app.database, customers);
-    await createSeller(app.database, sellers);
-    await createInvoice(app.database, invoices);
-    return { db: app.database, close: () => app.database.close() };
+    const { driver } = await createAppContext({ driver: createPgliteDriver(PGlite) });
+    const db = createTransactionalDb(driver);
+    await createTenant(db, tenants);
+    await createCustomer(db, customers);
+    await createSeller(db, sellers);
+    await createInvoice(db, invoices);
+    return { db, close: () => driver.close() };
 }
 
 /** The value without one property, so a test can drop the detail a send requires. */

@@ -77,18 +77,18 @@ values, all of which are domain decisions rather than code behaviour.
 - `packages/infra/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
   over a real PGlite, so a driver's boundary semantics are observable: a commit,
   a rollback, and that a nested boundary is a savepoint the outer transaction
-  survives. A recording fake pool pins the other half: the checkout brackets the
+  survives. A recording fake driver pins the other half: the checkout brackets the
   boundary and is released exactly once.
-- `packages/infra/src/db/sql-pool.test.ts` — the one-connection pool, over a
+- `packages/infra/src/db/sql-driver.test.ts` — the one-connection driver, over a
   statement that records what it ran: a checkout holds the connection until it is
-  released, a plain statement takes the same turn, and a failure frees the turn.
+  released, a plain statement takes the same turn, a failure frees the turn, and
+  the DDL batch and shutdown pass through to the connection.
 - `packages/infra/src/postgres/pglite-setup.test.ts` — one check: PGlite reaches
-  the pool port through `createPglitePool`, and its one connection is held for the
-  length of a checkout.
-- `packages/infra/src/postgres/pg-setup.test.ts` — the same fit for `pg`, over the
-  real driver: a bare `Pool` satisfies `SqlPool` and a checked-out `PoolClient`
-  satisfies `SqlSession`, so `pg` needs no wrapper. It also drives `createPgPool`
-  and asserts the mapping it installs — `int8` to `bigint`, `date`/`timestamp`/
+  the driver port through `createPgliteDriver`, and its one connection is held for
+  the length of a checkout.
+- `packages/infra/src/postgres/pg-setup.test.ts` — `createPgDriver` builds the driver
+  over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `connect`. It also
+  asserts the mapping `createPgMapperTypes` installs — `int8` to `bigint`, `date`/`timestamp`/
   `numeric` to strings, `bytea` to `Uint8Array`, a text array to its raw
   elements, and an unmapped type left to the driver. No Postgres server is in the
   loop: constructing a `Pool` opens no connection.

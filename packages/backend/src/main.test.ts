@@ -1,10 +1,11 @@
 /** End-to-end smoke test: the generated client talks to a live server. See docs/testing.md and docs/mockdata.md. */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
 import * as api from "sdk/api/index.ts";
 import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
-import { createAppContext } from "infra";
+import { createAppContext, createPgliteDriver, createTransactionalDb } from "infra";
 import { routes } from "./http/routes/index.ts";
 import { parseArgs, startServer, type StartedServer } from "./main.ts";
 
@@ -63,7 +64,7 @@ afterAll(async () => {
     await new Promise<void>((resolve, reject) => {
         started.server.close((error) => (error ? reject(error) : resolve()));
     });
-    await started.db.close();
+    await started.app.driver.close();
 });
 
 describe("the generated client and the generated route table", () => {
@@ -235,10 +236,11 @@ describe("--log-sql", () => {
 
     it("shows both what the server runs and the boundaries the executor issues", async () => {
         const printed = await capture(async () => {
-            const app = await createAppContext({ logSql: true });
-            await app.database.query("select 1 as one");
-            await app.database.transaction((tx) => tx.query("select 2 as two"));
-            await app.database.close();
+            const app = await createAppContext({ driver: createPgliteDriver(PGlite, { debug: 1 }) });
+            const db = createTransactionalDb(app.driver);
+            await db.query("select 1 as one");
+            await db.transaction((tx) => tx.query("select 2 as two"));
+            await app.driver.close();
         });
 
         expect(printed.some((line) => line.includes("select 1 as one"))).toBe(true);
@@ -249,9 +251,9 @@ describe("--log-sql", () => {
 
     it("stays quiet without the flag, so an ordinary run prints no SQL", async () => {
         const printed = await capture(async () => {
-            const app = await createAppContext();
-            await app.database.query("select 3 as three");
-            await app.database.close();
+            const app = await createAppContext({ driver: createPgliteDriver(PGlite) });
+            await createTransactionalDb(app.driver).query("select 3 as three");
+            await app.driver.close();
         });
 
         expect(printed.some((line) => line.includes("select 3 as three"))).toBe(false);

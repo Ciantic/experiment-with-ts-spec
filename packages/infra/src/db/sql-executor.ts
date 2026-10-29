@@ -1,6 +1,6 @@
-/** The `SqlExecutor` port over a pool: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
+/** The `SqlExecutor` port over a driver: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
 import { DriverResultError, SavepointOptionsError } from "sdk/errors.ts";
-import type { SqlPool, SqlSession } from "./sql-pool.ts";
+import type { SqlDriver, SqlSession } from "./sql-driver.ts";
 
 /** The callback one boundary runs, on the handle that boundary owns. */
 type Run<T> = (tx: SqlExecutor) => Promise<T>;
@@ -72,7 +72,7 @@ function begin(options?: TransactionOptions): string {
 }
 
 /** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
-export function createTransactionalDb(pool: SqlPool): SqlExecutor {
+export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
     let savepoints = 0;
 
     /**
@@ -109,7 +109,7 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
 
     /** Open a root boundary on one checked-out session, carrying the modes the call named, and roll it back when the callback throws. */
     async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
-        const session = await pool.connect();
+        const session = await driver.connect();
         try {
             await session.query(begin(options));
             const value = await run(handle(session));
@@ -124,7 +124,7 @@ export function createTransactionalDb(pool: SqlPool): SqlExecutor {
     }
 
     return {
-        query: (sql, parameters) => pool.query(sql, parameters),
+        query: (sql, parameters) => driver.query(sql, parameters),
         transaction: (run) => boundary(undefined, run),
         transactionWith: (options, run) => boundary(options, run),
     };

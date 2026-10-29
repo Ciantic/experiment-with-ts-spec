@@ -1,5 +1,6 @@
-/** `pg` driver setup: result type mapping and pool construction. Mirrors src/postgres/pglite-setup.ts. */
+/** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
 import type { Pool, PoolConfig } from "pg";
+import type { SqlDriver } from "../db/sql-driver.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -88,7 +89,17 @@ export interface PgPoolModule extends PgModule {
     Pool: new (config: PoolConfig) => Pool;
 }
 
-/** A `pg` Pool whose results match the spec types. The mapper's `types` wins over one the caller passes. */
-export function createPgPool(pg: PgPoolModule, config: PoolConfig = {}): Pool {
-    return new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
+/** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
+export function createPgDriver(pg: PgPoolModule, config: PoolConfig = {}): SqlDriver {
+    // The mapper's `types` wins over one the caller passes, so the pool cannot silently lose the spec types.
+    const pool = new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
+    return {
+        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+            sql: string,
+            parameters?: unknown[],
+        ) => pool.query<Row>(sql, parameters),
+        connect: () => pool.connect(),
+        exec: (sql) => pool.query(sql),
+        close: () => pool.end(),
+    };
 }

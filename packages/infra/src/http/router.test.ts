@@ -6,8 +6,7 @@ import { parse as decode, stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QueryError, ShortWriteError, VersionConflictError } from "sdk/errors.ts";
 import type { AppContext } from "../context.ts";
-import { createTransactionalDb } from "../db/sql-executor.ts";
-import type { SqlPool, SqlSession } from "../db/sql-pool.ts";
+import type { SqlDriver, SqlSession } from "../db/sql-driver.ts";
 import { statusFor } from "./http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
@@ -28,22 +27,22 @@ const rejects: RouteInput = {
     safeParse: () => ({ success: false, error: { issues: ["bad"] } }),
 };
 
-/** A pool over no database, recording every statement that runs through it. */
-function createPool() {
+/** A driver over no database, recording every statement that runs through it. */
+function createDriver() {
     const statements: string[] = [];
     const run = async (sql: string) => {
         statements.push(sql);
         return { rows: [] };
     };
     const session: SqlSession = { query: run, release: () => {} };
-    const pool: SqlPool = { query: run, connect: async () => session };
-    return { pool, statements };
+    const driver: SqlDriver = { query: run, connect: async () => session, exec: async () => {}, close: async () => {} };
+    return { driver, statements };
 }
 
-/** The context startup builds, over a recording pool, so a request's executor is observable. */
+/** The context startup builds, over a recording driver, so a request's executor is observable. */
 function createApp() {
-    const { pool, statements } = createPool();
-    return { app: { pool, database: { ...createTransactionalDb(pool), close: async () => {} } }, statements };
+    const { driver, statements } = createDriver();
+    return { app: { driver }, statements };
 }
 
 let app: AppContext;

@@ -171,10 +171,12 @@ choose one: it writes `unknown`, which compiles because the annotation supplies
 the parameter types, and says plainly that the implementation must decide.
 
 Every route handler receives one context, `RequestContext` in
-`packages/infra/src/context.ts`, whose only field is `db`. Startup calls
-`createAppContext` once, which opens the in-memory database and applies the
-schema; the router calls `createRequestContext(app, request)` per request, which
-gives that request its own executor over the shared pool. An operation annotated
+`packages/infra/src/context.ts`, whose only field is `db`. Startup builds the
+driver it chose — the backend builds PGlite — and calls `createAppContext` once,
+which applies the schema over that driver. The context holds the driver, and the
+router calls `createRequestContext(app, request)` per request, which gives that
+request its own executor over the driver's pool; a test or a worker that needs
+only a database derives one with `createTransactionalDb(app.driver)`. An operation annotated
 `WidgetOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
 An operation that wanted more, such as `<{ db: SqlExecutor; clock: Clock }>`,
 would fail to compile in the generated route, because the HTTP layer cannot build
