@@ -2911,6 +2911,127 @@ export interface Widget {
         expect(messages(findings)).toContain("`send`: @operation belongs on a contract interface, not on an @entity");
     });
 
+    it("accepts an operation that declares its spec tests", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testDescribe sending an invoice
+     * @testIt refuses an invoice without a number
+     * @testDescribe a sent invoice
+     * @testIt queues the email
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("reports @testIt written before any @testDescribe", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testIt refuses an invoice without a number
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @testIt comes after the @testDescribe that names its block"]);
+    });
+
+    it("reports @testDescribe without text", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testDescribe
+     * @testIt refuses an invoice without a number
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @testDescribe needs the text naming its block"]);
+    });
+
+    it("reports @testDescribe without any @testIt", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testDescribe sending an invoice
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @testDescribe needs at least one @testIt"]);
+    });
+
+    it("reports @testIt without text", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testDescribe sending an invoice
+     * @testIt
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual(["`sendInvoice`: @testIt needs the text naming its test"]);
+    });
+
+    it("reports test tags on a method that is not an operation", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @testDescribe sending an invoice
+     * @testIt refuses an invoice without a number
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @testDescribe and @testIt belong on an @operation method",
+        ]);
+    });
+
+    it("reports a test tag on an entity field", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ */
+export interface Widget {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     * @testIt keeps the id
+     */
+    id: string;
+}`);
+
+        expect(messages(findings)).toContain("`id`: @testIt belongs on an @operation method");
+    });
+
+    it("reports a test tag on an interface and on a type alias", () => {
+        const findings = lintSourceText(`
+/** @testDescribe a widget */
+export interface Widget {
+    id: string;
+}
+
+/** @testIt keeps the id */
+export type WidgetId = string;`);
+
+        // Aliases are scanned before interfaces, which is the order the findings come in.
+        expect(messages(findings)).toEqual([
+            "`WidgetId`: @testIt belongs on an @operation method",
+            "`Widget`: @testDescribe belongs on an @operation method",
+        ]);
+    });
+
     it("reports an operation contract with more than one type parameter", () => {
         const findings = lintSourceText(`
 export interface Ops<T, U> {

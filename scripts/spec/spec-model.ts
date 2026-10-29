@@ -60,13 +60,33 @@ export const INTERFACE_TAGS = [
 /** Tags a type alias may carry. */
 export const TYPE_TAGS = ["primitive", "zod", "pgType", "pgDefault"] as const;
 
+/** Tags a contract method may carry. */
+export const METHOD_TAGS = [
+    "operation",
+    "restOperation",
+    "throws",
+    "todo",
+    "testDescribe",
+    "testIt",
+] as const;
+
+/** The tags that declare a spec test rather than the operation itself. See docs/spec-tests.md. */
+export const TEST_TAGS = ["testDescribe", "testIt"] as const;
+
 /** Every tag this model recognises. */
-export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS] as const;
+export const TAGS = [...FIELD_TAGS, ...INTERFACE_TAGS, ...TYPE_TAGS, ...METHOD_TAGS] as const;
 
 export type FieldTag = (typeof FIELD_TAGS)[number];
 export type InterfaceTag = (typeof INTERFACE_TAGS)[number];
 export type TypeTag = (typeof TYPE_TAGS)[number];
+export type MethodTag = (typeof METHOD_TAGS)[number];
+export type TestTag = (typeof TEST_TAGS)[number];
 export type Tag = (typeof TAGS)[number];
+
+/** True when the tag declares a spec test, which only an `@operation` may carry. */
+export function isTestTag(name: string): name is TestTag {
+    return (TEST_TAGS as readonly string[]).includes(name);
+}
 
 /** Retired or renamed tags, mapped to the advice a linter reports in their place. */
 export const RETIRED_TAGS = new Map<string, string>([
@@ -397,6 +417,22 @@ export interface SpecOperationError {
     location: SpecLocation;
 }
 
+/** One `@testIt` row: the test the spec-test generator scaffolds under its describe. */
+export interface SpecTestRow {
+    /** The row's text, which becomes the `it` name; empty when the tag carries none, for the linter to report. */
+    text: string;
+    location: SpecLocation;
+}
+
+/** One `@testDescribe` and the `@testIt` rows written after it. See docs/spec-tests.md. */
+export interface SpecTestBlock {
+    /** The block text, which becomes the `describe` name; empty when the tag carries none, for the linter to report. */
+    describe: string;
+    location: SpecLocation;
+    /** The rows under the describe, in source order. */
+    tests: SpecTestRow[];
+}
+
 /** A method carrying `@operation`: a backend operation the generators scaffold and expose. See docs/operations.md. */
 export interface SpecOperation {
     /** The contract interface that declares it, e.g. `InvoiceOperations`. */
@@ -421,6 +457,10 @@ export interface SpecOperation {
     resultTypeText: string;
     /** The errors the JSDoc declares, in the order written. */
     throws: SpecOperationError[];
+    /** The `@testDescribe` blocks and the `@testIt` rows under them, which generate-spec-tests scaffolds. See docs/spec-tests.md. */
+    tests: SpecTestBlock[];
+    /** `@testIt` rows written before any `@testDescribe`; the linter reports them and no generator reads them. */
+    strayTests: SpecTestRow[];
     /** True when `@operation` marks it as an operation; a method carrying only `@restOperation` is a lint finding. */
     operation: boolean;
     /** True when `@restOperation` marks it for the HTTP surface. */
@@ -1007,6 +1047,30 @@ export function readThrowsTag(tag: SpecTag, filePath: string): SpecOperationErro
     return parsed;
 }
 
+/** Read the `@testDescribe` blocks on a method, and the `@testIt` rows written before any of them. See docs/spec-tests.md. */
+function readTestBlocks(tags: WrittenTags, filePath: string): { tests: SpecTestBlock[]; strayTests: SpecTestRow[] } {
+    const tests: SpecTestBlock[] = [];
+    const strayTests: SpecTestRow[] = [];
+    for (const tag of tags.all) {
+        if (tag.name === "testDescribe") {
+            tests.push({ describe: tag.value ?? "", location: { filePath, line: tag.line }, tests: [] });
+            continue;
+        }
+        if (tag.name !== "testIt") {
+            continue;
+        }
+        const row: SpecTestRow = { text: tag.value ?? "", location: { filePath, line: tag.line } };
+        // A row belongs to the describe above it; one written before any describe is the linter's to report.
+        const open = tests.at(-1);
+        if (open) {
+            open.tests.push(row);
+        } else {
+            strayTests.push(row);
+        }
+    }
+    return { tests, strayTests };
+}
+
 /** Read a method carrying `@operation` as an operation; undefined when it declares none. See docs/operations.md. */
 function readOperation(
     contract: SpecInterface,
@@ -1015,8 +1079,9 @@ function readOperation(
     const tags = readTags(method);
     const operation = tags.written.byName.has("operation");
     const rest = tags.written.byName.has("restOperation");
-    // A method carrying only @restOperation is kept so the linter can report the missing marker.
-    if (!operation && !rest) {
+    const tests = tags.written.all.some((tag) => isTestTag(tag.name));
+    // A method carrying a marker without @operation is kept so the linter can report the missing marker.
+    if (!operation && !rest && !tests) {
         return undefined;
     }
     const doc = method.getJsDocs()[0];
@@ -1058,6 +1123,7 @@ function readOperation(
         resultType: resultTypeNode ? readType(resultTypeNode) : { kind: "missing" },
         resultTypeText: resultTypeNode?.getText() ?? "",
         throws: (tags.written.byName.get("throws") ?? []).map((tag) => readThrowsTag(tag, filePath)),
+        ...readTestBlocks(tags.written, filePath),
         operation,
         rest,
         ...(restMethod !== undefined && isRestMethod(restMethod) ? { restMethod } : {}),

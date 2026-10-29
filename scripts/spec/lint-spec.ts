@@ -16,6 +16,7 @@ import {
     isNullOperator,
     isOrderDirection,
     isReferentialAction,
+    isTestTag,
     loadSpec,
     parseForeignKey,
     parseQueryFilter,
@@ -78,6 +79,18 @@ const ZOD_TAG = "zod";
 /** The tag that carries a type's storage-layer type, e.g. `uuid`. */
 const PG_TYPE_TAG = "pgType";
 
+/** Why a field or interface tag is refused: a retired name, a test tag on the wrong declaration, or the caller's message. */
+function refusal(name: string, unknown: string): string {
+    const retired = RETIRED_TAGS.get(name);
+    if (retired !== undefined) {
+        return `@${name} is retired; ${retired}`;
+    }
+    if (isTestTag(name)) {
+        return `@${name} belongs on an @operation method`;
+    }
+    return unknown;
+}
+
 /** Check the tags on a type alias: `@primitive`, `@zod`, and `@pgType`, resolving its type through `aliases`. */
 function lintTypeAlias(
     alias: SpecTypeAlias,
@@ -94,7 +107,12 @@ function lintTypeAlias(
     for (const [tagName, instances] of tags) {
         if (!ALLOWED_TYPE_TAGS.has(tagName)) {
             for (const tag of instances) {
-                report(`@${tagName} is not a recognised type tag`, tag);
+                report(
+                    isTestTag(tagName)
+                        ? `@${tagName} belongs on an @operation method`
+                        : `@${tagName} is not a recognised type tag`,
+                    tag,
+                );
             }
         }
         if (instances.length > 1) {
@@ -151,13 +169,10 @@ function lintInterfaceTags(spec: SpecInterface, findings: Diagnostic[]): void {
         if (ALLOWED_INTERFACE_TAGS.has(tag.name)) {
             continue;
         }
-        const retired = RETIRED_TAGS.get(tag.name);
         findings.push({
             filePath: spec.location.filePath,
             line: tag.line,
-            message: retired
-                ? `\`${spec.name}\`: @${tag.name} is retired; ${retired}`
-                : `\`${spec.name}\`: @${tag.name} is not a recognised interface tag`,
+            message: `\`${spec.name}\`: ${refusal(tag.name, `@${tag.name} is not a recognised interface tag`)}`,
         });
     }
 }
@@ -185,7 +200,12 @@ function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
             findings.push({ filePath: operation.location.filePath, line, message: `\`${operation.name}\`: ${message}` });
         };
         if (!operation.operation) {
-            report("@restOperation requires @operation");
+            // A method carrying only test tags is a spec test on something that is not an operation.
+            report(
+                operation.rest
+                    ? "@restOperation requires @operation"
+                    : "@testDescribe and @testIt belong on an @operation method",
+            );
         }
         if (spec.interfaces.has(operation.interfaceName)) {
             report("@operation belongs on a contract interface, not on an @entity");
@@ -213,6 +233,23 @@ function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
                 report("@throws names the error class, as `@throws {InvoiceDetailsError} why`", thrown.location.line);
             } else if (thrown.reason === "") {
                 report(`@throws {${thrown.name}} needs a reason`, thrown.location.line);
+            }
+        }
+        // A row before any describe names no block, so the generator has nowhere to put it.
+        for (const row of operation.strayTests) {
+            report("@testIt comes after the @testDescribe that names its block", row.location.line);
+        }
+        for (const block of operation.tests) {
+            if (block.describe === "") {
+                report("@testDescribe needs the text naming its block", block.location.line);
+            }
+            if (block.tests.length === 0) {
+                report("@testDescribe needs at least one @testIt", block.location.line);
+            }
+            for (const row of block.tests) {
+                if (row.text === "") {
+                    report("@testIt needs the text naming its test", row.location.line);
+                }
             }
         }
     }
@@ -510,9 +547,8 @@ function lintKnownTags(tags: FieldTags, report: Report): void {
         if (ALLOWED_TAGS.has(name)) {
             continue;
         }
-        const retired = RETIRED_TAGS.get(name);
         for (const tag of instances) {
-            report(retired ? `@${name} is retired; ${retired}` : `@${name} is not a recognised tag`, tag);
+            report(refusal(name, `@${name} is not a recognised tag`), tag);
         }
     }
 }

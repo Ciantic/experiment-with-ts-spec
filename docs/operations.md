@@ -127,6 +127,16 @@ The generator refuses the whole run when the spec itself cannot be scaffolded:
 `@throws` findings belong to `generate:errors`, which runs first; an operation
 route that would collide with an entity route is reported by the REST model.
 
+## Spec tests
+
+An operation may declare its tests with `@testDescribe` and `@testIt`, and
+`pnpm generate:spec-tests` writes them to `{operation}.spec.test.ts` beside the
+module. The suffix keeps a generated test apart from a hand-written
+`{operation}.test.ts`. The spec decides which `describe` and `it` calls the file
+declares, so a file that differs from it fails both the generator and
+`pnpm lint:spec-tests`; the bodies are the author's once the file has been
+written. See `docs/spec-tests.md`.
+
 ## Removing an operation
 
 The generator owns the set of files under `src/operations/`, but only the

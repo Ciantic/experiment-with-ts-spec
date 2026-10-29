@@ -121,6 +121,11 @@ values, all of which are domain decisions rather than code behaviour.
   server has. It asserts the rows the operation writes, the value it resolves
   when the caller omits it, the refusal of an incomplete input, and that a
   refused second write leaves the first rolled back.
+- `scripts/backend/generate-spec-tests.test.ts` — drives the spec-test
+  scaffolder with in-memory fixtures and a temp directory: the describe blocks
+  it groups the rows into, the drift it reports for a file whose tests differ
+  from the spec's, and the write/keep/prune decisions, including the read-only
+  `--check`.
 - `scripts/spec/lint-spec.test.ts` — linter rules, with fixture source
   strings. The one exception is a case asserting the committed spec passes lint,
   which is about the linter's real-world input rather than the domain's content.

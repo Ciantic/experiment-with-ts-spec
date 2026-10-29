@@ -5,6 +5,7 @@ import { run as runPostgresSchema } from "./backend/generate-postgres-schema.ts"
 import { run as runRepositories } from "./backend/generate-repositories.ts";
 import { run as runQueries } from "./backend/generate-queries.ts";
 import { run as runOperations } from "./backend/generate-operations.ts";
+import { run as runSpecTests } from "./backend/generate-spec-tests.ts";
 import { run as runRestApi } from "./backend/generate-rest-api.ts";
 import { run as runRestClient } from "./sdk/generate-rest-client.ts";
 import { run as runValidation } from "./sdk/generate-zod-schemas.ts";
@@ -21,6 +22,7 @@ const steps: Step[] = [
     runLint,
     runErrors,
     runOperations,
+    runSpecTests,
     runPostgresSchema,
     runRepositories,
     runQueries,

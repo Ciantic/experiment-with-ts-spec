@@ -6,8 +6,9 @@
   "scripts": {
     "test": "pnpm -r run test && vitest run && node --test scripts/oxlint/errors.test.ts scripts/oxlint/comments.test.ts scripts/oxlint/scaffold.test.ts",
     "typecheck": "tsc --noEmit && pnpm -r run typecheck",
-    "lint": "pnpm run lint:spec && pnpm run lint:oxlint",
+    "lint": "pnpm run lint:spec && pnpm run lint:spec-tests && pnpm run lint:oxlint",
     "lint:spec": "node scripts/spec/lint-spec.ts",
+    "lint:spec-tests": "node scripts/backend/generate-spec-tests.ts --check",
     "lint:oxlint": "oxlint",
     "generate": "node scripts/generate.ts",
     "generate:schema": "node scripts/backend/generate-postgres-schema.ts",
@@ -15,6 +16,7 @@
     "generate:repositories": "node scripts/backend/generate-repositories.ts",
     "generate:queries": "node scripts/backend/generate-queries.ts",
     "generate:operations": "node scripts/backend/generate-operations.ts",
+    "generate:spec-tests": "node scripts/backend/generate-spec-tests.ts",
     "generate:validation": "node scripts/sdk/generate-zod-schemas.ts",
     "generate:errors": "node scripts/sdk/generate-errors.ts",
     "generate:rest-api": "node scripts/backend/generate-rest-api.ts",

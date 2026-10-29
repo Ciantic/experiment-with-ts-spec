@@ -212,6 +212,10 @@ Method tags:
 - `@todo <text>` — the operation is not generated: no scaffold, route, client
   call, or declared error. The text says what is left to do, and the linter
   reports an empty one. See "Deferring a declaration" below.
+- `@testDescribe <text>` and `@testIt <text>` — the spec tests the operation
+  scaffolds. Each `@testDescribe` opens a block, and the `@testIt` rows written
+  after it are that block's tests; a row before any describe names no block. Only
+  an `@operation` may carry either tag. See `docs/spec-tests.md`.
 
 A method never carries a field, interface, or type tag.
 

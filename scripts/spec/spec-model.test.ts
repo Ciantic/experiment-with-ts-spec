@@ -1139,6 +1139,66 @@ export interface Ops<T> {
 
         expect(spec.operations.map((operation) => operation.name)).toEqual(["sendInvoice"]);
     });
+
+    it("groups the @testIt rows under the @testDescribe written above them", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testDescribe freezing a widget
+     * @testIt refuses a frozen widget
+     * @testIt records who froze it
+     * @testDescribe a frozen widget
+     * @testIt keeps its owner
+     */
+    freeze(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations[0]?.tests.map((block) => [block.describe, block.tests.map((row) => row.text)])).toEqual([
+            ["freezing a widget", ["refuses a frozen widget", "records who froze it"]],
+            ["a frozen widget", ["keeps its owner"]],
+        ]);
+        expect(spec.operations[0]?.strayTests).toEqual([]);
+    });
+
+    it("keeps a @testIt written before any @testDescribe apart, so lint can report it", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @testIt keeps its owner
+     * @testDescribe freezing a widget
+     * @testIt refuses a frozen widget
+     */
+    freeze(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations[0]?.strayTests.map((row) => row.text)).toEqual(["keeps its owner"]);
+        expect(spec.operations[0]?.tests.map((block) => block.tests.map((row) => row.text))).toEqual([
+            ["refuses a frozen widget"],
+        ]);
+    });
+
+    it("keeps a method carrying only test tags, so lint can report the missing @operation", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @testDescribe freezing a widget
+     * @testIt refuses a frozen widget
+     */
+    freeze(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations).toEqual([
+            expect.objectContaining({ name: "freeze", operation: false, rest: false }),
+        ]);
+    });
 });
 
 describe("resolveType", () => {

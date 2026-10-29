@@ -125,11 +125,14 @@ function validate(spec: SpecModel): Diagnostic[] {
 
     for (const operation of spec.operations) {
         if (!operation.operation) {
-            findings.push({
-                filePath: operation.location.filePath,
-                line: operation.location.line,
-                message: `\`${operation.name}\`: @restOperation requires @operation`,
-            });
+            // A method carrying only spec-test tags is the linter's finding, and it is no operation to scaffold.
+            if (operation.rest) {
+                findings.push({
+                    filePath: operation.location.filePath,
+                    line: operation.location.line,
+                    message: `\`${operation.name}\`: @restOperation requires @operation`,
+                });
+            }
             continue;
         }
         if (operation.interfaceTypeParameters.length > 1) {
