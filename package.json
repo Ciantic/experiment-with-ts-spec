@@ -6,8 +6,9 @@
   "scripts": {
     "test": "pnpm -r run test && vitest run",
     "typecheck": "tsc --noEmit && pnpm -r run typecheck",
-    "lint": "pnpm run lint:spec && pnpm run lint:spec-tests && pnpm run lint:oxlint",
+    "lint": "pnpm run lint:spec && pnpm run lint:operations && pnpm run lint:spec-tests && pnpm run lint:oxlint",
     "lint:spec": "node scripts/spec/lint-spec.ts",
+    "lint:operations": "node scripts/backend/generate-operations.ts --check",
     "lint:spec-tests": "node scripts/backend/generate-spec-tests.ts --check",
     "lint:oxlint": "oxlint",
     "generate": "node scripts/generate.ts",

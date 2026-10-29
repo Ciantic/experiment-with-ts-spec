@@ -51,7 +51,7 @@ spec once through
 `scripts/spec/spec-model.ts` and hands the same `SpecModel` to every
 step, because that parse dominates a generate run; each generator keeps a
 standalone `generate:*` script for a single artifact, and `pnpm run lint` runs
-the linter alone. All of them read the
+the spec linter plus the generators' read-only `--check` passes. All of them read the
 spec through that same model: the schema, repository, and
 query generators map it to columns in
 `scripts/backend/postgres-model.ts`, the validation generator maps it to
@@ -133,6 +133,6 @@ exists. `--if-present` makes the step opt-in per package: a package without a
 - **`pnpm run build` is recursive, the others are not.** `lint` and `generate`
   target specific packages by name; `build` fans out to all of them.
 - **Adding a linter** means wiring it into `lint` and into the driver's step
-  list, since `check` reaches a linter through `pnpm run generate`. `scripts/spec`
-  holds the only one today, so `lint` is a single delegation rather than a
-  recursive fan-out.
+  list, since `check` reaches a linter through `pnpm run generate`. `lint`
+  composes the spec linter and the generators' `--check` passes rather than
+  fanning out through the workspace.

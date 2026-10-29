@@ -379,12 +379,60 @@ export interface Other<T> {
     });
 });
 
+describe("--check", () => {
+    it("passes when the committed modules declare the spec's operations", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(0);
+    });
+
+    it("fails when the spec declares an operation and no module exists", () => {
+        const dir = tempDir();
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
+        expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(false);
+    });
+
+    it("fails when a committed module no longer declares the contract", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+        writeFileSync(join(dir, "sendInvoice.ts"), "export const sendInvoice = async () => null;\n");
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
+    });
+
+    it("reports a stale scaffold rather than removing it", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+
+        expect(run(build({ "Ops.ts": WITHOUT_SEND }), ["--check", "--out", dir], SILENT)).toBe(1);
+        expect(existsSync(join(dir, "sendInvoice.ts"))).toBe(true);
+    });
+
+    it("does not create the output directory, so a check run leaves the tree untouched", () => {
+        const dir = join(tempDir(), "missing");
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
+        expect(existsSync(dir)).toBe(false);
+    });
+});
+
 describe("output", () => {
     it("reports the summary through the log channel", () => {
         const log = vi.fn();
 
         expect(run(build(), ["--out", tempDir()], { log, error: vi.fn() })).toBe(0);
         expect(log).toHaveBeenCalledWith("operations OK (1 created, 0 verified, 0 removed)");
+    });
+
+    it("reports the check summary through the log channel", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+        const log = vi.fn();
+
+        expect(run(build(), ["--check", "--out", dir], { log, error: vi.fn() })).toBe(0);
+        expect(log).toHaveBeenCalledWith("operations OK (1 file(s) declare the spec's operations)");
     });
 
     it("reports a refusal through the error channel, so a silent sink sees neither", () => {

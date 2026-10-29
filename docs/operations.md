@@ -117,6 +117,11 @@ the generator does not guess how to repair hand-written code.
 Signature compatibility is not re-checked by the generator: `pnpm typecheck`
 does that, because the annotation is what connects the module to the spec.
 
+`pnpm lint:operations` is `generate:operations --check`: it writes nothing, so
+it reports a missing module, a module whose annotation drifted, or a scaffold the
+spec no longer declares without repairing any of them. `pnpm lint` runs it
+beside the spec linter and `lint:spec-tests`.
+
 The generator refuses the whole run when the spec itself cannot be scaffolded:
 
 - an operation that takes more than one type parameter, since the backend

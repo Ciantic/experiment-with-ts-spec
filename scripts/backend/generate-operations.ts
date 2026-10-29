@@ -1,6 +1,6 @@
 /** Scaffold one backend module per `@operation`, and verify each hand-written one still declares its contract. See docs/operations.md. */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { BACKEND_PACKAGE_ROOT } from "../paths.ts";
 import {
     loadSpec,
@@ -84,9 +84,62 @@ export function declaresContract(source: string): boolean {
     return /export\s+const\s+\w+\s*:\s*\w+(?:\s*<[^=;]*?>)?\s*\[\s*["']\w+["']\s*\]\s*=/u.test(source);
 }
 
-/** Remove the scaffolds of operations the spec no longer declares, and report the implementations it drops. */
-function pruneStale(outDir: string, keep: Set<string>, findings: Diagnostic[]): number {
-    let removed = 0;
+/** How the module on disk answers one operation the spec declares. */
+type ModuleStatus = {
+    operation: SpecOperation;
+    file: string;
+    state: "missing" | "drifted" | "ok";
+};
+
+/** Read every module once, so a check run and a generate run decide on the same facts. */
+function inspect(operations: readonly SpecOperation[], outDir: string): ModuleStatus[] {
+    return operations.map((operation) => {
+        const file = join(outDir, `${operation.name}.ts`);
+        if (!existsSync(file)) {
+            return { operation, file, state: "missing" as const };
+        }
+        const state = meetsContract(readFileSync(file, "utf8"), operation) ? ("ok" as const) : ("drifted" as const);
+        return { operation, file, state };
+    });
+}
+
+/** The module names the spec still declares, so pruning leaves them alone. */
+function keepModules(operations: readonly SpecOperation[]): Set<string> {
+    return new Set(operations.map((operation) => `${operation.name}.ts`));
+}
+
+/** The finding for an operation the spec declares and no module answers. */
+function missingModule(file: string, operation: SpecOperation): Diagnostic {
+    const shown = relative(process.cwd(), file);
+    return {
+        filePath: shown,
+        line: 1,
+        message: `\`${operation.name}\`: the spec declares @operation but ${shown} is missing; run pnpm generate`,
+    };
+}
+
+/** The finding for a module that no longer declares the contract the spec gives it. */
+function driftedContract(file: string, operation: SpecOperation): Diagnostic {
+    return {
+        filePath: operation.location.filePath,
+        line: operation.location.line,
+        message: `\`${operation.name}\`: ${file} does not declare \`export const ${operation.name}: ${contractType(operation)}["${operation.name}"]\``,
+    };
+}
+
+/** The finding for a scaffold whose operation the spec no longer declares. */
+function staleScaffold(file: string): Diagnostic {
+    return {
+        filePath: relative(process.cwd(), file),
+        line: 1,
+        message: `\`${basename(file, ".ts")}\` no longer declares @operation; run pnpm generate to remove its scaffold`,
+    };
+}
+
+/** Split the modules the spec no longer declares into scaffolds a generate run deletes and implementations it reports. */
+function staleModules(outDir: string, keep: Set<string>): { scaffolds: string[]; findings: Diagnostic[] } {
+    const scaffolds: string[] = [];
+    const findings: Diagnostic[] = [];
     for (const entry of readdirSync(outDir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
             continue;
@@ -94,20 +147,20 @@ function pruneStale(outDir: string, keep: Set<string>, findings: Diagnostic[]): 
         const file = join(outDir, entry.name);
         const source = readFileSync(file, "utf8");
         if (isScaffold(source)) {
-            rmSync(file);
-            removed += 1;
+            scaffolds.push(file);
             continue;
         }
         // An implementation is the author's, so the generator reports it rather than deleting it.
         if (declaresContract(source)) {
+            const shown = relative(process.cwd(), file);
             findings.push({
-                filePath: relative(process.cwd(), file),
+                filePath: shown,
                 line: 1,
-                message: `\`${entry.name.slice(0, -".ts".length)}\` is no longer an @operation; delete ${relative(process.cwd(), file)} or restore the spec`,
+                message: `\`${basename(file, ".ts")}\` is no longer an @operation; delete ${shown} or restore the spec`,
             });
         }
     }
-    return removed;
+    return { scaffolds, findings };
 }
 
 /** Whether a hand-written module still declares the operation with its contract annotation. */
@@ -167,7 +220,65 @@ function report(findings: Diagnostic[], operations: number, output: Output): voi
     output.error(`\n${findings.length} problem(s) in ${operations} operation(s)`);
 }
 
-/** Write a scaffold for every operation the spec adds, and check the modules already committed still meet their contract. */
+/** Report the modules the spec no longer describes, writing and deleting nothing. */
+function checkRun(operations: readonly SpecOperation[], outDir: string, output: Output): number {
+    const findings: Diagnostic[] = [];
+    let verified = 0;
+    for (const status of inspect(operations, outDir)) {
+        if (status.state === "ok") {
+            verified += 1;
+            continue;
+        }
+        findings.push(
+            status.state === "missing"
+                ? missingModule(status.file, status.operation)
+                : driftedContract(status.file, status.operation),
+        );
+    }
+    if (existsSync(outDir)) {
+        const stale = staleModules(outDir, keepModules(operations));
+        findings.push(...stale.findings, ...stale.scaffolds.map(staleScaffold));
+    }
+    if (findings.length > 0) {
+        report(findings, operations.length, output);
+        return 1;
+    }
+    output.log(`operations OK (${verified} file(s) declare the spec's operations)`);
+    return 0;
+}
+
+/** Scaffold the modules the spec adds, verify the committed ones, and delete the scaffolds it no longer declares. */
+function generateRun(operations: readonly SpecOperation[], outDir: string, output: Output): number {
+    mkdirSync(outDir, { recursive: true });
+    const findings: Diagnostic[] = [];
+    let created = 0;
+    let verified = 0;
+    for (const status of inspect(operations, outDir)) {
+        if (status.state === "missing") {
+            writeFileSync(status.file, renderOperationFile(status.operation));
+            created += 1;
+            continue;
+        }
+        if (status.state === "drifted") {
+            findings.push(driftedContract(status.file, status.operation));
+            continue;
+        }
+        verified += 1;
+    }
+    const stale = staleModules(outDir, keepModules(operations));
+    findings.push(...stale.findings);
+    for (const file of stale.scaffolds) {
+        rmSync(file);
+    }
+    if (findings.length > 0) {
+        report(findings, operations.length, output);
+        return 1;
+    }
+    output.log(`operations OK (${created} created, ${verified} verified, ${stale.scaffolds.length} removed)`);
+    return 0;
+}
+
+/** Scaffold the operations the spec adds, or with `--check`, report the modules that no longer match it and write nothing. */
 export function run(spec: SpecModel, argv: readonly string[] = process.argv, output: Output = console): number {
     const outIndex = argv.indexOf("--out");
     const outDir = outIndex === -1 ? DEFAULT_OUT_DIR : argv[outIndex + 1];
@@ -182,38 +293,10 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
         report(findings, operations.length, output);
         return 1;
     }
-    mkdirSync(outDir, { recursive: true });
-
-    let created = 0;
-    let verified = 0;
-    for (const operation of operations) {
-        const file = join(outDir, `${operation.name}.ts`);
-        if (!existsSync(file)) {
-            writeFileSync(file, renderOperationFile(operation));
-            created += 1;
-            continue;
-        }
-        // A committed module is hand-written from here on, so regeneration only checks the contract annotation.
-        if (!meetsContract(readFileSync(file, "utf8"), operation)) {
-            findings.push({
-                filePath: operation.location.filePath,
-                line: operation.location.line,
-                message: `\`${operation.name}\`: ${file} does not declare \`export const ${operation.name}: ${contractType(operation)}["${operation.name}"]\``,
-            });
-            continue;
-        }
-        verified += 1;
-    }
-
-    const removed = pruneStale(outDir, new Set(operations.map((operation) => `${operation.name}.ts`)), findings);
-
-    if (findings.length > 0) {
-        report(findings, operations.length, output);
-        return 1;
-    }
-
-    output.log(`operations OK (${created} created, ${verified} verified, ${removed} removed)`);
-    return 0;
+    // The mode picks the whole procedure: a check run reports what a generate run would repair.
+    return argv.includes("--check")
+        ? checkRun(operations, outDir, output)
+        : generateRun(operations, outDir, output);
 }
 
 if (import.meta.main) {
