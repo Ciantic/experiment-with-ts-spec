@@ -1,9 +1,8 @@
-/** Tests for the `sendInvoice` operation, over the seeded mock data. See docs/testing.md and docs/operations.md. */
+/** The `sendInvoice` behaviour the spec does not declare, over the seeded mock data. See docs/testing.md and docs/operations.md. */
 import { afterEach, describe, expect, it } from "vitest";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
-import { InvoiceDetailsError } from "sdk/errors.ts";
 import { createAppContext } from "../context.ts";
 import { createCustomer, createInvoice, createSeller, createTenant } from "../db/repositories/index.ts";
 import { resultRows, type SqlExecutor } from "../db/sql-executor.ts";
@@ -76,31 +75,6 @@ afterEach(async () => {
 });
 
 describe("sendInvoice", () => {
-    it("writes the sent invoice and the queued email, and answers both keys", async () => {
-        open = await fixture();
-
-        const answer = await sendInvoice({ db: open.db }, { invoice: first });
-
-        expect(await rows(open.db, SENT_ROWS)).toEqual([
-            {
-                id: answer.invoiceSentId,
-                invoiceId: first.id,
-                number: first.number,
-                language: first.language,
-                notes: first.notes,
-                customerEmail: first.customer!.email,
-            },
-        ]);
-        expect(await rows(open.db, EMAIL_ROWS)).toEqual([
-            {
-                id: answer.emailId,
-                to: first.customer!.email,
-                subject: `Invoice ${first.number}`,
-                status: "pending",
-            },
-        ]);
-    });
-
     it("freezes the customer and the seller onto the sent invoice", async () => {
         open = await fixture();
 
@@ -136,15 +110,6 @@ describe("sendInvoice", () => {
             (row) => row.language,
         );
         expect(languages).toEqual([first.language, drafts[1]!.customer!.language, drafts[2]!.seller!.language]);
-    });
-
-    it("refuses a draft that lacks a detail, and writes nothing", async () => {
-        open = await fixture();
-        const draft = without(first, "number") as Invoice;
-
-        await expect(sendInvoice({ db: open.db }, { invoice: draft })).rejects.toThrow(InvoiceDetailsError);
-        expect(await rows(open.db, SENT_ROWS)).toEqual([]);
-        expect(await rows(open.db, EMAIL_ROWS)).toEqual([]);
     });
 
     it("writes nothing when the email cannot be queued, so the send is one transaction", async () => {

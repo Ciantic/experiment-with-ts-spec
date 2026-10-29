@@ -116,11 +116,15 @@ values, all of which are domain decisions rather than code behaviour.
   client, the generated route table, and a live server. It takes the rows a seeded
   server answers with from `spec/mockdata`, and names no domain type, so a change
   to the model does not touch it.
-- `packages/backend/src/operations/sendInvoice.test.ts` — an operation over a
-  schema seeded with `spec/mockdata`, so the call runs on the rows a development
-  server has. It asserts the rows the operation writes, the value it resolves
-  when the caller omits it, the refusal of an incomplete input, and that a
-  refused second write leaves the first rolled back.
+- `{operation}.spec.test.ts` in `packages/backend/src/operations/` — the tests the
+  spec declares for an operation, over fixtures the test builds in memory: the
+  rows a call writes, and that an input missing any one of the fields it needs is
+  refused with nothing written.
+- `{operation}.test.ts` beside it — the behaviour the spec does not declare, over
+  a schema seeded from `spec/mockdata`, so a call runs on the rows a development
+  server holds. It asserts the values the operation snapshots onto the written
+  row, the value it resolves when the caller omits it, and that a refused second
+  write leaves the first rolled back.
 - `scripts/backend/generate-spec-tests.test.ts` — drives the spec-test
   scaffolder with in-memory fixtures and a temp directory: the describe blocks
   it groups the rows into, the drift it reports for a file whose tests differ

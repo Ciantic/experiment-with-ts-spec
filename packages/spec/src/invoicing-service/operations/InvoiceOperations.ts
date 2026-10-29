@@ -10,6 +10,9 @@ export interface InvoiceOperations<T> {
      * 
      * @operation
      * @restOperation POST /invoice/send
+     * @testDescribe Sending an invoice
+     * @testIt Sends the invoice successfully
+     * @testIt Throws when the invoice is missing details
      **/
     sendInvoice(ctx: T, opts: {
         invoice: Invoice;
