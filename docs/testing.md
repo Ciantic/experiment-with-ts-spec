@@ -84,7 +84,7 @@ values, all of which are domain decisions rather than code behaviour.
   statement waits for it, and a failure frees the turn. It also checks the write
   count, the DDL batch, and shutdown.
 - `packages/infra/src/postgres/pg-setup.test.ts` — `PgSqlDriver` builds the driver
-  over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `SqlSession`. It also
+  over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `SqlConnection`. It also
   asserts the mapping `createPgMapperTypes` installs — `int8` to `bigint`, `date`/`timestamp`/
   `numeric` to strings, `bytea` to `Uint8Array`, a text array to its raw
   elements, and an unmapped type left to the driver. No Postgres server is in the

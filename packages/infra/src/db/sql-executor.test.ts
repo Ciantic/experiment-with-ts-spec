@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { SqlDriver, type SqlSession } from "./sql-driver.ts";
+import { SqlDriver, type SqlConnection } from "./sql-driver.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -164,7 +164,7 @@ class RecordingDriver extends SqlDriver {
         return { rows: [], affectedRows: 0 };
     }
 
-    async connect(): Promise<SqlSession> {
+    async connect(): Promise<SqlConnection> {
         return {
             query: <Row extends Record<string, unknown> = Record<string, unknown>>(
                 sql: string,
@@ -190,7 +190,7 @@ function fakeDriver(): { driver: SqlDriver; statements: string[]; releases: () =
 }
 
 describe("the checkout a boundary runs on", () => {
-    it("brackets one checked-out session with begin and commit, releasing it once", async () => {
+    it("brackets one checked-out connection with begin and commit, releasing it once", async () => {
         const { driver, statements, releases } = fakeDriver();
 
         await driver.createExecutor().transaction(async (tx) => {
@@ -201,7 +201,7 @@ describe("the checkout a boundary runs on", () => {
         expect(releases()).toBe(1);
     });
 
-    it("rolls back and releases the session when the callback throws", async () => {
+    it("rolls back and releases the connection when the callback throws", async () => {
         const { driver, statements, releases } = fakeDriver();
 
         await expect(
@@ -215,7 +215,7 @@ describe("the checkout a boundary runs on", () => {
         expect(releases()).toBe(1);
     });
 
-    it("keeps the nesting on that one session, releasing it once", async () => {
+    it("keeps the nesting on that one connection, releasing it once", async () => {
         const { driver, statements, releases } = fakeDriver();
 
         await driver.createExecutor().transaction(async (tx) => {

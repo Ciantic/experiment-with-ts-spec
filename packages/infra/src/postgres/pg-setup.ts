@@ -1,6 +1,6 @@
 /** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
 import type { Pool, PoolConfig } from "pg";
-import { SqlDriver, type SqlSession } from "../db/sql-driver.ts";
+import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -112,7 +112,7 @@ export class PgSqlDriver extends SqlDriver {
         return { rows: result.rows, affectedRows: writtenRows(result) };
     }
 
-    protected async connect(): Promise<SqlSession> {
+    protected async connect(): Promise<SqlConnection> {
         const client = await this.#pool.connect();
         return {
             query: async <Row extends Record<string, unknown> = Record<string, unknown>>(

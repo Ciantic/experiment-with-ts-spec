@@ -9,7 +9,7 @@ export { PgliteSqlDriver } from "./postgres/pglite-setup.ts";
 export type { PgliteConstructor } from "./postgres/pglite-setup.ts";
 export { PgSqlDriver } from "./postgres/pg-setup.ts";
 export { SqlDriver } from "./db/sql-driver.ts";
-export type { SqlSession } from "./db/sql-driver.ts";
+export type { SqlConnection } from "./db/sql-driver.ts";
 
 // Error exports
 export { UsageError } from "./errors.ts";

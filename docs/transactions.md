@@ -48,8 +48,8 @@ export interface TransactionOptions {
     readonly deferrable?: boolean;
 }
 
-/** One session borrowed from the driver; `release` returns it. */
-export interface SqlSession {
+/** A connection borrowed for one boundary: statements, and the release that returns it. */
+export interface SqlConnection {
     query<Row extends Record<string, unknown> = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
@@ -63,7 +63,7 @@ export abstract class SqlDriver {
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }>;
-    protected abstract connect(): Promise<SqlSession>;
+    protected abstract connect(): Promise<SqlConnection>;
     abstract exec(sql: string): Promise<unknown>;
     abstract close(): Promise<void>;
 }
@@ -91,13 +91,13 @@ is what a statement that writes without `returning` reports.
 
 `SqlDriver.createExecutor` (`src/db/sql-driver.ts`) is the one implementation:
 
-- **A checkout pins the session, and that is what the boundary rests on.** A `pg`
+- **A checkout pins a connection, and that is what the boundary rests on.** A `pg`
   pool hands out a `PoolClient`, so `begin`…`commit` covers exactly the
   statements that run on it; PGlite has one connection, so its pool holds that
   connection until the checkout releases it.
 - **The port issues the root boundary** — `begin`, `commit`, or `rollback` on the
-  checked-out session — and releases the session in a `finally`.
-- **A nested boundary is a savepoint** on the same session, so one set of
+  checked-out connection — and releases it in a `finally`.
+- **A nested boundary is a savepoint** on the same connection, so one set of
   boundary statements is what both drivers run.
 - **The modes a call names are appended to the `begin`**, so a root boundary is
   opened at the isolation level, access mode, and deferrability the caller asked
@@ -110,10 +110,10 @@ of work to the caller, which is what keeps a request's atomicity in one place
 (`docs/repositories.md`).
 
 Affinity is scoped to the boundary, not to the handle. `SqlExecutor` is a pool
-handle, not a session handle: a `query` on the root handle borrows a session for
-that statement and releases it, so two of them may run on different connections.
+handle, not a connection handle: a `query` on the root handle borrows a connection
+for that statement and releases it, so two of them may run on different connections.
 Every statement inside a `transaction` callback, its savepoints included, runs on
-the one session that boundary checked out. Session-scoped state — a temp table,
+the one connection that boundary checked out. Connection-scoped state — a temp table,
 `set local`, an advisory lock, a prepared statement — is therefore only coherent
 inside a boundary, and a caller that needs it opens one.
 
@@ -235,31 +235,31 @@ The method on `SqlDriver` that builds the executor:
 ```ts
 createExecutor(): SqlExecutor {
     let savepoints = 0;
-    async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
+    async function savepoint<T>(connection: SqlConnection, run: Run<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
-        await session.query(`savepoint ${name}`);
+        await connection.query(`savepoint ${name}`);
         try {
-            const value = await run(handle(session));
-            await session.query(`release savepoint ${name}`);
+            const value = await run(handle(connection));
+            await connection.query(`release savepoint ${name}`);
             return value;
         } catch (thrown) {
-            await session.query(`rollback to savepoint ${name}`);
-            await session.query(`release savepoint ${name}`);
+            await connection.query(`rollback to savepoint ${name}`);
+            await connection.query(`release savepoint ${name}`);
             throw thrown;
         }
     }
     const boundary = async <T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> => {
-        const session = await this.connect();
+        const connection = await this.connect();
         try {
-            await session.query(begin(options));
-            const value = await run(handle(session));
-            await session.query("commit");
+            await connection.query(begin(options));
+            const value = await run(handle(connection));
+            await connection.query("commit");
             return value;
         } catch (thrown) {
-            await session.query("rollback");
+            await connection.query("rollback");
             throw thrown;
         } finally {
-            session.release();
+            connection.release();
         }
     };
     return {
@@ -287,12 +287,12 @@ upsert of several rows — and a create whose rows spill past the statement's
 parameter limit — open their own boundary, which nests as a savepoint inside one
 the caller already holds.
 
-The root boundary is the port's own `begin`/`commit`, issued on the session the
+The root boundary is the port's own `begin`/`commit`, issued on the connection the
 pool checked out, with any modes the call named appended to the `begin`. What
 makes that safe is the checkout, not the statement: a `pg` `PoolClient` pins one
 connection, and the one-connection pool holds PGlite's single connection until
 the boundary releases it. A hand-issued `begin` on a pool
-that did not pin its session would let another request's statement run inside the
+that did not pin its connection would let another request's statement run inside the
 open boundary and be rolled back with it, which is exactly what a checkout
 prevents.
 
@@ -620,8 +620,8 @@ the client imports nothing from infra or the backend.
   characteristics of its own boundary; recognising a conflict and retrying is
   still the caller's decision.
 - **A transaction spanning requests.** A client that needs one sends a
-  `transaction` group; there is no session, no prepared transaction, and no
-  two-phase commit.
+  `transaction` group; there is no connection held across requests, no prepared
+  transaction, and no two-phase commit.
 - **Streaming inside a transaction.** A group resolves with all results before
   the commit, so a large read is materialised rather than streamed.
 - **A group sent anywhere but the group route.** A generated call list posted to

@@ -3,7 +3,7 @@ import * as realPg from "pg";
 import type { PoolConfig } from "pg";
 import { describe, expect, it } from "vitest";
 import type { SqlExecutor } from "../db/sql-executor.ts";
-import type { SqlSession } from "../db/sql-driver.ts";
+import type { SqlConnection } from "../db/sql-driver.ts";
 import { createPgMapperTypes, PgSqlDriver, type PgModule, type PgPoolModule } from "./pg-setup.ts";
 
 // `@types/pg` describes the pre-v3 `arrayParser`; only that member needs a cast, and the rest fits by assignment.
@@ -39,9 +39,9 @@ function recordingModule(): { module: PgPoolModule; config: () => PoolConfig } {
 }
 
 describe("a pg driver as the transaction port", () => {
-    it("checks out a client that fits the session", () => {
-        // The assignment is the assertion: `tsc` rejects a client that stops matching the session.
-        const fitsCheckout: (client: realPg.PoolClient) => SqlSession = (client) => client;
+    it("checks out a client that fits the connection", () => {
+        // The assignment is the assertion: `tsc` rejects a client that stops matching the connection.
+        const fitsCheckout: (client: realPg.PoolClient) => SqlConnection = (client) => client;
 
         expect(fitsCheckout).toBeTypeOf("function");
     });

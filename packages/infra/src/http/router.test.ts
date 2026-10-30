@@ -15,7 +15,7 @@ import {
     VersionConflictError,
 } from "sdk/errors.ts";
 import type { AppContext } from "../context.ts";
-import { SqlDriver, type SqlSession } from "../db/sql-driver.ts";
+import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
@@ -48,7 +48,7 @@ class RecordingDriver extends SqlDriver {
         return { rows: [], affectedRows: 0 };
     }
 
-    async connect(): Promise<SqlSession> {
+    async connect(): Promise<SqlConnection> {
         return {
             query: <Row extends Record<string, unknown> = Record<string, unknown>>(
                 sql: string,

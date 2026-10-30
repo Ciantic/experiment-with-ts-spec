@@ -1,6 +1,6 @@
 /** PGlite configuration, result type mapping, and the driver the app injects. See docs/schema-generation.md. */
 import type { DebugLevel, PGlite, ParserOptions } from "@electric-sql/pglite";
-import { SqlDriver, type SqlSession } from "../db/sql-driver.ts";
+import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 
 /** Postgres type OIDs, from src/include/catalog/pg_type.dat. */
 const OID = {
@@ -31,8 +31,8 @@ export class PgliteSqlDriver extends SqlDriver {
         this.#pglite = new Pglite({ parsers: createPgliteParsers(), debug: options.debug ?? 0 });
     }
 
-    /** Wait for the current turn, then hold the connection until the session is released. */
-    async #take(): Promise<SqlSession> {
+    /** Wait for the current turn, then hold the connection until it is released. */
+    async #take(): Promise<SqlConnection> {
         const previous = this.#turn;
         let handOff!: () => void;
         this.#turn = new Promise<void>((resolve) => {
@@ -63,15 +63,15 @@ export class PgliteSqlDriver extends SqlDriver {
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }> {
-        const session = await this.#take();
+        const connection = await this.#take();
         try {
-            return await session.query<Row>(sql, parameters);
+            return await connection.query<Row>(sql, parameters);
         } finally {
-            session.release();
+            connection.release();
         }
     }
 
-    protected connect(): Promise<SqlSession> {
+    protected connect(): Promise<SqlConnection> {
         return this.#take();
     }
 
