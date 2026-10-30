@@ -11,6 +11,7 @@ import { run as runOperationRoutes } from "./backend/generate-operation-routes.t
 import { run as runRestClient } from "./sdk/generate-rest-client.ts";
 import { run as runValidation } from "./sdk/generate-zod-schemas.ts";
 import { run as runErrors } from "./sdk/generate-errors.ts";
+import { run as runMermaidSpec } from "./spec/generate-mermaid-spec.ts";
 
 /** One step of the run: read the spec, do its job, and report the exit code. */
 type Step = (spec: SpecModel, argv: readonly string[]) => number;
@@ -31,6 +32,7 @@ const steps: Step[] = [
     runEntityRoutes,
     runOperationRoutes,
     runRestClient,
+    runMermaidSpec,
 ];
 
 for (const step of steps) {

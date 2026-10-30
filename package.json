@@ -23,6 +23,7 @@
     "generate:entity-routes": "node scripts/infra/generate-entity-routes.ts",
     "generate:operation-routes": "node scripts/backend/generate-operation-routes.ts",
     "generate:rest-client": "node scripts/sdk/generate-rest-client.ts",
+    "generate:mermaid-spec": "node scripts/spec/generate-mermaid-spec.ts",
     "build": "pnpm -r --if-present run build",
     "check": "pnpm run generate && pnpm run build"
   },
