@@ -20,8 +20,8 @@ the transport.
   `entityRoutes` with them into the table the router matches a request on and
   the group handler resolves an id in. See `docs/operations.md`.
 - `packages/infra/src/http/router.ts` — the request handler. Hand-written.
-- `packages/infra/src/http/http-response.ts` — the response shape, and the
-  plain-JSON failures a handler answers with. Hand-written.
+- `packages/infra/src/http/api-http-response.ts` — the `ApiHttpResponse` class,
+  which holds a response's payload and encodes it in its wire form. Hand-written.
 - `packages/infra/src/http/server.ts` — a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
   re-exporting them. Imported by name, not re-exported by the entry.
@@ -278,10 +278,12 @@ Two rules follow from the codec:
 
 ## Status mapping
 
-The handler turns a thrown error into a status and a plain-JSON body. An
-`AppError` names its own status and kind; only an error that is not one is
-matched against the driver's `code` (`statusFor`, `src/http/http-response.ts`).
-`docs/errors.md` records the hierarchy and the body shape.
+The router and the group handler answer a value or throw the failure; the server
+turns a thrown error into an `ApiHttpResponse.failure`: a status and a plain-JSON
+payload. An `AppError` names its own status and kind; only an error that is not
+one is matched against the driver's `code` (`statusFor`,
+`src/http/api-http-response.ts`). `docs/errors.md` records the hierarchy and the
+body shape.
 
 | Code | Status | Meaning |
 | --- | --- | --- |

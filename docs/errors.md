@@ -116,20 +116,23 @@ because it did not fail the request.
 
 ## The response
 
-`errorFrom` in `packages/infra/src/http/http-response.ts` is the one place a
-thrown error becomes a response: `statusFor` picks the status, and
-`apiErrorBody` writes the body. `statusFor` returns an `AppError`'s own status
-first; only an error that is not one is matched against the driver's `code`
-(`docs/rest-api.md`).
+`ApiHttpResponse.failure` in
+`packages/infra/src/http/api-http-response.ts` is the one place a thrown error
+becomes a response: `statusFor` picks the status, and `apiErrorBody` supplies the
+payload. `ApiHttpResponse.ok` is the matching success. The response keeps that
+payload unencoded; `toWire()` writes the body — `devalue` for a success, plain
+JSON for a failure — along with the status and headers `node:http` writes.
+`statusFor` returns an `AppError`'s own status first; only an error that is not
+one is matched against the driver's `code` (`docs/rest-api.md`).
 
 Inside a group, `GroupFailure` wraps the handler's error, copies its `kind`,
 `issues`, and status, and adds the tree path of the entry that raised. The SDK
 therefore reconstructs the original class with the group coordinates attached,
 rather than a generic group error.
 
-A driver failure is not wrapped in an `AppError`. It reaches the router with the
-SQLSTATE the driver gave it, and `statusFor` maps it through the table in
-`docs/rest-api.md`.
+A driver failure is not wrapped in an `AppError`. It propagates out of the
+router with the SQLSTATE the driver gave it, and `statusFor` maps it through the
+table in `docs/rest-api.md`.
 
 ## The JSDoc contract
 

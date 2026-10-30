@@ -2,12 +2,21 @@
 import { Buffer } from "node:buffer";
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
-import { parse as decode, stringify } from "devalue";
+import { stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
-import { QueryError, ShortWriteError, VersionConflictError } from "sdk/errors.ts";
+import {
+    BadGroupError,
+    NotFoundError,
+    PayloadTooLargeError,
+    QueryError,
+    RequestError,
+    ShortWriteError,
+    ValidationError,
+    VersionConflictError,
+} from "sdk/errors.ts";
 import type { AppContext } from "../context.ts";
 import type { SqlDriver, SqlSession } from "../db/sql-driver.ts";
-import { statusFor } from "./http-response.ts";
+import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
 
@@ -78,75 +87,76 @@ function queryUrl(argument: unknown): string {
 /** A value with both of the types a JSON encoding would lose. */
 const payload = { at: new Date("2026-01-02T03:04:05.000Z"), revision: 7n, name: "widget" };
 
+/** The error a request failed with, so its type and fields are both assertable. */
+async function failure(promise: Promise<unknown>): Promise<unknown> {
+    try {
+        await promise;
+    } catch (thrown) {
+        return thrown;
+    }
+    throw new Error("expected the request to fail");
+}
+
 describe("createRouter", () => {
-    it("answers 404 for a call the table does not expose", async () => {
+    it("throws NotFoundError for a call the table does not expose", async () => {
         const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle(request("POST", "/missing"));
+        const thrown = await failure(router.handle(request("POST", "/missing")));
 
-        expect(response.status).toBe(404);
+        expect(thrown).toBeInstanceOf(NotFoundError);
     });
 
     it("matches on the method as well as the path", async () => {
         const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle(request("PATCH", "/echo"));
+        const thrown = await failure(router.handle(request("PATCH", "/echo")));
 
-        expect(response.status).toBe(404);
+        expect(thrown).toBeInstanceOf(NotFoundError);
     });
 
     it("serves a PUT, the verb an upsert reaches the server with", async () => {
         const router = createRouter(app, [echoRoute({ method: "PUT" })]);
 
-        const response = await router.handle(request("PUT", "/echo", stringify(payload)));
-
-        expect(response.status).toBe(200);
-        expect(decode(response.body)).toEqual(payload);
+        expect(await router.handle(request("PUT", "/echo", stringify(payload)))).toEqual(payload);
     });
 
-    it("answers 400 for a body that is not decodable", async () => {
+    it("throws RequestError for a body that is not decodable", async () => {
         const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle(request("POST", "/echo", "not devalue"));
+        const thrown = await failure(router.handle(request("POST", "/echo", "not devalue")));
 
-        expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
+        expect(thrown).toBeInstanceOf(RequestError);
+        expect(thrown).toMatchObject({ status: 400, kind: "request" });
     });
 
     it("refuses a body past the transport's cap", async () => {
         const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle(request("POST", "/echo", "x".repeat(1_000_001)));
+        const thrown = await failure(router.handle(request("POST", "/echo", "x".repeat(1_000_001))));
 
-        expect(response.status).toBe(413);
-        expect(JSON.parse(response.body)).toEqual({ error: "request body too large", kind: "payload-too-large" });
+        expect(thrown).toBeInstanceOf(PayloadTooLargeError);
+        expect(thrown).toMatchObject({ status: 413, kind: "payload-too-large" });
     });
 
-    it("answers 400 with the issues when the schema rejects", async () => {
+    it("throws ValidationError with the issues when the schema rejects", async () => {
         const router = createRouter(app, [echoRoute({ input: rejects })]);
 
-        const response = await router.handle(request("POST", "/echo"));
+        const thrown = await failure(router.handle(request("POST", "/echo")));
 
-        expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "invalid request", kind: "validation", issues: ["bad"] });
+        expect(thrown).toBeInstanceOf(ValidationError);
+        expect(thrown).toMatchObject({ status: 400, kind: "validation", issues: ["bad"] });
     });
 
-    it("passes the decoded body to the handler and encodes the result", async () => {
+    it("passes the decoded body to the handler and answers the result", async () => {
         const router = createRouter(app, [echoRoute()]);
 
-        const response = await router.handle(request("POST", "/echo", stringify(payload)));
-
-        expect(response.status).toBe(200);
-        expect(decode(response.body)).toEqual(payload);
+        expect(await router.handle(request("POST", "/echo", stringify(payload)))).toEqual(payload);
     });
 
     it("decodes the query parameter for a call that carries its argument there", async () => {
         const router = createRouter(app, [queryRoute()]);
 
-        const response = await router.handle(request("GET", queryUrl(payload)));
-
-        expect(response.status).toBe(200);
-        expect(decode(response.body)).toEqual(payload);
+        expect(await router.handle(request("GET", queryUrl(payload)))).toEqual(payload);
     });
 
     it("reads the argument from where the route says, ignoring the other", async () => {
@@ -159,17 +169,17 @@ describe("createRouter", () => {
             request("POST", queryUrl({ from: "query" }), stringify({ from: "body" })),
         );
 
-        expect(decode(fromQuery.body)).toEqual({ from: "query" });
-        expect(decode(fromBody.body)).toEqual({ from: "body" });
+        expect(fromQuery).toEqual({ from: "query" });
+        expect(fromBody).toEqual({ from: "body" });
     });
 
-    it("answers 400 for a query parameter that is not decodable", async () => {
+    it("throws RequestError for a query parameter that is not decodable", async () => {
         const router = createRouter(app, [queryRoute()]);
 
-        const response = await router.handle(request("GET", "/echo?q=not%20devalue"));
+        const thrown = await failure(router.handle(request("GET", "/echo?q=not%20devalue")));
 
-        expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "malformed request", kind: "request" });
+        expect(thrown).toBeInstanceOf(RequestError);
+        expect(thrown).toMatchObject({ status: 400, kind: "request" });
     });
 
     it("decodes an absent argument as undefined, leaving the schema to reject it", async () => {
@@ -184,9 +194,9 @@ describe("createRouter", () => {
         });
         const router = createRouter(app, [route]);
 
-        const response = await router.handle(request("GET", "/echo"));
+        const value = await router.handle(request("GET", "/echo"));
 
-        expect(response.status).toBe(200);
+        expect(value).toBeUndefined();
         expect(seen).toEqual([undefined]);
     });
 
@@ -205,16 +215,13 @@ describe("createRouter", () => {
         expect(own.statements).toEqual(["select 1"]);
     });
 
-    it("encodes an undefined result as null", async () => {
+    it("answers an undefined result as undefined", async () => {
         const router = createRouter(app, [echoRoute({ handler: async () => undefined })]);
 
-        const response = await router.handle(request("POST", "/echo"));
-
-        expect(response.status).toBe(200);
-        expect(decode(response.body)).toBeNull();
+        expect(await router.handle(request("POST", "/echo"))).toBeUndefined();
     });
 
-    it("maps the version conflict to 409", async () => {
+    it("propagates a driver failure with its SQLSTATE", async () => {
         const route = echoRoute({
             handler: async () => {
                 throw Object.assign(new Error("version conflict"), { code: "40001" });
@@ -222,20 +229,17 @@ describe("createRouter", () => {
         });
         const router = createRouter(app, [route]);
 
-        const response = await router.handle(request("POST", "/echo"));
+        const thrown = await failure(router.handle(request("POST", "/echo")));
 
-        expect(response.status).toBe(409);
-        expect(JSON.parse(response.body)).toEqual({ error: "version conflict" });
+        expect(thrown).toBeInstanceOf(Error);
+        expect((thrown as Error).message).toBe("version conflict");
+        expect((thrown as { code?: unknown }).code).toBe("40001");
     });
 
-    it("maps an AppError by the status it carries", async () => {
-        const cases = [
-            { thrown: new QueryError("bad read"), status: 400 },
-            { thrown: new VersionConflictError("stale"), status: 409 },
-            { thrown: new ShortWriteError("lost rows"), status: 500 },
-        ];
+    it("propagates an AppError unchanged", async () => {
+        const cases = [new QueryError("bad read"), new VersionConflictError("stale"), new ShortWriteError("lost rows")];
 
-        for (const { thrown, status } of cases) {
+        for (const thrown of cases) {
             const router = createRouter(app, [
                 echoRoute({
                     handler: async () => {
@@ -244,45 +248,17 @@ describe("createRouter", () => {
                 }),
             ]);
 
-            const response = await router.handle(request("POST", "/echo"));
-
-            expect(response.status).toBe(status);
-            expect(JSON.parse(response.body)).toEqual({ error: thrown.message, kind: thrown.kind });
+            expect(await failure(router.handle(request("POST", "/echo")))).toBe(thrown);
         }
     });
 
-    it("maps a unique violation to 409 and an unknown failure to 500", async () => {
-        const violating = createRouter(app, [
-            echoRoute({
-                handler: async () => {
-                    throw Object.assign(new Error("duplicate"), { code: "23505" });
-                },
-            }),
-        ]);
-        const broken = createRouter(app, [
-            echoRoute({
-                handler: async () => {
-                    throw new Error("boom");
-                },
-            }),
-        ]);
-
-        expect((await violating.handle(request("POST", "/echo"))).status).toBe(409);
-        expect((await broken.handle(request("POST", "/echo"))).status).toBe(500);
+    it("maps a unique violation to 409 and an unknown failure to 500", () => {
+        expect(statusFor(Object.assign(new Error("duplicate"), { code: "23505" }))).toBe(409);
+        expect(statusFor(new Error("boom"))).toBe(500);
     });
 
-    it("maps a check violation to 400", async () => {
-        const route = echoRoute({
-            handler: async () => {
-                throw Object.assign(new Error("value rejected by a row constraint"), { code: "23514" });
-            },
-        });
-        const router = createRouter(app, [route]);
-
-        const response = await router.handle(request("POST", "/echo"));
-
-        expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "value rejected by a row constraint" });
+    it("maps a check violation to 400", () => {
+        expect(statusFor(Object.assign(new Error("value rejected by a row constraint"), { code: "23514" }))).toBe(400);
     });
 
     it("does not read an inherited property as a SQLSTATE", () => {
@@ -309,10 +285,9 @@ describe("createRouter", () => {
             group: { kind: "batch", calls: [{ call: { operation: "echo", argument: { n: 1 } } }] },
         });
 
-        const response = await router.handle(request("POST", GROUP_PATH, body));
+        const value = await router.handle(request("POST", GROUP_PATH, body));
 
-        expect(response.status).toBe(200);
-        expect(decode(response.body)).toEqual([{ n: 1 }]);
+        expect(value).toEqual([{ n: 1 }]);
     });
 
     it("resolves a group entry by its operation id, not its path", async () => {
@@ -321,9 +296,9 @@ describe("createRouter", () => {
             group: { kind: "batch", calls: [{ call: { operation: "/echo", argument: { n: 1 } } }] },
         });
 
-        const response = await router.handle(request("POST", GROUP_PATH, body));
+        const thrown = await failure(router.handle(request("POST", GROUP_PATH, body)));
 
-        expect(response.status).toBe(400);
-        expect(JSON.parse(response.body)).toEqual({ error: "no operation `/echo`", kind: "bad-group", path: [0] });
+        expect(thrown).toBeInstanceOf(BadGroupError);
+        expect(thrown).toMatchObject({ status: 400, kind: "bad-group", path: [0] });
     });
 });

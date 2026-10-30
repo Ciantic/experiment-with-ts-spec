@@ -1,13 +1,10 @@
-/** The hand-written request handler: match one request to its route, read, decode, check, run, and encode. See docs/rest-api.md. */
+/** The hand-written request handler: match one request to its route, read, decode, check, and run it. See docs/rest-api.md. */
 import { Buffer } from "node:buffer";
 import type { IncomingMessage } from "node:http";
-import { parse as decode, stringify as encode } from "devalue";
+import { parse as decode } from "devalue";
 import { NotFoundError, PayloadTooLargeError, RequestError, ValidationError } from "sdk/errors.ts";
 import { createRequestContext, type AppContext, type RequestContext } from "../context.ts";
 import { GROUP_PATH, handleGroup } from "./group-handler.ts";
-import { errorFrom, type HttpResponse } from "./http-response.ts";
-
-export type { HttpResponse };
 
 /** The largest request body accepted, in bytes. */
 const MAX_BODY_BYTES = 1_000_000;
@@ -61,20 +58,20 @@ export function createRouter(app: AppContext, routes: Route[]) {
     const resolve = (method: string, path: string) => byKey.get(`${method} ${path}`);
 
     return {
-        /** Match, read, decode, validate, call, and encode one request. Never throws. */
-        async handle(request: IncomingMessage): Promise<HttpResponse> {
+        /**
+         * Match, read, decode, validate, call, and answer one request.
+         * @throws {PayloadTooLargeError} when the body passes the byte cap
+         * @throws {NotFoundError} when no route matches the method and path
+         * @throws {RequestError} when the argument does not decode
+         * @throws {ValidationError} when the route's schema rejects the argument
+         */
+        async handle(request: IncomingMessage): Promise<unknown> {
             const url = new URL(request.url ?? "/", "http://localhost");
             // A missing method is read as `GET`, the method a request without one carries.
             const method = request.method ?? "GET";
             // One context per request, so a route never reaches for a dependency the router did not hand it.
             const context = await createRequestContext(app, request);
-
-            let body: string;
-            try {
-                body = await readBody(request);
-            } catch (thrown) {
-                return errorFrom(thrown);
-            }
+            const body = await readBody(request);
 
             if (method === "POST" && url.pathname === GROUP_PATH) {
                 // A group entry names an operation rather than a verb and a path, so it resolves by id.
@@ -83,7 +80,7 @@ export function createRouter(app: AppContext, routes: Route[]) {
 
             const route = resolve(method, url.pathname);
             if (!route) {
-                return errorFrom(new NotFoundError("no route"));
+                throw new NotFoundError("no route");
             }
 
             // A `query` call carries its argument in `q`; a `body` call in the request body.
@@ -94,21 +91,15 @@ export function createRouter(app: AppContext, routes: Route[]) {
             try {
                 value = encoded === undefined ? undefined : decode(encoded);
             } catch {
-                return errorFrom(new RequestError("malformed request"));
+                throw new RequestError("malformed request");
             }
 
             const parsed = route.input.safeParse(value);
             if (!parsed.success) {
-                return errorFrom(new ValidationError("invalid request", { issues: parsed.error.issues }));
+                throw new ValidationError("invalid request", { issues: parsed.error.issues });
             }
 
-            try {
-                const result = await route.handler(context, parsed.data);
-                // A `get` miss and a void write both encode as `null`.
-                return { status: 200, body: encode(result ?? null) };
-            } catch (thrown) {
-                return errorFrom(thrown);
-            }
+            return await route.handler(context, parsed.data);
         },
     };
 }

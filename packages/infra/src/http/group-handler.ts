@@ -1,5 +1,5 @@
-/** The group entry point: check a tree of calls, run it on the boundary its kind names, and encode the results. See docs/transactions.md. */
-import { parse as decode, stringify as encode } from "devalue";
+/** The group entry point: check a tree of calls, run it on the boundary its kind names, and answer the results. See docs/transactions.md. */
+import { parse as decode } from "devalue";
 import { attempt, attemptWith, batch, transaction, transactionWith } from "../db/group.ts";
 import {
     ACCESS_MODES,
@@ -8,7 +8,7 @@ import {
     type TransactionOptions,
 } from "../db/sql-executor.ts";
 import { AppError, BadGroupError, RequestError } from "sdk/errors.ts";
-import { errorFrom, statusFor, type HttpResponse } from "./http-response.ts";
+import { statusFor } from "./api-http-response.ts";
 import type { Route } from "./router.ts";
 
 /** The path the group entry point is mounted at. See docs/rest-api.md. */
@@ -265,28 +265,19 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
     };
 }
 
-/** Decode, check, run, and encode a tree of calls. */
-export async function handleGroup(db: SqlExecutor, resolve: ResolveRoute, body: string): Promise<HttpResponse> {
+/**
+ * Decode, check, run, and answer a tree of calls.
+ * @throws {RequestError} when the body does not decode
+ * @throws {BadGroupError} when the group body is malformed
+ */
+export async function handleGroup(db: SqlExecutor, resolve: ResolveRoute, body: string): Promise<unknown> {
     let value: unknown;
     try {
         value = body === "" ? undefined : decode(body);
     } catch {
-        return errorFrom(new RequestError("malformed request"));
+        throw new RequestError("malformed request");
     }
 
-    let planned: PlannedGroup;
-    try {
-        planned = planGroup(value, resolve);
-    } catch (thrown) {
-        if (!(thrown instanceof BadGroupError)) {
-            throw thrown;
-        }
-        return errorFrom(thrown);
-    }
-
-    try {
-        return { status: 200, body: encode(await execute(db, planned, [])) };
-    } catch (thrown) {
-        return errorFrom(thrown);
-    }
+    const planned = planGroup(value, resolve);
+    return await execute(db, planned, []);
 }
