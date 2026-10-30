@@ -29,8 +29,8 @@ export abstract class SqlDriver {
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }>;
-    /** Pin one connection to the returned session until it is released. */
-    abstract connect(): Promise<SqlSession>;
+    /** Pin one connection to the returned session until it is released; only a boundary takes one. */
+    protected abstract connect(): Promise<SqlSession>;
     /** Run a batch of statements, the generated DDL included. */
     abstract exec(sql: string): Promise<unknown>;
     /** Release the driver's resources. */

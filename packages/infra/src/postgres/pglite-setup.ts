@@ -71,7 +71,7 @@ export class PgliteSqlDriver extends SqlDriver {
         }
     }
 
-    connect(): Promise<SqlSession> {
+    protected connect(): Promise<SqlSession> {
         return this.#take();
     }
 

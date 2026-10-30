@@ -9,59 +9,60 @@ function settle(): Promise<void> {
 }
 
 describe("PgliteSqlDriver", () => {
-    it("takes statements to a checkout, and hands the connection on when released", async () => {
+    it("runs a boundary on one checkout, and hands the connection on when it ends", async () => {
         const driver = new PgliteSqlDriver(PGlite);
-        const session = await driver.connect();
-        await session.query("select 'x' as value");
-        session.release();
+        const db = driver.createExecutor();
 
-        await expect(driver.query("select 'x' as value")).resolves.toMatchObject({ rows: [{ value: "x" }] });
+        await expect(db.transaction((tx) => tx.query("select 'x' as value"))).resolves.toMatchObject({
+            rows: [{ value: "x" }],
+        });
+        await expect(db.query("select 'x' as value")).resolves.toMatchObject({ rows: [{ value: "x" }] });
+
         await driver.close();
     });
 
-    it("holds the one connection until the checkout is released", async () => {
+    it("holds the one connection until the boundary ends", async () => {
         const driver = new PgliteSqlDriver(PGlite);
+        const db = driver.createExecutor();
         const order: string[] = [];
 
-        const held = await driver.connect();
-        const waiting = driver.query("select 1").then(() => {
+        let open!: () => void;
+        const held = new Promise<void>((resolve) => {
+            open = resolve;
+        });
+        let entered!: () => void;
+        const inside = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const boundary = db.transaction(async (tx) => {
+            await tx.query("select 1");
+            entered();
+            await held;
+        });
+        await inside;
+
+        const waiting = db.query("select 2").then(() => {
             order.push("query ran");
         });
         order.push("query waiting");
-        held.release();
+        await settle();
+        expect(order).toEqual(["query waiting"]);
+
+        open();
+        await boundary;
         await waiting;
 
         expect(order).toEqual(["query waiting", "query ran"]);
         await driver.close();
     });
 
-    it("hands the turn on once, so a double release does not let a second taker through", async () => {
+    it("frees the turn when a boundary throws", async () => {
         const driver = new PgliteSqlDriver(PGlite);
+        const db = driver.createExecutor();
 
-        const first = await driver.connect();
-        let secondTaken = false;
-        let thirdTaken = false;
-        const second = driver.connect().then((session) => {
-            secondTaken = true;
-            return session;
-        });
-        const third = driver.connect().then((session) => {
-            thirdTaken = true;
-            return session;
-        });
+        await expect(db.transaction((tx) => tx.query("select * from no_such_table"))).rejects.toThrow();
+        await expect(db.query("select 1 as one")).resolves.toMatchObject({ rows: [{ one: 1 }] });
 
-        first.release();
-        first.release();
-
-        const secondSession = await second;
-        await settle();
-        expect(secondTaken).toBe(true);
-        expect(thirdTaken).toBe(false);
-
-        secondSession.release();
-        const thirdSession = await third;
-        expect(thirdTaken).toBe(true);
-        thirdSession.release();
         await driver.close();
     });
 

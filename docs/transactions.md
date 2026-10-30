@@ -63,7 +63,7 @@ export abstract class SqlDriver {
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }>;
-    abstract connect(): Promise<SqlSession>;
+    protected abstract connect(): Promise<SqlSession>;
     abstract exec(sql: string): Promise<unknown>;
     abstract close(): Promise<void>;
 }
@@ -79,8 +79,8 @@ caller never builds it itself.
 
 The process owns the driver; a boundary owns only a checkout. `createAppContext`
 applies the generated DDL through the driver's `exec`, and `createExecutor` uses
-only the driver's `query` and `connect` — so a boundary never reaches the batch
-or the shutdown, and `context.ts` names no driver.
+only the driver's `query` and its protected `connect` — so a boundary never
+reaches the batch or the shutdown, and `context.ts` names no driver.
 
 `SqlExecutor.query` answers `{ rows: Row[]; affectedRows: number }`. Both drivers
 report the write count: PGlite calls it `affectedRows`, and `pg`'s `rowCount` is

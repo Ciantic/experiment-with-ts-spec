@@ -80,12 +80,11 @@ values, all of which are domain decisions rather than code behaviour.
   survives. A recording fake driver pins the other half: the checkout brackets the
   boundary and is released exactly once.
 - `packages/infra/src/postgres/pglite-setup.test.ts` — PGlite as a
-  `PgliteSqlDriver`: a checkout holds the one connection until it is released, a
-  plain statement takes the same turn, a double release lets one taker through,
-  and a failure frees the turn. It also checks the write count, the DDL batch,
-  and shutdown.
+  `PgliteSqlDriver`: a boundary holds the one connection until it ends, a plain
+  statement waits for it, and a failure frees the turn. It also checks the write
+  count, the DDL batch, and shutdown.
 - `packages/infra/src/postgres/pg-setup.test.ts` — `PgSqlDriver` builds the driver
-  over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `connect`. It also
+  over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `SqlSession`. It also
   asserts the mapping `createPgMapperTypes` installs — `int8` to `bigint`, `date`/`timestamp`/
   `numeric` to strings, `bytea` to `Uint8Array`, a text array to its raw
   elements, and an unmapped type left to the driver. No Postgres server is in the

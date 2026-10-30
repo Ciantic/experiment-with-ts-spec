@@ -3,7 +3,7 @@ import * as realPg from "pg";
 import type { PoolConfig } from "pg";
 import { describe, expect, it } from "vitest";
 import type { SqlExecutor } from "../db/sql-executor.ts";
-import type { SqlDriver } from "../db/sql-driver.ts";
+import type { SqlSession } from "../db/sql-driver.ts";
 import { createPgMapperTypes, PgSqlDriver, type PgModule, type PgPoolModule } from "./pg-setup.ts";
 
 // `@types/pg` describes the pre-v3 `arrayParser`; only that member needs a cast, and the rest fits by assignment.
@@ -39,10 +39,9 @@ function recordingModule(): { module: PgPoolModule; config: () => PoolConfig } {
 }
 
 describe("a pg driver as the transaction port", () => {
-    it("checks out a client that fits `connect`", () => {
+    it("checks out a client that fits the session", () => {
         // The assignment is the assertion: `tsc` rejects a client that stops matching the session.
-        type Session = Awaited<ReturnType<SqlDriver["connect"]>>;
-        const fitsCheckout: (client: realPg.PoolClient) => Session = (client) => client;
+        const fitsCheckout: (client: realPg.PoolClient) => SqlSession = (client) => client;
 
         expect(fitsCheckout).toBeTypeOf("function");
     });
@@ -123,25 +122,25 @@ describe("PgSqlDriver", () => {
         }
         const module = { ...pgModule, Pool: CountingPool as unknown as PgPoolModule["Pool"] };
         const driver = new PgSqlDriver(module);
+        const db = driver.createExecutor();
 
-        expect(await driver.query("select 1")).toEqual({ rows: [{ id: "pool" }], affectedRows: 0 });
-        expect(await driver.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], affectedRows: 2 });
+        expect(await db.query("select 1")).toEqual({ rows: [{ id: "pool" }], affectedRows: 0 });
+        expect(await db.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], affectedRows: 2 });
 
-        const session = await driver.connect();
-        expect(await session.query("select 1")).toEqual({ rows: [{ id: "session" }], affectedRows: 0 });
-        expect(await session.query("update widget set id = id")).toEqual({
-            rows: [{ id: "session" }],
-            affectedRows: 3,
+        const written = await db.transaction(async (tx) => {
+            expect(await tx.query("select 1")).toEqual({ rows: [{ id: "session" }], affectedRows: 0 });
+            return tx.query("update widget set id = id");
         });
-        session.release();
+        expect(written).toEqual({ rows: [{ id: "session" }], affectedRows: 3 });
+
         await driver.close();
     });
 
-    it("builds the statement, checkout, batch, and shutdown surface over the mapped pool", async () => {
+    it("builds the statement, executor, batch, and shutdown surface over the mapped pool", async () => {
         const driver = new PgSqlDriver(pgModule);
 
         expect(typeof driver.query).toBe("function");
-        expect(typeof driver.connect).toBe("function");
+        expect(typeof driver.createExecutor).toBe("function");
         expect(typeof driver.exec).toBe("function");
         await driver.close();
     });

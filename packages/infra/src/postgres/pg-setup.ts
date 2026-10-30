@@ -112,7 +112,7 @@ export class PgSqlDriver extends SqlDriver {
         return { rows: result.rows, affectedRows: writtenRows(result) };
     }
 
-    async connect(): Promise<SqlSession> {
+    protected async connect(): Promise<SqlSession> {
         const client = await this.#pool.connect();
         return {
             query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
