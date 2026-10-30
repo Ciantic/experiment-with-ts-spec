@@ -53,9 +53,9 @@ a mapping of the spec. Reads are generated separately from the entities in
 where the caller names the modes its own boundary opens with
 (`docs/transactions.md`). The generated modules never import a driver, so `pg`
 stays an optional dependency. The process owns a `SqlDriver`
-(`src/db/sql-driver.ts`), built by `createPgDriver` over `pg`'s mapped `Pool` or
-by `createPgliteDriver` over PGlite; a boundary receives the `SqlExecutor` the
-context derives from it.
+(`src/db/sql-driver.ts`), a `PgSqlDriver` over `pg`'s mapped `Pool` or a
+`PgliteSqlDriver` over PGlite; a boundary receives the `SqlExecutor` the
+context derives from it with `driver.createExecutor()`.
 
 ## What a write returns
 

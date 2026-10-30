@@ -1,16 +1,15 @@
 /** Checks that the port nests with savepoints, over a real driver. See docs/transactions.md. */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDriver } from "../postgres/pglite-setup.ts";
+import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb } from "./sql-executor.ts";
-import type { SqlDriver } from "./sql-driver.ts";
+import { SqlDriver, type SqlSession } from "./sql-driver.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
-    const driver = createPgliteDriver(PGlite);
+    const driver = new PgliteSqlDriver(PGlite);
     await driver.query("create table widget (id text primary key)");
-    return { db: createTransactionalDb(driver), close: () => driver.close() };
+    return { db: driver.createExecutor(), close: () => driver.close() };
 }
 
 /** The ids stored, in order. */
@@ -33,7 +32,7 @@ describe("query", () => {
     });
 });
 
-describe("createTransactionalDb", () => {
+describe("createExecutor", () => {
     it("commits a transaction", async () => {
         const { db, close } = await fixture();
 
@@ -153,35 +152,48 @@ describe("createTransactionalDb", () => {
 });
 
 /** A driver that records the statements and the release, so the bracketing around a checkout is observable. */
-function fakeDriver(): { driver: SqlDriver; statements: string[]; releases: () => number } {
-    const statements: string[] = [];
-    let releases = 0;
-    const record = async (sql: string) => {
-        statements.push(sql);
+class RecordingDriver extends SqlDriver {
+    readonly statements: string[] = [];
+    releases = 0;
+
+    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        _parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }> {
+        this.statements.push(sql);
         return { rows: [], affectedRows: 0 };
-    };
-    return {
-        driver: {
-            query: record,
-            connect: async () => ({
-                query: record,
-                release: () => {
-                    releases += 1;
-                },
-            }),
-            exec: async () => undefined,
-            close: async () => {},
-        },
-        statements,
-        releases: () => releases,
-    };
+    }
+
+    async connect(): Promise<SqlSession> {
+        return {
+            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => this.query<Row>(sql, parameters),
+            release: () => {
+                this.releases += 1;
+            },
+        };
+    }
+
+    async exec(): Promise<unknown> {
+        return undefined;
+    }
+
+    async close(): Promise<void> {}
+}
+
+/** A fresh driver over no database, with the statements and releases it saw. */
+function fakeDriver(): { driver: SqlDriver; statements: string[]; releases: () => number } {
+    const driver = new RecordingDriver();
+    return { driver, statements: driver.statements, releases: () => driver.releases };
 }
 
 describe("the checkout a boundary runs on", () => {
     it("brackets one checked-out session with begin and commit, releasing it once", async () => {
         const { driver, statements, releases } = fakeDriver();
 
-        await createTransactionalDb(driver).transaction(async (tx) => {
+        await driver.createExecutor().transaction(async (tx) => {
             await tx.query("write");
         });
 
@@ -193,7 +205,7 @@ describe("the checkout a boundary runs on", () => {
         const { driver, statements, releases } = fakeDriver();
 
         await expect(
-            createTransactionalDb(driver).transaction(async (tx) => {
+            driver.createExecutor().transaction(async (tx) => {
                 await tx.query("write");
                 throw new Error("boom");
             }),
@@ -206,7 +218,7 @@ describe("the checkout a boundary runs on", () => {
     it("keeps the nesting on that one session, releasing it once", async () => {
         const { driver, statements, releases } = fakeDriver();
 
-        await createTransactionalDb(driver).transaction(async (tx) => {
+        await driver.createExecutor().transaction(async (tx) => {
             await tx.query("outer");
             await tx.transaction(async (inner) => {
                 await inner.query("inner");
@@ -229,7 +241,7 @@ describe("the modes a boundary is opened with", () => {
     it("appends them to the begin that opens the root boundary, in the order Postgres reads them", async () => {
         const { driver, statements, releases } = fakeDriver();
 
-        await createTransactionalDb(driver).transactionWith(
+        await driver.createExecutor().transactionWith(
             { deferrable: true, accessMode: "read only", isolationLevel: "repeatable read" },
             async (tx) => {
                 await tx.query("write");
@@ -243,7 +255,7 @@ describe("the modes a boundary is opened with", () => {
     it("spells a mode the call turns off as the negative the command takes", async () => {
         const { driver, statements } = fakeDriver();
 
-        await createTransactionalDb(driver).transactionWith(
+        await driver.createExecutor().transactionWith(
             { deferrable: false, accessMode: "read write" },
             async (tx) => {
                 await tx.query("write");
@@ -256,7 +268,7 @@ describe("the modes a boundary is opened with", () => {
     it("opens a plain boundary when the call names no modes", async () => {
         const { driver, statements } = fakeDriver();
 
-        await createTransactionalDb(driver).transactionWith({}, async (tx) => {
+        await driver.createExecutor().transactionWith({}, async (tx) => {
             await tx.query("write");
         });
 

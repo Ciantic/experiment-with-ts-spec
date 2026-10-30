@@ -74,19 +74,17 @@ values, all of which are domain decisions rather than code behaviour.
   names standing in for its own, so an unstubbed runtime import fails the test
   instead of loading a real module. The compiler lives in this one file and
   nowhere else, which leaves every generator test free of ts-morph.
-- `packages/infra/src/db/sql-executor.test.ts` — drives `createTransactionalDb`
-  over a real PGlite, so a driver's boundary semantics are observable: a commit,
-  a rollback, and that a nested boundary is a savepoint the outer transaction
+- `packages/infra/src/db/sql-executor.test.ts` — drives `createExecutor` over a
+  real PGlite, so a driver's boundary semantics are observable: a commit, a
+  rollback, and that a nested boundary is a savepoint the outer transaction
   survives. A recording fake driver pins the other half: the checkout brackets the
   boundary and is released exactly once.
-- `packages/infra/src/db/sql-driver.test.ts` — the one-connection driver, over a
-  statement that records what it ran: a checkout holds the connection until it is
-  released, a plain statement takes the same turn, a failure frees the turn, and
-  the DDL batch and shutdown pass through to the connection.
-- `packages/infra/src/postgres/pglite-setup.test.ts` — one check: PGlite reaches
-  the driver port through `createPgliteDriver`, and its one connection is held for
-  the length of a checkout.
-- `packages/infra/src/postgres/pg-setup.test.ts` — `createPgDriver` builds the driver
+- `packages/infra/src/postgres/pglite-setup.test.ts` — PGlite as a
+  `PgliteSqlDriver`: a checkout holds the one connection until it is released, a
+  plain statement takes the same turn, a double release lets one taker through,
+  and a failure frees the turn. It also checks the write count, the DDL batch,
+  and shutdown.
+- `packages/infra/src/postgres/pg-setup.test.ts` — `PgSqlDriver` builds the driver
   over `pg`'s mapped `Pool`, and a checked-out `PoolClient` fits `connect`. It also
   asserts the mapping `createPgMapperTypes` installs — `int8` to `bigint`, `date`/`timestamp`/
   `numeric` to strings, `bytea` to `Uint8Array`, a text array to its raw

@@ -2,9 +2,9 @@
 import * as realPg from "pg";
 import type { PoolConfig } from "pg";
 import { describe, expect, it } from "vitest";
-import { createTransactionalDb, type SqlExecutor } from "../db/sql-executor.ts";
+import type { SqlExecutor } from "../db/sql-executor.ts";
 import type { SqlDriver } from "../db/sql-driver.ts";
-import { createPgDriver, createPgMapperTypes, type PgModule, type PgPoolModule } from "./pg-setup.ts";
+import { createPgMapperTypes, PgSqlDriver, type PgModule, type PgPoolModule } from "./pg-setup.ts";
 
 // `@types/pg` describes the pre-v3 `arrayParser`; only that member needs a cast, and the rest fits by assignment.
 const pgModule: PgPoolModule = {
@@ -48,8 +48,8 @@ describe("a pg driver as the transaction port", () => {
     });
 
     it("builds the executor over the driver", async () => {
-        const driver = createPgDriver(pgModule);
-        const db: SqlExecutor = createTransactionalDb(driver);
+        const driver = new PgSqlDriver(pgModule);
+        const db: SqlExecutor = driver.createExecutor();
 
         expect(typeof db.transaction).toBe("function");
         await driver.close();
@@ -83,11 +83,11 @@ describe("createPgMapperTypes", () => {
     });
 });
 
-describe("createPgDriver", () => {
+describe("PgSqlDriver", () => {
     it("passes the driver's own config through when it builds the pool", () => {
         const { module, config } = recordingModule();
 
-        createPgDriver(module, { max: 7, application_name: "spec" });
+        new PgSqlDriver(module, { max: 7, application_name: "spec" });
 
         expect(config().max).toBe(7);
         expect(config().application_name).toBe("spec");
@@ -96,7 +96,7 @@ describe("createPgDriver", () => {
     it("keeps its mapping even when the config names one, so a driver cannot silently lose the spec types", () => {
         const { module, config } = recordingModule();
 
-        createPgDriver(module, { types: { getTypeParser: () => () => "overridden" } });
+        new PgSqlDriver(module, { types: { getTypeParser: () => () => "overridden" } });
 
         expect(config().types?.getTypeParser(20)("42")).toBe(42n);
     });
@@ -122,7 +122,7 @@ describe("createPgDriver", () => {
             }
         }
         const module = { ...pgModule, Pool: CountingPool as unknown as PgPoolModule["Pool"] };
-        const driver = createPgDriver(module);
+        const driver = new PgSqlDriver(module);
 
         expect(await driver.query("select 1")).toEqual({ rows: [{ id: "pool" }], affectedRows: 0 });
         expect(await driver.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], affectedRows: 2 });
@@ -138,7 +138,7 @@ describe("createPgDriver", () => {
     });
 
     it("builds the statement, checkout, batch, and shutdown surface over the mapped pool", async () => {
-        const driver = createPgDriver(pgModule);
+        const driver = new PgSqlDriver(pgModule);
 
         expect(typeof driver.query).toBe("function");
         expect(typeof driver.connect).toBe("function");

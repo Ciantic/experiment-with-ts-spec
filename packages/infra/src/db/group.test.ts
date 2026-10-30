@@ -1,16 +1,15 @@
 /** Unit tests for the group boundary semantics, against a real PGlite. See docs/transactions.md. */
 import { describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDriver } from "../postgres/pglite-setup.ts";
+import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import { attempt, attemptWith, batch, transaction, transactionWith, type Attempted, type Step } from "./group.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { createTransactionalDb } from "./sql-executor.ts";
 
 /** A fresh database with one table, and the `SqlExecutor` port over it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
-    const driver = createPgliteDriver(PGlite);
+    const driver = new PgliteSqlDriver(PGlite);
     await driver.query("create table widget (id text primary key)");
-    return { db: createTransactionalDb(driver), close: () => driver.close() };
+    return { db: driver.createExecutor(), close: () => driver.close() };
 }
 
 /** The ids stored, in order. */
@@ -85,10 +84,10 @@ async function boundaryTrace(run: (db: SqlExecutor) => Promise<void>): Promise<s
         }),
     );
     // PGlite's own log is the only place its statements appear, and its start-up chatter goes to the same channels.
-    const driver = createPgliteDriver(PGlite, { debug: 1 });
+    const driver = new PgliteSqlDriver(PGlite, { debug: 1 });
     try {
         await driver.query("create table widget (id text primary key)");
-        await run(createTransactionalDb(driver));
+        await run(driver.createExecutor());
     } finally {
         await driver.close();
         for (const spy of spies) {

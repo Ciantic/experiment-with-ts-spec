@@ -15,7 +15,7 @@ import {
     VersionConflictError,
 } from "sdk/errors.ts";
 import type { AppContext } from "../context.ts";
-import type { SqlDriver, SqlSession } from "../db/sql-driver.ts";
+import { SqlDriver, type SqlSession } from "../db/sql-driver.ts";
 import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
 import { createRouter, type Route, type RouteInput } from "./router.ts";
@@ -37,15 +37,38 @@ const rejects: RouteInput = {
 };
 
 /** A driver over no database, recording every statement that runs through it. */
-function createDriver() {
-    const statements: string[] = [];
-    const run = async (sql: string) => {
-        statements.push(sql);
+class RecordingDriver extends SqlDriver {
+    readonly statements: string[] = [];
+
+    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        _parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }> {
+        this.statements.push(sql);
         return { rows: [], affectedRows: 0 };
-    };
-    const session: SqlSession = { query: run, release: () => {} };
-    const driver: SqlDriver = { query: run, connect: async () => session, exec: async () => {}, close: async () => {} };
-    return { driver, statements };
+    }
+
+    async connect(): Promise<SqlSession> {
+        return {
+            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => this.query<Row>(sql, parameters),
+            release: () => {},
+        };
+    }
+
+    async exec(): Promise<unknown> {
+        return undefined;
+    }
+
+    async close(): Promise<void> {}
+}
+
+/** A recording driver, plus the statements it saw. */
+function createDriver() {
+    const driver = new RecordingDriver();
+    return { driver, statements: driver.statements };
 }
 
 /** The context startup builds, over a recording driver, so a request's executor is observable. */

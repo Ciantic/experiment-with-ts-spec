@@ -57,29 +57,30 @@ export interface SqlSession {
     release(): void;
 }
 
-/** The process's driver: statements, checkouts, the DDL batch, and shutdown. */
-export interface SqlDriver {
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+/** The process's driver: statements, checkouts, the DDL batch, shutdown, and the executor a request derives from it. */
+export abstract class SqlDriver {
+    abstract query<Row extends Record<string, unknown> = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }>;
-    connect(): Promise<SqlSession>;
-    exec(sql: string): Promise<unknown>;
-    close(): Promise<void>;
+    abstract connect(): Promise<SqlSession>;
+    abstract exec(sql: string): Promise<unknown>;
+    abstract close(): Promise<void>;
 }
 ```
 
-`SqlDriver` is an interface rather than a named driver class, and each adapter
-builds one over its pool: `createPgDriver` (`src/postgres/pg-setup.ts`) constructs
-a `pg` `Pool` with the generated result mapping applied and adds the statements,
-checkouts, DDL batch, and `end`. `createSingleConnectionDriver`
-(`src/db/sql-driver.ts`) serialises a one-connection source;
-`createPgliteDriver` is PGlite over it.
+`SqlDriver` is an abstract class, and each adapter is a subclass over its pool:
+`PgSqlDriver` (`src/postgres/pg-setup.ts`) constructs a `pg` `Pool` with the
+generated result mapping applied and implements the statements, checkouts, DDL
+batch, and `end`. `PgliteSqlDriver` (`src/postgres/pglite-setup.ts`) owns
+PGlite's one connection and serialises every statement behind a checkout. The
+base class also owns `createExecutor`, the boundary implementation below, so a
+caller never builds it itself.
 
 The process owns the driver; a boundary owns only a checkout. `createAppContext`
-applies the generated DDL through the driver's `exec`, and `createTransactionalDb`
-takes the driver and uses only `query` and `connect` — so a boundary never
-reaches the batch or the shutdown, and `context.ts` names no driver.
+applies the generated DDL through the driver's `exec`, and `createExecutor` uses
+only the driver's `query` and `connect` — so a boundary never reaches the batch
+or the shutdown, and `context.ts` names no driver.
 
 `SqlExecutor.query` answers `{ rows: Row[]; affectedRows: number }`. Both drivers
 report the write count: PGlite calls it `affectedRows`, and `pg`'s `rowCount` is
@@ -88,8 +89,7 @@ answers the keys it wrote (`docs/repositories.md`), and a patch or upsert reject
 a chunk that wrote fewer rows (`docs/versioning.md`), both from `rows`; the count
 is what a statement that writes without `returning` reports.
 
-`createTransactionalDb` (`src/db/sql-executor.ts`) is the one implementation,
-over a driver:
+`SqlDriver.createExecutor` (`src/db/sql-driver.ts`) is the one implementation:
 
 - **A checkout pins the session, and that is what the boundary rests on.** A `pg`
   pool hands out a `PoolClient`, so `begin`…`commit` covers exactly the
@@ -230,9 +230,10 @@ to the scope, not the route.
 Nesting is real: the handle a `transaction` callback receives is a `SqlExecutor`
 as well, and its `transaction` opens a savepoint rather than a second
 transaction. Its `transactionWith` is refused — a savepoint opens with no modes.
+The method on `SqlDriver` that builds the executor:
 
 ```ts
-export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
+createExecutor(): SqlExecutor {
     let savepoints = 0;
     async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
         const name = `sp_${(savepoints += 1)}`;
@@ -247,8 +248,8 @@ export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
             throw thrown;
         }
     }
-    async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
-        const session = await driver.connect();
+    const boundary = async <T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> => {
+        const session = await this.connect();
         try {
             await session.query(begin(options));
             const value = await run(handle(session));
@@ -260,9 +261,9 @@ export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
         } finally {
             session.release();
         }
-    }
+    };
     return {
-        query: (sql, parameters) => driver.query(sql, parameters),
+        query: (sql, parameters) => this.query(sql, parameters),
         transaction: (run) => boundary(undefined, run),
         transactionWith: (options, run) => boundary(options, run),
     };
@@ -594,8 +595,8 @@ the client imports nothing from infra or the backend.
   positions are what a caller destructures, so `db/group.ts` keeps them and casts
   once, at the one place the variadic spread loses the pairing of a step to its
   result.
-- **Savepoint names are per-`SqlExecutor`, not per-transaction.** `createTransactionalDb`
-  counts up for the process's lifetime, so the names are unique within a boundary
+- **Savepoint names are per-`SqlExecutor`, not per-transaction.** Each executor
+  counts its own savepoints from one, so the names are unique within a boundary
   without any coordination. If the counter ever had to wrap it would reuse a
   name inside a live transaction, which is why it does not.
 

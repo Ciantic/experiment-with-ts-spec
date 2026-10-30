@@ -1,7 +1,7 @@
 /** The backend context a process creates once, and the context each request builds over it. See docs/operations.md. */
 import { readFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
-import { createTransactionalDb, type SqlExecutor } from "./db/sql-executor.ts";
+import type { SqlExecutor } from "./db/sql-executor.ts";
 import type { SqlDriver } from "./db/sql-driver.ts";
 
 /** The generated DDL, next to the driver setup. */
@@ -38,5 +38,5 @@ export async function createAppContext(options: AppOptions): Promise<AppContext>
 
 /** Build one request's context over the app's driver, so a request gets its own executor rather than the process's. */
 export async function createRequestContext(app: AppContext, _request: IncomingMessage): Promise<RequestContext> {
-    return { db: createTransactionalDb(app.driver) };
+    return { db: app.driver.createExecutor() };
 }

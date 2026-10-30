@@ -234,10 +234,10 @@ The schema says what the columns are; the drivers also need to hand back the
 right JavaScript types. Both are ported from
 https://github.com/Ciantic/pg-unified-mapping.
 
-- `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `createPgliteDriver(Pglite, options)`
+- `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `new PgliteSqlDriver(Pglite, options)`
   builds an instance configured with result parsers and makes it the app's driver.
 - `packages/infra/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
-  `types` option for `new pg.Client(...)`, and `createPgDriver(pg, config)` builds a
+  `types` option for `new pg.Client(...)`, and `new PgSqlDriver(pg, config)` builds a
   mapped `Pool` and makes it the app's driver.
 
 The rules are the same in both:

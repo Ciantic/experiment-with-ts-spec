@@ -5,16 +5,16 @@ export { createAppContext } from "./context.ts";
 export type { AppContext, AppOptions, RequestContext } from "./context.ts";
 
 // Driver exports
-export { createPgliteDriver } from "./postgres/pglite-setup.ts";
+export { PgliteSqlDriver } from "./postgres/pglite-setup.ts";
 export type { PgliteConstructor } from "./postgres/pglite-setup.ts";
-export { createPgDriver } from "./postgres/pg-setup.ts";
-export type { SqlDriver } from "./db/sql-driver.ts";
+export { PgSqlDriver } from "./postgres/pg-setup.ts";
+export { SqlDriver } from "./db/sql-driver.ts";
+export type { SqlSession } from "./db/sql-driver.ts";
 
 // Error exports
 export { UsageError } from "./errors.ts";
 
 // Database exports
-export { createTransactionalDb } from "./db/sql-executor.ts";
 export type { SqlExecutor } from "./db/sql-executor.ts";
 
 // Router exports

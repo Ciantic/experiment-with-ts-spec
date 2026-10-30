@@ -5,8 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import {
     createApiServer,
     createAppContext,
-    createPgliteDriver,
-    createTransactionalDb,
+    PgliteSqlDriver,
     seedMockData,
     UsageError,
     type AppContext,
@@ -45,10 +44,10 @@ export interface StartedServer {
 /** Build the database, optionally seed it, and start the API server over it. */
 export async function startServer(options: StartOptions = {}): Promise<StartedServer> {
     // The process is the composition root: it picks PGlite and hands infra the driver.
-    const driver = createPgliteDriver(PGlite, options.logSql ? { debug: 1 } : {});
+    const driver = new PgliteSqlDriver(PGlite, options.logSql ? { debug: 1 } : {});
     const app = await createAppContext({ driver });
     if (options.seed) {
-        await seedMockData(createTransactionalDb(app.driver));
+        await seedMockData(app.driver.createExecutor());
     }
     const server = createApiServer(app, routes);
     const port = await listen(server, options.port ?? DEFAULT_PORT);

@@ -2,11 +2,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as sharedErrors from "../../packages/sdk/src/errors.ts";
 import { PGlite } from "@electric-sql/pglite";
-import { createPgliteDriver } from "../../packages/infra/src/postgres/pglite-setup.ts";
+import { PgliteSqlDriver } from "../../packages/infra/src/postgres/pglite-setup.ts";
 import type { SqlDriver } from "../../packages/infra/src/db/sql-driver.ts";
 import * as sqlExecutor from "../../packages/infra/src/db/sql-executor.ts";
 import type { SqlExecutor } from "../../packages/infra/src/db/sql-executor.ts";
-import { createTransactionalDb } from "../../packages/infra/src/db/sql-executor.ts";
 import {
     createStatement,
     deleteStatement,
@@ -1046,8 +1045,8 @@ describe("generated repositories against PGlite", () => {
     let tickets: GeneratedRepository;
 
     beforeAll(async () => {
-        driver = createPgliteDriver(PGlite);
-        db = createTransactionalDb(driver);
+        driver = new PgliteSqlDriver(PGlite);
+        db = driver.createExecutor();
         await driver.exec(fixtureDdl(owner));
         await driver.exec(fixtureDdl(widget));
         await driver.exec(fixtureDdl(translation));

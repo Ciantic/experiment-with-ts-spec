@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import { customers, invoices, sellers, tenants } from "spec/mockdata/index.ts";
-import { createAppContext, createCustomer, createInvoice, createPgliteDriver, createSeller, createTenant, createTransactionalDb, type SqlExecutor } from "infra";
+import { createAppContext, createCustomer, createInvoice, PgliteSqlDriver, createSeller, createTenant, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 /** The mock invoices with the parties each names, which is the draft a caller supplies. */
@@ -28,8 +28,8 @@ interface Fixture {
 }
 
 async function fixture(): Promise<Fixture> {
-    const { driver } = await createAppContext({ driver: createPgliteDriver(PGlite) });
-    const db = createTransactionalDb(driver);
+    const { driver } = await createAppContext({ driver: new PgliteSqlDriver(PGlite) });
+    const db = driver.createExecutor();
     await createTenant(db, tenants);
     await createCustomer(db, customers);
     await createSeller(db, sellers);

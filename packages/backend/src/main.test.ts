@@ -5,7 +5,7 @@ import * as api from "sdk/api/index.ts";
 import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
-import { createAppContext, createPgliteDriver, createTransactionalDb } from "infra";
+import { createAppContext, PgliteSqlDriver } from "infra";
 import { routes } from "./http/routes/index.ts";
 import { parseArgs, startServer, type StartedServer } from "./main.ts";
 
@@ -236,8 +236,8 @@ describe("--log-sql", () => {
 
     it("shows both what the server runs and the boundaries the executor issues", async () => {
         const printed = await capture(async () => {
-            const app = await createAppContext({ driver: createPgliteDriver(PGlite, { debug: 1 }) });
-            const db = createTransactionalDb(app.driver);
+            const app = await createAppContext({ driver: new PgliteSqlDriver(PGlite, { debug: 1 }) });
+            const db = app.driver.createExecutor();
             await db.query("select 1 as one");
             await db.transaction((tx) => tx.query("select 2 as two"));
             await app.driver.close();
@@ -251,8 +251,8 @@ describe("--log-sql", () => {
 
     it("stays quiet without the flag, so an ordinary run prints no SQL", async () => {
         const printed = await capture(async () => {
-            const app = await createAppContext({ driver: createPgliteDriver(PGlite) });
-            await createTransactionalDb(app.driver).query("select 3 as three");
+            const app = await createAppContext({ driver: new PgliteSqlDriver(PGlite) });
+            await app.driver.createExecutor().query("select 3 as three");
             await app.driver.close();
         });
 

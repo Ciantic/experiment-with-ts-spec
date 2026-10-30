@@ -1,4 +1,6 @@
-/** The driver port, and the one-connection adapter a single-session driver reaches it through. See docs/transactions.md. */
+/** The driver port, and the executor a caller derives from it. See docs/transactions.md. */
+import { SavepointOptionsError } from "sdk/errors.ts";
+import type { Run, SqlExecutor, TransactionOptions } from "./sql-executor.ts";
 
 /** The session a boundary is pinned to: statements, and the release that hands the connection on. */
 export interface SqlSession {
@@ -9,71 +11,93 @@ export interface SqlSession {
     release(): void;
 }
 
-/** The process's driver: statements, checkouts, the DDL batch, and shutdown. */
-export interface SqlDriver {
+/** The statement that opens a root boundary, carrying the modes the call named, in the order Postgres reads them. */
+function begin(options?: TransactionOptions): string {
+    const modes = options ?? {};
+    const clauses = [
+        modes.isolationLevel === undefined ? [] : [`isolation level ${modes.isolationLevel}`],
+        modes.accessMode === undefined ? [] : [modes.accessMode],
+        modes.deferrable === undefined ? [] : [modes.deferrable ? "deferrable" : "not deferrable"],
+    ].flat();
+    return clauses.length === 0 ? "begin" : `begin ${clauses.join(", ")}`;
+}
+
+/** The process's driver: statements, checkouts, the DDL batch, shutdown, and the executor a caller derives from it. */
+export abstract class SqlDriver {
     /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    abstract query<Row extends Record<string, unknown> = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
     ): Promise<{ rows: Row[]; affectedRows: number }>;
     /** Pin one connection to the returned session until it is released. */
-    connect(): Promise<SqlSession>;
+    abstract connect(): Promise<SqlSession>;
     /** Run a batch of statements, the generated DDL included. */
-    exec(sql: string): Promise<unknown>;
+    abstract exec(sql: string): Promise<unknown>;
     /** Release the driver's resources. */
-    close(): Promise<void>;
-}
+    abstract close(): Promise<void>;
 
-/** The statements, batch, and shutdown one connection supplies; this serialises them behind a checkout. */
-export function createSingleConnectionDriver(driver: {
-    query(sql: string, parameters?: unknown[]): Promise<{ rows: unknown[]; affectedRows?: number }>;
-    exec(sql: string): Promise<unknown>;
-    close(): Promise<void>;
-}): SqlDriver {
-    let turn: Promise<void> = Promise.resolve();
+    /** One request's handle over this driver, with its own savepoint counter. */
+    createExecutor(): SqlExecutor {
+        let savepoints = 0;
 
-    /** Wait for the current turn, then hold the connection until the session is released. */
-    async function take(): Promise<SqlSession> {
-        const previous = turn;
-        let handOff!: () => void;
-        turn = new Promise<void>((resolve) => {
-            handOff = resolve;
-        });
-        await previous;
-        let released = false;
-        return {
-            query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
-                sql: string,
-                parameters?: unknown[],
-            ) => {
-                const result = await driver.query(sql, parameters);
-                return { rows: result.rows as Row[], affectedRows: result.affectedRows ?? 0 };
-            },
-            release: () => {
-                if (released) {
-                    return;
-                }
-                released = true;
-                handOff();
-            },
-        };
-    }
+        /**
+         * The handle a nested boundary runs on: queries on the same session, nesting one level deeper.
+         * @throws {SavepointOptionsError} when a nested boundary is asked for transaction options
+         */
+        function handle(session: SqlSession): SqlExecutor {
+            return {
+                query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                    sql: string,
+                    parameters?: unknown[],
+                ) => session.query<Row>(sql, parameters),
+                transaction: (run) => savepoint(session, run),
+                transactionWith: async () => {
+                    throw new SavepointOptionsError(
+                        "a nested boundary is a savepoint, which opens with no transaction options",
+                    );
+                },
+            };
+        }
 
-    return {
-        // A plain statement takes the same turn, so it cannot slip inside an open boundary.
-        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
-            sql: string,
-            parameters?: unknown[],
-        ) => {
-            const session = await take();
+        /** Run the callback after a savepoint, rolling back to it when the callback throws. */
+        async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
+            const name = `sp_${(savepoints += 1)}`;
+            await session.query(`savepoint ${name}`);
             try {
-                return await session.query<Row>(sql, parameters);
+                const value = await run(handle(session));
+                await session.query(`release savepoint ${name}`);
+                return value;
+            } catch (thrown) {
+                // Rolling back to the savepoint clears the aborted state, so the outer transaction stays usable.
+                await session.query(`rollback to savepoint ${name}`);
+                await session.query(`release savepoint ${name}`);
+                throw thrown;
+            }
+        }
+
+        /** Open a root boundary on one checked-out session, carrying the modes the call named, and roll it back when the callback throws. */
+        const boundary = async <T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> => {
+            const session = await this.connect();
+            try {
+                await session.query(begin(options));
+                const value = await run(handle(session));
+                await session.query("commit");
+                return value;
+            } catch (thrown) {
+                await session.query("rollback");
+                throw thrown;
             } finally {
                 session.release();
             }
-        },
-        connect: take,
-        exec: (sql) => driver.exec(sql),
-        close: () => driver.close(),
-    };
+        };
+
+        return {
+            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => this.query<Row>(sql, parameters),
+            transaction: (run) => boundary(undefined, run),
+            transactionWith: (options, run) => boundary(options, run),
+        };
+    }
 }

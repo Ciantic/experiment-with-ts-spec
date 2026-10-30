@@ -8,7 +8,7 @@ import type { Seller, SellerId } from "spec/invoicing-service/Seller.ts";
 import type { TenantId } from "spec/invoicing-service/Tenant.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
-import { createAppContext, createInvoice, createPgliteDriver, createTenant, createTransactionalDb, type SqlExecutor } from "infra";
+import { createAppContext, createInvoice, PgliteSqlDriver, createTenant, type SqlExecutor } from "infra";
 import { sendInvoice } from "./sendInvoice.ts";
 
 const tenantId = "0192f0b0-0000-7000-8000-000000000001" as TenantId;
@@ -73,8 +73,8 @@ async function rows(db: SqlExecutor, sql: string): Promise<Array<Record<string, 
 
 /** A fresh schema holding the tenant and invoice the send refers to. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
-    const { driver } = await createAppContext({ driver: createPgliteDriver(PGlite) });
-    const db = createTransactionalDb(driver);
+    const { driver } = await createAppContext({ driver: new PgliteSqlDriver(PGlite) });
+    const db = driver.createExecutor();
     await createTenant(db, [{ id: tenantId, name: "Fixture tenant" }]);
     await createInvoice(db, [{ id: invoiceId, tenantId }]);
     return { db, close: () => driver.close() };

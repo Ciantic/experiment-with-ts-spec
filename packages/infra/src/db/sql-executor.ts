@@ -1,9 +1,7 @@
-/** The `SqlExecutor` port over a driver: a root transaction and a savepoint per nested boundary. See docs/transactions.md. */
-import { SavepointOptionsError } from "sdk/errors.ts";
-import type { SqlDriver, SqlSession } from "./sql-driver.ts";
+/** The `SqlExecutor` port and the transaction modes a boundary opens with. See docs/transactions.md. */
 
 /** The callback one boundary runs, on the handle that boundary owns. */
-type Run<T> = (tx: SqlExecutor) => Promise<T>;
+export type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
 /** One handle: statements, and the boundary a caller can run them in. */
 export interface SqlExecutor {
@@ -35,80 +33,4 @@ export interface TransactionOptions {
     readonly accessMode?: (typeof ACCESS_MODES)[number];
     /** `[NOT] DEFERRABLE`, which only matters to a boundary that is also `serializable` and `read only`. */
     readonly deferrable?: boolean;
-}
-
-/** The statement that opens a root boundary, carrying the modes the call named, in the order Postgres reads them. */
-function begin(options?: TransactionOptions): string {
-    const modes = options ?? {};
-    const clauses = [
-        modes.isolationLevel === undefined ? [] : [`isolation level ${modes.isolationLevel}`],
-        modes.accessMode === undefined ? [] : [modes.accessMode],
-        modes.deferrable === undefined ? [] : [modes.deferrable ? "deferrable" : "not deferrable"],
-    ].flat();
-    return clauses.length === 0 ? "begin" : `begin ${clauses.join(", ")}`;
-}
-
-/** A `SqlExecutor` over one checked-out session, where a nested `transaction` is a savepoint. */
-export function createTransactionalDb(driver: SqlDriver): SqlExecutor {
-    let savepoints = 0;
-
-    /**
-     * The handle a nested boundary runs on: queries on the same session, nesting one level deeper.
-     * @throws {SavepointOptionsError} when a nested boundary is asked for transaction options
-     */
-    function handle(session: SqlSession): SqlExecutor {
-        return {
-            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
-                sql: string,
-                parameters?: unknown[],
-            ) => session.query<Row>(sql, parameters),
-            transaction: (run) => savepoint(session, run),
-            transactionWith: async () => {
-                throw new SavepointOptionsError(
-                    "a nested boundary is a savepoint, which opens with no transaction options",
-                );
-            },
-        };
-    }
-
-    /** Run the callback after a savepoint, rolling back to it when the callback throws. */
-    async function savepoint<T>(session: SqlSession, run: Run<T>): Promise<T> {
-        const name = `sp_${(savepoints += 1)}`;
-        await session.query(`savepoint ${name}`);
-        try {
-            const value = await run(handle(session));
-            await session.query(`release savepoint ${name}`);
-            return value;
-        } catch (thrown) {
-            // Rolling back to the savepoint clears the aborted state, so the outer transaction stays usable.
-            await session.query(`rollback to savepoint ${name}`);
-            await session.query(`release savepoint ${name}`);
-            throw thrown;
-        }
-    }
-
-    /** Open a root boundary on one checked-out session, carrying the modes the call named, and roll it back when the callback throws. */
-    async function boundary<T>(options: TransactionOptions | undefined, run: Run<T>): Promise<T> {
-        const session = await driver.connect();
-        try {
-            await session.query(begin(options));
-            const value = await run(handle(session));
-            await session.query("commit");
-            return value;
-        } catch (thrown) {
-            await session.query("rollback");
-            throw thrown;
-        } finally {
-            session.release();
-        }
-    }
-
-    return {
-        query: <Row extends Record<string, unknown> = Record<string, unknown>>(
-            sql: string,
-            parameters?: unknown[],
-        ) => driver.query<Row>(sql, parameters),
-        transaction: (run) => boundary(undefined, run),
-        transactionWith: (options, run) => boundary(options, run),
-    };
 }

@@ -1,6 +1,6 @@
 /** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
 import type { Pool, PoolConfig } from "pg";
-import type { SqlDriver } from "../db/sql-driver.ts";
+import { SqlDriver, type SqlSession } from "../db/sql-driver.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -95,31 +95,42 @@ function writtenRows(result: { command?: string; rowCount: number | null }): num
 }
 
 /** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
-export function createPgDriver(pg: PgPoolModule, config: PoolConfig = {}): SqlDriver {
-    // The mapper's `types` wins over one the caller passes, so the pool cannot silently lose the spec types.
-    const pool = new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
-    return {
-        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
-            sql: string,
-            parameters?: unknown[],
-        ) => {
-            const result = await pool.query<Row>(sql, parameters);
-            return { rows: result.rows, affectedRows: writtenRows(result) };
-        },
-        connect: async () => {
-            const client = await pool.connect();
-            return {
-                query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
-                    sql: string,
-                    parameters?: unknown[],
-                ) => {
-                    const result = await client.query<Row>(sql, parameters);
-                    return { rows: result.rows, affectedRows: writtenRows(result) };
-                },
-                release: () => client.release(),
-            };
-        },
-        exec: (sql) => pool.query(sql),
-        close: () => pool.end(),
-    };
+export class PgSqlDriver extends SqlDriver {
+    readonly #pool: Pool;
+
+    constructor(pg: PgPoolModule, config: PoolConfig = {}) {
+        super();
+        // The mapper's `types` wins over one the caller passes, so the pool cannot silently lose the spec types.
+        this.#pool = new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
+    }
+
+    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<{ rows: Row[]; affectedRows: number }> {
+        const result = await this.#pool.query<Row>(sql, parameters);
+        return { rows: result.rows, affectedRows: writtenRows(result) };
+    }
+
+    async connect(): Promise<SqlSession> {
+        const client = await this.#pool.connect();
+        return {
+            query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+                sql: string,
+                parameters?: unknown[],
+            ) => {
+                const result = await client.query<Row>(sql, parameters);
+                return { rows: result.rows, affectedRows: writtenRows(result) };
+            },
+            release: () => client.release(),
+        };
+    }
+
+    exec(sql: string): Promise<unknown> {
+        return this.#pool.query(sql);
+    }
+
+    async close(): Promise<void> {
+        await this.#pool.end();
+    }
 }
