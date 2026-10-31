@@ -30,11 +30,17 @@ caller can run statements in.
 /** The callback one boundary runs. */
 type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
+/** What one statement answers: its rows and the count its command tag carries. */
+export interface QueryResult<Row> {
+    rows: Row[];
+    rowCount: number | null;
+}
+
 export interface SqlExecutor {
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     /** The boundary, opened with no modes. */
     transaction<T>(run: Run<T>): Promise<T>;
     /** The boundary, opened with the modes the call names. */
@@ -50,24 +56,28 @@ export interface TransactionOptions {
 
 /** A connection borrowed for one boundary: statements, and the release that returns it. */
 export interface SqlConnection {
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     release(): void;
 }
 
 /** The process's driver: statements, checkouts, the DDL batch, shutdown, and the executor a request derives from it. */
 export abstract class SqlDriver {
-    abstract query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    abstract query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     protected abstract connect(): Promise<SqlConnection>;
-    abstract exec(sql: string): Promise<unknown>;
+    abstract exec(sql: string): Promise<void>;
     abstract close(): Promise<void>;
 }
 ```
+
+`Row` is constrained to `object` rather than `Record<string, unknown>`, so a
+caller may name an entity interface — which carries no index signature — as its
+row type.
 
 `SqlDriver` is an abstract class, and each adapter is a subclass over its pool:
 `PgSqlDriver` (`src/postgres/pg-setup.ts`) constructs a `pg` `Pool` with the
@@ -80,14 +90,24 @@ caller never builds it itself.
 The process owns the driver; a boundary owns only a checkout. `createAppContext`
 applies the generated DDL through the driver's `exec`, and `createExecutor` uses
 only the driver's `query` and its protected `connect` — so a boundary never
-reaches the batch or the shutdown, and `context.ts` names no driver.
+reaches the batch or the shutdown, and `context.ts` names no driver. `exec` is
+not `query` with the result discarded: PGlite's `query` takes one statement
+through the extended protocol and refuses a second, while `exec` takes the whole
+script, trigger bodies included. On `pg`, a parameterless `query` uses the simple
+protocol, so the adapter maps both onto the same call. `exec` is startup-only: on
+PGlite it takes the one connection's turn, so the batch waits for an open
+boundary rather than interleaving with it.
 
-`SqlExecutor.query` answers `{ rows: Row[]; affectedRows: number }`. Both drivers
-report the write count: PGlite calls it `affectedRows`, and `pg`'s `rowCount` is
-mapped onto the same name; a `select` reports `0`. A generated create or upsert
-answers the keys it wrote (`docs/repositories.md`), and a patch or upsert rejects
-a chunk that wrote fewer rows (`docs/versioning.md`), both from `rows`; the count
-is what a statement that writes without `returning` reports.
+`SqlExecutor.query` answers a `QueryResult<Row>`. `rowCount` is the number the
+command tag carries — the rows a select returned, the rows an update wrote, the
+rows a fetch advanced — and `null` when the tag carries none, as `show`,
+`explain`, and the DDL do. It is the count Postgres reports, and both drivers
+pass it through unchanged. PGlite's `affectedRows` is not part of the port: it is
+a running write total across a multi-statement `exec`, while `query` takes one
+statement. A generated create or upsert answers the keys it wrote
+(`docs/repositories.md`), and a patch or upsert rejects a chunk that wrote fewer
+rows (`docs/versioning.md`), both from `rows`; `rowCount` is what a statement that
+writes without `returning` reports.
 
 `SqlDriver.createExecutor` (`src/db/sql-driver.ts`) is the one implementation:
 
@@ -345,6 +365,7 @@ export interface Group<R> {
     readonly [Result]?: R;
 }
 
+/** The modes a group opens its boundary with; infra declares the same literals for its port. */
 export interface TransactionOptions {
     readonly isolationLevel?: "serializable" | "repeatable read" | "read committed" | "read uncommitted";
     readonly accessMode?: "read write" | "read only";
@@ -566,11 +587,13 @@ the client imports nothing from infra or the backend.
 - **A builder is inert.** `await createWidget(rows)` compiles and does nothing,
   because a builder is not thenable. `exec` is the only function that makes a
   call, and the generated modules take no `HttpClient`.
-- **Both sides declare the group contract.** `GROUP_PATH` and the verb list are
-  written twice, in `sdk/src/client.ts` and in `infra/src/http/group-handler.ts`, because
-  the client may not import infra or the backend. No generated artifact keeps them in step, so
-  the end-to-end test is what does: a group is the only call whose path is not
-  derived from `scripts/sdk/rest-model.ts`.
+- **Part of the group contract is declared twice.** `GROUP_PATH`, the verb list,
+  and the `TransactionOptions` interface are written twice, in `sdk/src/client.ts`
+  and in `infra/src/db/sql-executor.ts`, because the client may not import infra or
+  the backend. No generated artifact keeps them in step: the end-to-end test pins
+  the path each group travels — a group is the only call whose path is not derived
+  from `scripts/sdk/rest-model.ts` — while the modes are the same literals declared
+  on both sides.
 - **A void write answers `null`; a create and an upsert answer their keys.** A
   group follows the single-call codec rule: `update` and `delete` encode as
   `null`, which the generated signature types `void`, while a create or an upsert

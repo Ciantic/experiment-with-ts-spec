@@ -1,6 +1,7 @@
 /** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
 import type { Pool, PoolConfig } from "pg";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
+import type { QueryResult } from "../db/sql-executor.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -89,11 +90,6 @@ export interface PgPoolModule extends PgModule {
     Pool: new (config: PoolConfig) => Pool;
 }
 
-/** The rows a `pg` result says the statement wrote; a row-returning statement wrote none. */
-function writtenRows(result: { command?: string; rowCount: number | null }): number {
-    return result.command === "SELECT" ? 0 : result.rowCount ?? 0;
-}
-
 /** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
 export class PgSqlDriver extends SqlDriver {
     readonly #pool: Pool;
@@ -104,30 +100,30 @@ export class PgSqlDriver extends SqlDriver {
         this.#pool = new pg.Pool({ ...config, types: createPgMapperTypes(pg) });
     }
 
-    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    async query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }> {
+    ): Promise<QueryResult<Row>> {
         const result = await this.#pool.query<Row>(sql, parameters);
-        return { rows: result.rows, affectedRows: writtenRows(result) };
+        return { rows: result.rows, rowCount: result.rowCount };
     }
 
     protected async connect(): Promise<SqlConnection> {
         const client = await this.#pool.connect();
         return {
-            query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+            query: async <Row extends object = Record<string, unknown>>(
                 sql: string,
                 parameters?: unknown[],
             ) => {
                 const result = await client.query<Row>(sql, parameters);
-                return { rows: result.rows, affectedRows: writtenRows(result) };
+                return { rows: result.rows, rowCount: result.rowCount };
             },
             release: () => client.release(),
         };
     }
 
-    exec(sql: string): Promise<unknown> {
-        return this.#pool.query(sql);
+    async exec(sql: string): Promise<void> {
+        await this.#pool.query(sql);
     }
 
     async close(): Promise<void> {

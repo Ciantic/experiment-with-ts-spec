@@ -25,9 +25,11 @@ describe("query", () => {
 
         const updated = await db.query<{ id: string }>("update widget set id = id where id = 'a' returning id");
         const matchedNothing = await db.query<{ id: string }>("update widget set id = id where id = 'gone' returning id");
+        const selected = await db.query<{ id: string }>("select id from widget order by id");
 
-        expect(updated).toEqual({ rows: [{ id: "a" }], affectedRows: 1 });
-        expect(matchedNothing).toEqual({ rows: [], affectedRows: 0 });
+        expect(updated).toEqual({ rows: [{ id: "a" }], rowCount: 1 });
+        expect(matchedNothing).toEqual({ rows: [], rowCount: 0 });
+        expect(selected).toEqual({ rows: [{ id: "a" }, { id: "b" }], rowCount: 2 });
         await close();
     });
 });
@@ -156,17 +158,17 @@ class RecordingDriver extends SqlDriver {
     readonly statements: string[] = [];
     releases = 0;
 
-    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    async query<Row extends object = Record<string, unknown>>(
         sql: string,
         _parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }> {
+    ): Promise<{ rows: Row[]; rowCount: number | null }> {
         this.statements.push(sql);
-        return { rows: [], affectedRows: 0 };
+        return { rows: [], rowCount: null };
     }
 
     async connect(): Promise<SqlConnection> {
         return {
-            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+            query: <Row extends object = Record<string, unknown>>(
                 sql: string,
                 parameters?: unknown[],
             ) => this.query<Row>(sql, parameters),
@@ -176,9 +178,7 @@ class RecordingDriver extends SqlDriver {
         };
     }
 
-    async exec(): Promise<unknown> {
-        return undefined;
-    }
+    async exec(): Promise<void> {}
 
     async close(): Promise<void> {}
 }

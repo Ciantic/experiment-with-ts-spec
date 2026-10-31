@@ -100,19 +100,34 @@ describe("PgSqlDriver", () => {
         expect(config().types?.getTypeParser(20)("42")).toBe(42n);
     });
 
-    it("maps pg's rowCount into affectedRows on the pool and on a checkout", async () => {
+    it("passes pg's rowCount through, on the pool and on a checkout", async () => {
         class CountingPool {
             async query(sql: string) {
-                return sql.startsWith("select")
-                    ? { command: "SELECT", rows: [{ id: "pool" }], rowCount: 1 }
-                    : { command: "UPDATE", rows: [{ id: "pool" }], rowCount: 2 };
+                if (sql.startsWith("select")) {
+                    return { command: "SELECT", rows: [{ id: "pool" }], rowCount: 1 };
+                }
+                if (sql.startsWith("show")) {
+                    return { command: "SHOW", rows: [{ id: "pool" }], rowCount: null };
+                }
+                if (sql.startsWith("fetch")) {
+                    return { command: "FETCH", rows: [{ id: "pool" }], rowCount: 2 };
+                }
+                return { command: "UPDATE", rows: [{ id: "pool" }], rowCount: 2 };
             }
             async connect() {
                 return {
-                    query: async (sql: string) =>
-                        sql.startsWith("select")
-                            ? { command: "SELECT", rows: [{ id: "session" }], rowCount: 1 }
-                            : { command: "UPDATE", rows: [{ id: "session" }], rowCount: 3 },
+                    query: async (sql: string) => {
+                        if (sql.startsWith("select")) {
+                            return { command: "SELECT", rows: [{ id: "session" }], rowCount: 1 };
+                        }
+                        if (sql.startsWith("show")) {
+                            return { command: "SHOW", rows: [{ id: "session" }], rowCount: null };
+                        }
+                        if (sql.startsWith("fetch")) {
+                            return { command: "FETCH", rows: [{ id: "session" }], rowCount: 2 };
+                        }
+                        return { command: "UPDATE", rows: [{ id: "session" }], rowCount: 3 };
+                    },
                     release: () => {},
                 };
             }
@@ -124,14 +139,18 @@ describe("PgSqlDriver", () => {
         const driver = new PgSqlDriver(module);
         const db = driver.createExecutor();
 
-        expect(await db.query("select 1")).toEqual({ rows: [{ id: "pool" }], affectedRows: 0 });
-        expect(await db.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], affectedRows: 2 });
+        expect(await db.query("select 1")).toEqual({ rows: [{ id: "pool" }], rowCount: 1 });
+        expect(await db.query("show transaction_isolation")).toEqual({ rows: [{ id: "pool" }], rowCount: null });
+        expect(await db.query("fetch 2 from cursor")).toEqual({ rows: [{ id: "pool" }], rowCount: 2 });
+        expect(await db.query("update widget set id = id")).toEqual({ rows: [{ id: "pool" }], rowCount: 2 });
 
         const written = await db.transaction(async (tx) => {
-            expect(await tx.query("select 1")).toEqual({ rows: [{ id: "session" }], affectedRows: 0 });
+            expect(await tx.query("select 1")).toEqual({ rows: [{ id: "session" }], rowCount: 1 });
+            expect(await tx.query("show transaction_isolation")).toEqual({ rows: [{ id: "session" }], rowCount: null });
+            expect(await tx.query("fetch 2 from cursor")).toEqual({ rows: [{ id: "session" }], rowCount: 2 });
             return tx.query("update widget set id = id");
         });
-        expect(written).toEqual({ rows: [{ id: "session" }], affectedRows: 3 });
+        expect(written).toEqual({ rows: [{ id: "session" }], rowCount: 3 });
 
         await driver.close();
     });

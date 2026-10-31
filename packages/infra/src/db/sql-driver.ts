@@ -1,13 +1,14 @@
 /** The driver port, and the executor a caller derives from it. See docs/transactions.md. */
 import { SavepointOptionsError } from "sdk/errors.ts";
-import type { Run, SqlExecutor, TransactionOptions } from "./sql-executor.ts";
+import type { QueryResult, Run, SqlExecutor, TransactionOptions } from "./sql-executor.ts";
 
 /** A connection borrowed for one boundary: statements, and the release that returns it. */
 export interface SqlConnection {
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    /** Run one statement on the borrowed connection, answering its rows and its row count. */
+    query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     release(): void;
 }
 
@@ -25,14 +26,14 @@ function begin(options?: TransactionOptions): string {
 /** The process's driver: statements, checkouts, the DDL batch, shutdown, and the executor a caller derives from it. */
 export abstract class SqlDriver {
     /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
-    abstract query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    abstract query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     /** Borrow one connection, held until its release; only a boundary takes one. */
     protected abstract connect(): Promise<SqlConnection>;
-    /** Run a batch of statements, the generated DDL included. */
-    abstract exec(sql: string): Promise<unknown>;
+    /** Run the startup script, several statements included; `query` takes one statement. */
+    abstract exec(sql: string): Promise<void>;
     /** Release the driver's resources. */
     abstract close(): Promise<void>;
 
@@ -46,7 +47,7 @@ export abstract class SqlDriver {
          */
         function handle(connection: SqlConnection): SqlExecutor {
             return {
-                query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+                query: <Row extends object = Record<string, unknown>>(
                     sql: string,
                     parameters?: unknown[],
                 ) => connection.query<Row>(sql, parameters),
@@ -92,7 +93,7 @@ export abstract class SqlDriver {
         };
 
         return {
-            query: <Row extends Record<string, unknown> = Record<string, unknown>>(
+            query: <Row extends object = Record<string, unknown>>(
                 sql: string,
                 parameters?: unknown[],
             ) => this.query<Row>(sql, parameters),

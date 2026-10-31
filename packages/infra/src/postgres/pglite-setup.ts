@@ -1,6 +1,7 @@
 /** PGlite configuration, result type mapping, and the driver the app injects. See docs/schema-generation.md. */
 import type { DebugLevel, PGlite, ParserOptions } from "@electric-sql/pglite";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
+import type { QueryResult } from "../db/sql-executor.ts";
 
 /** Postgres type OIDs, from src/include/catalog/pg_type.dat. */
 const OID = {
@@ -41,12 +42,12 @@ export class PgliteSqlDriver extends SqlDriver {
         await previous;
         let released = false;
         return {
-            query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+            query: async <Row extends object = Record<string, unknown>>(
                 sql: string,
                 parameters?: unknown[],
             ) => {
                 const result = await this.#pglite.query<Row>(sql, parameters);
-                return { rows: result.rows, affectedRows: result.affectedRows ?? 0 };
+                return { rows: result.rows, rowCount: result.rowCount ?? null };
             },
             release: () => {
                 if (released) {
@@ -58,25 +59,33 @@ export class PgliteSqlDriver extends SqlDriver {
         };
     }
 
-    // A plain statement takes the same turn, so it cannot slip inside an open boundary.
-    async query<Row extends Record<string, unknown> = Record<string, unknown>>(
-        sql: string,
-        parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }> {
+    /** Run on the one connection while it is held, so nothing interleaves with an open boundary. */
+    async #exclusive<T>(run: (connection: SqlConnection) => Promise<T>): Promise<T> {
         const connection = await this.#take();
         try {
-            return await connection.query<Row>(sql, parameters);
+            return await run(connection);
         } finally {
             connection.release();
         }
+    }
+
+    // A plain statement takes the same turn, so it cannot slip inside an open boundary.
+    async query<Row extends object = Record<string, unknown>>(
+        sql: string,
+        parameters?: unknown[],
+    ): Promise<QueryResult<Row>> {
+        return await this.#exclusive((connection) => connection.query<Row>(sql, parameters));
     }
 
     protected connect(): Promise<SqlConnection> {
         return this.#take();
     }
 
-    exec(sql: string): Promise<unknown> {
-        return this.#pglite.exec(sql);
+    // The DDL batch takes the same turn as a statement, so it cannot run inside an open boundary.
+    async exec(sql: string): Promise<void> {
+        await this.#exclusive(async () => {
+            await this.#pglite.exec(sql);
+        });
     }
 
     close(): Promise<void> {

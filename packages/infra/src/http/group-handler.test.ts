@@ -24,7 +24,7 @@ function createDb() {
     const handle = (depth: number): SqlExecutor => ({
         query: async (sql) => {
             statements.push(sql);
-            return { rows: [], affectedRows: 0 };
+            return { rows: [], rowCount: null };
         },
         transaction: (run) => open(depth, undefined, run),
         transactionWith: (options, run) => open(depth, options, run),

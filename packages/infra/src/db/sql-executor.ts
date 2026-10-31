@@ -1,15 +1,23 @@
-/** The `SqlExecutor` port and the transaction modes a boundary opens with. See docs/transactions.md. */
+/** The `SqlExecutor` port, the result one statement answers, and the transaction modes a boundary opens with. See docs/transactions.md. */
 
 /** The callback one boundary runs, on the handle that boundary owns. */
 export type Run<T> = (tx: SqlExecutor) => Promise<T>;
 
-/** One handle: statements, and the boundary a caller can run them in. */
+/** What one statement answers: its rows and the count its command tag carries. */
+export interface QueryResult<Row> {
+    /** The rows the statement returned; empty for a write without `returning`. */
+    rows: Row[];
+    /** The rows the command tag counts; `null` when it carries none, as `show` and `explain` do. */
+    rowCount: number | null;
+}
+
+/** One handle: statements, and the boundary a caller can run them in; a root handle is not a connection, so two of its calls may land on different ones. */
 export interface SqlExecutor {
-    /** Run one statement, answering its rows and its write count; the connection is not pinned across calls. */
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    /** Run one statement, answering its rows and its row count. */
+    query<Row extends object = Record<string, unknown>>(
         sql: string,
         parameters?: unknown[],
-    ): Promise<{ rows: Row[]; affectedRows: number }>;
+    ): Promise<QueryResult<Row>>;
     /** Run the callback in one boundary on one connection; nested, that boundary is a savepoint. */
     transaction<T>(run: Run<T>): Promise<T>;
     /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */

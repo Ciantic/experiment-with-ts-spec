@@ -15,7 +15,8 @@ export type { SqlConnection } from "./db/sql-driver.ts";
 export { UsageError } from "./errors.ts";
 
 // Database exports
-export type { SqlExecutor } from "./db/sql-executor.ts";
+export { ACCESS_MODES, ISOLATION_LEVELS } from "./db/sql-executor.ts";
+export type { QueryResult, SqlExecutor, TransactionOptions } from "./db/sql-executor.ts";
 
 // Router exports
 export { entityRoutes } from "./http/routes/index.ts";

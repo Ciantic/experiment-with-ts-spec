@@ -56,6 +56,38 @@ describe("PgliteSqlDriver", () => {
         await driver.close();
     });
 
+    it("holds the one connection while the DDL batch waits for an open boundary", async () => {
+        const driver = new PgliteSqlDriver(PGlite);
+        const db = driver.createExecutor();
+
+        let open!: () => void;
+        const held = new Promise<void>((resolve) => {
+            open = resolve;
+        });
+        let entered!: () => void;
+        const inside = new Promise<void>((resolve) => {
+            entered = resolve;
+        });
+        const boundary = db.transaction(async () => {
+            entered();
+            await held;
+        });
+        await inside;
+
+        let done = false;
+        const batch = driver.exec("create table widget (id text primary key)").then(() => {
+            done = true;
+        });
+        await settle();
+        expect(done).toBe(false);
+
+        open();
+        await boundary;
+        await batch;
+        expect((await db.query("select id from widget")).rows).toEqual([]);
+        await driver.close();
+    });
+
     it("frees the turn when a boundary throws", async () => {
         const driver = new PgliteSqlDriver(PGlite);
         const db = driver.createExecutor();
@@ -75,14 +107,19 @@ describe("PgliteSqlDriver", () => {
         await driver.close();
     });
 
-    it("answers the write count, with a select reporting zero", async () => {
+    it("answers the row count, and null for a command tag that carries none", async () => {
         const driver = new PgliteSqlDriver(PGlite);
         await driver.exec("create table widget (id text primary key)");
 
-        await expect(driver.query("insert into widget (id) values ('a'), ('b')")).resolves.toMatchObject({
-            affectedRows: 2,
+        await expect(driver.query("insert into widget (id) values ('a'), ('b')")).resolves.toEqual({
+            rows: [],
+            rowCount: 2,
         });
-        await expect(driver.query("select id from widget")).resolves.toMatchObject({ rows: [{ id: "a" }, { id: "b" }], affectedRows: 0 });
+        await expect(driver.query("select id from widget")).resolves.toEqual({
+            rows: [{ id: "a" }, { id: "b" }],
+            rowCount: 2,
+        });
+        await expect(driver.query("show transaction_isolation")).resolves.toMatchObject({ rowCount: null });
 
         await driver.close();
     });

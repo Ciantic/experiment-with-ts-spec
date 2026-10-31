@@ -132,7 +132,7 @@ function moduleCodes(table: Table): string[] {
 /** A db that records the SQL it is handed and echoes the keys a one-row write reads back. */
 function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlExecutor {
     const handle: SqlExecutor = {
-        query: async <Row extends Record<string, unknown> = Record<string, unknown>>(
+        query: async <Row extends object = Record<string, unknown>>(
             sql: string,
             parameters?: unknown[],
         ) => {
@@ -141,7 +141,7 @@ function recordingDb(statements: string[], keyColumns: string[] = ["id"]): SqlEx
             const rows = (arrays[0] ?? []).map((_, index) =>
                 Object.fromEntries(keyColumns.map((name, position) => [name, arrays[position]?.[index]])),
             );
-            return { rows: rows as Row[], affectedRows: rows.length };
+            return { rows: rows as Row[], rowCount: rows.length };
         },
         transaction: (run) => run(handle),
         transactionWith: (_options, run) => run(handle),
