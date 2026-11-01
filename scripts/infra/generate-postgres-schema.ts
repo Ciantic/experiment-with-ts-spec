@@ -206,13 +206,13 @@ function keyText(column: Column, value: string): string {
     }
 }
 
-/** Notify the entity's channel once per statement that changes its table, with no payload. See docs/notifications.md. */
+/** Notify the entity's channel once per statement that changes its table, publishing `TG_OP`. See docs/notifications.md. */
 function renderNotifyTrigger(table: Table): string[] {
     const name = quote(`${table.name}_notify`);
     return [
         `create function ${name}() returns trigger as $$`,
         "begin",
-        `    perform pg_notify(${quoteLiteral(table.name)}, '');`,
+        `    perform pg_notify(${quoteLiteral(table.name)}, TG_OP);`,
         "    return null;",
         "end;",
         "$$ language plpgsql;",

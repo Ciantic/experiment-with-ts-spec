@@ -169,8 +169,14 @@ export function renderClientModule(entity: RestEntity): string {
     }
     if (notify || watchOperation) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
+        const watchTypes = ["NotificationSubscription", "NotificationOptions"];
+        if (watchOperation) {
+            watchTypes.push("WatchEvent");
+        }
         lines.push('import type { HttpClient } from "../http.ts";');
-        lines.push('import { watch, type NotificationSubscription, type WatchEvent, type WatchOptions } from "../watch.ts";');
+        lines.push(
+            `import { watch, ${watchTypes.map((type) => `type ${type}`).join(", ")} } from "../watch.ts";`,
+        );
     }
     if (writeTypes.length > 0) {
         lines.push("");
@@ -195,9 +201,12 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`export function ${notify.id}(`);
         lines.push("    http: HttpClient,");
         lines.push("    onChange: () => void,");
-        lines.push("    options?: WatchOptions,");
+        lines.push("    options?: NotificationOptions,");
         lines.push("): NotificationSubscription {");
-        lines.push(`    return watch(http.url("${notify.path}"), () => onChange(), options);`);
+        lines.push("    const ops = options?.ops;");
+        lines.push(
+            `    return watch(http.url("${notify.path}", ops === undefined ? undefined : { ops }), () => onChange(), options);`,
+        );
         lines.push("}");
     }
 
@@ -208,10 +217,12 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("    http: HttpClient,");
         lines.push(`    keys: ${keyType(entity)}[],`);
         lines.push(`    onChange: (event: WatchEvent<${keyType(entity)}>) => void,`);
-        lines.push("    options?: WatchOptions,");
+        lines.push("    options?: NotificationOptions,");
         lines.push("): NotificationSubscription {");
+        lines.push("    const ops = options?.ops;");
+        lines.push(`    const argument = ops === undefined ? { keys } : { keys, ops };`);
         lines.push(
-            `    return watch<WatchEvent<${keyType(entity)}>>(http.url("${watchOperation.path}", { keys }), onChange, options);`,
+            `    return watch<WatchEvent<${keyType(entity)}>>(http.url("${watchOperation.path}", argument), onChange, options);`,
         );
         lines.push("}");
     }

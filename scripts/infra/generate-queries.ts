@@ -245,14 +245,17 @@ function queryArgs(filters: string[]): string {
 /** Render one entity's change stream over the channel its table's trigger notifies. */
 export function renderNotifyModule(entity: string, table: Table): string {
     const lines: string[] = [HEADER];
+    lines.push('import type { WatchOperation } from "sdk/watch.ts";');
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
-    lines.push('import { subscribe, withoutPayload } from "../notifications.ts";');
+    lines.push('import { onlyOperations, subscribe, withoutPayload } from "../notifications.ts";');
     lines.push("");
     lines.push(`/** Subscribe to changes of \`${entity}\`; each notification carries no payload. See docs/notifications.md. */`);
     lines.push(
-        `export function notify${entity}(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<void> {`,
+        `export function notify${entity}(db: SqlExecutor, opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<void> {`,
     );
-    lines.push(`    return withoutPayload(subscribe(db, ${JSON.stringify(table.name)}, opts?.signal));`);
+    lines.push(
+        `    return withoutPayload(onlyOperations(subscribe(db, ${JSON.stringify(table.name)}, opts?.signal), opts?.ops));`,
+    );
     lines.push("}");
     return lines.join("\n") + "\n";
 }
@@ -263,16 +266,16 @@ export function renderWatchModule(entity: string, table: Table): string {
     const fields = primaryKeyColumns(table).map((column) => column.name);
     const lines: string[] = [HEADER];
     lines.push(`import type { ${keyType} } from "sdk/schemas.ts";`);
-    lines.push('import type { WatchEvent } from "sdk/watch.ts";');
+    lines.push('import type { WatchEvent, WatchOperation } from "sdk/watch.ts";');
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push('import { watchKeys } from "../notifications.ts";');
     lines.push("");
     lines.push(`/** Subscribe to changes of the given \`${entity}\` rows, with the statement that changed each. See docs/notifications.md. */`);
     lines.push(
-        `export function watch${entity}(db: SqlExecutor, keys: ${keyType}[], opts?: { signal?: AbortSignal }): AsyncIterable<WatchEvent<${keyType}>> {`,
+        `export function watch${entity}(db: SqlExecutor, keys: ${keyType}[], opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<WatchEvent<${keyType}>> {`,
     );
     lines.push(
-        `    return watchKeys(db, ${JSON.stringify(table.name)}, keys, ${JSON.stringify(fields)}, opts?.signal);`,
+        `    return watchKeys(db, ${JSON.stringify(table.name)}, keys, ${JSON.stringify(fields)}, opts?.ops, opts?.signal);`,
     );
     lines.push("}");
     return lines.join("\n") + "\n";

@@ -30,6 +30,43 @@ export async function* withoutPayload(events: AsyncIterable<ChangeNotification>)
     }
 }
 
+/** The operation a payload describes: a bare `TG_OP` from a statement trigger, or an event object. */
+function operationOf(payload: string): WatchOperation | undefined {
+    if (payload === "INSERT" || payload === "UPDATE" || payload === "DELETE") {
+        return payload;
+    }
+    try {
+        const parsed: unknown = JSON.parse(payload);
+        if (typeof parsed !== "object" || parsed === null) {
+            return undefined;
+        }
+        const op = (parsed as { op?: unknown }).op;
+        return isWatchOperation(op) ? op : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Pass only the requested operations; omitted means every operation. */
+export async function* onlyOperations(
+    events: AsyncIterable<ChangeNotification>,
+    ops?: readonly WatchOperation[],
+): AsyncIterable<ChangeNotification> {
+    if (ops === undefined) {
+        for await (const payload of events) {
+            yield payload;
+        }
+        return;
+    }
+    const wanted = new Set(ops);
+    for await (const payload of events) {
+        const op = operationOf(payload);
+        if (op !== undefined && wanted.has(op)) {
+            yield payload;
+        }
+    }
+}
+
 /** The text the trigger publishes for one key value, matching the generated SQL cast. */
 function canonical(value: unknown): string {
     if (value instanceof Date) {
@@ -72,14 +109,16 @@ export async function* watchKeys<T extends Record<string, unknown>>(
     channel: string,
     keys: readonly T[],
     fields: readonly string[],
+    ops?: readonly WatchOperation[],
     signal?: AbortSignal,
 ): AsyncIterable<WatchEvent<T>> {
     if (keys.length === 0) {
         return;
     }
+    const wanted = ops === undefined ? undefined : new Set(ops);
     for await (const payload of subscribe(db, channel, signal)) {
         const event = readEvent(payload);
-        if (event === undefined) {
+        if (event === undefined || (wanted !== undefined && !wanted.has(event.op))) {
             continue;
         }
         const match = keys.find((key) => fields.every((field) => canonical(key[field]) === event.key[field]));

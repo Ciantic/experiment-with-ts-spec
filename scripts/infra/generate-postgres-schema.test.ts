@@ -913,7 +913,7 @@ describe("generateSchema triggers", () => {
         });
 
         expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
-        expect(sql).toContain("    perform pg_notify('thing', '');");
+        expect(sql).toContain("    perform pg_notify('thing', TG_OP);");
         expect(sql).toContain(
             'create trigger "thing_notify" after insert or update or delete on "thing"',
         );

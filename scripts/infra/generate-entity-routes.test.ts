@@ -256,12 +256,15 @@ export interface Internal {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain('import { SseStream } from "../sse.ts";');
+        expect(code).toContain('import type { WatchOperation } from "sdk/watch.ts";');
         expect(code).toContain('id: "notifyNotified"');
         expect(code).toContain('path: "/notified/notify"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain("input: z.void(),");
         expect(code).toContain(
-            "handler: async (ctx) => new SseStream((signal) => notifyNotified(ctx.db, { signal })),",
+            'input: z.strictObject({ ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),',
+        );
+        expect(code).toContain(
+            "notifyNotified(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),",
         );
     });
 
@@ -277,9 +280,9 @@ export interface Internal {
         expect(code).toContain('id: "watchWatched"');
         expect(code).toContain('path: "/watched/watch"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain("input: z.strictObject({ keys: z.array(watchedPrimaryKeySchema) }),");
+        expect(code).toContain('input: z.strictObject({ keys: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),');
         expect(code).toContain(
-            "watchWatched(ctx.db, (body as { keys: WatchedPrimaryKey[] }).keys, { signal }),",
+            "watchWatched(ctx.db, (body as { keys: WatchedPrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),",
         );
     });
 });

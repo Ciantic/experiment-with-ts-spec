@@ -66,13 +66,16 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     }
 }
 
+/** The generated schema expression for the operations a stream may select. */
+const OPS_SCHEMA = 'z.array(z.enum(["INSERT", "UPDATE", "DELETE"]))';
+
 /** The expression the router validates the argument with. A read takes options; every write takes rows. */
 function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "notify") {
-        return "z.void()";
+        return `z.strictObject({ ops: ${OPS_SCHEMA}.optional() }).optional()`;
     }
     if (kind === "watch") {
-        return `z.strictObject({ keys: z.array(${schemaName(entity, kind) as string}) })`;
+        return `z.strictObject({ keys: z.array(${schemaName(entity, kind) as string}), ops: ${OPS_SCHEMA}.optional() })`;
     }
     const name = schemaName(entity, kind) as string;
     return kind === "query" ? name : `z.array(${name})`;
@@ -124,6 +127,7 @@ export function renderEntityRoutes(entity: RestEntity): string {
     }
     if (streams) {
         lines.push('import { SseStream } from "../sse.ts";');
+        lines.push('import type { WatchOperation } from "sdk/watch.ts";');
     }
     if (watches) {
         lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
@@ -153,13 +157,18 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
         if (operation.kind === "notify") {
             // The handler opens the stream when the server starts writing; the response's close aborts it.
-            lines.push(`        handler: async (ctx) => new SseStream((signal) => ${operation.id}(ctx.db, { signal })),`);
+            lines.push("        handler: async (ctx, body) =>");
+            lines.push("            new SseStream((signal) =>");
+            lines.push(
+                `                ${operation.id}(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),`,
+            );
+            lines.push("            ),");
         } else if (operation.kind === "watch") {
             // The key array is required by the schema above, so the handler may trust its shape.
             lines.push("        handler: async (ctx, body) =>");
             lines.push("            new SseStream((signal) =>");
             lines.push(
-                `                ${operation.id}(ctx.db, (body as { keys: ${entity.entity}PrimaryKey[] }).keys, { signal }),`,
+                `                ${operation.id}(ctx.db, (body as { keys: ${entity.entity}PrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),`,
             );
             lines.push("            ),");
         } else {

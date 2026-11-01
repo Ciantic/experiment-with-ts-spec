@@ -20,6 +20,12 @@ export interface WatchOptions {
     source?: EventSourceConstructor;
 }
 
+/** How a generated change helper opens its stream. */
+export interface NotificationOptions extends WatchOptions {
+    /** The operations to deliver; omitted means every operation. */
+    ops?: readonly WatchOperation[];
+}
+
 /** A live change subscription. */
 export interface NotificationSubscription {
     /** Stop listening and close the connection. */

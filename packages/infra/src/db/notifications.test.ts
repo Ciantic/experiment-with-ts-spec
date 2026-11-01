@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { subscribe, watchKeys } from "./notifications.ts";
+import { onlyOperations, subscribe, watchKeys } from "./notifications.ts";
 
 /** A fresh database and the executor a caller gets from it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -120,11 +120,54 @@ describe("watchKeys", () => {
         await close();
     });
 
+    it("drops an operation that was not requested", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], ["INSERT"])[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"}}')`);
+        await db.query(`select pg_notify('widget', '{"op":"INSERT","key":{"id":"a"}}')`);
+
+        expect(await pending).toEqual({ done: false, value: { key: { id: "a" }, op: "INSERT" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
     it("completes immediately when no key is requested", async () => {
         const { db, close } = await fixture();
         const iterator = watchKeys(db, "widget", [], ["id"])[Symbol.asyncIterator]();
 
         expect(await iterator.next()).toEqual({ done: true, value: undefined });
+        await close();
+    });
+});
+
+describe("onlyOperations", () => {
+    it("passes only the requested operations, including a statement trigger's bare TG_OP", async () => {
+        const { db, close } = await fixture();
+        const iterator = onlyOperations(subscribe(db, "widget"), ["INSERT"])[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', 'UPDATE')`);
+        await db.query(`select pg_notify('widget', 'INSERT')`);
+
+        expect(await pending).toEqual({ done: false, value: "INSERT" });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("passes every operation when no filter is given", async () => {
+        const { db, close } = await fixture();
+        const iterator = onlyOperations(subscribe(db, "widget"))[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', 'DELETE')`);
+
+        expect(await pending).toEqual({ done: false, value: "DELETE" });
+        await iterator.return?.(undefined);
         await close();
     });
 });

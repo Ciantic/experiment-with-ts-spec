@@ -286,22 +286,24 @@ describe("renderNotifyModule", () => {
         const code = renderNotifyModule("Invoice", invoice);
 
         expect(code).toContain(
-            'export function notifyInvoice(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<void>',
+            'export function notifyInvoice(db: SqlExecutor, opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<void>',
         );
-        expect(code).toContain('return withoutPayload(subscribe(db, "invoice", opts?.signal));');
+        expect(code).toContain(
+            'return withoutPayload(onlyOperations(subscribe(db, "invoice", opts?.signal), opts?.ops));',
+        );
     });
 });
 
 describe("renderWatchModule", () => {
-    it("filters the channel by the entity's primary key", () => {
+    it("filters the channel by the entity's primary key and selected operations", () => {
         const code = renderWatchModule("Invoice", invoice);
 
         expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
-        expect(code).toContain('import type { WatchEvent } from "sdk/watch.ts";');
+        expect(code).toContain('import type { WatchEvent, WatchOperation } from "sdk/watch.ts";');
         expect(code).toContain(
-            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { signal?: AbortSignal }): AsyncIterable<WatchEvent<InvoicePrimaryKey>>",
+            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<WatchEvent<InvoicePrimaryKey>>",
         );
-        expect(code).toContain('return watchKeys(db, "invoice", keys, ["id"], opts?.signal);');
+        expect(code).toContain('return watchKeys(db, "invoice", keys, ["id"], opts?.ops, opts?.signal);');
     });
 });
 

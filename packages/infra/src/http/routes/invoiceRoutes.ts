@@ -2,6 +2,7 @@
 import type { Route } from "../router.ts";
 import { z } from "zod";
 import { SseStream } from "../sse.ts";
+import type { WatchOperation } from "sdk/watch.ts";
 import type { InvoicePrimaryKey } from "sdk/schemas.ts";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
 import { notifyInvoice, queryInvoice, watchInvoice } from "../../db/queries/index.ts";
@@ -23,8 +24,11 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice/notify",
         source: "query",
         stream: true,
-        input: z.void(),
-        handler: async (ctx) => new SseStream((signal) => notifyInvoice(ctx.db, { signal })),
+        input: z.strictObject({ ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),
+        handler: async (ctx, body) =>
+            new SseStream((signal) =>
+                notifyInvoice(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),
+            ),
     },
     {
         id: "watchInvoice",
@@ -32,10 +36,10 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice/watch",
         source: "query",
         stream: true,
-        input: z.strictObject({ keys: z.array(invoicePrimaryKeySchema) }),
+        input: z.strictObject({ keys: z.array(invoicePrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),
         handler: async (ctx, body) =>
             new SseStream((signal) =>
-                watchInvoice(ctx.db, (body as { keys: InvoicePrimaryKey[] }).keys, { signal }),
+                watchInvoice(ctx.db, (body as { keys: InvoicePrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),
             ),
     },
     {

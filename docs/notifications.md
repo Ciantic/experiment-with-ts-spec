@@ -39,7 +39,7 @@ listener cannot filter rows it cannot identify. An entity that declares only
 ```sql
 create function "widget_notify"() returns trigger as $$
 begin
-    perform pg_notify('widget', '');
+    perform pg_notify('widget', TG_OP);
     return null;
 end;
 $$ language plpgsql;
@@ -75,13 +75,29 @@ notification and no query.
 Declaring both operations installs the row-level trigger, since it serves the
 watch; `notify` ignores the key it carries.
 
+## Operations
+
+Both streams take an optional `ops` filter, one or more of `INSERT`, `UPDATE`,
+and `DELETE`. Omitted means every operation; an empty array means none.
+
+```ts
+notifyWidget(db, { ops: ["INSERT"], signal })          // only new rows
+watchWidget(db, keys, { ops: ["UPDATE"], signal })     // only updates to these rows
+```
+
+The filter runs in the subscription: the trigger still publishes every
+operation on the table's one channel, and `notify`/`watch` discard the ones the
+caller did not name. For a table with heavy update traffic this still wakes the
+listener for every change; per-operation channels are the next step if that
+becomes measurable.
+
 ## Server side
 
 `notify<Entity>` yields once per change and carries no value:
 
 ```ts
-for await (const change of notifyWidget(db, { signal })) {
-    // re-read the collection
+for await (const change of notifyWidget(db, { ops: ["INSERT"], signal })) {
+    // a new widget exists
 }
 ```
 
@@ -108,8 +124,8 @@ the subscription refuses it.
 
 ## Over REST
 
-`@restQueries notify` serves `GET /<table>/notify`, with no argument. Each event
-is empty:
+`@restQueries notify` serves `GET /<table>/notify?q=<{ ops? }>`. Each event is
+empty:
 
 ```
 data: 
@@ -117,8 +133,8 @@ data:
 data: 
 ```
 
-`@restQueries watch` serves `GET /<table>/watch?q=<keys>`, where `keys` is the
-same `<entity>PrimaryKey[]` array the writes use. Each event is
+`@restQueries watch` serves `GET /<table>/watch?q=<{ keys, ops? }>`, where
+`keys` is the same `<entity>PrimaryKey[]` array the writes use. Each event is
 `{ key, op }`, carrying the changed key and the `TG_OP`: `INSERT`, `UPDATE`, or
 `DELETE`.
 
@@ -132,11 +148,11 @@ const http = createHttpClient("http://127.0.0.1:3000");
 
 const all = notifyWidget(http, () => {
     // any widget changed
-});
+}, { ops: ["DELETE"] });
 
 const one = watchWidget(http, [{ id }], (event) => {
     // event.key.id is the widget; event.op is INSERT, UPDATE, or DELETE
-});
+}, { ops: ["UPDATE"] });
 
 // later
 all.close();
