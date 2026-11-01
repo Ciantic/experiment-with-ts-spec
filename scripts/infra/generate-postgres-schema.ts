@@ -281,9 +281,9 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     }
 
     for (const table of ordered) {
-        if (table.queries.includes("watch")) {
+        if (table.notify.includes("rows")) {
             lines.push(...renderWatchTrigger(table));
-        } else if (table.queries.includes("notify")) {
+        } else if (table.notify.includes("all")) {
             lines.push(...renderNotifyTrigger(table));
         }
     }

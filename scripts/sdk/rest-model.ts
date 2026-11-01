@@ -5,6 +5,7 @@ import {
     isCompareOperator,
     lowerFirst,
     type Diagnostic,
+    type NotifyScope,
     type ReadOperation,
     type SpecInterface,
     type SpecLocation,
@@ -17,8 +18,8 @@ export type { Diagnostic };
 /** The verbs the API uses. A read is `GET`, with its argument in the `q` query parameter. */
 export type RestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-/** One kind of call: the operations the spec declares, since the tag is what exposes one. */
-export type RestKind = ReadOperation | WriteOperation;
+/** One kind of call: the reads and writes the spec declares, plus the single watch stream. */
+export type RestKind = ReadOperation | WriteOperation | "watch";
 
 /** Where a call carries its argument: the `q` query parameter, or the request body. */
 export type RestSource = "query" | "body";
@@ -55,6 +56,10 @@ export interface RestEntity {
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
+    /** The `@notify` scopes the entity declares. See docs/notifications.md. */
+    notify: NotifyScope[];
+    /** The `@restNotify` scopes the route exposes; a subset of {@link notify}. */
+    restNotify: NotifyScope[];
     operations: RestOperation[];
 }
 
@@ -88,9 +93,9 @@ export interface RestModel {
     diagnostics: Diagnostic[];
 }
 
-/** `/invoice/query` or `/invoice/notify`. A read is a `GET` on the collection. */
-function readPath(path: string, kind: ReadOperation): string {
-    return `${path}/${kind}`;
+/** `/invoice/query`. A read is a `GET` on the collection. */
+function readPath(path: string): string {
+    return `${path}/query`;
 }
 
 /** The name a call goes by: the kind it names and the entity it belongs to, e.g. `queryInvoice`. */
@@ -115,19 +120,23 @@ function writeOperation(entity: string, path: string, kind: WriteOperation): Res
     }
 }
 
-/** The calls one entity exposes, in a stable order: the reads `@restQueries` names, then the writes. */
+/** The calls one entity exposes, in a stable order: the query, the watch, then the writes. */
 function operationsFor(
     entity: string,
     path: string,
     reads: ReadOperation[],
     writes: WriteOperation[],
+    notify: NotifyScope[],
 ): RestOperation[] {
     const operations: RestOperation[] = [];
     for (const kind of READ_OPERATIONS) {
         // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
         if (reads.includes(kind)) {
-            operations.push({ id: callId(entity, kind), kind, method: "GET", path: readPath(path, kind), source: "query" });
+            operations.push({ id: callId(entity, kind), kind, method: "GET", path: readPath(path), source: "query" });
         }
+    }
+    if (notify.length > 0) {
+        operations.push({ id: callId(entity, "watch"), kind: "watch", method: "GET", path: `${path}/watch`, source: "query" });
     }
     for (const kind of WRITE_OPERATIONS) {
         if (writes.includes(kind)) {
@@ -166,7 +175,9 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations),
+        notify: spec.notify,
+        restNotify: spec.restNotify,
+        operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restNotify),
     };
 }
 
@@ -249,6 +260,15 @@ export function buildRestModel(spec: SpecModel): RestModel {
                 report(
                     entitySpec.location,
                     `\`${entitySpec.name}\`: @restQueries \`${operation}\` is not in @queries`,
+                );
+            }
+        }
+        // A notification scope the entity does not declare cannot be served.
+        for (const scope of entitySpec.restNotify) {
+            if (!entitySpec.notify.includes(scope)) {
+                report(
+                    entitySpec.location,
+                    `\`${entitySpec.name}\`: @restNotify \`${scope}\` is not in @notify`,
                 );
             }
         }

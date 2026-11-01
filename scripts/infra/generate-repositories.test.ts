@@ -45,6 +45,7 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         triggers: [],
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
+        notify: [],
     };
 }
 

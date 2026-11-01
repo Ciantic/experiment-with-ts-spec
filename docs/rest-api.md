@@ -46,27 +46,24 @@ entity leaves no route module and no client module behind.
 ## The surface
 
 One collection per entity that exposes one. The collection sits at the
-`@pgTable` name and exposes the operations its `@restQueries` and
-`@restRepository` tags name: a write `@repository` generates but
-`@restRepository` omits is reachable to backend callers and absent from the
-route table and the SDK, and an entity that carries no `@restQueries query` has
-no read route. A `notify` read adds a server-sent event stream at
-`/<table>/notify` with an optional operation filter, and a `watch` read adds one
-at `/<table>/watch` taking a `{ keys, ops? }` argument in `q`. Neither has a
-`Call` builder, since a stream opens a connection rather than sending one
-request; the SDK generates `notify<Entity>(http, onChange, options)` and
-`watch<Entity>(http, keys, onChange, options)`, each returning a subscription.
-See `docs/notifications.md`. An
-entity that names no exposed operation at all has no collection: no path, no
-route module, and no client module. See `docs/spec-annotations.md`. A read and a
-delete carry their argument in a single `q` query parameter; a write carries it
-in the body.
+`@pgTable` name and exposes what its `@restQueries`, `@restRepository`, and
+`@restNotify` tags name: a write `@repository` generates but `@restRepository`
+omits is reachable to backend callers and absent from the route table and the
+SDK, and an entity that carries no `@restQueries query` has no read route.
+`@restNotify` adds one server-sent event stream at `/<table>/watch` taking
+`{ pks?, ops? }` in `q`. `pks` is required when only `rows` is exposed, named
+nowhere when only `all` is exposed, and optional when both are. The stream has
+no `Call` builder, since it opens a connection rather than sending one request;
+the SDK generates `watch<Entity>(http, onChange, options)`, returning a
+subscription. See `docs/notifications.md`. An entity that names no exposed
+operation at all has no collection: no path, no route module, and no client
+module. See `docs/spec-annotations.md`. A read and a delete carry their argument
+in a single `q` query parameter; a write carries it in the body.
 
 | Call | Id | Method | Path | Argument |
 | --- | --- | --- | --- | --- |
 | query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
-| notify | `notify<Entity>` | `GET` | `/<table>/notify?q=…` | `{ ops?: ("INSERT" \| "UPDATE" \| "DELETE")[] }` (server-sent events) |
-| watch | `watch<Entity>` | `GET` | `/<table>/watch?q=…` | `{ keys: <entity>PrimaryKey[]; ops? }` (server-sent events) |
+| watch | `watch<Entity>` | `GET` | `/<table>/watch?q=…` | `{ pks?: <entity>PrimaryKey[]; ops? }` (server-sent events) |
 | create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |

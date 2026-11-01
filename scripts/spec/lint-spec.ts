@@ -5,6 +5,7 @@ import {
     FIELD_TAGS,
     FOREIGN_KEY_OPTIONS,
     INTERFACE_TAGS,
+    NOTIFY_SCOPES,
     READ_OPERATIONS,
     REFERENTIAL_ACTIONS,
     RETIRED_TAGS,
@@ -402,18 +403,21 @@ interface OperationTag {
     required: boolean;
 }
 
-/** The four surface tags, in the order their findings are reported. */
+/** The surface tags, in the order their findings are reported. */
 const SURFACE_TAGS: OperationTag[] = [
     { name: "repository", vocabulary: WRITE_OPERATIONS, required: true },
     { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: false },
     { name: "queries", vocabulary: READ_OPERATIONS, required: false },
     { name: "restQueries", vocabulary: READ_OPERATIONS, required: false },
+    { name: "notify", vocabulary: NOTIFY_SCOPES, required: false },
+    { name: "restNotify", vocabulary: NOTIFY_SCOPES, required: false },
 ];
 
 /** The exposed tag of each pair, paired with the tag that declares what it may expose. */
 const EXPOSED_BY: [string, string][] = [
     ["restRepository", "repository"],
     ["restQueries", "queries"],
+    ["restNotify", "notify"],
 ];
 
 /** An entity declares its surface: the operations it generates, and the subset it exposes. */

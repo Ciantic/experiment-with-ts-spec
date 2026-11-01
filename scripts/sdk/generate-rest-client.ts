@@ -83,10 +83,8 @@ function comment(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
         case "query":
             return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
-        case "notify":
-            return `/** The change stream of \`${name}\`, served as server-sent events. See docs/notifications.md. */`;
         case "watch":
-            return `/** The change stream of the given \`${name}\` rows, with the statement that changed each. See docs/notifications.md. */`;
+            return `/** The change stream of \`${name}\`, optionally scoped to rows and operations. See docs/notifications.md. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "upsert":
@@ -111,12 +109,13 @@ function keyType(entity: RestEntity): string {
 export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const query = operation(entity, "query");
-    const notify = operation(entity, "notify");
     const watchOperation = operation(entity, "watch");
     const create = operation(entity, "create");
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
+    const watchAll = watchOperation !== undefined && entity.restNotify.includes("all");
+    const watchRows = watchOperation !== undefined && entity.restNotify.includes("rows");
 
     const selectionTypes = ["Selection", "Selected"];
     if (entity.filters.length > 0) {
@@ -141,8 +140,8 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         writeTypes.push(`${name}Insert`);
     }
-    // Create, upsert, and delete all name the key; a row-scoped watch names it too.
-    if (create || upsert || remove || watchOperation) {
+    // Create, upsert, and delete all name the key; a rows-scoped watch names it too.
+    if (create || upsert || remove || watchRows) {
         writeTypes.push(keyType(entity));
     }
     if (upsert) {
@@ -151,13 +150,13 @@ export function renderClientModule(entity: RestEntity): string {
     if (update) {
         writeTypes.push(`${name}Patch`);
     }
-    writeTypes.sort((a, b) => a.localeCompare(b));
-    if (writeTypes.length > 0) {
+    const types = [...new Set(writeTypes)].sort((a, b) => a.localeCompare(b));
+    if (types.length > 0) {
         // Each type lives in its own module, so the imports group by module rather than by entity.
         const byModule = new Map<string, string[]>();
-        for (const writeType of writeTypes) {
-            const module = writeTypeFileName(writeType);
-            byModule.set(module, [...(byModule.get(module) ?? []), writeType]);
+        for (const type of types) {
+            const module = writeTypeFileName(type);
+            byModule.set(module, [...(byModule.get(module) ?? []), type]);
         }
         for (const [module, names] of [...byModule].sort(([a], [b]) => a.localeCompare(b))) {
             lines.push(`import type { ${names.join(", ")} } from "${WRITE_TYPES_DIR}/${module}";`);
@@ -167,20 +166,23 @@ export function renderClientModule(entity: RestEntity): string {
     if (callable !== undefined) {
         lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
     }
-    if (notify || watchOperation) {
+    if (watchOperation) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
         const watchTypes = ["NotificationSubscription", "NotificationOptions"];
-        if (watchOperation) {
+        if (watchRows) {
             watchTypes.push("WatchEvent");
+        }
+        if (watchAll) {
+            watchTypes.push("AllWatchEvent");
         }
         lines.push('import type { HttpClient } from "../http.ts";');
         lines.push(
             `import { watch, ${watchTypes.map((type) => `type ${type}`).join(", ")} } from "../watch.ts";`,
         );
     }
-    if (writeTypes.length > 0) {
+    if (types.length > 0) {
         lines.push("");
-        lines.push(`export type { ${writeTypes.join(", ")} };`);
+        lines.push(`export type { ${types.join(", ")} };`);
     }
 
     if (query) {
@@ -195,36 +197,58 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("}");
     }
 
-    if (notify) {
-        lines.push("");
-        lines.push(comment(entity, "notify"));
-        lines.push(`export function ${notify.id}(`);
-        lines.push("    http: HttpClient,");
-        lines.push("    onChange: () => void,");
-        lines.push("    options?: NotificationOptions,");
-        lines.push("): NotificationSubscription {");
-        lines.push("    const ops = options?.ops;");
-        lines.push(
-            `    return watch(http.url("${notify.path}", ops === undefined ? undefined : { ops }), () => onChange(), options);`,
-        );
-        lines.push("}");
-    }
-
     if (watchOperation) {
+        const key = keyType(entity);
         lines.push("");
         lines.push(comment(entity, "watch"));
-        lines.push(`export function ${watchOperation.id}(`);
-        lines.push("    http: HttpClient,");
-        lines.push(`    keys: ${keyType(entity)}[],`);
-        lines.push(`    onChange: (event: WatchEvent<${keyType(entity)}>) => void,`);
-        lines.push("    options?: NotificationOptions,");
-        lines.push("): NotificationSubscription {");
-        lines.push("    const ops = options?.ops;");
-        lines.push(`    const argument = ops === undefined ? { keys } : { keys, ops };`);
-        lines.push(
-            `    return watch<WatchEvent<${keyType(entity)}>>(http.url("${watchOperation.path}", argument), onChange, options);`,
-        );
-        lines.push("}");
+        if (watchAll && watchRows) {
+            lines.push(`export function ${watchOperation.id}(`);
+            lines.push("    http: HttpClient,");
+            lines.push(`    onChange: (event: WatchEvent<${key}>) => void,`);
+            lines.push(`    opts: { pks: ${key}[] } & NotificationOptions,`);
+            lines.push("): NotificationSubscription;");
+            lines.push(`export function ${watchOperation.id}(`);
+            lines.push("    http: HttpClient,");
+            lines.push("    onChange: (event: AllWatchEvent) => void,");
+            lines.push("    opts?: ({ pks?: undefined } & NotificationOptions) | undefined,");
+            lines.push("): NotificationSubscription;");
+            lines.push(`export function ${watchOperation.id}(`);
+            lines.push("    http: HttpClient,");
+            lines.push("    onChange: (event: any) => void,");
+            lines.push(`    opts?: ({ pks?: ${key}[] | undefined } & NotificationOptions) | undefined,`);
+            lines.push("): NotificationSubscription {");
+            lines.push("    const ops = opts?.ops;");
+            lines.push("    const pks = opts?.pks;");
+            lines.push("    const argument = pks === undefined");
+            lines.push("        ? (ops === undefined ? undefined : { ops })");
+            lines.push("        : (ops === undefined ? { pks } : { pks, ops });");
+            lines.push(
+                `    return watch<WatchEvent<${key}> | AllWatchEvent>(http.url("${watchOperation.path}", argument), onChange, opts);`,
+            );
+            lines.push("}");
+        } else if (watchRows) {
+            lines.push(`export function ${watchOperation.id}(`);
+            lines.push("    http: HttpClient,");
+            lines.push(`    onChange: (event: WatchEvent<${key}>) => void,`);
+            lines.push(`    opts: { pks: ${key}[] } & NotificationOptions,`);
+            lines.push("): NotificationSubscription {");
+            lines.push("    const ops = opts.ops;");
+            lines.push(
+                `    return watch<WatchEvent<${key}>>(http.url("${watchOperation.path}", ops === undefined ? { pks: opts.pks } : { pks: opts.pks, ops }), onChange, opts);`,
+            );
+            lines.push("}");
+        } else {
+            lines.push(`export function ${watchOperation.id}(`);
+            lines.push("    http: HttpClient,");
+            lines.push("    onChange: (event: AllWatchEvent) => void,");
+            lines.push("    opts?: NotificationOptions,");
+            lines.push("): NotificationSubscription {");
+            lines.push("    const ops = opts?.ops;");
+            lines.push(
+                `    return watch<AllWatchEvent>(http.url("${watchOperation.path}", ops === undefined ? undefined : { ops }), onChange, opts);`,
+            );
+            lines.push("}");
+        }
     }
 
     if (create) {

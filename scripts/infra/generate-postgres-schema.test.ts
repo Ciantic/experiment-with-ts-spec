@@ -903,7 +903,7 @@ describe("generateSchema triggers", () => {
             entities: {
                 Thing: `/**
                  * @entity
-                 * @queries query notify
+                 * @notify all
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -925,7 +925,7 @@ describe("generateSchema triggers", () => {
             entities: {
                 Thing: `/**
                  * @entity
-                 * @queries query watch
+                 * @notify rows
                  */
                 export interface Thing {
                     /** @primaryKey */

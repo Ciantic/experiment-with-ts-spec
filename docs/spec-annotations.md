@@ -146,18 +146,25 @@ Interface tags:
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
   operation left out has no module, no function, and no barrel export. Required
-  on each entity. See "`@repository`, `@restRepository`, and the read tags"
-  below.
+  on each entity. See "Operations and notification scopes" below.
 - `@restRepository <operation>…` — the subset of `@repository` that the route
   table and the generated SDK expose. A write may be generated and not exposed,
   so a seed or a group can still call it. Optional, like `@restQueries`: an
   entity that exposes no operation has no path, no route module, and no client
-  module. See "`@repository`, `@restRepository`, and the read tags" below.
+  module. See "Operations and notification scopes" below.
 - `@queries <operation>…` — the read operations whose modules the generator
-  writes, one or more of `query`, `notify`, `watch`. Optional: an entity that
-  declares no read gets none. See `docs/queries.md` and `docs/notifications.md`.
+  writes; the only read operation is `query`. Optional: an entity that declares
+  no read gets none. See `docs/queries.md`.
 - `@restQueries <operation>…` — the subset of `@queries` that the route table and
   the generated SDK expose. Optional, like `@queries`. See `docs/rest-api.md`.
+- `@notify <scope>…` — the change scopes whose `watch<Entity>` module and
+  triggers the generator writes, one or both of `all` and `rows`. `all` is a
+  statement-level table trigger; `rows` is a row-level trigger that publishes
+  the primary key, so it needs one. Optional: an entity that declares no scope
+  has no change stream. See `docs/notifications.md`.
+- `@restNotify <scope>…` — the subset of `@notify` that the route table and the
+  generated SDK expose. Optional, like `@notify`, and it may name only a scope
+  `@notify` declares. See `docs/rest-api.md` and `docs/notifications.md`.
 - `@todo <text>` — the entity is not generated: no table, repository, query,
   schema, route, or client module, and none of the entity rules apply to it. The
   text says what is left to do, and the linter reports an empty one. See
@@ -266,9 +273,10 @@ application assigns, a key the database assigns with `@pgAutoIncrement`, a colum
 with a `@pgDefault` — and no other tag marks it. The clock
 tags cover the two timestamp spellings; see `docs/timestamps.md`.
 
-## `@repository`, `@restRepository`, and the read tags
+## Operations and notification scopes
 
-Each entity names the operations it materializes and the subset it publishes:
+Each entity names the operations it materializes and the subset it publishes,
+and the change scopes it emits and the subset it serves:
 
 ```ts
 /**
@@ -277,38 +285,48 @@ Each entity names the operations it materializes and the subset it publishes:
  * @restRepository create
  * @queries query
  * @restQueries query
+ * @notify all rows
+ * @restNotify all rows
  */
 export interface LogEntry {
 ```
 
-The four tags are two pairs, and each pair reads the same way: the first tag
-declares the operations a generator writes, the second the subset the route
-table and the generated SDK expose.
+The tags form three pairs, and each pair reads the same way: the first tag
+declares what a generator writes, the second the subset the route table and the
+generated SDK expose.
 
 `@repository` lists the write operations whose repository modules
 `generate-repositories.ts` writes: one or more of `create`, `upsert`, `update`,
 `delete`, in any order. An operation the list leaves out has no module, no
 function, and no barrel export. `@queries` lists the read operations whose
-modules `generate-queries.ts` writes: `query`, plus `notify` for the all-change
-stream and `watch` for the row-scoped stream. The tag is a list so a second kind
-of read is a token rather than a new tag, and it is what keeps the shape of the
-two pairs the same. See `docs/queries.md` and `docs/notifications.md`.
+modules `generate-queries.ts` writes; `query` is the only one. See
+`docs/queries.md`.
 
-`@restRepository` and `@restQueries` list the subset of those the REST surface
-serves; neither may name an operation its declaring tag omits, since a route
-would call a function that does not exist. A write may be generated and not
-exposed — a seed or a group can still call it — and so may a read.
+`@notify` lists the change scopes whose `watch<Entity>` module the query
+generator writes and whose trigger the schema generator installs: `all` for a
+statement-level table trigger that publishes only `TG_OP`, and `rows` for a
+row-level trigger that publishes the key and `TG_OP`. `rows` needs a primary
+key. The scopes are independent of `@queries`: an entity can stream changes
+without exposing a read. See `docs/notifications.md`.
+
+`@restRepository`, `@restQueries`, and `@restNotify` list the subset of those
+the REST surface serves; none may name an operation or scope its declaring tag
+omits, since a route would call a function that does not exist. A write may be
+generated and not exposed — a seed or a group can still call it — and so may a
+read or a change scope.
 
 `@repository` is required on each entity; an entity with no writes is not a shape
 the tags allow, and naming the four makes what it generates explicit. The other
-three are optional, and the exposure pair is how an entity stays off the wire: an
-entity that declares no read gets no `query<Entity>`, and one that names no
-exposed operation gets no path, no route module, and no client module, so its
-repositories stay callable by backend code alone. All four are validated as a
-group: the linter reports a missing required tag, an empty list, a token that is
-not in that tag's vocabulary, a token named twice, a tag that appears twice, and
-an exposed operation the declaring tag does not contain. Each list is the whole
-set, so the entity that wants the full surface names every operation in both.
+five are optional, and the exposure tags are how an entity stays off the wire:
+an entity that declares no read gets no `query<Entity>`, one that declares no
+scope gets no `watch<Entity>` and no trigger, and one that names no exposed
+operation gets no path, no route module, and no client module, so its
+repositories stay callable by backend code alone. All six are validated as a
+group: the linter reports a missing required tag, an empty list, a value that is
+not in that tag's vocabulary, a value named twice, a tag that appears twice, and
+an exposed operation or scope the declaring tag does not contain. Each list is
+the whole set, so the entity that wants the full surface names every operation
+and scope in both.
 
 ## Deferring a declaration
 
@@ -810,14 +828,14 @@ Enforced:
   what is left to do. A field, a type alias, and a contract's own tags report it
   as unrecognised, like any other tag in the wrong place. See "Deferring a
   declaration".
-- `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
-  operations: the write tags one or more of `create`, `upsert`, `update`,
-  `delete`, the read tags one or more of `query`, `notify`, `watch`. `@repository` alone is
-  required on each entity; the other three are optional. An unknown token, a
-  token named twice, an empty list, a tag that appears twice, and a
-  `@restRepository` or `@restQueries` operation its declaring tag does not
-  contain are each reported. See "`@repository`, `@restRepository`, and the read
-  tags".
+- `@repository`, `@restRepository`, `@queries`, `@restQueries`, `@notify`, and
+  `@restNotify` name their values: the write tags one or more of `create`,
+  `upsert`, `update`, `delete`, the read tag `query`, and the notify tags one or
+  more of `all`, `rows`. `@repository` alone is required on each entity; the
+  other five are optional. An unknown value, a value named twice, an empty list,
+  a tag that appears twice, and a `@restRepository`, `@restQueries`, or
+  `@restNotify` value its declaring tag does not contain are each reported. See
+  "Operations and notification scopes".
 - Tags may not repeat on a field.
 
 Gotchas:

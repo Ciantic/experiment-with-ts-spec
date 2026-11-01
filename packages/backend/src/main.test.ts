@@ -5,6 +5,7 @@ import * as api from "sdk/api/index.ts";
 import { AppError, createHttpClient, exec, transactionWith, ValidationError, call, NotFoundError } from "sdk/index.ts";
 import type { Call, Executable, HttpClient } from "sdk/index.ts";
 import { mockTables } from "spec/mockdata/index.ts";
+import * as repositorySchemas from "sdk/repositories/index.ts";
 import { createAppContext, PgliteSqlDriver } from "infra";
 import { routes } from "./http/routes/index.ts";
 import { parseArgs, startServer, type StartedServer } from "./main.ts";
@@ -51,6 +52,47 @@ function readFilter(entity: string): Record<string, unknown> {
 
     return Object.fromEntries(fields.map((field) => [field, rows.map((row) => row[field])]));
 }
+
+/** The key fields a generated primary key schema names, without naming a spec entity. */
+function keyFieldsFor(entity: string): string[] {
+    const name = `${entity.charAt(0).toLowerCase()}${entity.slice(1)}PrimaryKeySchema`;
+    const schema = (repositorySchemas as unknown as Record<string, { shape?: Record<string, unknown> }>)[name];
+    return schema?.shape === undefined ? [] : Object.keys(schema.shape);
+}
+
+/** The first generated watch route and a seeded row it can observe, without naming a spec entity. */
+function watchFixture() {
+    const route = routes.find((candidate) => candidate.id.startsWith("watch") && candidate.stream === true);
+    if (route === undefined) {
+        return undefined;
+    }
+
+    const entity = route.id.slice("watch".length);
+    const table = route.path.split("/")[1];
+    const row = (mockTables.find((candidate) => candidate.entity === entity)?.rows?.[0] ?? undefined) as
+        | Record<string, unknown>
+        | undefined;
+    const column = row === undefined ? undefined : Object.keys(row)[0];
+    if (table === undefined || row === undefined || column === undefined) {
+        return undefined;
+    }
+
+    const keyFields = keyFieldsFor(entity);
+    const key = Object.fromEntries(keyFields.map((field) => [field, row[field]]));
+
+    return {
+        route,
+        table,
+        column,
+        keyFields,
+        key,
+        row,
+        acceptsKeys: keyFields.length > 0 && route.input.safeParse({ pks: [key] }).success,
+        acceptsAll: route.input.safeParse(undefined).success,
+    };
+}
+
+const watch = watchFixture();
 
 let started!: StartedServer;
 let http!: HttpClient;
@@ -210,55 +252,46 @@ describe("a live server", () => {
 });
 
 describe("notifications", () => {
-    it("streams a server-sent event when a notified entity changes", async () => {
-        const abort = new AbortController();
-        const response = await fetch(`http://127.0.0.1:${started.port}/invoice/notify`, {
-            signal: abort.signal,
-        });
-        expect(response.status).toBe(200);
-        expect(response.headers.get("content-type")).toContain("text/event-stream");
+    it.skipIf(watch === undefined || (!watch.acceptsKeys && !watch.acceptsAll))(
+        "streams a change from a generated watch route",
+        async () => {
+            if (watch === undefined) {
+                throw new Error("the spec exposes no watch route");
+            }
 
-        // The event stream is open before fetch resolves; this lets LISTEN finish before the change.
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await started.app.driver.query(
-            'update "invoice" set "version" = "version" + 1 where "id" = (select "id" from "invoice" limit 1)',
-        );
+            const argument = watch.acceptsKeys ? { pks: [watch.key] } : undefined;
+            const abort = new AbortController();
+            const response = await fetch(http.url(watch.route.path, argument), {
+                signal: abort.signal,
+            });
+            expect(response.status).toBe(200);
+            expect(response.headers.get("content-type")).toContain("text/event-stream");
 
-        const chunk = await response.body!.getReader().read();
-        expect(new TextDecoder().decode(chunk.value)).toBe("data: \n\n");
+            // The event stream is open before fetch resolves; this lets LISTEN finish before the change.
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const where =
+                watch.keyFields.length === 0
+                    ? ""
+                    : ` where ${watch.keyFields
+                          .map((field, index) => `"${field}" = $${index + 1}`)
+                          .join(" and ")}`;
+            await started.app.driver.query(
+                `update "${watch.table}" set "${watch.column}" = "${watch.column}"${where}`,
+                watch.keyFields.map((field) => watch.key[field]),
+            );
 
-        abort.abort();
-    });
+            const chunk = await response.body!.getReader().read();
+            const data = new TextDecoder().decode(chunk.value);
+            expect(data.startsWith("data: ")).toBe(true);
+            expect(data).toContain("UPDATE");
+            if (watch.acceptsKeys) {
+                // The stream carries the changed key and the operation in the API's codec.
+                expect(data).toContain(String(watch.row[watch.keyFields[0]!]));
+            }
 
-    it("streams a requested row's key and ignores other rows", async () => {
-        const selected = await started.app.driver.query<{ id: string }>(
-            'select "id" from "invoice" order by "id" limit 1',
-        );
-        const id = selected.rows[0]?.id;
-        expect(id).toBeTruthy();
-
-        const abort = new AbortController();
-        const response = await fetch(http.url("/invoice/watch", { keys: [{ id }] }), {
-            signal: abort.signal,
-        });
-        expect(response.status).toBe(200);
-        expect(response.headers.get("content-type")).toContain("text/event-stream");
-
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        await started.app.driver.query(
-            'update "invoice" set "version" = "version" + 1 where "id" = $1',
-            [id],
-        );
-
-        const chunk = await response.body!.getReader().read();
-        const data = new TextDecoder().decode(chunk.value);
-        expect(data.startsWith("data: ")).toBe(true);
-        // The stream carries the changed key and the operation in the API's codec.
-        expect(data).toContain(id);
-        expect(data).toContain("UPDATE");
-
-        abort.abort();
-    });
+            abort.abort();
+        },
+    );
 });
 
 describe("--log-sql", () => {

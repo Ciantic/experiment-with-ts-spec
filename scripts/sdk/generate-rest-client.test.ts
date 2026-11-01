@@ -97,8 +97,8 @@ const NOTIFIED = `
 /**
  * @pgTable notified
  * @repository create
- * @queries query notify watch
- * @restQueries notify watch
+ * @notify all rows
+ * @restNotify all rows
  * @entity
  */
 export interface Notified {
@@ -363,29 +363,26 @@ describe("generateRestClient", () => {
     });
 });
 
-describe("notify helpers", () => {
+describe("watch helpers", () => {
     const withNotify = build({ Notified: NOTIFIED });
     const module = () => generateRestClient(withNotify).get("notified.ts") ?? "";
 
-    it("opens the entity's stream with the client's URL builder", () => {
+    it("generates overloads for the all and rows scopes", () => {
         expect(module()).toContain('import type { HttpClient } from "../http.ts";');
         expect(module()).toContain(
-            'import { watch, type NotificationSubscription, type NotificationOptions, type WatchEvent } from "../watch.ts";',
+            'import { watch, type NotificationSubscription, type NotificationOptions, type WatchEvent, type AllWatchEvent } from "../watch.ts";',
         );
-        expect(module()).toContain("export function notifyNotified(");
-        expect(module()).toContain("const ops = options?.ops;");
-        expect(module()).toContain(
-            'return watch(http.url("/notified/notify", ops === undefined ? undefined : { ops }), () => onChange(), options);',
-        );
+        expect(module()).toContain("export function watchNotified(");
+        expect(module()).toContain("onChange: (event: WatchEvent<NotifiedPrimaryKey>) => void,");
+        expect(module()).toContain("opts: { pks: NotifiedPrimaryKey[] } & NotificationOptions,");
+        expect(module()).toContain("onChange: (event: AllWatchEvent) => void,");
     });
 
-    it("opens the row-scoped stream with the key filter in `q`", () => {
-        expect(module()).toContain("export function watchNotified(");
-        expect(module()).toContain("keys: NotifiedPrimaryKey[],");
-        expect(module()).toContain("onChange: (event: WatchEvent<NotifiedPrimaryKey>) => void,");
-        expect(module()).toContain("const argument = ops === undefined ? { keys } : { keys, ops };");
+    it("encodes the selected keys and operations into `q`", () => {
+        expect(module()).toContain("const pks = opts?.pks;");
+        expect(module()).toContain("const argument = pks === undefined");
         expect(module()).toContain(
-            'return watch<WatchEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", argument), onChange, options);',
+            'return watch<WatchEvent<NotifiedPrimaryKey> | AllWatchEvent>(http.url("/notified/watch", argument), onChange, opts);',
         );
     });
 

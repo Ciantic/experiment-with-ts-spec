@@ -2418,8 +2418,8 @@ export interface Draft { }`,
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @queries `read` is not one of: query, notify, watch",
-            "`Invoice`: @restQueries `read` is not one of: query, notify, watch",
+            "`Invoice`: @queries `read` is not one of: query",
+            "`Invoice`: @restQueries `read` is not one of: query",
         ]);
     });
 
@@ -2433,8 +2433,8 @@ export interface Draft { }`,
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @queries requires at least one of: query, notify, watch",
-            "`Invoice`: @restQueries requires at least one of: query, notify, watch",
+            "`Invoice`: @queries requires at least one of: query",
+            "`Invoice`: @restQueries requires at least one of: query",
         ]);
     });
 
@@ -2491,6 +2491,45 @@ export interface Draft { }`,
  */`);
 
         expect(findings).toEqual(["`Invoice`: @repository appears more than once"]);
+    });
+
+    it("reports a notification scope that is not one of the known scopes", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @notify every
+ * @restNotify every
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @notify `every` is not one of: all, rows",
+            "`Invoice`: @restNotify `every` is not one of: all, rows",
+        ]);
+    });
+
+    it("requires at least one scope in each notification list", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @notify
+ * @restNotify
+ */`);
+
+        expect(findings).toEqual([
+            "`Invoice`: @notify requires at least one of: all, rows",
+            "`Invoice`: @restNotify requires at least one of: all, rows",
+        ]);
+    });
+
+    it("reports an exposed notification scope the entity does not declare", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @notify all
+ * @restNotify rows
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @restNotify `rows` is not in @notify"]);
     });
 });
 

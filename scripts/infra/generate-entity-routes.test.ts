@@ -53,8 +53,10 @@ const NOTIFIED = `
  * @pgTable notified
  * @repository create
  * @restRepository create
- * @queries query notify
- * @restQueries query notify
+ * @queries query
+ * @restQueries query
+ * @notify all rows
+ * @restNotify all rows
  * @entity
  */
 export interface Notified {
@@ -69,8 +71,10 @@ const WATCHED = `
  * @pgTable watched
  * @repository create
  * @restRepository create
- * @queries query watch
- * @restQueries query watch
+ * @queries query
+ * @restQueries query
+ * @notify rows
+ * @restNotify rows
  * @entity
  */
 export interface Watched {
@@ -248,7 +252,7 @@ export interface Internal {
         expect(code).not.toContain("/internal/query");
     });
 
-    it("serves a notify read as a server-sent event stream with no argument", () => {
+    it("serves an all-and-rows watch as one optional-key stream", () => {
         const entity = build({ Notified: NOTIFIED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the notified entity");
@@ -257,18 +261,18 @@ export interface Internal {
 
         expect(code).toContain('import { SseStream } from "../sse.ts";');
         expect(code).toContain('import type { WatchOperation } from "sdk/watch.ts";');
-        expect(code).toContain('id: "notifyNotified"');
-        expect(code).toContain('path: "/notified/notify"');
+        expect(code).toContain('import type { NotifiedPrimaryKey } from "sdk/schemas.ts";');
+        expect(code).toContain('id: "watchNotified"');
+        expect(code).toContain('path: "/notified/watch"');
         expect(code).toContain("stream: true,");
         expect(code).toContain(
-            'input: z.strictObject({ ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),',
+            'input: z.strictObject({ pks: z.array(notifiedPrimaryKeySchema).optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),',
         );
-        expect(code).toContain(
-            "notifyNotified(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),",
-        );
+        expect(code).toContain("const opts = body as { pks?: NotifiedPrimaryKey[]; ops?: WatchOperation[] } | undefined;");
+        expect(code).toContain("return opts?.pks === undefined");
     });
 
-    it("serves a watch read as a key-filtered server-sent event stream", () => {
+    it("serves a rows-only watch with a required key filter", () => {
         const entity = build({ Watched: WATCHED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the watched entity");
@@ -280,9 +284,9 @@ export interface Internal {
         expect(code).toContain('id: "watchWatched"');
         expect(code).toContain('path: "/watched/watch"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain('input: z.strictObject({ keys: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),');
+        expect(code).toContain('input: z.strictObject({ pks: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),');
         expect(code).toContain(
-            "watchWatched(ctx.db, (body as { keys: WatchedPrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),",
+            "watchWatched(ctx.db, { pks: (body as { pks: WatchedPrimaryKey[] }).pks, ops: (body as { ops?: WatchOperation[] }).ops, signal }),",
         );
     });
 });

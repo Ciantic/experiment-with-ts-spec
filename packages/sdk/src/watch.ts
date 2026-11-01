@@ -1,4 +1,4 @@
-/** The typed server-sent event helper behind every generated `notify<Entity>` and `watch<Entity>`. See docs/notifications.md. */
+/** The typed server-sent event helper behind every generated `watch<Entity>`. See docs/notifications.md. */
 import { parse as decode } from "devalue";
 import { AppError } from "./errorBase.ts";
 
@@ -37,7 +37,12 @@ export type WatchOperation = "INSERT" | "UPDATE" | "DELETE";
 
 /** One watched change: the requested key, and what happened to it. */
 export interface WatchEvent<Key> {
-    key: Key;
+    pks: Key;
+    op: WatchOperation;
+}
+
+/** An all-rows change: the operation, without a key. */
+export interface AllWatchEvent {
     op: WatchOperation;
 }
 

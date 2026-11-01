@@ -21,6 +21,7 @@ import {
     type TriggerTiming,
     type ReadOperation,
     type WriteOperation,
+    type NotifyScope,
     assignsColumn,
     triggerLevel,
 } from "../spec/spec-model.ts";
@@ -113,6 +114,8 @@ export interface Table {
     repositoryOperations: WriteOperation[];
     /** The read operations `@queries` declares, which the query generator renders. */
     queries: ReadOperation[];
+    /** The notification scopes `@notify` declares, which the schema and watch generators read. See docs/notifications.md. */
+    notify: NotifyScope[];
 }
 
 interface TypeResolution {
@@ -198,6 +201,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         triggers: [],
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
+        notify: spec.notify,
     };
 
     for (const property of spec.properties) {

@@ -54,6 +54,8 @@ export const INTERFACE_TAGS = [
     "restRepository",
     "queries",
     "restQueries",
+    "notify",
+    "restNotify",
     "todo",
 ] as const;
 
@@ -208,12 +210,21 @@ export function isRestMethod(value: string): value is RestMethod {
 }
 
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
-export const READ_OPERATIONS = ["query", "notify", "watch"] as const;
+export const READ_OPERATIONS = ["query"] as const;
 export type ReadOperation = (typeof READ_OPERATIONS)[number];
 
 /** Whether a token is a read operation a tag may name. */
 export function isReadOperation(value: string): value is ReadOperation {
     return (READ_OPERATIONS as readonly string[]).includes(value);
+}
+
+/** The notification scopes `@notify` and `@restNotify` may name, in canonical order. */
+export const NOTIFY_SCOPES = ["all", "rows"] as const;
+export type NotifyScope = (typeof NOTIFY_SCOPES)[number];
+
+/** Whether a token is a notification scope a tag may name. */
+export function isNotifyScope(value: string): value is NotifyScope {
+    return (NOTIFY_SCOPES as readonly string[]).includes(value);
 }
 
 /** The JavaScript type a spec value has at the boundary, whatever its storage type spells. */
@@ -323,6 +334,10 @@ export interface Tags {
     queries?: ReadOperation[];
     /** The read operations `@restQueries` exposes, in {@link READ_OPERATIONS} order. See docs/rest-api.md. */
     restQueries?: ReadOperation[];
+    /** The notification scopes `@notify` declares, in {@link NOTIFY_SCOPES} order. See docs/notifications.md. */
+    notify?: NotifyScope[];
+    /** The notification scopes `@restNotify` exposes, in {@link NOTIFY_SCOPES} order. See docs/notifications.md. */
+    restNotify?: NotifyScope[];
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
@@ -395,6 +410,10 @@ export interface SpecInterface {
     queries: ReadOperation[];
     /** The read operations `@restQueries` exposes; empty when the tag is absent. See docs/rest-api.md. */
     restQueries: ReadOperation[];
+    /** The notification scopes `@notify` declares; empty when the tag is absent. See docs/notifications.md. */
+    notify: NotifyScope[];
+    /** The notification scopes `@restNotify` exposes; empty when the tag is absent. See docs/notifications.md. */
+    restNotify: NotifyScope[];
     /** The `@todo` text when the interface is deferred from generation; absent when it is generated. */
     todo?: string;
 }
@@ -743,6 +762,12 @@ function parseReadOperations(value: string | undefined): ReadOperation[] {
     return READ_OPERATIONS.filter((operation) => tokens.includes(operation));
 }
 
+/** The notification scopes a tag names, de-duplicated and in {@link NOTIFY_SCOPES} order. */
+function parseNotifyScopes(value: string | undefined): NotifyScope[] {
+    const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
+    return NOTIFY_SCOPES.filter((scope) => tokens.includes(scope));
+}
+
 /** A parsed `@queryFilter` value: the options it names, and the tokens it does not understand. */
 export interface ParsedQueryFilter {
     required: boolean;
@@ -952,6 +977,12 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "restQueries":
                     if (tags.restQueries === undefined) tags.restQueries = parseReadOperations(value);
+                    break;
+                case "notify":
+                    if (tags.notify === undefined) tags.notify = parseNotifyScopes(value);
+                    break;
+                case "restNotify":
+                    if (tags.restNotify === undefined) tags.restNotify = parseNotifyScopes(value);
                     break;
                 case "todo":
                     tags.todo ??= (value ?? "").trim();
@@ -1408,6 +1439,8 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 restRepositoryOperations: declarationTags.restRepository ?? [],
                 queries: declarationTags.queries ?? [],
                 restQueries: declarationTags.restQueries ?? [],
+                notify: declarationTags.notify ?? [],
+                restNotify: declarationTags.restNotify ?? [],
                 ...(declarationTags.written.byName.has("todo") ? { todo: declarationTags.todo ?? "" } : {}),
             };
             if (declarationTags.pgTrigger !== undefined) {

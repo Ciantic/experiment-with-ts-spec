@@ -1,6 +1,6 @@
-/** The hand-written subscription behind every generated `notify<Entity>` and `watch<Entity>`. See docs/notifications.md. */
+/** The hand-written subscription behind every generated `watch<Entity>`. See docs/notifications.md. */
 import type { SqlExecutor, SqlSubscription } from "./sql-executor.ts";
-import type { WatchEvent, WatchOperation } from "sdk/watch.ts";
+import type { AllWatchEvent, WatchEvent, WatchOperation } from "sdk/watch.ts";
 import { NotificationsUnsupportedError } from "../errors.ts";
 
 /** The trigger's primary-key payload, as JSON text; the plain notify stream drops it. */
@@ -21,13 +21,6 @@ export function subscribe(
     signal?: AbortSignal,
 ): AsyncIterable<ChangeNotification> {
     return { [Symbol.asyncIterator]: () => createIterator(db, channel, signal) };
-}
-
-/** Drop the payload, so `notify<Entity>` keeps the "something changed" shape. */
-export async function* withoutPayload(events: AsyncIterable<ChangeNotification>): AsyncIterable<void> {
-    for await (const _payload of events) {
-        yield;
-    }
 }
 
 /** The operation a payload describes: a bare `TG_OP` from a statement trigger, or an event object. */
@@ -63,6 +56,21 @@ export async function* onlyOperations(
         const op = operationOf(payload);
         if (op !== undefined && wanted.has(op)) {
             yield payload;
+        }
+    }
+}
+
+/** Yield every change with its operation, without a key. */
+export async function* watchAll(
+    db: SqlExecutor,
+    channel: string,
+    ops?: readonly WatchOperation[],
+    signal?: AbortSignal,
+): AsyncIterable<AllWatchEvent> {
+    for await (const payload of onlyOperations(subscribe(db, channel, signal), ops)) {
+        const op = operationOf(payload);
+        if (op !== undefined) {
+            yield { op };
         }
     }
 }
@@ -123,7 +131,7 @@ export async function* watchKeys<T extends Record<string, unknown>>(
         }
         const match = keys.find((key) => fields.every((field) => canonical(key[field]) === event.key[field]));
         if (match !== undefined) {
-            yield { key: match, op: event.op };
+            yield { pks: match, op: event.op };
         }
     }
 }

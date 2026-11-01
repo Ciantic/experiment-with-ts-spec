@@ -1,4 +1,4 @@
-/** Checks the subscriptions behind a generated `notify<Entity>` and `watch<Entity>` over a real driver. See docs/notifications.md. */
+/** Checks the subscriptions behind a generated `watch<Entity>` over a real driver. See docs/notifications.md. */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
@@ -85,7 +85,7 @@ describe("watchKeys", () => {
         await db.query(`select pg_notify('widget', '{"op":"DELETE","key":{"id":"c"}}')`);
         await db.query(`select pg_notify('widget', '{"op":"DELETE","key":{"id":"b"}}')`);
 
-        expect(await pending).toEqual({ done: false, value: { key: { id: "b" }, op: "DELETE" } });
+        expect(await pending).toEqual({ done: false, value: { pks: { id: "b" }, op: "DELETE" } });
         await iterator.return?.(undefined);
         await close();
     });
@@ -101,7 +101,7 @@ describe("watchKeys", () => {
             `select pg_notify('widget', '{"op":"INSERT","key":{"at":"2026-01-02T03:04:05.000Z"}}')`,
         );
 
-        expect(await pending).toEqual({ done: false, value: { key: { at }, op: "INSERT" } });
+        expect(await pending).toEqual({ done: false, value: { pks: { at }, op: "INSERT" } });
         await iterator.return?.(undefined);
         await close();
     });
@@ -115,7 +115,7 @@ describe("watchKeys", () => {
         await db.query(`select pg_notify('widget', '{"id":"a"}')`);
         await db.query(`select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"}}')`);
 
-        expect(await pending).toEqual({ done: false, value: { key: { id: "a" }, op: "UPDATE" } });
+        expect(await pending).toEqual({ done: false, value: { pks: { id: "a" }, op: "UPDATE" } });
         await iterator.return?.(undefined);
         await close();
     });
@@ -129,7 +129,7 @@ describe("watchKeys", () => {
         await db.query(`select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"}}')`);
         await db.query(`select pg_notify('widget', '{"op":"INSERT","key":{"id":"a"}}')`);
 
-        expect(await pending).toEqual({ done: false, value: { key: { id: "a" }, op: "INSERT" } });
+        expect(await pending).toEqual({ done: false, value: { pks: { id: "a" }, op: "INSERT" } });
         await iterator.return?.(undefined);
         await close();
     });

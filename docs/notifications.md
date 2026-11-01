@@ -1,19 +1,23 @@
 # Notifications
 
-An entity can publish change events without a row payload. Two read operations
-share one Postgres channel:
+An entity can publish change events over Postgres `LISTEN`/`NOTIFY`. Two scopes
+share one channel:
 
-- `notify` — "something changed on the table", with no payload.
-- `watch` — "one of these rows changed", publishing the changed primary key
-  and the `TG_OP` that changed it.
+- `all` — "something changed on the table". A statement-level trigger publishes
+  the `TG_OP`; a subscriber receives `{ op }`.
+- `rows` — "one of these rows changed". A row-level trigger publishes the
+  primary key and `TG_OP`; a subscriber receives `{ pks, op }`.
 
-They are independent tokens in `@queries` and `@restQueries`:
+Declare the scopes with `@notify`, and the subset the REST surface exposes with
+`@restNotify`:
 
 ```ts
 /**
  * @pgTable widget
- * @queries query notify watch
- * @restQueries query notify watch
+ * @repository create
+ * @queries query
+ * @notify all rows
+ * @restNotify all rows
  */
 export interface Widget {
     /** @primaryKey */
@@ -21,12 +25,14 @@ export interface Widget {
 }
 ```
 
-`watch` opts into a row-level trigger that publishes the primary key, because a
-listener cannot filter rows it cannot identify. An entity that declares only
-`notify` keeps the cheaper statement-level trigger and an empty payload.
+`@notify` may name either or both scopes. `@restNotify` is optional and may only
+name a scope `@notify` declares, so an entity can stream to backend callers and
+stay off the wire. `rows` needs a primary key; a keyless table is already a
+diagnostic and gets no row scope.
 
-- `packages/infra/src/db/queries/notify<Entity>.ts` — generated: all changes.
-- `packages/infra/src/db/queries/watch<Entity>.ts` — generated: selected rows.
+One generated module serves both scopes:
+
+- `packages/infra/src/db/queries/watch<Entity>.ts` — generated: the change stream.
 - `packages/infra/src/db/notifications.ts` — the hand-written subscriptions.
 - `packages/infra/src/http/sse.ts` — the stream a generated route answers with.
 - `packages/infra/src/postgres/schema.sql` — generated triggers.
@@ -34,7 +40,7 @@ listener cannot filter rows it cannot identify. An entity that declares only
 
 ## The triggers
 
-`notify` alone installs a statement-level trigger with no payload:
+`all` alone installs a statement-level trigger that publishes only `TG_OP`:
 
 ```sql
 create function "widget_notify"() returns trigger as $$
@@ -48,9 +54,9 @@ create trigger "widget_notify" after insert or update or delete on "widget"
     for each statement execute function "widget_notify"();
 ```
 
-`watch` installs a row-level trigger that publishes only the key. The key values
-are canonical text, so a `Date`, a `bigint`, and a `Uint8Array` all compare
-deterministically:
+`rows` installs a row-level trigger that publishes the operation and the key.
+Key values are canonical text, so a `Date`, a `bigint`, and a `Uint8Array`
+compare deterministically:
 
 ```sql
 create function "widget_notify"() returns trigger as $$
@@ -72,94 +78,94 @@ row sees a change. A composite key contributes one JSON field per key column.
 Carrying `TG_OP` is one extra field in the same `json_build_object`; it adds no
 notification and no query.
 
-Declaring both operations installs the row-level trigger, since it serves the
-watch; `notify` ignores the key it carries.
+Declaring both scopes installs the row-level trigger, since it serves `rows`;
+`all` ignores the key it carries. A write that changes several rows therefore
+produces one event per row for both scopes, not one event per statement.
 
-## Operations
+## The server-side stream
 
-Both streams take an optional `ops` filter, one or more of `INSERT`, `UPDATE`,
-and `DELETE`. Omitted means every operation; an empty array means none.
+One `watch<Entity>` function takes the optional `pks`, `ops`, and `signal`:
 
 ```ts
-notifyWidget(db, { ops: ["INSERT"], signal })          // only new rows
-watchWidget(db, keys, { ops: ["UPDATE"], signal })     // only updates to these rows
+watchWidget(db, { ops: ["INSERT"], signal })          // { op } per change
+watchWidget(db, { pks, ops: ["UPDATE"], signal })     // { pks, op } per requested row
 ```
 
-The filter runs in the subscription: the trigger still publishes every
-operation on the table's one channel, and `notify`/`watch` discard the ones the
-caller did not name. For a table with heavy update traffic this still wakes the
-listener for every change; per-operation channels are the next step if that
-becomes measurable.
-
-## Server side
-
-`notify<Entity>` yields once per change and carries no value:
+`pks` selects the `rows` scope, so omitting it is the `all` scope. A scope the
+annotation does not declare is not offered: `all`-only has no `pks`, and
+`rows`-only has no keyless overload.
 
 ```ts
-for await (const change of notifyWidget(db, { ops: ["INSERT"], signal })) {
+for await (const { op } of watchWidget(db, { ops: ["INSERT"], signal })) {
     // a new widget exists
 }
-```
 
-`watch<Entity>` takes the primary keys and yields the requested key with the
-operation that changed it:
-
-```ts
-const keys = [{ id: first }, { id: second }];
-
-for await (const { key, op } of watchWidget(db, keys, { signal })) {
-    // key is one of the key objects passed in; op is INSERT, UPDATE, or DELETE
+for await (const { pks, op } of watchWidget(db, { pks: [{ id }], signal })) {
+    // pks is the key object passed in; op is INSERT, UPDATE, or DELETE
 }
 ```
 
-Both release their listening connection when the iterator closes or `signal`
-aborts. `subscribe` listens on a connection of its own, so a subscription is not
-tied to the executor that made a request, and a write on another connection is
-delivered.
+The streams release their listening connection when the iterator closes or
+`signal` aborts. `subscribe` listens on a connection of its own, so a
+subscription is not tied to the executor that made a request, and a write on
+another connection is delivered.
 
 Both drivers implement `SqlDriver.listen`: PGlite uses its own listener, and
 `PgSqlDriver` checks out a pooled connection for `LISTEN` and returns it after
 `UNLISTEN`. An executor whose driver does not listen has no `listen` method, and
 the subscription refuses it.
 
+## Operations
+
+`ops` filters the stream to one or more of `INSERT`, `UPDATE`, and `DELETE`.
+Omitted means every operation; an empty array means none.
+
+The filter runs in the subscription: the trigger publishes every operation on
+the table's one channel, and the generated stream discards the ones the caller
+did not name. For a table with heavy update traffic this still wakes the
+listener for every change; per-operation channels are the next step if that
+becomes measurable.
+
 ## Over REST
 
-`@restQueries notify` serves `GET /<table>/notify?q=<{ ops? }>`. Each event is
-empty:
+`@restNotify all` serves `GET /<table>/watch?q=<{ ops? }>`. Each event is
+`{ op }`:
 
 ```
-data: 
+data: {"op":"INSERT"}
 
-data: 
 ```
 
-`@restQueries watch` serves `GET /<table>/watch?q=<{ keys, ops? }>`, where
-`keys` is the same `<entity>PrimaryKey[]` array the writes use. Each event is
-`{ key, op }`, carrying the changed key and the `TG_OP`: `INSERT`, `UPDATE`, or
-`DELETE`.
+`@restNotify rows` serves `GET /<table>/watch?q=<{ pks, ops? }>`, where `pks` is
+the same `<entity>PrimaryKey[]` array the writes use. Each event is
+`{ pks, op }`, carrying the requested key and the `TG_OP`.
 
-The SDK generates a helper for each:
+With both scopes exposed, `pks` is optional: omit it for the table stream, or
+send it for the row stream. With only `rows`, the route rejects a call without
+`pks`; with only `all`, it rejects one with `pks`.
+
+The SDK generates one helper, with an overload per exposed scope:
 
 ```ts
 import { createHttpClient } from "sdk/index.ts";
-import { notifyWidget, watchWidget } from "sdk/api/widget.ts";
+import { watchWidget } from "sdk/api/widget.ts";
 
 const http = createHttpClient("http://127.0.0.1:3000");
 
-const all = notifyWidget(http, () => {
-    // any widget changed
+const all = watchWidget(http, (event) => {
+    // event.op is INSERT, UPDATE, or DELETE
 }, { ops: ["DELETE"] });
 
-const one = watchWidget(http, [{ id }], (event) => {
-    // event.key.id is the widget; event.op is INSERT, UPDATE, or DELETE
-}, { ops: ["UPDATE"] });
+const one = watchWidget(http, (event) => {
+    // event.pks.id is the widget; event.op is INSERT, UPDATE, or DELETE
+}, { pks: [{ id }], ops: ["UPDATE"] });
 
 // later
 all.close();
 one.close();
 ```
 
-The helpers use the platform's `EventSource` by default; pass `options.source`
+The helper uses the platform's `EventSource` by default; pass `options.source`
 to supply another implementation, such as a test double. A stream never
 finishes, so the group handler refuses a streaming call rather than waiting for
 its result.

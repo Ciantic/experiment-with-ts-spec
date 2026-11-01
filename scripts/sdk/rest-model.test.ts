@@ -96,8 +96,10 @@ const NOTIFIED = `
  * @pgTable notified
  * @repository create
  * @restRepository create
- * @queries query notify
- * @restQueries query notify
+ * @queries query
+ * @restQueries query
+ * @notify all rows
+ * @restNotify all rows
  * @entity
  */
 export interface Notified {
@@ -112,8 +114,10 @@ const WATCHED = `
  * @pgTable watched
  * @repository create
  * @restRepository create
- * @queries query watch
- * @restQueries query watch
+ * @queries query
+ * @restQueries query
+ * @notify rows
+ * @restNotify rows
  * @entity
  */
 export interface Watched {
@@ -202,33 +206,35 @@ describe("buildRestModel", () => {
         });
     });
 
-    it("exposes a notify read as a GET on the entity's stream path", () => {
+    it("exposes a watch stream as a GET on the entity's stream path", () => {
         const entity = build({ Notified: NOTIFIED }).entities[0];
 
         expect(entity?.operations).toContainEqual({
-            id: "notifyNotified",
-            kind: "notify",
+            id: "watchNotified",
+            kind: "watch",
             method: "GET",
-            path: "/notified/notify",
+            path: "/notified/watch",
             source: "query",
         });
         expect(entity?.operations.map((operation) => operation.kind)).toEqual([
             "query",
-            "notify",
+            "watch",
             "create",
         ]);
+        expect(entity?.notify).toEqual(["all", "rows"]);
+        expect(entity?.restNotify).toEqual(["all", "rows"]);
     });
 
-    it("reports a notify read the entity does not generate", () => {
-        const bad = NOTIFIED.replace("@queries query notify", "@queries query");
+    it("reports a notification scope the entity does not declare", () => {
+        const bad = NOTIFIED.replace("@notify all rows", "@notify all");
         const diagnostics = build({ Notified: bad }).diagnostics;
 
         expect(messages(diagnostics)).toEqual([
-            "`Notified`: @restQueries `notify` is not in @queries",
+            "`Notified`: @restNotify `rows` is not in @notify",
         ]);
     });
 
-    it("exposes a watch read as a GET on the entity's row-scoped stream path", () => {
+    it("exposes a rows-only watch stream", () => {
         const entity = build({ Watched: WATCHED }).entities[0];
 
         expect(entity?.operations).toContainEqual({
@@ -238,11 +244,8 @@ describe("buildRestModel", () => {
             path: "/watched/watch",
             source: "query",
         });
-        expect(entity?.operations.map((operation) => operation.kind)).toEqual([
-            "query",
-            "watch",
-            "create",
-        ]);
+        expect(entity?.notify).toEqual(["rows"]);
+        expect(entity?.restNotify).toEqual(["rows"]);
     });
 
     it("encodes every call that carries no row data into the query string", () => {

@@ -5,7 +5,6 @@ import type { Column, Table } from "./postgres-model.ts";
 import {
     buildQueryModel,
     generateQueries,
-    renderNotifyModule,
     renderQueryModule,
     renderWatchModule,
 } from "./generate-queries.ts";
@@ -31,6 +30,7 @@ function table(
         triggers: [],
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
+        notify: [],
     };
 }
 
@@ -281,29 +281,34 @@ describe("renderQueryModule", () => {
     });
 });
 
-describe("renderNotifyModule", () => {
-    it("subscribes to the channel its table's trigger notifies, dropping the key payload", () => {
-        const code = renderNotifyModule("Invoice", invoice);
-
-        expect(code).toContain(
-            'export function notifyInvoice(db: SqlExecutor, opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<void>',
-        );
-        expect(code).toContain(
-            'return withoutPayload(onlyOperations(subscribe(db, "invoice", opts?.signal), opts?.ops));',
-        );
-    });
-});
-
 describe("renderWatchModule", () => {
-    it("filters the channel by the entity's primary key and selected operations", () => {
-        const code = renderWatchModule("Invoice", invoice);
+    it("renders an all-only watch with no key filter", () => {
+        const code = renderWatchModule("Invoice", { ...invoice, notify: ["all"] });
+
+        expect(code).toContain('import type { AllWatchEvent, WatchOperation } from "sdk/watch.ts";');
+        expect(code).toContain(
+            "export function watchInvoice(\n    db: SqlExecutor,\n    opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<AllWatchEvent> {",
+        );
+        expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal);');
+    });
+
+    it("renders a rows-only watch with a required key filter", () => {
+        const code = renderWatchModule("Invoice", { ...invoice, notify: ["rows"] });
 
         expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('import type { WatchEvent, WatchOperation } from "sdk/watch.ts";');
         expect(code).toContain(
-            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal }): AsyncIterable<WatchEvent<InvoicePrimaryKey>>",
+            "export function watchInvoice(\n    db: SqlExecutor,\n    opts: { pks: InvoicePrimaryKey[]; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchEvent<InvoicePrimaryKey>> {",
         );
-        expect(code).toContain('return watchKeys(db, "invoice", keys, ["id"], opts?.ops, opts?.signal);');
+        expect(code).toContain('return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal);');
+    });
+
+    it("renders overloads when all and rows are both declared", () => {
+        const code = renderWatchModule("Invoice", { ...invoice, notify: ["all", "rows"] });
+
+        expect(code).toContain("): AsyncIterable<WatchEvent<InvoicePrimaryKey>>;");
+        expect(code).toContain("): AsyncIterable<AllWatchEvent>;");
+        expect(code).toContain("return opts?.pks === undefined");
     });
 });
 
@@ -319,22 +324,9 @@ describe("generateQueries", () => {
         ]);
     });
 
-    it("writes a notify module only for an entity that declares the read", () => {
-        const notified = { ...invoice, queries: ["query", "notify"] as Table["queries"] };
+    it("writes one watch module for an entity that declares a notification scope", () => {
+        const notified = { ...invoice, notify: ["all"] as Table["notify"] };
         const files = generateQueries(new Map([["Invoice", notified]]));
-
-        expect([...files.keys()].sort()).toEqual([
-            "index.ts",
-            "model.ts",
-            "notifyInvoice.ts",
-            "queryInvoice.ts",
-        ]);
-        expect(files.get("index.ts")).toContain('export * from "./notifyInvoice.ts";');
-    });
-
-    it("writes a watch module only for an entity that declares the read", () => {
-        const watched = { ...invoice, queries: ["query", "watch"] as Table["queries"] };
-        const files = generateQueries(new Map([["Invoice", watched]]));
 
         expect([...files.keys()].sort()).toEqual([
             "index.ts",

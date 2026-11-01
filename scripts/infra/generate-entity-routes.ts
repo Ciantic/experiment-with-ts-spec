@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { isReadOperation, loadSpec, type SpecModel } from "../spec/spec-model.ts";
+import { loadSpec, type SpecModel } from "../spec/spec-model.ts";
 // The REST model is shared with the client generator, so both read it from the SDK model.
 import {
     buildRestModel,
@@ -45,13 +45,11 @@ export function routesExportName(entity: RestEntity): string {
     return `${entity.module}Routes`;
 }
 
-/** The generated schema that validates the request body, before the `delete` projection. A notify route takes no argument. */
+/** The generated schema that validates the request body, before the `delete` projection. */
 function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     switch (kind) {
         case "query":
             return `query${entity.entity}Schema`;
-        case "notify":
-            return undefined;
         case "watch":
             return `${entity.module}PrimaryKeySchema`;
         case "create":
@@ -71,11 +69,18 @@ const OPS_SCHEMA = 'z.array(z.enum(["INSERT", "UPDATE", "DELETE"]))';
 
 /** The expression the router validates the argument with. A read takes options; every write takes rows. */
 function inputExpression(entity: RestEntity, kind: RestKind): string {
-    if (kind === "notify") {
-        return `z.strictObject({ ops: ${OPS_SCHEMA}.optional() }).optional()`;
-    }
     if (kind === "watch") {
-        return `z.strictObject({ keys: z.array(${schemaName(entity, kind) as string}), ops: ${OPS_SCHEMA}.optional() })`;
+        const keys = `z.array(${schemaName(entity, kind) as string})`;
+        const ops = `ops: ${OPS_SCHEMA}.optional()`;
+        const all = entity.restNotify.includes("all");
+        const rows = entity.restNotify.includes("rows");
+        if (all && rows) {
+            return `z.strictObject({ pks: ${keys}.optional(), ${ops} }).optional()`;
+        }
+        if (all) {
+            return `z.strictObject({ ${ops} }).optional()`;
+        }
+        return `z.strictObject({ pks: ${keys}, ${ops} })`;
     }
     const name = schemaName(entity, kind) as string;
     return kind === "query" ? name : `z.array(${name})`;
@@ -85,7 +90,7 @@ function inputExpression(entity: RestEntity, kind: RestKind): string {
 function repositoryFunctions(entity: RestEntity): string[] {
     // Every write kind names a repository function of its own; a read is served by the query module.
     return entity.operations
-        .filter((operation) => !isReadOperation(operation.kind))
+        .filter((operation) => operation.kind !== "query" && operation.kind !== "watch")
         .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
@@ -93,7 +98,7 @@ function repositoryFunctions(entity: RestEntity): string[] {
 /** Every read function one entity needs: the query and the change stream both live in the query barrel. */
 function queryFunctions(entity: RestEntity): string[] {
     return entity.operations
-        .filter((operation) => isReadOperation(operation.kind))
+        .filter((operation) => operation.kind === "query" || operation.kind === "watch")
         .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
@@ -117,19 +122,17 @@ export function renderEntityRoutes(entity: RestEntity): string {
 
     const lines: string[] = [HEADER];
     lines.push(`import type { Route } from "${ROUTER_IMPORT}";`);
-    const streams = entity.operations.some(
-        (operation) => operation.kind === "notify" || operation.kind === "watch",
-    );
-    const watches = entity.operations.some((operation) => operation.kind === "watch");
-    // A stream takes no argument or a key filter, and a write wraps its rows in an array, so both need `z`.
-    if (streams || entity.operations.some((operation) => !isReadOperation(operation.kind))) {
+    const streams = entity.operations.some((operation) => operation.kind === "watch");
+    const watches = streams;
+    // A stream takes a row/operation filter, and a write wraps its rows in an array, so both need `z`.
+    if (streams || entity.operations.some((operation) => operation.kind !== "query" && operation.kind !== "watch")) {
         lines.push('import { z } from "zod";');
     }
     if (streams) {
         lines.push('import { SseStream } from "../sse.ts";');
         lines.push('import type { WatchOperation } from "sdk/watch.ts";');
     }
-    if (watches) {
+    if (watches && entity.restNotify.includes("rows")) {
         lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
     }
     if (repositories.length > 0) {
@@ -151,26 +154,37 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
         lines.push(`        source: "${operation.source}",`);
-        if (operation.kind === "notify" || operation.kind === "watch") {
+        if (operation.kind === "watch") {
             lines.push("        stream: true,");
         }
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
-        if (operation.kind === "notify") {
-            // The handler opens the stream when the server starts writing; the response's close aborts it.
-            lines.push("        handler: async (ctx, body) =>");
-            lines.push("            new SseStream((signal) =>");
-            lines.push(
-                `                ${operation.id}(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),`,
-            );
-            lines.push("            ),");
-        } else if (operation.kind === "watch") {
-            // The key array is required by the schema above, so the handler may trust its shape.
-            lines.push("        handler: async (ctx, body) =>");
-            lines.push("            new SseStream((signal) =>");
-            lines.push(
-                `                ${operation.id}(ctx.db, (body as { keys: ${entity.entity}PrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),`,
-            );
-            lines.push("            ),");
+        if (operation.kind === "watch") {
+            const all = entity.restNotify.includes("all");
+            const rows = entity.restNotify.includes("rows");
+            const keyType = `${entity.entity}PrimaryKey`;
+            if (all && rows) {
+                lines.push("        handler: async (ctx, body) =>");
+                lines.push("            new SseStream((signal) => {");
+                lines.push(`                const opts = body as { pks?: ${keyType}[]; ops?: WatchOperation[] } | undefined;`);
+                lines.push("                return opts?.pks === undefined");
+                lines.push(`                    ? ${operation.id}(ctx.db, { ops: opts?.ops, signal })`);
+                lines.push(`                    : ${operation.id}(ctx.db, { pks: opts.pks, ops: opts.ops, signal });`);
+                lines.push("            }),");
+            } else if (rows) {
+                lines.push("        handler: async (ctx, body) =>");
+                lines.push("            new SseStream((signal) =>");
+                lines.push(
+                    `                ${operation.id}(ctx.db, { pks: (body as { pks: ${keyType}[] }).pks, ops: (body as { ops?: WatchOperation[] }).ops, signal }),`,
+                );
+                lines.push("            ),");
+            } else {
+                lines.push("        handler: async (ctx, body) =>");
+                lines.push("            new SseStream((signal) =>");
+                lines.push(
+                    `                ${operation.id}(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),`,
+                );
+                lines.push("            ),");
+            }
         } else {
             // The body is validated against the schema above, so the handler may trust its shape.
             lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);

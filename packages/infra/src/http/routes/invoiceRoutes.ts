@@ -5,7 +5,7 @@ import { SseStream } from "../sse.ts";
 import type { WatchOperation } from "sdk/watch.ts";
 import type { InvoicePrimaryKey } from "sdk/schemas.ts";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
-import { notifyInvoice, queryInvoice, watchInvoice } from "../../db/queries/index.ts";
+import { queryInvoice, watchInvoice } from "../../db/queries/index.ts";
 import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
@@ -19,28 +19,19 @@ export const invoiceRoutes: Route[] = [
         handler: (ctx, body) => queryInvoice(ctx.db, body as never),
     },
     {
-        id: "notifyInvoice",
-        method: "GET",
-        path: "/invoice/notify",
-        source: "query",
-        stream: true,
-        input: z.strictObject({ ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),
-        handler: async (ctx, body) =>
-            new SseStream((signal) =>
-                notifyInvoice(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),
-            ),
-    },
-    {
         id: "watchInvoice",
         method: "GET",
         path: "/invoice/watch",
         source: "query",
         stream: true,
-        input: z.strictObject({ keys: z.array(invoicePrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),
+        input: z.strictObject({ pks: z.array(invoicePrimaryKeySchema).optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),
         handler: async (ctx, body) =>
-            new SseStream((signal) =>
-                watchInvoice(ctx.db, (body as { keys: InvoicePrimaryKey[] }).keys, { ops: (body as { ops?: WatchOperation[] }).ops, signal }),
-            ),
+            new SseStream((signal) => {
+                const opts = body as { pks?: InvoicePrimaryKey[]; ops?: WatchOperation[] } | undefined;
+                return opts?.pks === undefined
+                    ? watchInvoice(ctx.db, { ops: opts?.ops, signal })
+                    : watchInvoice(ctx.db, { pks: opts.pks, ops: opts.ops, signal });
+            }),
     },
     {
         id: "createInvoice",
