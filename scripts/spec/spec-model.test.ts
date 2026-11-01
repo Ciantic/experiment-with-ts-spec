@@ -77,13 +77,13 @@ describe("parseSpec interfaces", () => {
         ]);
     });
 
-    it("reads the notify operation alongside query", () => {
+    it("reads the notify and watch operations alongside query", () => {
         const { interfaces } = parse({
-            "Thing.ts": "/**\n * @entity\n * @queries query notify\n * @restQueries query notify\n */\nexport interface Thing { id: string; }",
+            "Thing.ts": "/**\n * @entity\n * @queries query notify watch\n * @restQueries query notify watch\n */\nexport interface Thing { id: string; }",
         });
 
-        expect(interfaces.get("Thing")?.queries).toEqual(["query", "notify"]);
-        expect(interfaces.get("Thing")?.restQueries).toEqual(["query", "notify"]);
+        expect(interfaces.get("Thing")?.queries).toEqual(["query", "notify", "watch"]);
+        expect(interfaces.get("Thing")?.restQueries).toEqual(["query", "notify", "watch"]);
     });
 });
 

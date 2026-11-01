@@ -131,11 +131,11 @@ export class PgSqlDriver extends SqlDriver {
         await this.#pool.query(sql);
     }
 
-    async listen(channel: string, onNotification: () => void): Promise<SqlSubscription> {
+    async listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription> {
         const client = await this.#pool.connect();
-        const onNotice = (notice: { channel: string }) => {
+        const onNotice = (notice: { channel: string; payload?: string | undefined }) => {
             if (notice.channel === channel) {
-                onNotification();
+                onNotification(notice.payload ?? "");
             }
         };
         try {

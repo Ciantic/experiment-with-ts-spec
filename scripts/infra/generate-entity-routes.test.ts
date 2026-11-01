@@ -63,6 +63,22 @@ export interface Notified {
 }
 `.trim();
 
+/** An entity whose selected rows are watched over REST. */
+const WATCHED = `
+/**
+ * @pgTable watched
+ * @repository create
+ * @restRepository create
+ * @queries query watch
+ * @restQueries query watch
+ * @entity
+ */
+export interface Watched {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -246,6 +262,24 @@ export interface Internal {
         expect(code).toContain("input: z.void(),");
         expect(code).toContain(
             "handler: async (ctx) => new SseStream((signal) => notifyNotified(ctx.db, { signal })),",
+        );
+    });
+
+    it("serves a watch read as a key-filtered server-sent event stream", () => {
+        const entity = build({ Watched: WATCHED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the watched entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain('import { SseStream } from "../sse.ts";');
+        expect(code).toContain('import type { WatchedPrimaryKey } from "sdk/schemas.ts";');
+        expect(code).toContain('id: "watchWatched"');
+        expect(code).toContain('path: "/watched/watch"');
+        expect(code).toContain("stream: true,");
+        expect(code).toContain("input: z.strictObject({ keys: z.array(watchedPrimaryKeySchema) }),");
+        expect(code).toContain(
+            "watchWatched(ctx.db, (body as { keys: WatchedPrimaryKey[] }).keys, { signal }),",
         );
     });
 });

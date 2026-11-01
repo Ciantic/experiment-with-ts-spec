@@ -85,6 +85,8 @@ function comment(entity: RestEntity, kind: RestKind): string {
             return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
         case "notify":
             return `/** The change stream of \`${name}\`, served as server-sent events. See docs/notifications.md. */`;
+        case "watch":
+            return `/** The change stream of the given \`${name}\` rows. See docs/notifications.md. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "upsert":
@@ -110,6 +112,7 @@ export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const query = operation(entity, "query");
     const notify = operation(entity, "notify");
+    const watchOperation = operation(entity, "watch");
     const create = operation(entity, "create");
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
@@ -138,8 +141,8 @@ export function renderClientModule(entity: RestEntity): string {
     if (create) {
         writeTypes.push(`${name}Insert`);
     }
-    // Create, upsert, and delete all name the key, so the type follows whichever of them exists.
-    if (create || upsert || remove) {
+    // Create, upsert, and delete all name the key; a row-scoped watch names it too.
+    if (create || upsert || remove || watchOperation) {
         writeTypes.push(keyType(entity));
     }
     if (upsert) {
@@ -164,7 +167,7 @@ export function renderClientModule(entity: RestEntity): string {
     if (callable !== undefined) {
         lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
     }
-    if (notify) {
+    if (notify || watchOperation) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
         lines.push('import type { HttpClient } from "../http.ts";');
         lines.push('import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";');
@@ -194,7 +197,22 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("    onChange: () => void,");
         lines.push("    options?: WatchOptions,");
         lines.push("): NotificationSubscription {");
-        lines.push(`    return watch(http.baseUrl + "${notify.path}", onChange, options);`);
+        lines.push(`    return watch(http.url("${notify.path}"), () => onChange(), options);`);
+        lines.push("}");
+    }
+
+    if (watchOperation) {
+        lines.push("");
+        lines.push(comment(entity, "watch"));
+        lines.push(`export function ${watchOperation.id}(`);
+        lines.push("    http: HttpClient,");
+        lines.push(`    keys: ${keyType(entity)}[],`);
+        lines.push(`    onChange: (key: ${keyType(entity)}) => void,`);
+        lines.push("    options?: WatchOptions,");
+        lines.push("): NotificationSubscription {");
+        lines.push(
+            `    return watch<${keyType(entity)}>(http.url("${watchOperation.path}", { keys }), onChange, options);`,
+        );
         lines.push("}");
     }
 

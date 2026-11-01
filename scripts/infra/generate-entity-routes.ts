@@ -52,6 +52,8 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
             return `query${entity.entity}Schema`;
         case "notify":
             return undefined;
+        case "watch":
+            return `${entity.module}PrimaryKeySchema`;
         case "create":
             return `${entity.module}InsertSchema`;
         case "upsert":
@@ -68,6 +70,9 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
 function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "notify") {
         return "z.void()";
+    }
+    if (kind === "watch") {
+        return `z.strictObject({ keys: z.array(${schemaName(entity, kind) as string}) })`;
     }
     const name = schemaName(entity, kind) as string;
     return kind === "query" ? name : `z.array(${name})`;
@@ -109,13 +114,19 @@ export function renderEntityRoutes(entity: RestEntity): string {
 
     const lines: string[] = [HEADER];
     lines.push(`import type { Route } from "${ROUTER_IMPORT}";`);
-    const notifies = entity.operations.some((operation) => operation.kind === "notify");
-    // A notify route takes no argument and a write wraps its rows in an array, so either needs `z`.
-    if (notifies || entity.operations.some((operation) => !isReadOperation(operation.kind))) {
+    const streams = entity.operations.some(
+        (operation) => operation.kind === "notify" || operation.kind === "watch",
+    );
+    const watches = entity.operations.some((operation) => operation.kind === "watch");
+    // A stream takes no argument or a key filter, and a write wraps its rows in an array, so both need `z`.
+    if (streams || entity.operations.some((operation) => !isReadOperation(operation.kind))) {
         lines.push('import { z } from "zod";');
     }
-    if (notifies) {
+    if (streams) {
         lines.push('import { SseStream } from "../sse.ts";');
+    }
+    if (watches) {
+        lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
     }
     if (repositories.length > 0) {
         lines.push(`import { ${repositories.join(", ")} } from "${REPOSITORIES_IMPORT}";`);
@@ -136,13 +147,21 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
         lines.push(`        source: "${operation.source}",`);
-        if (operation.kind === "notify") {
+        if (operation.kind === "notify" || operation.kind === "watch") {
             lines.push("        stream: true,");
         }
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
         if (operation.kind === "notify") {
             // The handler opens the stream when the server starts writing; the response's close aborts it.
             lines.push(`        handler: async (ctx) => new SseStream((signal) => ${operation.id}(ctx.db, { signal })),`);
+        } else if (operation.kind === "watch") {
+            // The key array is required by the schema above, so the handler may trust its shape.
+            lines.push("        handler: async (ctx, body) =>");
+            lines.push("            new SseStream((signal) =>");
+            lines.push(
+                `                ${operation.id}(ctx.db, (body as { keys: ${entity.entity}PrimaryKey[] }).keys, { signal }),`,
+            );
+            lines.push("            ),");
         } else {
             // The body is validated against the schema above, so the handler may trust its shape.
             lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);

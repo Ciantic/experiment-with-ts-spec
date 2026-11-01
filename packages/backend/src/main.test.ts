@@ -89,7 +89,7 @@ describe("the operation routes", () => {
     /** Every id the server answers, which includes the calls `@restOperation` declares. */
     function operationIds(): string[] {
         const entityIds = new Set(mockTables.map((table) => table.entity));
-        const prefixes = /^(?:query|notify|create|upsert|update|delete)[A-Z]/;
+        const prefixes = /^(?:query|notify|watch|create|upsert|update|delete)[A-Z]/;
         return routes
             .map((route) => route.id)
             .filter((id) => !prefixes.test(id) && !entityIds.has(id));
@@ -226,6 +226,35 @@ describe("notifications", () => {
 
         const chunk = await response.body!.getReader().read();
         expect(new TextDecoder().decode(chunk.value)).toBe("data: \n\n");
+
+        abort.abort();
+    });
+
+    it("streams a requested row's key and ignores other rows", async () => {
+        const selected = await started.app.driver.query<{ id: string }>(
+            'select "id" from "invoice" order by "id" limit 1',
+        );
+        const id = selected.rows[0]?.id;
+        expect(id).toBeTruthy();
+
+        const abort = new AbortController();
+        const response = await fetch(http.url("/invoice/watch", { keys: [{ id }] }), {
+            signal: abort.signal,
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("text/event-stream");
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await started.app.driver.query(
+            'update "invoice" set "version" = "version" + 1 where "id" = $1',
+            [id],
+        );
+
+        const chunk = await response.body!.getReader().read();
+        const data = new TextDecoder().decode(chunk.value);
+        expect(data.startsWith("data: ")).toBe(true);
+        // The stream carries the changed key in the API's codec; the id proves the match.
+        expect(data).toContain(id);
 
         abort.abort();
     });

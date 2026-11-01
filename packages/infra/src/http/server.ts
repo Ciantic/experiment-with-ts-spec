@@ -1,5 +1,6 @@
 /** A `node:http` server over the generated route table; the router owns every decision. See docs/rest-api.md. */
 import { createServer, type Server, type ServerResponse } from "node:http";
+import { stringify as encode } from "devalue";
 import type { AppContext } from "../context.ts";
 import { ApiHttpResponse } from "./api-http-response.ts";
 import { createRouter, type Route } from "./router.ts";
@@ -28,8 +29,8 @@ function writeStream(response: ServerResponse, stream: SseStream): void {
     void (async () => {
         try {
             for await (const event of stream.open(abort.signal)) {
-                // A notification has no payload, so the data line is empty; the event itself is the message.
-                response.write(event === undefined ? "data: \n\n" : `data: ${JSON.stringify(event)}\n\n`);
+                // A plain notify carries no payload; a watch carries the key, in the same codec as the rest of the API.
+                response.write(event === undefined ? "data: \n\n" : `data: ${encode(event)}\n\n`);
             }
             response.end();
         } catch {

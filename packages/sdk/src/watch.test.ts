@@ -1,4 +1,5 @@
 /** Unit tests for the typed server-sent event helper. See docs/notifications.md. */
+import { stringify } from "devalue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventSourceUnavailableError, watch } from "./watch.ts";
 
@@ -7,7 +8,7 @@ class FakeSource {
     static instances: FakeSource[] = [];
 
     readonly url: string;
-    onmessage: (() => void) | null = null;
+    onmessage: ((event: { data?: unknown }) => void) | null = null;
     closed = false;
 
     constructor(url: string) {
@@ -26,20 +27,32 @@ afterEach(() => {
 });
 
 describe("watch", () => {
-    it("opens the URL and calls back on each message", () => {
+    it("opens the URL and decodes each message", () => {
         const changes: string[] = [];
-        const subscription = watch("http://api.example/widget/notify", () => changes.push("change"), {
-            source: FakeSource,
-        });
+        const subscription = watch<{ id: string }>(
+            "http://api.example/widget/watch",
+            (key) => changes.push(key.id),
+            { source: FakeSource },
+        );
         const source = FakeSource.instances[0];
 
-        expect(source?.url).toBe("http://api.example/widget/notify");
-        source?.onmessage?.();
-        source?.onmessage?.();
+        expect(source?.url).toBe("http://api.example/widget/watch");
+        source?.onmessage?.({ data: stringify({ id: "a" }) });
+        source?.onmessage?.({ data: stringify({ id: "b" }) });
 
-        expect(changes).toEqual(["change", "change"]);
+        expect(changes).toEqual(["a", "b"]);
         subscription.close();
         expect(source?.closed).toBe(true);
+    });
+
+    it("passes undefined for an empty event, matching a plain notify stream", () => {
+        const seen: unknown[] = [];
+        watch("http://api.example/widget/notify", (value) => seen.push(value), {
+            source: FakeSource,
+        });
+        FakeSource.instances[0]?.onmessage?.({ data: "" });
+
+        expect(seen).toEqual([undefined]);
     });
 
     it("uses the platform's EventSource when none is supplied", () => {

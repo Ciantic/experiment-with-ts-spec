@@ -88,9 +88,9 @@ export class PgliteSqlDriver extends SqlDriver {
         });
     }
 
-    async listen(channel: string, onNotification: () => void): Promise<SqlSubscription> {
+    async listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription> {
         return await this.#exclusive(async () => {
-            const close = await this.#pglite.listen(channel, () => onNotification());
+            const close = await this.#pglite.listen(channel, (payload) => onNotification(payload));
             return {
                 close: async () => {
                     await this.#exclusive(async () => {

@@ -28,6 +28,23 @@ function stubFetch(response: Response): { calls: Recorded[]; impl: typeof fetch 
 /** A value with both of the types a JSON encoding would lose. */
 const payload = { at: new Date("2026-01-02T03:04:05.000Z"), revision: 7n, name: "widget" };
 
+describe("createHttpClient.url", () => {
+    it("builds the URL a stream helper hands to an EventSource", () => {
+        const http = createHttpClient("http://api.example/");
+
+        const url = new URL(http.url("/widget/watch", { keys: [{ id: "a" }] }));
+
+        expect(url.origin + url.pathname).toBe("http://api.example/widget/watch");
+        expect(parse(url.searchParams.get("q") ?? "")).toEqual({ keys: [{ id: "a" }] });
+    });
+
+    it("omits `q` when the argument is absent", () => {
+        const http = createHttpClient("http://api.example");
+
+        expect(http.url("/widget/notify")).toBe("http://api.example/widget/notify");
+    });
+});
+
 describe("createHttpClient.query", () => {
     it("joins the base url, the path, and the encoded argument", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));

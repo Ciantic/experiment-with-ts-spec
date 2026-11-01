@@ -7,6 +7,7 @@ import {
     generateQueries,
     renderNotifyModule,
     renderQueryModule,
+    renderWatchModule,
 } from "./generate-queries.ts";
 
 function column(name: string, extras: Partial<Column> = {}): Column {
@@ -281,13 +282,25 @@ describe("renderQueryModule", () => {
 });
 
 describe("renderNotifyModule", () => {
-    it("subscribes to the channel its table's trigger notifies, with no payload", () => {
+    it("subscribes to the channel its table's trigger notifies, dropping the key payload", () => {
         const code = renderNotifyModule("Invoice", invoice);
 
         expect(code).toContain(
-            'export function notifyInvoice(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<ChangeNotification>',
+            'export function notifyInvoice(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<void>',
         );
-        expect(code).toContain('return subscribe(db, "invoice", opts?.signal);');
+        expect(code).toContain('return withoutPayload(subscribe(db, "invoice", opts?.signal));');
+    });
+});
+
+describe("renderWatchModule", () => {
+    it("filters the channel by the entity's primary key", () => {
+        const code = renderWatchModule("Invoice", invoice);
+
+        expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
+        expect(code).toContain(
+            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { signal?: AbortSignal }): AsyncIterable<InvoicePrimaryKey>",
+        );
+        expect(code).toContain('return watchKeys(db, "invoice", keys, ["id"], opts?.signal);');
     });
 });
 
@@ -314,6 +327,19 @@ describe("generateQueries", () => {
             "queryInvoice.ts",
         ]);
         expect(files.get("index.ts")).toContain('export * from "./notifyInvoice.ts";');
+    });
+
+    it("writes a watch module only for an entity that declares the read", () => {
+        const watched = { ...invoice, queries: ["query", "watch"] as Table["queries"] };
+        const files = generateQueries(new Map([["Invoice", watched]]));
+
+        expect([...files.keys()].sort()).toEqual([
+            "index.ts",
+            "model.ts",
+            "queryInvoice.ts",
+            "watchInvoice.ts",
+        ]);
+        expect(files.get("index.ts")).toContain('export * from "./watchInvoice.ts";');
     });
 
     it("re-exports every module from the barrel", () => {

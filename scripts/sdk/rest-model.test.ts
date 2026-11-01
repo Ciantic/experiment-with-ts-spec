@@ -106,6 +106,22 @@ export interface Notified {
 }
 `.trim();
 
+/** An entity that publishes its selected-row change stream over REST. */
+const WATCHED = `
+/**
+ * @pgTable watched
+ * @repository create
+ * @restRepository create
+ * @queries query watch
+ * @restQueries query watch
+ * @entity
+ */
+export interface Watched {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -209,6 +225,23 @@ describe("buildRestModel", () => {
 
         expect(messages(diagnostics)).toEqual([
             "`Notified`: @restQueries `notify` is not in @queries",
+        ]);
+    });
+
+    it("exposes a watch read as a GET on the entity's row-scoped stream path", () => {
+        const entity = build({ Watched: WATCHED }).entities[0];
+
+        expect(entity?.operations).toContainEqual({
+            id: "watchWatched",
+            kind: "watch",
+            method: "GET",
+            path: "/watched/watch",
+            source: "query",
+        });
+        expect(entity?.operations.map((operation) => operation.kind)).toEqual([
+            "query",
+            "watch",
+            "create",
         ]);
     });
 

@@ -14,6 +14,8 @@ export type SendMethod = "POST" | "PUT" | "PATCH";
 export interface HttpClient {
     /** The root every path is appended to, so a generated long-lived helper can build its own URL. */
     readonly baseUrl: string;
+    /** The URL a call with its argument in `q` would use; an `EventSource` takes a URL rather than a call. */
+    url(path: string, argument?: unknown): string;
     /**
      * Send the argument as the `q` query parameter: the reads and the delete.
      * @throws {AppError} the error class the response names, or `HttpError` when it names none
@@ -68,6 +70,10 @@ function readError(text: string): unknown {
  */
 export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetch): HttpClient {
     const base = baseUrl.replace(/\/$/, "");
+    const urlFor = (path: string, argument?: unknown): string =>
+        argument === undefined
+            ? `${base}${path}`
+            : `${base}${path}?q=${encodeURIComponent(encode(argument))}`;
 
     /**
      * Send one request and decode its answer, raising the error the body names.
@@ -92,9 +98,9 @@ export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetc
 
     return {
         baseUrl: base,
+        url: urlFor,
         query(method, path, argument) {
-            const suffix = argument === undefined ? "" : `?q=${encodeURIComponent(encode(argument))}`;
-            return run(method, `${base}${path}${suffix}`, undefined);
+            return run(method, urlFor(path, argument), undefined);
         },
         send(method, path, body) {
             return run(method, `${base}${path}`, encode(body));

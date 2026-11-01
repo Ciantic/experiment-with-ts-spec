@@ -51,9 +51,11 @@ One collection per entity that exposes one. The collection sits at the
 `@restRepository` omits is reachable to backend callers and absent from the
 route table and the SDK, and an entity that carries no `@restQueries query` has
 no read route. A `notify` read adds a server-sent event stream at
-`/<table>/notify`; it has no request argument and no `Call` builder, since it
-opens a connection rather than sending one request. The SDK instead generates
-`notify<Entity>(http, onChange)`, which hands back a subscription. See
+`/<table>/notify` with no request argument, and a `watch` read adds one at
+`/<table>/watch` taking a `{ keys }` array in `q`. Neither has a `Call` builder,
+since a stream opens a connection rather than sending one request; the SDK
+generates `notify<Entity>(http, onChange)` and
+`watch<Entity>(http, keys, onChange)`, each returning a subscription. See
 `docs/notifications.md`. An
 entity that names no exposed operation at all has no collection: no path, no
 route module, and no client module. See `docs/spec-annotations.md`. A read and a
@@ -64,6 +66,7 @@ in the body.
 | --- | --- | --- | --- | --- |
 | query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
 | notify | `notify<Entity>` | `GET` | `/<table>/notify` | none (server-sent events) |
+| watch | `watch<Entity>` | `GET` | `/<table>/watch?q=…` | `{ keys: <entity>PrimaryKey[] }` (server-sent events) |
 | create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |

@@ -2,8 +2,9 @@
 import type { Route } from "../router.ts";
 import { z } from "zod";
 import { SseStream } from "../sse.ts";
+import type { InvoicePrimaryKey } from "sdk/schemas.ts";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
-import { notifyInvoice, queryInvoice } from "../../db/queries/index.ts";
+import { notifyInvoice, queryInvoice, watchInvoice } from "../../db/queries/index.ts";
 import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
@@ -24,6 +25,18 @@ export const invoiceRoutes: Route[] = [
         stream: true,
         input: z.void(),
         handler: async (ctx) => new SseStream((signal) => notifyInvoice(ctx.db, { signal })),
+    },
+    {
+        id: "watchInvoice",
+        method: "GET",
+        path: "/invoice/watch",
+        source: "query",
+        stream: true,
+        input: z.strictObject({ keys: z.array(invoicePrimaryKeySchema) }),
+        handler: async (ctx, body) =>
+            new SseStream((signal) =>
+                watchInvoice(ctx.db, (body as { keys: InvoicePrimaryKey[] }).keys, { signal }),
+            ),
     },
     {
         id: "createInvoice",

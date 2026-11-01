@@ -9,7 +9,7 @@ If you change the TypeScript spec, there are deterministic re-generation scripts
 - Repository functions: create, update, upsert and delete functions
 - Operation function stubs, these should contain the business logic
 - Query function with granular control of which fields are filterable, orderable and so on
-- Change streams backed by Postgres `LISTEN`/`NOTIFY`, over REST through server-sent events
+- Change streams backed by Postgres `LISTEN`/`NOTIFY`, whole-table or row-scoped, over REST through server-sent events
 - REST endpoints, generated from exposed repository functions and operations
 
 TODO: More specifics goes here.

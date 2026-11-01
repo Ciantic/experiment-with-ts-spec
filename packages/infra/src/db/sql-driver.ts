@@ -35,7 +35,7 @@ export abstract class SqlDriver {
     /** Run the startup script, several statements included; `query` takes one statement. */
     abstract exec(sql: string): Promise<void>;
     /** Listen on a channel over a connection of its own, so the subscription outlives a statement. See docs/notifications.md. */
-    abstract listen(channel: string, onNotification: () => void): Promise<SqlSubscription>;
+    abstract listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription>;
     /** Release the driver's resources. */
     abstract close(): Promise<void>;
 

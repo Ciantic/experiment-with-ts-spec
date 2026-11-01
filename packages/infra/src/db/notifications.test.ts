@@ -1,9 +1,9 @@
-/** Checks the subscription behind a generated `notify<Entity>` over a real driver. See docs/notifications.md. */
+/** Checks the subscriptions behind a generated `notify<Entity>` and `watch<Entity>` over a real driver. See docs/notifications.md. */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { subscribe } from "./notifications.ts";
+import { subscribe, watchKeys } from "./notifications.ts";
 
 /** A fresh database and the executor a caller gets from it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -17,18 +17,18 @@ function settle(): Promise<void> {
 }
 
 describe("subscribe", () => {
-    it("yields once for every notification on the channel, with no payload", async () => {
+    it("yields once for every notification on the channel, with its payload", async () => {
         const { db, close } = await fixture();
         const iterator = subscribe(db, "widget")[Symbol.asyncIterator]();
 
         const first = iterator.next();
         await settle();
-        await db.query("select pg_notify('widget', '')");
-        expect(await first).toEqual({ done: false, value: undefined });
+        await db.query(`select pg_notify('widget', '{"id":"a"}')`);
+        expect(await first).toEqual({ done: false, value: '{"id":"a"}' });
 
         const second = iterator.next();
-        await db.query("select pg_notify('widget', '')");
-        expect(await second).toEqual({ done: false, value: undefined });
+        await db.query(`select pg_notify('widget', '')`);
+        expect(await second).toEqual({ done: false, value: "" });
 
         await iterator.return?.(undefined);
         await close();
@@ -40,10 +40,10 @@ describe("subscribe", () => {
 
         const pending = iterator.next();
         await settle();
-        await db.query("select pg_notify('other', '')");
-        await db.query("select pg_notify('widget', '')");
+        await db.query(`select pg_notify('other', '{"id":"a"}')`);
+        await db.query(`select pg_notify('widget', '{"id":"a"}')`);
 
-        expect(await pending).toEqual({ done: false, value: undefined });
+        expect(await pending).toEqual({ done: false, value: '{"id":"a"}' });
         await iterator.return?.(undefined);
         await close();
     });
@@ -70,6 +70,45 @@ describe("subscribe", () => {
         await iterator.return?.(undefined);
 
         expect(await pending).toEqual({ done: true, value: undefined });
+        await close();
+    });
+});
+
+describe("watchKeys", () => {
+    it("yields the requested key whose row changed and ignores the rest", async () => {
+        const { db, close } = await fixture();
+        const keys = [{ id: "a" }, { id: "b" }];
+        const iterator = watchKeys(db, "widget", keys, ["id"])[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', '{"id":"c"}')`);
+        await db.query(`select pg_notify('widget', '{"id":"b"}')`);
+
+        expect(await pending).toEqual({ done: false, value: { id: "b" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("matches a date key in the trigger's canonical text", async () => {
+        const { db, close } = await fixture();
+        const at = new Date("2026-01-02T03:04:05.000Z");
+        const iterator = watchKeys(db, "widget", [{ at }], ["at"])[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', '{"at":"2026-01-02T03:04:05.000Z"}')`);
+
+        expect(await pending).toEqual({ done: false, value: { at } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("completes immediately when no key is requested", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchKeys(db, "widget", [], ["id"])[Symbol.asyncIterator]();
+
+        expect(await iterator.next()).toEqual({ done: true, value: undefined });
         await close();
     });
 });

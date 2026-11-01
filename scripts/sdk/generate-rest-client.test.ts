@@ -97,8 +97,8 @@ const NOTIFIED = `
 /**
  * @pgTable notified
  * @repository create
- * @queries query notify
- * @restQueries notify
+ * @queries query notify watch
+ * @restQueries notify watch
  * @entity
  */
 export interface Notified {
@@ -367,14 +367,23 @@ describe("notify helpers", () => {
     const withNotify = build({ Notified: NOTIFIED });
     const module = () => generateRestClient(withNotify).get("notified.ts") ?? "";
 
-    it("opens the entity's stream with the client's base URL", () => {
+    it("opens the entity's stream with the client's URL builder", () => {
         expect(module()).toContain('import type { HttpClient } from "../http.ts";');
         expect(module()).toContain(
             'import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";',
         );
         expect(module()).toContain("export function notifyNotified(");
         expect(module()).toContain(
-            'return watch(http.baseUrl + "/notified/notify", onChange, options);',
+            'return watch(http.url("/notified/notify"), () => onChange(), options);',
+        );
+    });
+
+    it("opens the row-scoped stream with the key filter in `q`", () => {
+        expect(module()).toContain("export function watchNotified(");
+        expect(module()).toContain("keys: NotifiedPrimaryKey[],");
+        expect(module()).toContain("onChange: (key: NotifiedPrimaryKey) => void,");
+        expect(module()).toContain(
+            'return watch<NotifiedPrimaryKey>(http.url("/notified/watch", { keys }), onChange, options);',
         );
     });
 

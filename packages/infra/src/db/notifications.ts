@@ -1,9 +1,9 @@
-/** The hand-written subscription behind every generated `notify<Entity>` function. See docs/notifications.md. */
+/** The hand-written subscription behind every generated `notify<Entity>` and `watch<Entity>`. See docs/notifications.md. */
 import type { SqlExecutor, SqlSubscription } from "./sql-executor.ts";
 import { NotificationsUnsupportedError } from "../errors.ts";
 
-/** A change notification carries no payload today; the event is the message. */
-export type ChangeNotification = void;
+/** The trigger's primary-key payload, as JSON text; the plain notify stream drops it. */
+export type ChangeNotification = string;
 
 /** The pending `next()` a notification or a close settles. */
 interface Waiter {
@@ -20,6 +20,57 @@ export function subscribe(
     signal?: AbortSignal,
 ): AsyncIterable<ChangeNotification> {
     return { [Symbol.asyncIterator]: () => createIterator(db, channel, signal) };
+}
+
+/** Drop the payload, so `notify<Entity>` keeps the "something changed" shape. */
+export async function* withoutPayload(events: AsyncIterable<ChangeNotification>): AsyncIterable<void> {
+    for await (const _payload of events) {
+        yield;
+    }
+}
+
+/** The text the trigger publishes for one key value, matching the generated SQL cast. */
+function canonical(value: unknown): string {
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+    if (value instanceof Uint8Array) {
+        return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    return String(value);
+}
+
+/** The key object a trigger published, or an empty one when the payload is not a key. */
+function readKey(payload: string): Record<string, string> {
+    try {
+        const parsed: unknown = JSON.parse(payload);
+        return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Yield the requested key each time its row changes; other rows on the channel are ignored.
+ * @throws {NotificationsUnsupportedError} when the executor has no listening connection
+ */
+export async function* watchKeys<T extends Record<string, unknown>>(
+    db: SqlExecutor,
+    channel: string,
+    keys: readonly T[],
+    fields: readonly string[],
+    signal?: AbortSignal,
+): AsyncIterable<T> {
+    if (keys.length === 0) {
+        return;
+    }
+    for await (const payload of subscribe(db, channel, signal)) {
+        const changed = readKey(payload);
+        const match = keys.find((key) => fields.every((field) => canonical(key[field]) === changed[field]));
+        if (match !== undefined) {
+            yield match;
+        }
+    }
 }
 
 /**
@@ -49,17 +100,17 @@ function createIterator(
             pending.resolve({ done: true, value: undefined });
             return;
         }
-        if (queued.length > 0) {
-            queued.shift();
-            pending.resolve({ done: false, value: undefined });
+        const payload = queued.shift();
+        if (payload !== undefined) {
+            pending.resolve({ done: false, value: payload });
         }
     };
 
-    const notify = () => {
+    const notify = (payload: string) => {
         if (closed) {
             return;
         }
-        queued.push(undefined);
+        queued.push(payload);
         settle();
     };
 
@@ -120,9 +171,9 @@ function createIterator(
             if (closed) {
                 return { done: true, value: undefined };
             }
-            if (queued.length > 0) {
-                queued.shift();
-                return { done: false, value: undefined };
+            const payload = queued.shift();
+            if (payload !== undefined) {
+                return { done: false, value: payload };
             }
             return await new Promise<IteratorResult<ChangeNotification>>((resolve) => {
                 waiter = { resolve };

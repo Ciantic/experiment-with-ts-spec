@@ -208,7 +208,7 @@ export function isRestMethod(value: string): value is RestMethod {
 }
 
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
-export const READ_OPERATIONS = ["query", "notify"] as const;
+export const READ_OPERATIONS = ["query", "notify", "watch"] as const;
 export type ReadOperation = (typeof READ_OPERATIONS)[number];
 
 /** Whether a token is a read operation a tag may name. */

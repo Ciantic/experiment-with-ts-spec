@@ -154,8 +154,8 @@ Interface tags:
   entity that exposes no operation has no path, no route module, and no client
   module. See "`@repository`, `@restRepository`, and the read tags" below.
 - `@queries <operation>…` — the read operations whose modules the generator
-  writes, one or more of `query`, `notify`. Optional: an entity that declares no
-  read gets none. See `docs/queries.md` and `docs/notifications.md`.
+  writes, one or more of `query`, `notify`, `watch`. Optional: an entity that
+  declares no read gets none. See `docs/queries.md` and `docs/notifications.md`.
 - `@restQueries <operation>…` — the subset of `@queries` that the route table and
   the generated SDK expose. Optional, like `@queries`. See `docs/rest-api.md`.
 - `@todo <text>` — the entity is not generated: no table, repository, query,
@@ -289,10 +289,10 @@ table and the generated SDK expose.
 `generate-repositories.ts` writes: one or more of `create`, `upsert`, `update`,
 `delete`, in any order. An operation the list leaves out has no module, no
 function, and no barrel export. `@queries` lists the read operations whose
-modules `generate-queries.ts` writes: `query`, and `notify` for the entity's
-change stream. The tag is a list so a second kind of read is a token rather than
-a new tag, and it is what keeps the shape of the two pairs the same. See
-`docs/queries.md` and `docs/notifications.md`.
+modules `generate-queries.ts` writes: `query`, plus `notify` for the all-change
+stream and `watch` for the row-scoped stream. The tag is a list so a second kind
+of read is a token rather than a new tag, and it is what keeps the shape of the
+two pairs the same. See `docs/queries.md` and `docs/notifications.md`.
 
 `@restRepository` and `@restQueries` list the subset of those the REST surface
 serves; neither may name an operation its declaring tag omits, since a route
@@ -812,7 +812,7 @@ Enforced:
   declaration".
 - `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
   operations: the write tags one or more of `create`, `upsert`, `update`,
-  `delete`, the read tags one or more of `query`, `notify`. `@repository` alone is
+  `delete`, the read tags one or more of `query`, `notify`, `watch`. `@repository` alone is
   required on each entity; the other three are optional. An unknown token, a
   token named twice, an empty list, a tag that appears twice, and a
   `@restRepository` or `@restQueries` operation its declaring tag does not

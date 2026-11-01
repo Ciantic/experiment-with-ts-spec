@@ -5,6 +5,7 @@ export * from "./queryCustomer.ts";
 export * from "./queryEmail.ts";
 export * from "./queryInvoice.ts";
 export * from "./notifyInvoice.ts";
+export * from "./watchInvoice.ts";
 export * from "./queryInvoiceRow.ts";
 export * from "./queryInvoiceSent.ts";
 export * from "./queryInvoiceSentRow.ts";

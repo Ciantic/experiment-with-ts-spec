@@ -28,7 +28,7 @@ export interface SqlExecutor {
     /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */
     transactionWith<T>(options: TransactionOptions, run: Run<T>): Promise<T>;
     /** Subscribe to a channel on a connection of its own; absent on an executor whose driver cannot listen. See docs/notifications.md. */
-    listen?(channel: string, onNotification: () => void): Promise<SqlSubscription>;
+    listen?(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription>;
 }
 
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */

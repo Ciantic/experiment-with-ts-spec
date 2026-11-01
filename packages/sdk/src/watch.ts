@@ -1,9 +1,11 @@
-/** The typed server-sent event helper behind every generated `notify<Entity>`. See docs/notifications.md. */
+/** The typed server-sent event helper behind every generated `notify<Entity>` and `watch<Entity>`. See docs/notifications.md. */
+import { parse as decode } from "devalue";
 import { AppError } from "./errorBase.ts";
 
-/** The part of an `EventSource` a subscription uses; the event itself carries no payload. */
+/** The part of an `EventSource` a subscription uses; the message data is the event's payload. */
 export interface EventSourceLike {
-    onmessage: (() => void) | null;
+    // The DOM event is `MessageEvent`; only `data` is read, and `any` keeps a real EventSource assignable.
+    onmessage: ((event: any) => void) | null;
     close(): void;
 }
 
@@ -32,13 +34,20 @@ export class EventSourceUnavailableError extends AppError {
 }
 
 /**
- * Open a server-sent event stream and call `onChange` for each event.
+ * Open a server-sent event stream and call `onChange` for each decoded event.
  * @throws {EventSourceUnavailableError} when the platform has no `EventSource` and `options.source` supplies none
  */
-export function watch(url: string, onChange: () => void, options: WatchOptions = {}): NotificationSubscription {
+export function watch<T = void>(
+    url: string,
+    onChange: (value: T) => void,
+    options: WatchOptions = {},
+): NotificationSubscription {
     const Source = options.source ?? platformEventSource();
     const source = new Source(url);
-    source.onmessage = () => onChange();
+    source.onmessage = (event) => {
+        const data = event?.data;
+        onChange((typeof data === "string" && data !== "" ? decode(data) : undefined) as T);
+    };
     return { close: () => source.close() };
 }
 

@@ -6,6 +6,7 @@ import { SPEC_GLOB, loadSpec, type ReferentialAction, type SpecModel } from "../
 import {
     buildSpecTables,
     quote,
+    type Column,
     type Diagnostic,
     type Table,
     type Trigger,
@@ -193,7 +194,19 @@ function quoteLiteral(value: string): string {
     return `'${value.replace(/'/g, "''")}'`;
 }
 
-/** Notify the entity's channel once per statement that changes its table. See docs/notifications.md. */
+/** The text the trigger publishes for one key column, matching `canonical` in `db/notifications.ts`. */
+function keyText(column: Column, value: string): string {
+    switch (column.sqlType) {
+        case "timestamptz":
+            return `to_char(${value} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+        case "bytea":
+            return `encode(${value}, 'hex')`;
+        default:
+            return `${value}::text`;
+    }
+}
+
+/** Notify the entity's channel once per statement that changes its table, with no payload. See docs/notifications.md. */
 function renderNotifyTrigger(table: Table): string[] {
     const name = quote(`${table.name}_notify`);
     return [
@@ -206,6 +219,45 @@ function renderNotifyTrigger(table: Table): string[] {
         "",
         `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
         `    for each statement execute function ${name}();`,
+        "",
+    ];
+}
+
+/** Notify the entity's channel per changed row, publishing only the primary key. See docs/notifications.md. */
+function renderWatchTrigger(table: Table): string[] {
+    const keys = table.columns.filter((column) => column.primaryKey);
+    // A keyless table is already a diagnostic; there is no row identity to publish.
+    if (keys.length === 0) {
+        return [];
+    }
+    const name = quote(`${table.name}_notify`);
+    const payload = (row: "new" | "old" | "either"): string => {
+        const entries = keys.map((column) => {
+            const value =
+                row === "either"
+                    ? `coalesce(NEW.${quote(column.name)}, OLD.${quote(column.name)})`
+                    : `${row === "new" ? "NEW" : "OLD"}.${quote(column.name)}`;
+            return `${quoteLiteral(column.name)}, ${keyText(column, value)}`;
+        });
+        return `json_build_object(${entries.join(", ")})::text`;
+    };
+    const oldKey = keys.map((column) => `OLD.${quote(column.name)}`).join(", ");
+    const newKey = keys.map((column) => `NEW.${quote(column.name)}`).join(", ");
+
+    return [
+        `create function ${name}() returns trigger as $$`,
+        "begin",
+        // A changed key notifies both the row's old identity and its new one.
+        `    if TG_OP = 'UPDATE' and (${oldKey}) is distinct from (${newKey}) then`,
+        `        perform pg_notify(${quoteLiteral(table.name)}, ${payload("old")});`,
+        "    end if;",
+        `    perform pg_notify(${quoteLiteral(table.name)}, ${payload("either")});`,
+        "    return null;",
+        "end;",
+        "$$ language plpgsql;",
+        "",
+        `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
+        `    for each row execute function ${name}();`,
         "",
     ];
 }
@@ -229,7 +281,9 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     }
 
     for (const table of ordered) {
-        if (table.queries.includes("notify")) {
+        if (table.queries.includes("watch")) {
+            lines.push(...renderWatchTrigger(table));
+        } else if (table.queries.includes("notify")) {
             lines.push(...renderNotifyTrigger(table));
         }
     }

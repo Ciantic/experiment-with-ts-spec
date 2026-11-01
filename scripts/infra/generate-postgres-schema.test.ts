@@ -920,6 +920,32 @@ describe("generateSchema triggers", () => {
         expect(sql).toContain("    for each statement execute function \"thing_notify\"();");
     });
 
+    it("publishes the primary key per row when the entity declares the watch read", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/**
+                 * @entity
+                 * @queries query watch
+                 */
+                export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
+        expect(sql).toContain(
+            `perform pg_notify('thing', json_build_object('id', coalesce(NEW."id", OLD."id")::text)::text);`,
+        );
+        expect(sql).toContain(`if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then`);
+        expect(sql).toContain(`perform pg_notify('thing', json_build_object('id', OLD."id"::text)::text);`);
+        expect(sql).toContain(
+            'create trigger "thing_notify" after insert or update or delete on "thing"',
+        );
+        expect(sql).toContain("    for each row execute function \"thing_notify\"();");
+    });
+
     it("emits an after trigger that maintains a cross-table aggregate", () => {
         const { sql, diagnostics } = generate({
             entities: {

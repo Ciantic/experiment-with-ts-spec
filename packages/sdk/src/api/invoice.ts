@@ -24,7 +24,17 @@ export function notifyInvoice(
     onChange: () => void,
     options?: WatchOptions,
 ): NotificationSubscription {
-    return watch(http.baseUrl + "/invoice/notify", onChange, options);
+    return watch(http.url("/invoice/notify"), () => onChange(), options);
+}
+
+/** The change stream of the given `Invoice` rows. See docs/notifications.md. */
+export function watchInvoice(
+    http: HttpClient,
+    keys: InvoicePrimaryKey[],
+    onChange: (key: InvoicePrimaryKey) => void,
+    options?: WatchOptions,
+): NotificationSubscription {
+    return watch<InvoicePrimaryKey>(http.url("/invoice/watch", { keys }), onChange, options);
 }
 
 /** Create `Invoice` rows. */
