@@ -155,15 +155,20 @@ A filter value is compared with the canonical text the trigger published. An
 omitted field is unconstrained, so `{}` matches every row and omitting `filter`
 does too. A field without `@notifyFilter` is not part of the filter type.
 
-The streams release their listening connection when the iterator closes or
-`signal` aborts. `subscribe` listens on a connection of its own, so a
-subscription is not tied to the executor that made a request, and a write on
-another connection is delivered.
+A driver holds one connection per channel, not one per subscriber. The first
+subscription to a channel opens its connection; every later one joins it, and
+`ChannelListeners` fans each payload out to the subscribers of that channel. The
+last close issues `UNLISTEN` and releases the connection, so a hundred watchers
+of one table hold one connection rather than a hundred, and the count follows
+the number of channels a process watches rather than the number of clients. A
+subscription is still not tied to the executor that made a request, so a write
+on another connection is delivered.
 
-Both drivers implement `SqlDriver.listen`: PGlite uses its own listener, and
-`PgSqlDriver` checks out a pooled connection for `LISTEN` and returns it after
-`UNLISTEN`. An executor whose driver does not listen has no `listen` method, and
-the subscription refuses it.
+Both drivers implement the raw `listen` the registry opens a channel with:
+PGlite uses its own listener, and `PgSqlDriver` checks out a pooled connection
+for `LISTEN` and returns it after `UNLISTEN`. `SqlDriver.close` releases every
+channel before it releases the pool. An executor whose driver does not listen
+has no `listen` method, and the subscription refuses it.
 
 ## Operations
 

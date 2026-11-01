@@ -157,6 +157,15 @@ describe("createExecutor", () => {
 class RecordingDriver extends SqlDriver {
     readonly statements: string[] = [];
     releases = 0;
+    listens = 0;
+    readonly #listeners = new Map<string, ((payload: string) => void)[]>();
+
+    /** Deliver a payload to every listener of `channel`, as the database would. */
+    notify(channel: string, payload: string): void {
+        for (const listener of this.#listeners.get(channel) ?? []) {
+            listener(payload);
+        }
+    }
 
     async query<Row extends object = Record<string, unknown>>(
         sql: string,
@@ -180,11 +189,13 @@ class RecordingDriver extends SqlDriver {
 
     async exec(): Promise<void> {}
 
-    async listen(): Promise<{ close(): Promise<void> }> {
+    protected async listen(channel: string, onNotification: (payload: string) => void): Promise<{ close(): Promise<void> }> {
+        this.listens += 1;
+        this.#listeners.set(channel, [...(this.#listeners.get(channel) ?? []), onNotification]);
         return { close: async () => {} };
     }
 
-    async close(): Promise<void> {}
+    protected async shutdown(): Promise<void> {}
 }
 
 /** A fresh driver over no database, with the statements and releases it saw. */
@@ -324,5 +335,19 @@ describe("the modes a boundary is opened with", () => {
 
         expect(await ids(db)).toEqual([]);
         await close();
+    });
+});
+
+describe("the channel an executor listens on", () => {
+    it("opens one driver listen for every subscriber of a channel, across executors", async () => {
+        const driver = new RecordingDriver();
+        const seen: string[] = [];
+
+        await driver.createExecutor().listen?.("widget", (payload) => seen.push(`first:${payload}`));
+        await driver.createExecutor().listen?.("widget", (payload) => seen.push(`second:${payload}`));
+        driver.notify("widget", "changed");
+
+        expect(driver.listens).toBe(1);
+        expect(seen).toEqual(["first:changed", "second:changed"]);
     });
 });

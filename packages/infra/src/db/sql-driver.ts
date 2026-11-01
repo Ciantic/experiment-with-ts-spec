@@ -1,5 +1,6 @@
 /** The driver port, and the executor a caller derives from it. See docs/transactions.md. */
 import { SavepointOptionsError } from "sdk/errors.ts";
+import { ChannelListeners } from "./channels.ts";
 import type { QueryResult, Run, SqlExecutor, SqlSubscription, TransactionOptions } from "./sql-executor.ts";
 
 /** A connection borrowed for one boundary: statements, and the release that returns it. */
@@ -23,8 +24,11 @@ function begin(options?: TransactionOptions): string {
     return clauses.length === 0 ? "begin" : `begin ${clauses.join(", ")}`;
 }
 
-/** The process's driver: statements, checkouts, the DDL batch, shutdown, and the executor a caller derives from it. */
+/** The process's driver: statements, checkouts, the DDL batch, its channels, shutdown, and the executor a caller derives from it. */
 export abstract class SqlDriver {
+    /** Every channel this driver listens on, one connection each, shared by the subscriptions that name it. */
+    readonly #channels = new ChannelListeners((channel, onNotification) => this.listen(channel, onNotification));
+
     /** Run one statement; the connection is not pinned across calls, so two may land on different ones. */
     abstract query<Row extends object = Record<string, unknown>>(
         sql: string,
@@ -34,10 +38,15 @@ export abstract class SqlDriver {
     protected abstract connect(): Promise<SqlConnection>;
     /** Run the startup script, several statements included; `query` takes one statement. */
     abstract exec(sql: string): Promise<void>;
-    /** Listen on a channel over a connection of its own, so the subscription outlives a statement. See docs/notifications.md. */
-    abstract listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription>;
-    /** Release the driver's resources. */
-    abstract close(): Promise<void>;
+    /** Listen on a channel over a connection of its own, so the subscription outlives a statement; the registry opens one per channel. */
+    protected abstract listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription>;
+    /** Release every channel, then what the driver opened: its pool or its embedded database. */
+    async close(): Promise<void> {
+        await this.#channels.closeAll();
+        await this.shutdown();
+    }
+    /** Release the driver's own connections; `close` has already released the channels. */
+    protected abstract shutdown(): Promise<void>;
 
     /** One request's handle over this driver, with its own savepoint counter. */
     createExecutor(): SqlExecutor {
@@ -99,7 +108,7 @@ export abstract class SqlDriver {
                 sql: string,
                 parameters?: unknown[],
             ) => this.query<Row>(sql, parameters),
-            listen: (channel, onNotification) => this.listen(channel, onNotification),
+            listen: (channel, onNotification) => this.#channels.subscribe(channel, onNotification),
             transaction: (run) => boundary(undefined, run),
             transactionWith: (options, run) => boundary(options, run),
         };

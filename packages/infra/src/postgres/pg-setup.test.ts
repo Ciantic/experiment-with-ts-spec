@@ -164,3 +164,55 @@ describe("PgSqlDriver", () => {
         await driver.close();
     });
 });
+
+describe("the channel a subscription listens on", () => {
+    it("checks out one client for a hundred watchers of a channel, and releases it when the last one goes", async () => {
+        type Notice = { channel: string; payload?: string | undefined };
+        // The pool the driver constructs is not one the test holds, so its checkouts are recorded in the closure.
+        const checkouts = { connects: 0, releases: 0 };
+        const statements: string[] = [];
+        const listeners: ((notice: Notice) => void)[] = [];
+        class ListeningPool {
+            async connect() {
+                checkouts.connects += 1;
+                return {
+                    on: (_event: string, listener: (notice: Notice) => void) => {
+                        listeners.push(listener);
+                    },
+                    removeListener: (_event: string, listener: (notice: Notice) => void) => {
+                        const index = listeners.indexOf(listener);
+                        if (index >= 0) {
+                            listeners.splice(index, 1);
+                        }
+                    },
+                    query: async (sql: string) => {
+                        statements.push(sql);
+                        return { rows: [] };
+                    },
+                    release: () => {
+                        checkouts.releases += 1;
+                    },
+                };
+            }
+            async end() {}
+        }
+        const module = { ...pgModule, Pool: ListeningPool as unknown as PgPoolModule["Pool"] };
+        const driver = new PgSqlDriver(module);
+        const db = driver.createExecutor();
+        const seen: string[] = [];
+
+        const subscriptions = await Promise.all(
+            Array.from({ length: 100 }, () => db.listen?.("invoice", (payload) => seen.push(payload))),
+        );
+        for (const listener of listeners) {
+            listener({ channel: "invoice", payload: "1" });
+        }
+        expect(checkouts.connects).toBe(1);
+        expect(seen).toHaveLength(100);
+
+        await Promise.all(subscriptions.map((subscription) => subscription?.close()));
+        expect(statements).toEqual(['listen "invoice"', 'unlisten "invoice"']);
+        expect(checkouts.releases).toBe(1);
+        await driver.close();
+    });
+});

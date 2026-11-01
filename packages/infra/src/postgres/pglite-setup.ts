@@ -88,7 +88,7 @@ export class PgliteSqlDriver extends SqlDriver {
         });
     }
 
-    async listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription> {
+    protected async listen(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription> {
         return await this.#exclusive(async () => {
             const close = await this.#pglite.listen(channel, (payload) => onNotification(payload));
             return {
@@ -101,7 +101,7 @@ export class PgliteSqlDriver extends SqlDriver {
         });
     }
 
-    close(): Promise<void> {
+    protected shutdown(): Promise<void> {
         return this.#pglite.close();
     }
 }

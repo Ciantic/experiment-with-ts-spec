@@ -27,7 +27,7 @@ export interface SqlExecutor {
     transaction<T>(run: Run<T>): Promise<T>;
     /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */
     transactionWith<T>(options: TransactionOptions, run: Run<T>): Promise<T>;
-    /** Subscribe to a channel on a connection of its own; absent on an executor whose driver cannot listen. See docs/notifications.md. */
+    /** Subscribe to a channel over the one connection its driver holds for that channel, shared with its other subscribers. See docs/notifications.md. */
     listen?(channel: string, onNotification: (payload: string) => void): Promise<SqlSubscription>;
 }
 

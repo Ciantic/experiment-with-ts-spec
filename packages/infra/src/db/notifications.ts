@@ -236,7 +236,7 @@ function createIterator(
         }
         closed = true;
         signal?.removeEventListener("abort", onAbort);
-        // Release the listening connection before a pending read is told the stream ended.
+        // Drop this subscription before a pending read is told the stream ended.
         const current = subscription;
         subscription = undefined;
         await current?.close();
