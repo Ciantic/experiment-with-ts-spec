@@ -1,6 +1,8 @@
 /** Unit tests for generateSchema, driven by self-contained fixtures. */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
+import { watchAll, watchKeys } from "../../packages/infra/src/db/notifications.ts";
+import { PgliteSqlDriver } from "../../packages/infra/src/postgres/pglite-setup.ts";
 import { parseInMemorySpec } from "../spec/spec-model.ts";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
 
@@ -77,6 +79,33 @@ function generate(fixture: Fixture) {
 function messages(diagnostics: Diagnostic[]): string[] {
     return diagnostics.map((diagnostic) => diagnostic.message);
 }
+
+/** Give the listener time to issue its `listen` before the test writes. */
+function settle(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 50));
+}
+
+const ALL_WIDGET = `/**
+ * @entity
+ * @pgTable widget
+ * @notify all
+ */
+export interface Widget {
+    /** @primaryKey */
+    id: GUID;
+    name: string;
+}`;
+
+const ROWS_WIDGET = `/**
+ * @entity
+ * @pgTable widget
+ * @notify rows
+ */
+export interface Widget {
+    /** @primaryKey */
+    id: GUID;
+    name: string;
+}`;
 
 describe("generateSchema output", () => {
     it("starts with the do-not-edit header", () => {
@@ -946,6 +975,95 @@ describe("generateSchema triggers", () => {
             'create trigger "thing_notify" after insert or update or delete on "thing"',
         );
         expect(sql).toContain("    for each row execute function \"thing_notify\"();");
+    });
+
+    it("fires the statement trigger for each write and publishes TG_OP", async () => {
+        const { sql } = generate({ entities: { Widget: ALL_WIDGET } });
+        const driver = new PgliteSqlDriver(PGlite);
+
+        try {
+            await driver.exec(sql);
+            const db = driver.createExecutor();
+            const iterator = watchAll(db, "widget")[Symbol.asyncIterator]();
+
+            const inserted = iterator.next();
+            await settle();
+            await db.query(`insert into "widget" ("id", "name") values ($1, $2)`, [PARENT, "a"]);
+            expect(await inserted).toEqual({ done: false, value: { op: "INSERT" } });
+
+            const updated = iterator.next();
+            await db.query(`update "widget" set "name" = $1 where "id" = $2`, ["b", PARENT]);
+            expect(await updated).toEqual({ done: false, value: { op: "UPDATE" } });
+
+            const deleted = iterator.next();
+            await db.query(`delete from "widget" where "id" = $1`, [PARENT]);
+            expect(await deleted).toEqual({ done: false, value: { op: "DELETE" } });
+
+            await iterator.return?.(undefined);
+        } finally {
+            await driver.close();
+        }
+    });
+
+    it("fires the row trigger for every row with its key", async () => {
+        const { sql } = generate({ entities: { Widget: ROWS_WIDGET } });
+        const driver = new PgliteSqlDriver(PGlite);
+
+        try {
+            await driver.exec(sql);
+            const db = driver.createExecutor();
+            const iterator = watchKeys(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+                Symbol.asyncIterator
+            ]();
+
+            const first = iterator.next();
+            await settle();
+            await db.query(`insert into "widget" ("id", "name") values ($1, $2), ($3, $4)`, [
+                PARENT,
+                "a",
+                PARENT_B,
+                "b",
+            ]);
+
+            expect([await first, await iterator.next()]).toEqual(
+                expect.arrayContaining([
+                    { done: false, value: { pks: { id: PARENT }, op: "INSERT" } },
+                    { done: false, value: { pks: { id: PARENT_B }, op: "INSERT" } },
+                ]),
+            );
+
+            await iterator.return?.(undefined);
+        } finally {
+            await driver.close();
+        }
+    });
+
+    it("publishes the old and new key when an update changes the primary key", async () => {
+        const { sql } = generate({ entities: { Widget: ROWS_WIDGET } });
+        const driver = new PgliteSqlDriver(PGlite);
+
+        try {
+            await driver.exec(sql);
+            const db = driver.createExecutor();
+            await db.query(`insert into "widget" ("id", "name") values ($1, $2)`, [PARENT, "a"]);
+
+            const iterator = watchKeys(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+                Symbol.asyncIterator
+            ]();
+            const first = iterator.next();
+            await settle();
+            await db.query(`update "widget" set "id" = $1 where "id" = $2`, [PARENT_B, PARENT]);
+
+            expect(await first).toEqual({ done: false, value: { pks: { id: PARENT }, op: "UPDATE" } });
+            expect(await iterator.next()).toEqual({
+                done: false,
+                value: { pks: { id: PARENT_B }, op: "UPDATE" },
+            });
+
+            await iterator.return?.(undefined);
+        } finally {
+            await driver.close();
+        }
     });
 
     it("emits an after trigger that maintains a cross-table aggregate", () => {

@@ -33,7 +33,10 @@ values, all of which are domain decisions rather than code behaviour.
   Its trigger group also executes the generated triggers in PGlite over
   `Parent`/`ChildA`/`ChildB` fixtures, asserting which child drives which parent
   column: the SQL text cannot show a trigger attached to the wrong table, because
-  that trigger is still valid and still runs.
+  that trigger is still valid and still runs. It does the same for notifications
+  over isolated `Widget` fixtures: an `all`-scope write publishes `TG_OP`, a
+  `rows`-scope write publishes each key, and a primary-key change publishes both
+  the old and the new key.
 - `scripts/sdk/generate-zod-schemas.test.ts` — drives the schema
   mapper with in-memory spec fixtures and evaluates the emitted `primitives.ts`
   against Zod, so no assertion depends on the real domain.
@@ -43,7 +46,10 @@ values, all of which are domain decisions rather than code behaviour.
 - `scripts/sdk/generate-rest-client.test.ts` — drives the client
   renderer with fixtures and asserts the invariant that makes it worth
   generating: the emitted modules import `spec`, the type-only schema types, and
-  their own modules, and nothing else.
+  their own modules, and nothing else. It also executes the generated watch
+  helper for a notifying fixture, so both the `all` and `rows` branches are
+  checked against the paths and `{ pks?, ops? }` arguments they hand to the
+  hand-written client.
 - `scripts/sdk/errors.test.ts` — the shared error contract:
   `apiErrorBody` names the wire kind, `apiErrorFromBody` rebuilds every kind with
   the response's status, and an unknown kind or an unclassified body stays

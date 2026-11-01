@@ -1,7 +1,8 @@
 /** Unit tests for the client renderer, driven by fixtures; the emitted imports are the invariant. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
+import { createHttpClient } from "../../packages/sdk/src/http.ts";
+import { SPEC_SRC_ROOT, parseInMemorySpec, tsLoadGeneratedModule, tsStubImports } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
 
@@ -388,6 +389,43 @@ describe("watch helpers", () => {
 
     it("builds no Call for a stream, since an EventSource is not one request", () => {
         expect(module()).not.toContain('from "../client.ts"');
+    });
+
+    it("executes the generated helper and encodes the selected scopes", () => {
+        const watchedUrls: string[] = [];
+        const events: unknown[] = [];
+        const watch = (url: string, onChange: (event: unknown) => void) => {
+            watchedUrls.push(url);
+            onChange({ pks: { id: "a" }, op: "UPDATE" });
+            return { close: () => {} };
+        };
+        const generated = tsLoadGeneratedModule<Record<string, unknown>>(
+            module(),
+            tsStubImports({ "../watch.ts": { watch } }),
+        );
+        const helper = generated.watchNotified as (
+            http: { url(path: string, argument?: unknown): string },
+            onChange: (event: unknown) => void,
+            opts?: { pks?: { id: string }[]; ops?: string[] },
+        ) => { close(): void };
+        const http = createHttpClient("http://api.example");
+        const onChange = (event: unknown) => events.push(event);
+
+        helper(http, onChange, { pks: [{ id: "a" }], ops: ["UPDATE"] });
+        helper(http, onChange, { ops: ["DELETE"] });
+        helper(http, onChange);
+
+        expect(watchedUrls).toEqual([
+            http.url("/notified/watch", { pks: [{ id: "a" }], ops: ["UPDATE"] }),
+            http.url("/notified/watch", { ops: ["DELETE"] }),
+            http.url("/notified/watch"),
+        ]);
+        expect(watchedUrls.map((url) => new URL(url).pathname)).toEqual([
+            "/notified/watch",
+            "/notified/watch",
+            "/notified/watch",
+        ]);
+        expect(events).toHaveLength(3);
     });
 });
 

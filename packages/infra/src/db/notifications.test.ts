@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { onlyOperations, subscribe, watchKeys } from "./notifications.ts";
+import { onlyOperations, subscribe, watchAll, watchKeys } from "./notifications.ts";
 
 /** A fresh database and the executor a caller gets from it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -139,6 +139,53 @@ describe("watchKeys", () => {
         const iterator = watchKeys(db, "widget", [], ["id"])[Symbol.asyncIterator]();
 
         expect(await iterator.next()).toEqual({ done: true, value: undefined });
+        await close();
+    });
+});
+
+describe("watchAll", () => {
+    it("yields the operation from a bare TG_OP and drops the key from a row payload", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchAll(db, "widget")[Symbol.asyncIterator]();
+
+        const first = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', 'INSERT')`);
+        expect(await first).toEqual({ done: false, value: { op: "INSERT" } });
+
+        const second = iterator.next();
+        await db.query(`select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"}}')`);
+        expect(await second).toEqual({ done: false, value: { op: "UPDATE" } });
+
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("drops an operation that was not requested", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchAll(db, "widget", ["DELETE"])[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', 'UPDATE')`);
+        await db.query(`select pg_notify('widget', 'DELETE')`);
+
+        expect(await pending).toEqual({ done: false, value: { op: "DELETE" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("ignores a payload that carries no operation", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchAll(db, "widget")[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', '{"key":{"id":"a"}}')`);
+        await db.query(`select pg_notify('widget', 'INSERT')`);
+
+        expect(await pending).toEqual({ done: false, value: { op: "INSERT" } });
+        await iterator.return?.(undefined);
         await close();
     });
 });
