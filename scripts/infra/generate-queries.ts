@@ -284,7 +284,7 @@ export function renderWatchModule(entity: string, table: Table): string {
     watchTypes.sort((a, b) => a.localeCompare(b));
     lines.push(`import type { ${watchTypes.join(", ")} } from "sdk/watch.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
-    const functions = [rows ? "watchKeys" : "", all ? "watchAll" : ""].filter(Boolean).sort();
+    const functions = [rows ? "watchRows" : "", all ? "watchAll" : ""].filter(Boolean).sort();
     lines.push(`import { ${functions.join(", ")} } from "../notifications.ts";`);
     lines.push("");
 
@@ -311,7 +311,7 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters)},`);
         lines.push(`): AsyncIterable<WatchEvent<${keyType}>> {`);
         lines.push(
-            `    return watchKeys(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg});`,
+            `    return watchRows(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg});`,
         );
         lines.push("}");
     }

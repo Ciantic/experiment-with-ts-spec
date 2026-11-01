@@ -3,7 +3,7 @@ import type { InvoicePrimaryKey } from "sdk/schemas.ts";
 import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { AllWatchEvent, WatchEvent, WatchFilter, WatchOperation } from "sdk/watch.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
-import { watchAll, watchKeys } from "../notifications.ts";
+import { watchAll, watchRows } from "../notifications.ts";
 
 /** Subscribe to changes of `Invoice`, optionally scoped to operations and filter values. See docs/notifications.md. */
 export function watchInvoice(
@@ -18,5 +18,5 @@ export function watchInvoiceRows(
     db: SqlExecutor,
     opts: { pks: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId"> | undefined; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },
 ): AsyncIterable<WatchEvent<InvoicePrimaryKey>> {
-    return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);
+    return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);
 }

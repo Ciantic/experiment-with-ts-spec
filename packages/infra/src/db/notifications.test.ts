@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import { PgliteSqlDriver } from "../postgres/pglite-setup.ts";
 import type { SqlExecutor } from "./sql-executor.ts";
-import { onlyOperations, subscribe, watchAll, watchKeys } from "./notifications.ts";
+import { onlyOperations, subscribe, watchAll, watchRows } from "./notifications.ts";
 
 /** A fresh database and the executor a caller gets from it. */
 async function fixture(): Promise<{ db: SqlExecutor; close: () => Promise<void> }> {
@@ -74,11 +74,11 @@ describe("subscribe", () => {
     });
 });
 
-describe("watchKeys", () => {
+describe("watchRows", () => {
     it("yields the requested key whose row changed, with the operation, and ignores the rest", async () => {
         const { db, close } = await fixture();
         const keys = [{ id: "a" }, { id: "b" }];
-        const iterator = watchKeys(db, "widget", keys, ["id"])[Symbol.asyncIterator]();
+        const iterator = watchRows(db, "widget", keys, ["id"])[Symbol.asyncIterator]();
 
         const pending = iterator.next();
         await settle();
@@ -93,7 +93,7 @@ describe("watchKeys", () => {
     it("matches a date key in the trigger's canonical text", async () => {
         const { db, close } = await fixture();
         const at = new Date("2026-01-02T03:04:05.000Z");
-        const iterator = watchKeys(db, "widget", [{ at }], ["at"])[Symbol.asyncIterator]();
+        const iterator = watchRows(db, "widget", [{ at }], ["at"])[Symbol.asyncIterator]();
 
         const pending = iterator.next();
         await settle();
@@ -108,7 +108,7 @@ describe("watchKeys", () => {
 
     it("ignores a payload that carries no operation", async () => {
         const { db, close } = await fixture();
-        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"])[Symbol.asyncIterator]();
+        const iterator = watchRows(db, "widget", [{ id: "a" }], ["id"])[Symbol.asyncIterator]();
 
         const pending = iterator.next();
         await settle();
@@ -122,7 +122,7 @@ describe("watchKeys", () => {
 
     it("drops an operation that was not requested", async () => {
         const { db, close } = await fixture();
-        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], ["INSERT"])[Symbol.asyncIterator]();
+        const iterator = watchRows(db, "widget", [{ id: "a" }], ["id"], ["INSERT"])[Symbol.asyncIterator]();
 
         const pending = iterator.next();
         await settle();
@@ -136,7 +136,7 @@ describe("watchKeys", () => {
 
     it("completes immediately when no key is requested", async () => {
         const { db, close } = await fixture();
-        const iterator = watchKeys(db, "widget", [], ["id"])[Symbol.asyncIterator]();
+        const iterator = watchRows(db, "widget", [], ["id"])[Symbol.asyncIterator]();
 
         expect(await iterator.next()).toEqual({ done: true, value: undefined });
         await close();
@@ -144,7 +144,7 @@ describe("watchKeys", () => {
 
     it("yields only a requested row whose filter value matches", async () => {
         const { db, close } = await fixture();
-        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
+        const iterator = watchRows(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
             tenantId: "t1",
         })[Symbol.asyncIterator]();
 
@@ -165,7 +165,7 @@ describe("watchKeys", () => {
     it("matches a date filter in the trigger's canonical text", async () => {
         const { db, close } = await fixture();
         const at = new Date("2026-01-02T03:04:05.000Z");
-        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
+        const iterator = watchRows(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
             at,
         })[Symbol.asyncIterator]();
 

@@ -302,7 +302,7 @@ describe("renderWatchModule", () => {
         expect(code).toContain(
             "export function watchInvoiceRows(\n    db: SqlExecutor,\n    opts: { pks: InvoicePrimaryKey[]; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchEvent<InvoicePrimaryKey>> {",
         );
-        expect(code).toContain('return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal);');
+        expect(code).toContain('return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal);');
         expect(code).not.toContain("export function watchInvoice(");
     });
 
@@ -328,7 +328,7 @@ describe("renderWatchModule", () => {
         expect(code).toContain('filter?: WatchFilter<Invoice, "customerId"> | undefined;');
         expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal, opts?.filter);');
         expect(code).toContain(
-            'return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);',
+            'return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);',
         );
     });
 });

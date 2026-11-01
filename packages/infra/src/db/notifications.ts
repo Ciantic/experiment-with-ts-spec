@@ -150,10 +150,10 @@ function valuesOf(value: unknown): Record<string, string> | undefined {
 }
 
 /**
- * Yield the requested key each time its row changes; other rows on the channel are ignored.
+ * Yield the requested row each time it changes; other rows on the channel are ignored.
  * @throws {NotificationsUnsupportedError} when the executor has no listening connection
  */
-export async function* watchKeys<T extends Record<string, unknown>>(
+export async function* watchRows<T extends Record<string, unknown>>(
     db: SqlExecutor,
     channel: string,
     keys: readonly T[],

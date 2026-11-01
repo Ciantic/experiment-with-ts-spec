@@ -1,7 +1,7 @@
 /** Unit tests for generateSchema, driven by self-contained fixtures. */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import { watchAll, watchKeys } from "../../packages/infra/src/db/notifications.ts";
+import { watchAll, watchRows } from "../../packages/infra/src/db/notifications.ts";
 import { PgliteSqlDriver } from "../../packages/infra/src/postgres/pglite-setup.ts";
 import { parseInMemorySpec } from "../spec/spec-model.ts";
 import { generateSchema, type Diagnostic } from "./generate-postgres-schema.ts";
@@ -1074,7 +1074,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchKeys(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
 
@@ -1109,7 +1109,7 @@ describe("generateSchema triggers", () => {
             const db = driver.createExecutor();
             await db.query(`insert into "widget" ("id", "name") values ($1, $2)`, [PARENT, "a"]);
 
-            const iterator = watchKeys(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
             const first = iterator.next();
