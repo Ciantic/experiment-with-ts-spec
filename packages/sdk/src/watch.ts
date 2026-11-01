@@ -41,6 +41,9 @@ export interface WatchEvent<Key> {
     op: WatchOperation;
 }
 
+/** The values a change stream matches: the fields an entity declares with `@notifyFilter`, compared for equality. See docs/notifications.md. */
+export type WatchFilter<E, K extends keyof E = keyof E> = Partial<Pick<E, K>>;
+
 /** An all-rows change: the operation, without a key. */
 export interface AllWatchEvent {
     op: WatchOperation;

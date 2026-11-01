@@ -31,6 +31,7 @@ function table(
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
         notify: [],
+        notifyFilters: [],
     };
 }
 
@@ -290,6 +291,7 @@ describe("renderWatchModule", () => {
             "export function watchInvoice(\n    db: SqlExecutor,\n    opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<AllWatchEvent> {",
         );
         expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal);');
+        expect(code).not.toContain("watchInvoiceRows");
     });
 
     it("renders a rows-only watch with a required key filter", () => {
@@ -298,17 +300,36 @@ describe("renderWatchModule", () => {
         expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('import type { WatchEvent, WatchOperation } from "sdk/watch.ts";');
         expect(code).toContain(
-            "export function watchInvoice(\n    db: SqlExecutor,\n    opts: { pks: InvoicePrimaryKey[]; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchEvent<InvoicePrimaryKey>> {",
+            "export function watchInvoiceRows(\n    db: SqlExecutor,\n    opts: { pks: InvoicePrimaryKey[]; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchEvent<InvoicePrimaryKey>> {",
         );
         expect(code).toContain('return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal);');
+        expect(code).not.toContain("export function watchInvoice(");
     });
 
-    it("renders overloads when all and rows are both declared", () => {
+    it("renders one function per scope when all and rows are both declared", () => {
         const code = renderWatchModule("Invoice", { ...invoice, notify: ["all", "rows"] });
 
-        expect(code).toContain("): AsyncIterable<WatchEvent<InvoicePrimaryKey>>;");
-        expect(code).toContain("): AsyncIterable<AllWatchEvent>;");
-        expect(code).toContain("return opts?.pks === undefined");
+        expect(code).toContain("export function watchInvoice(");
+        expect(code).toContain("export function watchInvoiceRows(");
+        expect(code).not.toContain("): AsyncIterable<WatchEvent<InvoicePrimaryKey>>;");
+    });
+
+    it("accepts a typed filter when @notifyFilter names a field", () => {
+        const code = renderWatchModule("Invoice", {
+            ...invoice,
+            notify: ["all", "rows"],
+            notifyFilters: ["customerId"],
+        });
+
+        expect(code).toContain('import type { Invoice } from "spec/fixtures/Invoice.ts";');
+        expect(code).toContain(
+            'import type { AllWatchEvent, WatchEvent, WatchFilter, WatchOperation } from "sdk/watch.ts";',
+        );
+        expect(code).toContain('filter?: WatchFilter<Invoice, "customerId"> | undefined;');
+        expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal, opts?.filter);');
+        expect(code).toContain(
+            'return watchKeys(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);',
+        );
     });
 });
 

@@ -51,10 +51,13 @@ One collection per entity that exposes one. The collection sits at the
 omits is reachable to backend callers and absent from the route table and the
 SDK, and an entity that carries no `@restQueries query` has no read route.
 `@restNotify` adds one server-sent event stream at `/<table>/watch` taking
-`{ pks?, ops? }` in `q`. `pks` is required when only `rows` is exposed, named
-nowhere when only `all` is exposed, and optional when both are. The stream has
-no `Call` builder, since it opens a connection rather than sending one request;
-the SDK generates `watch<Entity>(http, onChange, options)`, returning a
+`{ pks?, filter?, ops? }` in `q`. `pks` is required when only `rows` is
+exposed, named nowhere when only `all` is exposed, and optional when both are.
+`filter` is present when a field of the entity carries `@notifyFilter`, and its
+fields are the ones that tag marks. The stream has no `Call` builder, since it
+opens a connection rather than sending one request; the SDK generates
+`watch<Entity>(http, onChange, options)` for `all` and
+`watch<Entity>Rows(http, onChange, options)` for `rows`, each returning a
 subscription. See `docs/notifications.md`. An entity that names no exposed
 operation at all has no collection: no path, no route module, and no client
 module. See `docs/spec-annotations.md`. A read and a delete carry their argument
@@ -63,7 +66,7 @@ in a single `q` query parameter; a write carries it in the body.
 | Call | Id | Method | Path | Argument |
 | --- | --- | --- | --- | --- |
 | query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
-| watch | `watch<Entity>` | `GET` | `/<table>/watch?q=…` | `{ pks?: <entity>PrimaryKey[]; ops? }` (server-sent events) |
+| watch | `watch<Entity>` | `GET` | `/<table>/watch?q=…` | `{ pks?: <entity>PrimaryKey[]; filter?; ops? }` (server-sent events) |
 | create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |

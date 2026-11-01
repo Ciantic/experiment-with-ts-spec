@@ -39,6 +39,7 @@ export interface Invoice {
      * @fieldName Tenant ID
      * @queryFilter
      * @foreignKey Tenant
+     * @notifyFilter
      * @widget text
      */
     tenantId: TenantId;

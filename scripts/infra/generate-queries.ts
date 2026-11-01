@@ -237,70 +237,84 @@ function queryArgs(filters: string[]): string {
     return filters.length > 0 ? "opts.filter ?? {}" : "{}";
 }
 
-/** The options a generated watch takes: `pks` is required only when rows are declared without all. */
-function watchOptsType(keyType: string, all: boolean, rows: boolean): string {
+/** The filter object a generated watch takes: the fields `@notifyFilter` declares. */
+function watchFilterType(entity: string, filters: string[]): string | undefined {
+    return filters.length === 0
+        ? undefined
+        : `WatchFilter<${entity}, ${filters.map((field) => JSON.stringify(field)).join(" | ")}>`;
+}
+
+/** The options a generated watch takes: `pks` only on the rows helper, `filter` only when declared. */
+function watchOptsType(keyType: string, pks: boolean, entity: string, filters: string[]): string {
     const parts: string[] = [];
-    if (rows) {
-        parts.push(`${all ? "pks?" : "pks"}: ${keyType}[]${all ? " | undefined" : ""}`);
+    if (pks) {
+        parts.push(`pks: ${keyType}[]`);
+    }
+    const filter = watchFilterType(entity, filters);
+    if (filter !== undefined) {
+        parts.push(`filter?: ${filter} | undefined`);
     }
     parts.push("ops?: readonly WatchOperation[] | undefined", "signal?: AbortSignal");
     return `{ ${parts.join("; ")} }`;
 }
 
-/** Render one entity's change stream, shaped by the scopes `@notify` declares. */
+/** Render one entity's change streams: `watch<Entity>` for the table and `watch<Entity>Rows` for keys. */
 export function renderWatchModule(entity: string, table: Table): string {
     const keyType = `${entity}PrimaryKey`;
     const all = table.notify.includes("all");
     const rows = table.notify.includes("rows");
+    const filters = table.notifyFilters;
     const fields = rows ? primaryKeyColumns(table).map((column) => column.name) : [];
     const channel = JSON.stringify(table.name);
     const lines: string[] = [HEADER];
     if (rows) {
         lines.push(`import type { ${keyType} } from "sdk/schemas.ts";`);
     }
+    if (filters.length > 0) {
+        lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
+    }
     const watchTypes = all ? ["AllWatchEvent"] : [];
     if (rows) {
         watchTypes.push("WatchEvent");
     }
     watchTypes.push("WatchOperation");
+    if (filters.length > 0) {
+        watchTypes.push("WatchFilter");
+    }
+    watchTypes.sort((a, b) => a.localeCompare(b));
     lines.push(`import type { ${watchTypes.join(", ")} } from "sdk/watch.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     const functions = [rows ? "watchKeys" : "", all ? "watchAll" : ""].filter(Boolean).sort();
     lines.push(`import { ${functions.join(", ")} } from "../notifications.ts";`);
     lines.push("");
-    lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to rows and operations. See docs/notifications.md. */`);
 
-    if (all && rows) {
-        lines.push(`export function watch${entity}(`);
-        lines.push("    db: SqlExecutor,");
-        lines.push(`    opts: ${watchOptsType(keyType, false, rows)},`);
-        lines.push(`): AsyncIterable<WatchEvent<${keyType}>>;`);
-        lines.push(`export function watch${entity}(`);
-        lines.push("    db: SqlExecutor,");
-        lines.push(`    opts?: { pks?: undefined; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },`);
-        lines.push("): AsyncIterable<AllWatchEvent>;");
-        lines.push(`export function watch${entity}(`);
-        lines.push("    db: SqlExecutor,");
-        lines.push(`    opts?: ${watchOptsType(keyType, all, rows)},`);
-        lines.push(`): AsyncIterable<WatchEvent<${keyType}> | AllWatchEvent> {`);
-        lines.push("    return opts?.pks === undefined");
-        lines.push(`        ? watchAll(db, ${channel}, opts?.ops, opts?.signal)`);
-        lines.push(`        : watchKeys(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal);`);
-        lines.push("}");
-        return lines.join("\n") + "\n";
-    }
+    const filterArg = filters.length > 0 ? ", opts.filter" : "";
+    const optionalFilterArg = filters.length > 0 ? ", opts?.filter" : "";
 
-    lines.push(`export function watch${entity}(`);
-    lines.push("    db: SqlExecutor,");
-    lines.push(`    opts${rows ? "" : "?"}: ${watchOptsType(keyType, all, rows)},`);
-    if (rows) {
-        lines.push(`): AsyncIterable<WatchEvent<${keyType}>> {`);
-        lines.push(`    return watchKeys(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal);`);
-    } else {
+    if (all) {
+        lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
+        lines.push(`export function watch${entity}(`);
+        lines.push("    db: SqlExecutor,");
+        lines.push(`    opts?: ${watchOptsType(keyType, false, entity, filters)},`);
         lines.push("): AsyncIterable<AllWatchEvent> {");
-        lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal);`);
+        lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal${optionalFilterArg});`);
+        lines.push("}");
     }
-    lines.push("}");
+
+    if (rows) {
+        if (all) {
+            lines.push("");
+        }
+        lines.push(`/** Subscribe to changes of the selected \`${entity}\` rows, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
+        lines.push(`export function watch${entity}Rows(`);
+        lines.push("    db: SqlExecutor,");
+        lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters)},`);
+        lines.push(`): AsyncIterable<WatchEvent<${keyType}>> {`);
+        lines.push(
+            `    return watchKeys(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg});`,
+        );
+        lines.push("}");
+    }
     return lines.join("\n") + "\n";
 }
 

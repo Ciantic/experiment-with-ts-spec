@@ -33,7 +33,8 @@ An entity declares its read with `@queries <operation>…`; `query` is the only
 read operation, so the tag is written `@queries query`. An entity that declares
 no read gets no `query<Entity>` and no read route — the generator writes a
 module only for the tables the tag names. Change streams are a separate
-declaration: `@notify` and `@restNotify` name the `all` and `rows` scopes. See
+declaration: `@notify` and `@restNotify` name the `all` and `rows` scopes, and
+`@notifyFilter` marks the fields a subscriber may filter on. See
 `docs/spec-annotations.md` and `docs/notifications.md`.
 
 There is no query alias to write. The generator walks the tables and emits

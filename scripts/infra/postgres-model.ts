@@ -116,6 +116,8 @@ export interface Table {
     queries: ReadOperation[];
     /** The notification scopes `@notify` declares, which the schema and watch generators read. See docs/notifications.md. */
     notify: NotifyScope[];
+    /** The fields `@notifyFilter` names, whose values the change payload carries. See docs/notifications.md. */
+    notifyFilters: string[];
 }
 
 interface TypeResolution {
@@ -202,10 +204,18 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
         notify: spec.notify,
+        notifyFilters: spec.notifyFilters,
     };
 
     for (const property of spec.properties) {
         addProperty(context, table, property);
+    }
+
+    // A filter names a stored column, so a branch or an unknown field has nothing to publish.
+    for (const field of spec.notifyFilters) {
+        if (!table.columns.some((column) => column.name === field)) {
+            context.report(spec.location, `\`${spec.name}\`: @notifyFilter \`${field}\` is not a scalar column`);
+        }
     }
 
     // Interface-level statements run after the fields', so one can read a derived value.

@@ -141,6 +141,44 @@ describe("watchKeys", () => {
         expect(await iterator.next()).toEqual({ done: true, value: undefined });
         await close();
     });
+
+    it("yields only a requested row whose filter value matches", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
+            tenantId: "t1",
+        })[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(
+            `select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"},"filter":{"tenantId":"t2"}}')`,
+        );
+        await db.query(
+            `select pg_notify('widget', '{"op":"UPDATE","key":{"id":"a"},"filter":{"tenantId":"t1"}}')`,
+        );
+
+        expect(await pending).toEqual({ done: false, value: { pks: { id: "a" }, op: "UPDATE" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("matches a date filter in the trigger's canonical text", async () => {
+        const { db, close } = await fixture();
+        const at = new Date("2026-01-02T03:04:05.000Z");
+        const iterator = watchKeys(db, "widget", [{ id: "a" }], ["id"], undefined, undefined, {
+            at,
+        })[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(
+            `select pg_notify('widget', '{"op":"INSERT","key":{"id":"a"},"filter":{"at":"2026-01-02T03:04:05.000Z"}}')`,
+        );
+
+        expect(await pending).toEqual({ done: false, value: { pks: { id: "a" }, op: "INSERT" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
 });
 
 describe("watchAll", () => {
@@ -183,6 +221,34 @@ describe("watchAll", () => {
         await settle();
         await db.query(`select pg_notify('widget', '{"key":{"id":"a"}}')`);
         await db.query(`select pg_notify('widget', 'INSERT')`);
+
+        expect(await pending).toEqual({ done: false, value: { op: "INSERT" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("yields only a change whose filter value matches", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchAll(db, "widget", undefined, undefined, { tenantId: "t1" })[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', '{"op":"UPDATE","filter":{"tenantId":"t2"}}')`);
+        await db.query(`select pg_notify('widget', '{"op":"UPDATE","filter":{"tenantId":"t1"}}')`);
+
+        expect(await pending).toEqual({ done: false, value: { op: "UPDATE" } });
+        await iterator.return?.(undefined);
+        await close();
+    });
+
+    it("drops a bare notification when a filter is requested", async () => {
+        const { db, close } = await fixture();
+        const iterator = watchAll(db, "widget", undefined, undefined, { tenantId: "t1" })[Symbol.asyncIterator]();
+
+        const pending = iterator.next();
+        await settle();
+        await db.query(`select pg_notify('widget', 'INSERT')`);
+        await db.query(`select pg_notify('widget', '{"op":"INSERT","filter":{"tenantId":"t1"}}')`);
 
         expect(await pending).toEqual({ done: false, value: { op: "INSERT" } });
         await iterator.return?.(undefined);

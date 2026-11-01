@@ -307,6 +307,15 @@ function lintTenancyTags(spec: SpecInterface, report: Report): void {
     }
 }
 
+/** `@notifyFilter` marks a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+function lintNotifyFilterRequiresNotify(spec: SpecInterface, report: Report): void {
+    const tags = spec.properties.flatMap((property) => property.tags.written.byName.get("notifyFilter") ?? []);
+    if (tags.length === 0 || spec.notify.length > 0) {
+        return;
+    }
+    report("@notifyFilter requires @notify", tags[0]);
+}
+
 /** Check the tags on the interface itself, and the per-entity uniqueness rules. */
 function lintEntity(
     spec: SpecInterface,
@@ -343,6 +352,7 @@ function lintEntity(
     };
     lintEntityTrigger(spec.tags.written, interfaceReport);
     lintTenancyTags(spec, interfaceReport);
+    lintNotifyFilterRequiresNotify(spec, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.
     for (const clock of ["createdAt", "updatedAt"] as const) {
@@ -501,6 +511,7 @@ interface FieldTags {
     version: SpecTag | undefined;
     queryOrderBy: SpecTag | undefined;
     queryWhere: SpecTag | undefined;
+    notifyFilter: SpecTag | undefined;
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
@@ -542,6 +553,7 @@ function resolveFieldTags(
         version: first("version"),
         queryOrderBy: first("queryOrderBy"),
         queryWhere: first("queryWhere"),
+        notifyFilter: first("notifyFilter"),
         typeText: property.type.kind === "missing" ? undefined : property.typeText,
         isArray: property.type.kind === "array",
         optional: property.optional,
@@ -941,6 +953,24 @@ function lintQueryFilter(tags: FieldTags, report: Report): void {
     }
 }
 
+/** `@notifyFilter` is a bare marker on a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+function lintNotifyFilter(tags: FieldTags, report: Report): void {
+    const tag = tags.notifyFilter;
+    if (!tag) {
+        return;
+    }
+    if ((tag.value ?? "")) {
+        report("@notifyFilter takes no value", tag);
+    }
+    reportIfBranch(tags, tag, report);
+    if (tags.computed) {
+        report("@notifyFilter must be on a stored column, not a @computed field", tag);
+    }
+    if (tags.isArray) {
+        report("@notifyFilter must be on a scalar field, not an array", tag);
+    }
+}
+
 /** `@version` marks the optimistic-lock column. See docs/versioning.md. */
 function lintVersion(tags: FieldTags, report: Report): void {
     const tag = tags.version;
@@ -1056,6 +1086,7 @@ function lintProperty(
     lintBranches(tags, report);
     lintKeyTags(tags, report);
     lintQueryFilter(tags, report);
+    lintNotifyFilter(tags, report);
     lintVersion(tags, report);
     lintForcedNotNull(tags, report);
     lintQueryOrderBy(tags, report);

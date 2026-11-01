@@ -41,6 +41,7 @@ export const FIELD_TAGS = [
     "queryFilter",
     "queryOrderBy",
     "queryWhere",
+    "notifyFilter",
 ] as const;
 
 /** Tags an interface may carry. */
@@ -338,6 +339,8 @@ export interface Tags {
     notify?: NotifyScope[];
     /** The notification scopes `@restNotify` exposes, in {@link NOTIFY_SCOPES} order. See docs/notifications.md. */
     restNotify?: NotifyScope[];
+    /** The field's value is carried in a change payload, so a subscription can filter on it. See docs/notifications.md. */
+    notifyFilter: boolean;
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
@@ -414,6 +417,8 @@ export interface SpecInterface {
     notify: NotifyScope[];
     /** The notification scopes `@restNotify` exposes; empty when the tag is absent. See docs/notifications.md. */
     restNotify: NotifyScope[];
+    /** The fields a `@notifyFilter` marker marks; empty when no field carries it. See docs/notifications.md. */
+    notifyFilters: string[];
     /** The `@todo` text when the interface is deferred from generation; absent when it is generated. */
     todo?: string;
 }
@@ -767,7 +772,6 @@ function parseNotifyScopes(value: string | undefined): NotifyScope[] {
     const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
     return NOTIFY_SCOPES.filter((scope) => tokens.includes(scope));
 }
-
 /** A parsed `@queryFilter` value: the options it names, and the tokens it does not understand. */
 export interface ParsedQueryFilter {
     required: boolean;
@@ -911,6 +915,7 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         primitive: false,
         entity: false,
         tenant: false,
+        notifyFilter: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -983,6 +988,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "restNotify":
                     if (tags.restNotify === undefined) tags.restNotify = parseNotifyScopes(value);
+                    break;
+                case "notifyFilter":
+                    tags.notifyFilter = true;
                     break;
                 case "todo":
                     tags.todo ??= (value ?? "").trim();
@@ -1403,6 +1411,30 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
         for (const declaration of sourceFile.getInterfaces()) {
             const name = declaration.getName();
             const declarationTags = readTags(declaration);
+            const properties = declaration.getProperties().map((property) => {
+                const tags = readTags(property);
+                const typeNode = property.getTypeNode();
+                const type: SpecType = typeNode ? readType(typeNode) : { kind: "missing" };
+                // The primary key is an optional filter every entity has; a bare tag on a key is lint's to report.
+                if (tags.primaryKey && tags.queryFilter === undefined) {
+                    tags.queryFilter = { required: false };
+                }
+                // An alias supplies the column default; a field tag overrides it, and a written empty one clears it.
+                if (!tags.written.byName.has("pgDefault") && tags.foreignKey === undefined) {
+                    const inherited = inheritedDefault(type, aliases);
+                    if (inherited !== undefined) {
+                        tags.pgDefault = inherited;
+                    }
+                }
+                return {
+                    name: property.getName(),
+                    optional: property.hasQuestionToken(),
+                    typeText: typeNode?.getText() ?? "",
+                    type,
+                    location: locationOf(property),
+                    tags,
+                };
+            });
             const entity: SpecInterface = {
                 name,
                 pgTableName: declarationTags.pgTable ?? snakeCase(name),
@@ -1411,36 +1443,16 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 importSpecifier: specImportSpecifier(filePath),
                 typeParameters: declaration.getTypeParameters().map((parameter) => parameter.getText()),
                 tags: declarationTags,
-                properties: declaration.getProperties().map((property) => {
-                    const tags = readTags(property);
-                    const typeNode = property.getTypeNode();
-                    const type: SpecType = typeNode ? readType(typeNode) : { kind: "missing" };
-                    // The primary key is an optional filter every entity has; a bare tag on a key is lint's to report.
-                    if (tags.primaryKey && tags.queryFilter === undefined) {
-                        tags.queryFilter = { required: false };
-                    }
-                    // An alias supplies the column default; a field tag overrides it, and a written empty one clears it.
-                    if (!tags.written.byName.has("pgDefault") && tags.foreignKey === undefined) {
-                        const inherited = inheritedDefault(type, aliases);
-                        if (inherited !== undefined) {
-                            tags.pgDefault = inherited;
-                        }
-                    }
-                    return {
-                        name: property.getName(),
-                        optional: property.hasQuestionToken(),
-                        typeText: typeNode?.getText() ?? "",
-                        type,
-                        location: locationOf(property),
-                        tags,
-                    };
-                }),
+                properties,
                 repositoryOperations: declarationTags.repository ?? [],
                 restRepositoryOperations: declarationTags.restRepository ?? [],
                 queries: declarationTags.queries ?? [],
                 restQueries: declarationTags.restQueries ?? [],
                 notify: declarationTags.notify ?? [],
                 restNotify: declarationTags.restNotify ?? [],
+                notifyFilters: properties
+                    .filter((property) => property.tags.notifyFilter)
+                    .map((property) => property.name),
                 ...(declarationTags.written.byName.has("todo") ? { todo: declarationTags.todo ?? "" } : {}),
             };
             if (declarationTags.pgTrigger !== undefined) {

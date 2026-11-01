@@ -2,11 +2,12 @@
 import type { Route } from "../router.ts";
 import { z } from "zod";
 import { SseStream } from "../sse.ts";
-import type { WatchOperation } from "sdk/watch.ts";
+import type { WatchFilter, WatchOperation } from "sdk/watch.ts";
+import type { Invoice } from "spec/invoicing-service/Invoice.ts";
 import type { InvoicePrimaryKey } from "sdk/schemas.ts";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
-import { queryInvoice, watchInvoice } from "../../db/queries/index.ts";
-import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
+import { queryInvoice, watchInvoice, watchInvoiceRows } from "../../db/queries/index.ts";
+import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceSchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
 export const invoiceRoutes: Route[] = [
@@ -24,13 +25,13 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice/watch",
         source: "query",
         stream: true,
-        input: z.strictObject({ pks: z.array(invoicePrimaryKeySchema).optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),
+        input: z.strictObject({ pks: z.array(invoicePrimaryKeySchema).optional(), filter: invoiceSchema.pick({ tenantId: true }).partial().strict().optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),
         handler: async (ctx, body) =>
             new SseStream((signal) => {
-                const opts = body as { pks?: InvoicePrimaryKey[]; ops?: WatchOperation[] } | undefined;
+                const opts = body as { pks?: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId">; ops?: WatchOperation[] } | undefined;
                 return opts?.pks === undefined
-                    ? watchInvoice(ctx.db, { ops: opts?.ops, signal })
-                    : watchInvoice(ctx.db, { pks: opts.pks, ops: opts.ops, signal });
+                    ? watchInvoice(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })
+                    : watchInvoiceRows(ctx.db, { pks: opts.pks, filter: opts.filter, ops: opts.ops, signal });
             }),
     },
     {

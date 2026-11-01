@@ -198,7 +198,7 @@ function quoteLiteral(value: string): string {
 function keyText(column: Column, value: string): string {
     switch (column.sqlType) {
         case "timestamptz":
-            return `to_char(${value} at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+            return `to_char((${value}) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
         case "bytea":
             return `encode(${value}, 'hex')`;
         default:
@@ -206,49 +206,74 @@ function keyText(column: Column, value: string): string {
     }
 }
 
-/** Notify the entity's channel once per statement that changes its table, publishing `TG_OP`. See docs/notifications.md. */
-function renderNotifyTrigger(table: Table): string[] {
-    const name = quote(`${table.name}_notify`);
-    return [
-        `create function ${name}() returns trigger as $$`,
-        "begin",
-        `    perform pg_notify(${quoteLiteral(table.name)}, TG_OP);`,
-        "    return null;",
-        "end;",
-        "$$ language plpgsql;",
-        "",
-        `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
-        `    for each statement execute function ${name}();`,
-        "",
-    ];
+/** The JSON entries for one row's columns; `either` reads the new row, falling back to the old one on a delete. */
+function rowEntries(columns: Column[], row: "new" | "old" | "either"): string {
+    return columns
+        .map((column) => {
+            const name = quote(column.name);
+            const value =
+                row === "either"
+                    ? `case when TG_OP = 'DELETE' then OLD.${name} else NEW.${name} end`
+                    : `${row === "new" ? "NEW" : "OLD"}.${name}`;
+            return `${quoteLiteral(column.name)}, ${keyText(column, value)}`;
+        })
+        .join(", ");
 }
 
-/** Notify the entity's channel per changed row, publishing the primary key and `TG_OP`. See docs/notifications.md. */
-function renderWatchTrigger(table: Table): string[] {
+/** `(OLD."a", OLD."b") is distinct from (NEW."a", NEW."b")`, the change test for one column set. */
+function changedCondition(columns: Column[]): string {
+    const old = columns.map((column) => `OLD.${quote(column.name)}`).join(", ");
+    const current = columns.map((column) => `NEW.${quote(column.name)}`).join(", ");
+    return `(${old}) is distinct from (${current})`;
+}
+
+/** Notify the entity's channel per changed row, publishing `TG_OP`, the key, and the `@notifyFilter` values. See docs/notifications.md. */
+function renderNotifyTriggers(table: Table): string[] {
     const keys = table.columns.filter((column) => column.primaryKey);
-    // A keyless table is already a diagnostic; there is no row identity to publish.
-    if (keys.length === 0) {
+    const filters = table.columns.filter((column) => table.notifyFilters.includes(column.name));
+    const rows = table.notify.includes("rows");
+    // A keyless table cannot publish a row identity; the table model already reports it.
+    if (rows && keys.length === 0) {
         return [];
     }
     const name = quote(`${table.name}_notify`);
+
+    // A statement trigger cannot read a changed row's filter values, so a filter forces the row level.
+    if (!rows && filters.length === 0) {
+        return [
+            `create function ${name}() returns trigger as $$`,
+            "begin",
+            `    perform pg_notify(${quoteLiteral(table.name)}, TG_OP);`,
+            "    return null;",
+            "end;",
+            "$$ language plpgsql;",
+            "",
+            `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
+            `    for each statement execute function ${name}();`,
+            "",
+        ];
+    }
+
     const payload = (row: "new" | "old" | "either"): string => {
-        const entries = keys.map((column) => {
-            const value =
-                row === "either"
-                    ? `coalesce(NEW.${quote(column.name)}, OLD.${quote(column.name)})`
-                    : `${row === "new" ? "NEW" : "OLD"}.${quote(column.name)}`;
-            return `${quoteLiteral(column.name)}, ${keyText(column, value)}`;
-        });
-        return `json_build_object('op', TG_OP, 'key', json_build_object(${entries.join(", ")}))::text`;
+        const entries = ["'op', TG_OP"];
+        // The all scope publishes no identity; the rows scope publishes the key.
+        if (rows) {
+            entries.push(`'key', json_build_object(${rowEntries(keys, row)})`);
+        }
+        if (filters.length > 0) {
+            entries.push(`'filter', json_build_object(${rowEntries(filters, row)})`);
+        }
+        return `json_build_object(${entries.join(", ")})::text`;
     };
-    const oldKey = keys.map((column) => `OLD.${quote(column.name)}`).join(", ");
-    const newKey = keys.map((column) => `NEW.${quote(column.name)}`).join(", ");
+
+    // A changed key or filter notifies the row's old identity and old filter value as well as the new one.
+    const conditions = [...(rows ? [changedCondition(keys)] : []), ...(filters.length > 0 ? [changedCondition(filters)] : [])];
+    const changed = conditions.length === 1 ? conditions[0] : `(${conditions.join(" or ")})`;
 
     return [
         `create function ${name}() returns trigger as $$`,
         "begin",
-        // A changed key notifies both the row's old identity and its new one.
-        `    if TG_OP = 'UPDATE' and (${oldKey}) is distinct from (${newKey}) then`,
+        `    if TG_OP = 'UPDATE' and ${changed} then`,
         `        perform pg_notify(${quoteLiteral(table.name)}, ${payload("old")});`,
         "    end if;",
         `    perform pg_notify(${quoteLiteral(table.name)}, ${payload("either")});`,
@@ -281,10 +306,8 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     }
 
     for (const table of ordered) {
-        if (table.notify.includes("rows")) {
-            lines.push(...renderWatchTrigger(table));
-        } else if (table.notify.includes("all")) {
-            lines.push(...renderNotifyTrigger(table));
+        if (table.notify.length > 0) {
+            lines.push(...renderNotifyTriggers(table));
         }
     }
 

@@ -64,6 +64,22 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     }
 }
 
+/** The entity's own schema, whose picked fields validate a `@notifyFilter` value. */
+function entitySchemaName(entity: RestEntity): string {
+    return `${entity.module}Schema`;
+}
+
+/** The filter object a watch accepts: the fields `@notifyFilter` declares, each optional. */
+function notifyFilterExpression(entity: RestEntity): string {
+    const picked = entity.notifyFilters.map((field) => `${field}: true`).join(", ");
+    return `${entitySchemaName(entity)}.pick({ ${picked} }).partial().strict().optional()`;
+}
+
+/** The filter type a watch handler passes through. */
+function notifyFilterType(entity: RestEntity): string {
+    return `WatchFilter<${entity.entity}, ${entity.notifyFilters.map((field) => JSON.stringify(field)).join(" | ")}>`;
+}
+
 /** The generated schema expression for the operations a stream may select. */
 const OPS_SCHEMA = 'z.array(z.enum(["INSERT", "UPDATE", "DELETE"]))';
 
@@ -72,15 +88,22 @@ function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "watch") {
         const keys = `z.array(${schemaName(entity, kind) as string})`;
         const ops = `ops: ${OPS_SCHEMA}.optional()`;
+        const filter = entity.notifyFilters.length > 0 ? `filter: ${notifyFilterExpression(entity)}` : undefined;
         const all = entity.restNotify.includes("all");
         const rows = entity.restNotify.includes("rows");
+        const members: string[] = [];
         if (all && rows) {
-            return `z.strictObject({ pks: ${keys}.optional(), ${ops} }).optional()`;
+            members.push(`pks: ${keys}.optional()`);
+        } else if (rows) {
+            members.push(`pks: ${keys}`);
         }
-        if (all) {
-            return `z.strictObject({ ${ops} }).optional()`;
+        if (filter !== undefined) {
+            members.push(filter);
         }
-        return `z.strictObject({ pks: ${keys}, ${ops} })`;
+        members.push(ops);
+        const object = `z.strictObject({ ${members.join(", ")} })`;
+        // Only the all scope may omit the whole argument; the rows scope names its keys.
+        return all ? `${object}.optional()` : object;
     }
     const name = schemaName(entity, kind) as string;
     return kind === "query" ? name : `z.array(${name})`;
@@ -95,12 +118,23 @@ function repositoryFunctions(entity: RestEntity): string[] {
         .sort((a, b) => a.localeCompare(b));
 }
 
-/** Every read function one entity needs: the query and the change stream both live in the query barrel. */
+/** Every read function one entity needs: the query and the change streams both live in the query barrel. */
 function queryFunctions(entity: RestEntity): string[] {
-    return entity.operations
-        .filter((operation) => operation.kind === "query" || operation.kind === "watch")
-        .map((operation) => operation.id)
-        .sort((a, b) => a.localeCompare(b));
+    const names = new Set<string>();
+    for (const operation of entity.operations) {
+        if (operation.kind === "query") {
+            names.add(operation.id);
+        } else if (operation.kind === "watch") {
+            // The all stream is the table watch; the rows stream is its own function.
+            if (entity.restNotify.includes("all")) {
+                names.add(operation.id);
+            }
+            if (entity.restNotify.includes("rows")) {
+                names.add(`${operation.id}Rows`);
+            }
+        }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /** Every validation schema one entity needs, de-duplicated. */
@@ -111,6 +145,10 @@ function inputSchemas(entity: RestEntity): string[] {
             return name === undefined ? [] : [name];
         }),
     );
+    // A watch filter picks its fields out of the entity's own schema.
+    if (entity.restNotify.length > 0 && entity.notifyFilters.length > 0) {
+        names.add(entitySchemaName(entity));
+    }
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
@@ -129,8 +167,12 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push('import { z } from "zod";');
     }
     if (streams) {
-        lines.push('import { SseStream } from "../sse.ts";');
-        lines.push('import type { WatchOperation } from "sdk/watch.ts";');
+        lines.push(`import { SseStream } from "../sse.ts";`);
+        const watchTypes = entity.restNotify.length > 0 && entity.notifyFilters.length > 0 ? ["WatchFilter", "WatchOperation"] : ["WatchOperation"];
+        lines.push(`import type { ${watchTypes.join(", ")} } from "sdk/watch.ts";`);
+    }
+    if (watches && entity.notifyFilters.length > 0) {
+        lines.push(`import type { ${entity.entity} } from "${entity.importSpecifier}";`);
     }
     if (watches && entity.restNotify.includes("rows")) {
         lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
@@ -162,28 +204,36 @@ export function renderEntityRoutes(entity: RestEntity): string {
             const all = entity.restNotify.includes("all");
             const rows = entity.restNotify.includes("rows");
             const keyType = `${entity.entity}PrimaryKey`;
+            const filter = entity.notifyFilters.length > 0;
+            const bodyFields = [
+                ...(rows ? [`pks${all ? "?" : ""}: ${keyType}[]`] : []),
+                ...(filter ? [`filter?: ${notifyFilterType(entity)}`] : []),
+                "ops?: WatchOperation[]",
+            ].join("; ");
             if (all && rows) {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
-                lines.push(`                const opts = body as { pks?: ${keyType}[]; ops?: WatchOperation[] } | undefined;`);
+                lines.push(`                const opts = body as { ${bodyFields} } | undefined;`);
                 lines.push("                return opts?.pks === undefined");
-                lines.push(`                    ? ${operation.id}(ctx.db, { ops: opts?.ops, signal })`);
-                lines.push(`                    : ${operation.id}(ctx.db, { pks: opts.pks, ops: opts.ops, signal });`);
+                lines.push(
+                    `                    ? ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal })`,
+                );
+                lines.push(
+                    `                    : ${operation.id}Rows(ctx.db, { pks: opts.pks,${filter ? " filter: opts.filter," : ""} ops: opts.ops, signal });`,
+                );
                 lines.push("            }),");
             } else if (rows) {
                 lines.push("        handler: async (ctx, body) =>");
-                lines.push("            new SseStream((signal) =>");
-                lines.push(
-                    `                ${operation.id}(ctx.db, { pks: (body as { pks: ${keyType}[] }).pks, ops: (body as { ops?: WatchOperation[] }).ops, signal }),`,
-                );
-                lines.push("            ),");
+                lines.push("            new SseStream((signal) => {");
+                lines.push(`                const opts = body as { ${bodyFields} };`);
+                lines.push(`                return ${operation.id}Rows(ctx.db, { ...opts, signal });`);
+                lines.push("            }),");
             } else {
                 lines.push("        handler: async (ctx, body) =>");
-                lines.push("            new SseStream((signal) =>");
-                lines.push(
-                    `                ${operation.id}(ctx.db, { ops: (body as { ops?: WatchOperation[] } | undefined)?.ops, signal }),`,
-                );
-                lines.push("            ),");
+                lines.push("            new SseStream((signal) => {");
+                lines.push(`                const opts = body as { ${bodyFields} } | undefined;`);
+                lines.push(`                return ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`);
+                lines.push("            }),");
             }
         } else {
             // The body is validated against the schema above, so the handler may trust its shape.

@@ -2533,6 +2533,89 @@ export interface Draft { }`,
     });
 });
 
+describe("@notifyFilter", () => {
+    it("accepts a stored scalar field on an entity that declares @notify", () => {
+        const findings = lintSourceText(`/**
+ * @entity
+ * @notify all
+ */
+export interface Filtered {
+    /**
+     * @fieldName Tenant ID
+     * @widget text
+     * @notifyFilter
+     */
+    tenantId: string;
+}`);
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("requires @notify", () => {
+        const findings = lintSourceText(`/**
+ * @entity
+ */
+export interface Filtered {
+    /**
+     * @fieldName Tenant ID
+     * @widget text
+     * @notifyFilter
+     */
+    tenantId: string;
+}`);
+
+        expect(messages(findings)).toEqual(["`Filtered`: @notifyFilter requires @notify"]);
+    });
+
+    it("takes no value", () => {
+        const findings = lintSourceText(`/**
+ * @entity
+ * @notify all
+ */
+export interface Filtered {
+    /**
+     * @fieldName Tenant ID
+     * @widget text
+     * @notifyFilter tenantId
+     */
+    tenantId: string;
+}`);
+
+        expect(messages(findings)).toEqual(["`tenantId`: @notifyFilter takes no value"]);
+    });
+
+    it("rejects a branch field and an array field", () => {
+        const branch = lintSourceText(`/**
+ * @entity
+ * @notify all
+ */
+export interface Filtered {
+    /**
+     * @fieldName Customer
+     * @widget select
+     * @relation
+     * @notifyFilter
+     */
+    customer?: Customer;
+}`);
+        const array = lintSourceText(`/**
+ * @entity
+ * @notify all
+ */
+export interface Filtered {
+    /**
+     * @fieldName Tags
+     * @widget text
+     * @notifyFilter
+     */
+    tags: string[];
+}`);
+
+        expect(messages(branch)).toEqual(["`customer`: @notifyFilter must be on a scalar field, not a @relation field"]);
+        expect(messages(array)).toEqual(["`tags`: @notifyFilter must be on a scalar field, not an array"]);
+    });
+});
+
 describe("tenancy tags", () => {
     /** Every spec source, so an entity is found wherever it sits. */
     const sourceGlob = "/src/**/*.ts";

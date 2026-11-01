@@ -83,6 +83,27 @@ export interface Watched {
 }
 `.trim();
 
+/** An entity whose change stream carries a filter value. */
+const FILTERED = `
+/**
+ * @pgTable filtered
+ * @repository create
+ * @restRepository create
+ * @queries query
+ * @restQueries query
+ * @notify all rows
+ * @restNotify all rows
+ * @entity
+ */
+export interface Filtered {
+    /** @primaryKey */
+    id: string;
+
+    /** @notifyFilter */
+    tenantId: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -269,7 +290,8 @@ export interface Internal {
             'input: z.strictObject({ pks: z.array(notifiedPrimaryKeySchema).optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),',
         );
         expect(code).toContain("const opts = body as { pks?: NotifiedPrimaryKey[]; ops?: WatchOperation[] } | undefined;");
-        expect(code).toContain("return opts?.pks === undefined");
+        expect(code).toContain("? watchNotified(ctx.db, { ops: opts?.ops, signal })");
+        expect(code).toContain(": watchNotifiedRows(ctx.db, { pks: opts.pks, ops: opts.ops, signal });");
     });
 
     it("serves a rows-only watch with a required key filter", () => {
@@ -285,8 +307,28 @@ export interface Internal {
         expect(code).toContain('path: "/watched/watch"');
         expect(code).toContain("stream: true,");
         expect(code).toContain('input: z.strictObject({ pks: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),');
+        expect(code).toContain("const opts = body as { pks: WatchedPrimaryKey[]; ops?: WatchOperation[] };");
+        expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
+    });
+
+    it("accepts a typed filter when the entity declares @notifyFilter", () => {
+        const entity = build({ Filtered: FILTERED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the filtered entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain('import type { WatchFilter, WatchOperation } from "sdk/watch.ts";');
+        expect(code).toContain('import type { Filtered } from "spec/fixtures/Filtered.ts";');
         expect(code).toContain(
-            "watchWatched(ctx.db, { pks: (body as { pks: WatchedPrimaryKey[] }).pks, ops: (body as { ops?: WatchOperation[] }).ops, signal }),",
+            "filter: filteredSchema.pick({ tenantId: true }).partial().strict().optional()",
+        );
+        expect(code).toContain(
+            "const opts = body as { pks?: FilteredPrimaryKey[]; filter?: WatchFilter<Filtered, \"tenantId\">; ops?: WatchOperation[] } | undefined;",
+        );
+        expect(code).toContain("? watchFiltered(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })");
+        expect(code).toContain(
+            ": watchFilteredRows(ctx.db, { pks: opts.pks, filter: opts.filter, ops: opts.ops, signal });",
         );
     });
 });

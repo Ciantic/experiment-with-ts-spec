@@ -7,7 +7,7 @@ import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 import type { HttpClient } from "../http.ts";
-import { watch, type NotificationSubscription, type NotificationOptions, type WatchEvent, type AllWatchEvent } from "../watch.ts";
+import { watch, type AllWatchEvent, type NotificationOptions, type NotificationSubscription, type WatchEvent, type WatchFilter } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
@@ -18,28 +18,30 @@ export function queryInvoice<S extends Selection<Invoice>>(
     return call<Selected<Invoice, S>[]>("queryInvoice", "GET", "/invoice/query", opts);
 }
 
-/** The change stream of `Invoice`, optionally scoped to rows and operations. See docs/notifications.md. */
-export function watchInvoice(
-    http: HttpClient,
-    onChange: (event: WatchEvent<InvoicePrimaryKey>) => void,
-    opts: { pks: InvoicePrimaryKey[] } & NotificationOptions,
-): NotificationSubscription;
+/** The change stream of all `Invoice` rows, optionally scoped to operations and filter values. See docs/notifications.md. */
 export function watchInvoice(
     http: HttpClient,
     onChange: (event: AllWatchEvent) => void,
-    opts?: ({ pks?: undefined } & NotificationOptions) | undefined,
-): NotificationSubscription;
-export function watchInvoice(
-    http: HttpClient,
-    onChange: (event: any) => void,
-    opts?: ({ pks?: InvoicePrimaryKey[] | undefined } & NotificationOptions) | undefined,
+    opts?: ({ filter?: WatchFilter<Invoice, "tenantId"> | undefined } & NotificationOptions) | undefined,
 ): NotificationSubscription {
     const ops = opts?.ops;
-    const pks = opts?.pks;
-    const argument = pks === undefined
-        ? (ops === undefined ? undefined : { ops })
-        : (ops === undefined ? { pks } : { pks, ops });
-    return watch<WatchEvent<InvoicePrimaryKey> | AllWatchEvent>(http.url("/invoice/watch", argument), onChange, opts);
+    const selected = opts?.filter;
+    const argument = ops === undefined && selected === undefined
+        ? undefined
+        : { ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
+    return watch<AllWatchEvent>(http.url("/invoice/watch", argument), onChange, opts);
+}
+
+/** The change stream of the selected `Invoice` rows, optionally scoped to operations and filter values. See docs/notifications.md. */
+export function watchInvoiceRows(
+    http: HttpClient,
+    onChange: (event: WatchEvent<InvoicePrimaryKey>) => void,
+    opts: { pks: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId"> | undefined } & NotificationOptions,
+): NotificationSubscription {
+    const { pks, ops } = opts;
+    const selected = opts.filter;
+    const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
+    return watch<WatchEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange, opts);
 }
 
 /** Create `Invoice` rows. */

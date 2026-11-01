@@ -107,6 +107,19 @@ export interface Widget {
     name: string;
 }`;
 
+const FILTERED_WIDGET = `/**
+ * @entity
+ * @pgTable widget
+ * @notify all
+ */
+export interface Widget {
+    /** @primaryKey */
+    id: GUID;
+    /** @notifyFilter */
+    tenantId: GUID;
+    name: string;
+}`;
+
 describe("generateSchema output", () => {
     it("starts with the do-not-edit header", () => {
         const { sql } = generate({ entities: { Thing: "/** @entity */\nexport interface Thing {\n    /** @primaryKey */\n    id: string; }" } });
@@ -965,7 +978,7 @@ describe("generateSchema triggers", () => {
 
         expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
         expect(sql).toContain(
-            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', coalesce(NEW."id", OLD."id")::text))::text);`,
+            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);`,
         );
         expect(sql).toContain(`if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then`);
         expect(sql).toContain(
@@ -975,6 +988,19 @@ describe("generateSchema triggers", () => {
             'create trigger "thing_notify" after insert or update or delete on "thing"',
         );
         expect(sql).toContain("    for each row execute function \"thing_notify\"();");
+    });
+
+    it("publishes the filter value per row, promoting the statement trigger", () => {
+        const { sql } = generate({ entities: { Widget: FILTERED_WIDGET } });
+
+        expect(sql).toContain(
+            `if TG_OP = 'UPDATE' and (OLD."tenantId") is distinct from (NEW."tenantId") then`,
+        );
+        expect(sql).toContain(
+            `perform pg_notify('widget', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);`,
+        );
+        expect(sql).toContain('for each row execute function "widget_notify"();');
+        expect(sql).not.toContain("perform pg_notify('widget', TG_OP);");
     });
 
     it("fires the statement trigger for each write and publishes TG_OP", async () => {
@@ -998,6 +1024,42 @@ describe("generateSchema triggers", () => {
             const deleted = iterator.next();
             await db.query(`delete from "widget" where "id" = $1`, [PARENT]);
             expect(await deleted).toEqual({ done: false, value: { op: "DELETE" } });
+
+            await iterator.return?.(undefined);
+        } finally {
+            await driver.close();
+        }
+    });
+
+    it("delivers only the rows whose filter value matches", async () => {
+        const { sql } = generate({ entities: { Widget: FILTERED_WIDGET } });
+        const driver = new PgliteSqlDriver(PGlite);
+
+        try {
+            await driver.exec(sql);
+            const db = driver.createExecutor();
+            const iterator = watchAll(db, "widget", undefined, undefined, { tenantId: PARENT })[
+                Symbol.asyncIterator
+            ]();
+
+            const inserted = iterator.next();
+            await settle();
+            await db.query(`insert into "widget" ("id", "tenantId", "name") values ($1, $2, $3)`, [
+                PARENT_B,
+                PARENT_B,
+                "other",
+            ]);
+            await db.query(`insert into "widget" ("id", "tenantId", "name") values ($1, $2, $3)`, [
+                PARENT,
+                PARENT,
+                "mine",
+            ]);
+            expect(await inserted).toEqual({ done: false, value: { op: "INSERT" } });
+
+            // Any column change notifies the row's tenant, not only a change to the filter column.
+            const updated = iterator.next();
+            await db.query(`update "widget" set "name" = $1 where "id" = $2`, ["renamed", PARENT]);
+            expect(await updated).toEqual({ done: false, value: { op: "UPDATE" } });
 
             await iterator.return?.(undefined);
         } finally {

@@ -66,17 +66,23 @@ export async function* watchAll(
     channel: string,
     ops?: readonly WatchOperation[],
     signal?: AbortSignal,
+    filter?: Record<string, unknown>,
 ): AsyncIterable<AllWatchEvent> {
     for await (const payload of onlyOperations(subscribe(db, channel, signal), ops)) {
-        const op = operationOf(payload);
-        if (op !== undefined) {
-            yield { op };
+        const event = readEvent(payload);
+        const op = event?.op ?? operationOf(payload);
+        if (op === undefined || !matchesFilter(event?.filter, filter)) {
+            continue;
         }
+        yield { op };
     }
 }
 
 /** The text the trigger publishes for one key value, matching the generated SQL cast. */
-function canonical(value: unknown): string {
+function canonical(value: unknown): string | undefined {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
     if (value instanceof Date) {
         return value.toISOString();
     }
@@ -86,26 +92,61 @@ function canonical(value: unknown): string {
     return String(value);
 }
 
+/** Whether a payload's filter values match the requested filter; an omitted field is unconstrained. */
+function matchesFilter(
+    published: Record<string, unknown> | undefined,
+    filter: Record<string, unknown> | undefined,
+): boolean {
+    if (filter === undefined) {
+        return true;
+    }
+    for (const [field, value] of Object.entries(filter)) {
+        if (value === undefined) {
+            continue;
+        }
+        if (published === undefined || canonical(value) !== (published[field] ?? undefined)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /** Whether a payload's operation is one a row trigger can publish. */
 function isWatchOperation(value: unknown): value is WatchOperation {
     return value === "INSERT" || value === "UPDATE" || value === "DELETE";
 }
 
-/** The key and operation a trigger published, or undefined when the payload is not an event. */
-function readEvent(payload: string): { key: Record<string, string>; op: WatchOperation } | undefined {
+/** The key, filter values, and operation a trigger published, or undefined when the payload is not an event. */
+function readEvent(
+    payload: string,
+): { key?: Record<string, string>; filter?: Record<string, string>; op: WatchOperation } | undefined {
     try {
         const parsed: unknown = JSON.parse(payload);
         if (typeof parsed !== "object" || parsed === null) {
             return undefined;
         }
-        const event = parsed as { key?: unknown; op?: unknown };
-        if (typeof event.key !== "object" || event.key === null || !isWatchOperation(event.op)) {
+        const event = parsed as { key?: unknown; filter?: unknown; op?: unknown };
+        if (!isWatchOperation(event.op)) {
             return undefined;
         }
-        return { key: event.key as Record<string, string>, op: event.op };
+        const key = valuesOf(event.key);
+        const filter = valuesOf(event.filter);
+        return {
+            ...(key === undefined ? {} : { key }),
+            ...(filter === undefined ? {} : { filter }),
+            op: event.op,
+        };
     } catch {
         return undefined;
     }
+}
+
+/** The string-valued object a payload carries, or undefined when it carries none. */
+function valuesOf(value: unknown): Record<string, string> | undefined {
+    if (typeof value !== "object" || value === null) {
+        return undefined;
+    }
+    return value as Record<string, string>;
 }
 
 /**
@@ -119,6 +160,7 @@ export async function* watchKeys<T extends Record<string, unknown>>(
     fields: readonly string[],
     ops?: readonly WatchOperation[],
     signal?: AbortSignal,
+    filter?: Record<string, unknown>,
 ): AsyncIterable<WatchEvent<T>> {
     if (keys.length === 0) {
         return;
@@ -126,10 +168,17 @@ export async function* watchKeys<T extends Record<string, unknown>>(
     const wanted = ops === undefined ? undefined : new Set(ops);
     for await (const payload of subscribe(db, channel, signal)) {
         const event = readEvent(payload);
-        if (event === undefined || (wanted !== undefined && !wanted.has(event.op))) {
+        if (
+            event === undefined ||
+            event.key === undefined ||
+            (wanted !== undefined && !wanted.has(event.op)) ||
+            !matchesFilter(event.filter, filter)
+        ) {
             continue;
         }
-        const match = keys.find((key) => fields.every((field) => canonical(key[field]) === event.key[field]));
+        const match = keys.find((key) =>
+            fields.every((field) => (canonical(key[field]) ?? undefined) === (event.key?.[field] ?? undefined)),
+        );
         if (match !== undefined) {
             yield { pks: match, op: event.op };
         }

@@ -60,6 +60,8 @@ export interface RestEntity {
     notify: NotifyScope[];
     /** The `@restNotify` scopes the route exposes; a subset of {@link notify}. */
     restNotify: NotifyScope[];
+    /** The `@notifyFilter` fields, whose values the change payload carries. See docs/notifications.md. */
+    notifyFilters: string[];
     operations: RestOperation[];
 }
 
@@ -177,6 +179,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
         notify: spec.notify,
         restNotify: spec.restNotify,
+        notifyFilters: spec.notifyFilters,
         operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restNotify),
     };
 }

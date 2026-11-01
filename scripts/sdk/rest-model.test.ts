@@ -223,6 +223,17 @@ describe("buildRestModel", () => {
         ]);
         expect(entity?.notify).toEqual(["all", "rows"]);
         expect(entity?.restNotify).toEqual(["all", "rows"]);
+        expect(entity?.notifyFilters).toEqual([]);
+    });
+
+    it("records the fields @notifyFilter marks", () => {
+        const filtered = NOTIFIED.replace(
+            "/** @primaryKey */",
+            "/**\n     * @primaryKey\n     * @notifyFilter\n     */",
+        );
+        const entity = build({ Notified: filtered }).entities[0];
+
+        expect(entity?.notifyFilters).toEqual(["id"]);
     });
 
     it("reports a notification scope the entity does not declare", () => {

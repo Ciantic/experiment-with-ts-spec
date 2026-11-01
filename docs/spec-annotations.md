@@ -129,6 +129,10 @@ Field tags:
   tests take `true`, bind no parameter, and need an optional field, whose column
   can hold null. Scalar fields only; a branch field may not carry it. See
   `docs/queries.md`.
+- `@notifyFilter` — a bare marker on a stored scalar column whose value a change
+  payload also carries, so a subscriber can filter on it. Requires `@notify` on
+  the interface; a branch, computed, or array field may not carry it. See
+  `docs/notifications.md`.
 
 Interface tags:
 
@@ -307,7 +311,9 @@ generator writes and whose trigger the schema generator installs: `all` for a
 statement-level table trigger that publishes only `TG_OP`, and `rows` for a
 row-level trigger that publishes the key and `TG_OP`. `rows` needs a primary
 key. The scopes are independent of `@queries`: an entity can stream changes
-without exposing a read. See `docs/notifications.md`.
+without exposing a read. `@notifyFilter` marks the fields whose values the
+payload also carries, so `watch<Entity>` and `watch<Entity>Rows` can narrow the
+stream. See `docs/notifications.md`.
 
 `@restRepository`, `@restQueries`, and `@restNotify` list the subset of those
 the REST surface serves; none may name an operation or scope its declaring tag
@@ -836,6 +842,9 @@ Enforced:
   a tag that appears twice, and a `@restRepository`, `@restQueries`, or
   `@restNotify` value its declaring tag does not contain are each reported. See
   "Operations and notification scopes".
+- `@notifyFilter` is a bare marker on a stored scalar field, and its interface
+  must declare `@notify`; a `@relation`, `@children`, `@computed`, or array field
+  is reported, as is a value. See `docs/notifications.md`.
 - Tags may not repeat on a field.
 
 Gotchas:

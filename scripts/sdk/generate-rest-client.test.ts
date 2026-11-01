@@ -108,6 +108,24 @@ export interface Notified {
 }
 `.trim();
 
+/** An entity whose change stream carries a filter value. */
+const FILTERED = `
+/**
+ * @pgTable filtered
+ * @repository create
+ * @notify all rows
+ * @restNotify all rows
+ * @entity
+ */
+export interface Filtered {
+    /** @primaryKey */
+    id: string;
+
+    /** @notifyFilter */
+    tenantId: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -368,22 +386,36 @@ describe("watch helpers", () => {
     const withNotify = build({ Notified: NOTIFIED });
     const module = () => generateRestClient(withNotify).get("notified.ts") ?? "";
 
-    it("generates overloads for the all and rows scopes", () => {
+    it("generates one helper per scope", () => {
         expect(module()).toContain('import type { HttpClient } from "../http.ts";');
         expect(module()).toContain(
-            'import { watch, type NotificationSubscription, type NotificationOptions, type WatchEvent, type AllWatchEvent } from "../watch.ts";',
+            'import { watch, type AllWatchEvent, type NotificationOptions, type NotificationSubscription, type WatchEvent } from "../watch.ts";',
         );
         expect(module()).toContain("export function watchNotified(");
+        expect(module()).toContain("export function watchNotifiedRows(");
+        expect(module()).toContain("onChange: (event: AllWatchEvent) => void,");
         expect(module()).toContain("onChange: (event: WatchEvent<NotifiedPrimaryKey>) => void,");
         expect(module()).toContain("opts: { pks: NotifiedPrimaryKey[] } & NotificationOptions,");
-        expect(module()).toContain("onChange: (event: AllWatchEvent) => void,");
+        expect(module()).not.toContain(" | AllWatchEvent>");
     });
 
     it("encodes the selected keys and operations into `q`", () => {
-        expect(module()).toContain("const pks = opts?.pks;");
-        expect(module()).toContain("const argument = pks === undefined");
         expect(module()).toContain(
-            'return watch<WatchEvent<NotifiedPrimaryKey> | AllWatchEvent>(http.url("/notified/watch", argument), onChange, opts);',
+            'return watch<AllWatchEvent>(http.url("/notified/watch", ops === undefined ? undefined : { ops }), onChange, opts);',
+        );
+        expect(module()).toContain(
+            'return watch<WatchEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", ops === undefined ? { pks } : { pks, ops }), onChange, opts);',
+        );
+    });
+
+    it("adds a typed filter when the entity declares @notifyFilter", () => {
+        const filtered = generateRestClient(build({ Filtered: FILTERED })).get("filtered.ts") ?? "";
+
+        expect(filtered).toContain('import type { Filtered } from "spec/fixtures/Filtered.ts";');
+        expect(filtered).toContain("type WatchFilter");
+        expect(filtered).toContain('filter?: WatchFilter<Filtered, "tenantId">');
+        expect(filtered).toContain(
+            "const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };",
         );
     });
 
@@ -391,7 +423,7 @@ describe("watch helpers", () => {
         expect(module()).not.toContain('from "../client.ts"');
     });
 
-    it("executes the generated helper and encodes the selected scopes", () => {
+    it("executes the generated helpers and encodes the selected scopes", () => {
         const watchedUrls: string[] = [];
         const events: unknown[] = [];
         const watch = (url: string, onChange: (event: unknown) => void) => {
@@ -403,22 +435,27 @@ describe("watch helpers", () => {
             module(),
             tsStubImports({ "../watch.ts": { watch } }),
         );
-        const helper = generated.watchNotified as (
+        const all = generated.watchNotified as (
             http: { url(path: string, argument?: unknown): string },
             onChange: (event: unknown) => void,
-            opts?: { pks?: { id: string }[]; ops?: string[] },
+            opts?: { ops?: string[] },
+        ) => { close(): void };
+        const rows = generated.watchNotifiedRows as (
+            http: { url(path: string, argument?: unknown): string },
+            onChange: (event: unknown) => void,
+            opts: { pks: { id: string }[]; ops?: string[] },
         ) => { close(): void };
         const http = createHttpClient("http://api.example");
         const onChange = (event: unknown) => events.push(event);
 
-        helper(http, onChange, { pks: [{ id: "a" }], ops: ["UPDATE"] });
-        helper(http, onChange, { ops: ["DELETE"] });
-        helper(http, onChange);
+        all(http, onChange, { ops: ["DELETE"] });
+        all(http, onChange);
+        rows(http, onChange, { pks: [{ id: "a" }], ops: ["UPDATE"] });
 
         expect(watchedUrls).toEqual([
-            http.url("/notified/watch", { pks: [{ id: "a" }], ops: ["UPDATE"] }),
             http.url("/notified/watch", { ops: ["DELETE"] }),
             http.url("/notified/watch"),
+            http.url("/notified/watch", { pks: [{ id: "a" }], ops: ["UPDATE"] }),
         ]);
         expect(watchedUrls.map((url) => new URL(url).pathname)).toEqual([
             "/notified/watch",

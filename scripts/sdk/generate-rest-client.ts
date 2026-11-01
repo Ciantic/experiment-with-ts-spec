@@ -135,6 +135,10 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
         lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
     }
+    // A filter names the entity's fields, so the stream's type needs it too.
+    if (!query && watchOperation && entity.notifyFilters.length > 0) {
+        lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
+    }
     // The write types come from this package's schema modules; a type-only import keeps `zod` out of the runtime.
     const writeTypes: string[] = [];
     if (create) {
@@ -175,6 +179,10 @@ export function renderClientModule(entity: RestEntity): string {
         if (watchAll) {
             watchTypes.push("AllWatchEvent");
         }
+        if (entity.notifyFilters.length > 0) {
+            watchTypes.push("WatchFilter");
+        }
+        watchTypes.sort((a, b) => a.localeCompare(b));
         lines.push('import type { HttpClient } from "../http.ts";');
         lines.push(
             `import { watch, ${watchTypes.map((type) => `type ${type}`).join(", ")} } from "../watch.ts";`,
@@ -199,54 +207,57 @@ export function renderClientModule(entity: RestEntity): string {
 
     if (watchOperation) {
         const key = keyType(entity);
+        const filter = entity.notifyFilters.length > 0
+            ? `WatchFilter<${name}, ${entity.notifyFilters.map((field) => JSON.stringify(field)).join(" | ")}>`
+            : undefined;
+        const filterField = filter === undefined ? "" : `; filter?: ${filter} | undefined`;
         lines.push("");
-        lines.push(comment(entity, "watch"));
-        if (watchAll && watchRows) {
-            lines.push(`export function ${watchOperation.id}(`);
-            lines.push("    http: HttpClient,");
-            lines.push(`    onChange: (event: WatchEvent<${key}>) => void,`);
-            lines.push(`    opts: { pks: ${key}[] } & NotificationOptions,`);
-            lines.push("): NotificationSubscription;");
+        if (watchAll) {
+            lines.push(`/** The change stream of all \`${name}\` rows, optionally scoped to operations${filter === undefined ? "" : " and filter values"}. See docs/notifications.md. */`);
             lines.push(`export function ${watchOperation.id}(`);
             lines.push("    http: HttpClient,");
             lines.push("    onChange: (event: AllWatchEvent) => void,");
-            lines.push("    opts?: ({ pks?: undefined } & NotificationOptions) | undefined,");
-            lines.push("): NotificationSubscription;");
-            lines.push(`export function ${watchOperation.id}(`);
-            lines.push("    http: HttpClient,");
-            lines.push("    onChange: (event: any) => void,");
-            lines.push(`    opts?: ({ pks?: ${key}[] | undefined } & NotificationOptions) | undefined,`);
+            lines.push(
+                filter === undefined
+                    ? "    opts?: NotificationOptions,"
+                    : `    opts?: ({ filter?: ${filter} | undefined } & NotificationOptions) | undefined,`,
+            );
             lines.push("): NotificationSubscription {");
             lines.push("    const ops = opts?.ops;");
-            lines.push("    const pks = opts?.pks;");
-            lines.push("    const argument = pks === undefined");
-            lines.push("        ? (ops === undefined ? undefined : { ops })");
-            lines.push("        : (ops === undefined ? { pks } : { pks, ops });");
-            lines.push(
-                `    return watch<WatchEvent<${key}> | AllWatchEvent>(http.url("${watchOperation.path}", argument), onChange, opts);`,
-            );
+            if (filter === undefined) {
+                lines.push(`    return watch<AllWatchEvent>(http.url("${watchOperation.path}", ops === undefined ? undefined : { ops }), onChange, opts);`);
+            } else {
+                lines.push("    const selected = opts?.filter;");
+                lines.push("    const argument = ops === undefined && selected === undefined");
+                lines.push("        ? undefined");
+                lines.push("        : { ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };");
+                lines.push(`    return watch<AllWatchEvent>(http.url("${watchOperation.path}", argument), onChange, opts);`);
+            }
             lines.push("}");
-        } else if (watchRows) {
-            lines.push(`export function ${watchOperation.id}(`);
+        }
+
+        if (watchRows) {
+            if (watchAll) {
+                lines.push("");
+            }
+            lines.push(`/** The change stream of the selected \`${name}\` rows, optionally scoped to operations${filter === undefined ? "" : " and filter values"}. See docs/notifications.md. */`);
+            lines.push(`export function ${watchOperation.id}Rows(`);
             lines.push("    http: HttpClient,");
             lines.push(`    onChange: (event: WatchEvent<${key}>) => void,`);
-            lines.push(`    opts: { pks: ${key}[] } & NotificationOptions,`);
+            lines.push(`    opts: { pks: ${key}[]${filterField} } & NotificationOptions,`);
             lines.push("): NotificationSubscription {");
-            lines.push("    const ops = opts.ops;");
-            lines.push(
-                `    return watch<WatchEvent<${key}>>(http.url("${watchOperation.path}", ops === undefined ? { pks: opts.pks } : { pks: opts.pks, ops }), onChange, opts);`,
-            );
-            lines.push("}");
-        } else {
-            lines.push(`export function ${watchOperation.id}(`);
-            lines.push("    http: HttpClient,");
-            lines.push("    onChange: (event: AllWatchEvent) => void,");
-            lines.push("    opts?: NotificationOptions,");
-            lines.push("): NotificationSubscription {");
-            lines.push("    const ops = opts?.ops;");
-            lines.push(
-                `    return watch<AllWatchEvent>(http.url("${watchOperation.path}", ops === undefined ? undefined : { ops }), onChange, opts);`,
-            );
+            lines.push("    const { pks, ops } = opts;");
+            if (filter !== undefined) {
+                lines.push("    const selected = opts.filter;");
+            }
+            if (filter === undefined) {
+                lines.push(
+                    `    return watch<WatchEvent<${key}>>(http.url("${watchOperation.path}", ops === undefined ? { pks } : { pks, ops }), onChange, opts);`,
+                );
+            } else {
+                lines.push("    const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };");
+                lines.push(`    return watch<WatchEvent<${key}>>(http.url("${watchOperation.path}", argument), onChange, opts);`);
+            }
             lines.push("}");
         }
     }
