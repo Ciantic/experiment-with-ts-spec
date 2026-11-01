@@ -114,10 +114,11 @@ values, all of which are domain decisions rather than code behaviour.
   the outer group down.
 - `packages/infra/src/postgres/schema.test.ts` — one check: the generated SQL
   executes. Nothing about what the tables mean.
-- `packages/backend/src/main.test.ts` — the end-to-end smoke test: the generated
-  client, the generated route table, and a live server. It takes the rows a seeded
-  server answers with from `spec/mockdata`, and names no domain type, so a change
-  to the model does not touch it.
+- `packages/backend/src/mockdata.test.ts` — the mock-data test: seeds
+  `spec/mockdata` into an in-memory PGlite and reads every table back through
+  `query<Entity>`, asserting the seeded row counts. It is a test of the seed and
+  the real schema; the HTTP surface, generated client, and server are not in
+  scope.
 - `{operation}.spec.test.ts` in `packages/backend/src/operations/` — the tests the
   spec declares for an operation, over fixtures the test builds in memory: the
   rows a call writes, and that an input missing any one of the fields it needs is
@@ -143,12 +144,11 @@ values, all of which are domain decisions rather than code behaviour.
 ## Gotchas
 
 - **Do not import the real spec into a unit test.** Give the test its own sources
-  through `parseInMemorySpec(files, { sourceGlob })`, so the model holds
-  only what the test wrote, or the test becomes a domain test by accident. The
-  end-to-end smoke test in `src/main.test.ts` is no exception: it draws its rows
-  from `spec/mockdata` and names no domain type. An operation test is the
-  exception: an operation is hand-written code over particular entities, so it
-  seeds `spec/mockdata` and asserts what the operation writes.
+  through `parseInMemorySpec(files, { sourceGlob })`, so the model holds only what
+  the test wrote, or the test becomes a domain test by accident. Two tests are
+  deliberate exceptions: `src/mockdata.test.ts` tests the committed `spec/mockdata`
+  itself, and an operation test is hand-written code over particular entities, so
+  both seed `spec/mockdata` and assert what it stores.
 - **Name the real file extension in imports.** `node` runs the TypeScript
   directly and resolves only `.ts` specifiers; `allowImportingTsExtensions` lets
   TypeScript accept them, and Vitest resolves them too.

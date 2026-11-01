@@ -590,10 +590,10 @@ the client imports nothing from infra or the backend.
 - **Part of the group contract is declared twice.** `GROUP_PATH`, the verb list,
   and the `TransactionOptions` interface are written twice, in `sdk/src/client.ts`
   and in `infra/src/db/sql-executor.ts`, because the client may not import infra or
-  the backend. No generated artifact keeps them in step: the end-to-end test pins
-  the path each group travels — a group is the only call whose path is not derived
-  from `scripts/sdk/rest-model.ts` — while the modes are the same literals declared
-  on both sides.
+  the backend. No generated artifact keeps them in step: `sdk/src/client.test.ts`
+  and `infra/src/http/router.test.ts` each pin their own copy of `GROUP_PATH` — a
+  group is the only call whose path is not derived from `scripts/sdk/rest-model.ts`
+  — while the modes are the same literals declared on both sides.
 - **A void write answers `null`; a create and an upsert answer their keys.** A
   group follows the single-call codec rule: `update` and `delete` encode as
   `null`, which the generated signature types `void`, while a create or an upsert

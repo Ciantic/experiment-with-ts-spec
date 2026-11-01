@@ -54,14 +54,14 @@ pnpm --filter backend run example:server --port 4123 --seed
 Without `--seed` the server runs against the empty generated schema. The backend
 builds an in-memory PGlite driver for each start and hands it to infra.
 
-## The client test
+## The mock data test
 
-`packages/backend/src/main.test.ts` starts a seeded server on an ephemeral port
-and drives it through the generated client from `packages/sdk`. It walks every
-`mockTables` entry by calling `query<Entity>` and asserts each comes back with
-the number of rows that were seeded.
+`packages/backend/src/mockdata.test.ts` seeds every `mockTables` entry into an
+in-memory PGlite and reads each table back through its generated
+`query<Entity>`. It asserts each comes back with the number of rows that were
+seeded.
 
-The test is deliberately generic: it reads `mockTables` and the client barrel
-rather than naming an entity, so a domain change does not rewrite it. It covers
-the wire, not business meaning — that the router, the codec, the resolver, and
-the generated client agree end to end.
+The test is deliberately generic: it reads `mockTables` and the generated query
+functions rather than naming an entity, so a domain change does not rewrite it.
+It covers the seed and the read path over the real schema; the HTTP surface,
+generated client, and server are out of scope.
