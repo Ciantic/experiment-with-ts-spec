@@ -7,7 +7,7 @@ import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 import type { HttpClient } from "../http.ts";
-import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";
+import { watch, type NotificationSubscription, type WatchEvent, type WatchOptions } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
@@ -27,14 +27,14 @@ export function notifyInvoice(
     return watch(http.url("/invoice/notify"), () => onChange(), options);
 }
 
-/** The change stream of the given `Invoice` rows. See docs/notifications.md. */
+/** The change stream of the given `Invoice` rows, with the statement that changed each. See docs/notifications.md. */
 export function watchInvoice(
     http: HttpClient,
     keys: InvoicePrimaryKey[],
-    onChange: (key: InvoicePrimaryKey) => void,
+    onChange: (event: WatchEvent<InvoicePrimaryKey>) => void,
     options?: WatchOptions,
 ): NotificationSubscription {
-    return watch<InvoicePrimaryKey>(http.url("/invoice/watch", { keys }), onChange, options);
+    return watch<WatchEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", { keys }), onChange, options);
 }
 
 /** Create `Invoice` rows. */

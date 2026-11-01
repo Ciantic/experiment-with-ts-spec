@@ -253,8 +253,9 @@ describe("notifications", () => {
         const chunk = await response.body!.getReader().read();
         const data = new TextDecoder().decode(chunk.value);
         expect(data.startsWith("data: ")).toBe(true);
-        // The stream carries the changed key in the API's codec; the id proves the match.
+        // The stream carries the changed key and the operation in the API's codec.
         expect(data).toContain(id);
+        expect(data).toContain("UPDATE");
 
         abort.abort();
     });

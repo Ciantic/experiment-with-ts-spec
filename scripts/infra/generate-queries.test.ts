@@ -297,8 +297,9 @@ describe("renderWatchModule", () => {
         const code = renderWatchModule("Invoice", invoice);
 
         expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
+        expect(code).toContain('import type { WatchEvent } from "sdk/watch.ts";');
         expect(code).toContain(
-            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { signal?: AbortSignal }): AsyncIterable<InvoicePrimaryKey>",
+            "export function watchInvoice(db: SqlExecutor, keys: InvoicePrimaryKey[], opts?: { signal?: AbortSignal }): AsyncIterable<WatchEvent<InvoicePrimaryKey>>",
         );
         expect(code).toContain('return watchKeys(db, "invoice", keys, ["id"], opts?.signal);');
     });

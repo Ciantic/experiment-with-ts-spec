@@ -86,7 +86,7 @@ function comment(entity: RestEntity, kind: RestKind): string {
         case "notify":
             return `/** The change stream of \`${name}\`, served as server-sent events. See docs/notifications.md. */`;
         case "watch":
-            return `/** The change stream of the given \`${name}\` rows. See docs/notifications.md. */`;
+            return `/** The change stream of the given \`${name}\` rows, with the statement that changed each. See docs/notifications.md. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "upsert":
@@ -170,7 +170,7 @@ export function renderClientModule(entity: RestEntity): string {
     if (notify || watchOperation) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
         lines.push('import type { HttpClient } from "../http.ts";');
-        lines.push('import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";');
+        lines.push('import { watch, type NotificationSubscription, type WatchEvent, type WatchOptions } from "../watch.ts";');
     }
     if (writeTypes.length > 0) {
         lines.push("");
@@ -207,11 +207,11 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`export function ${watchOperation.id}(`);
         lines.push("    http: HttpClient,");
         lines.push(`    keys: ${keyType(entity)}[],`);
-        lines.push(`    onChange: (key: ${keyType(entity)}) => void,`);
+        lines.push(`    onChange: (event: WatchEvent<${keyType(entity)}>) => void,`);
         lines.push("    options?: WatchOptions,");
         lines.push("): NotificationSubscription {");
         lines.push(
-            `    return watch<${keyType(entity)}>(http.url("${watchOperation.path}", { keys }), onChange, options);`,
+            `    return watch<WatchEvent<${keyType(entity)}>>(http.url("${watchOperation.path}", { keys }), onChange, options);`,
         );
         lines.push("}");
     }

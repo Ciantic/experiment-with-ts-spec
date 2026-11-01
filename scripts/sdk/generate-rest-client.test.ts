@@ -370,7 +370,7 @@ describe("notify helpers", () => {
     it("opens the entity's stream with the client's URL builder", () => {
         expect(module()).toContain('import type { HttpClient } from "../http.ts";');
         expect(module()).toContain(
-            'import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";',
+            'import { watch, type NotificationSubscription, type WatchEvent, type WatchOptions } from "../watch.ts";',
         );
         expect(module()).toContain("export function notifyNotified(");
         expect(module()).toContain(
@@ -381,9 +381,9 @@ describe("notify helpers", () => {
     it("opens the row-scoped stream with the key filter in `q`", () => {
         expect(module()).toContain("export function watchNotified(");
         expect(module()).toContain("keys: NotifiedPrimaryKey[],");
-        expect(module()).toContain("onChange: (key: NotifiedPrimaryKey) => void,");
+        expect(module()).toContain("onChange: (event: WatchEvent<NotifiedPrimaryKey>) => void,");
         expect(module()).toContain(
-            'return watch<NotifiedPrimaryKey>(http.url("/notified/watch", { keys }), onChange, options);',
+            'return watch<WatchEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", { keys }), onChange, options);',
         );
     });
 

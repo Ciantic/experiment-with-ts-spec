@@ -4,7 +4,8 @@ An entity can publish change events without a row payload. Two read operations
 share one Postgres channel:
 
 - `notify` — "something changed on the table", with no payload.
-- `watch` — "one of these rows changed", publishing the changed primary key.
+- `watch` — "one of these rows changed", publishing the changed primary key
+  and the `TG_OP` that changed it.
 
 They are independent tokens in `@queries` and `@restQueries`:
 
@@ -55,9 +56,9 @@ deterministically:
 create function "widget_notify"() returns trigger as $$
 begin
     if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then
-        perform pg_notify('widget', json_build_object('id', OLD."id"::text)::text);
+        perform pg_notify('widget', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);
     end if;
-    perform pg_notify('widget', json_build_object('id', coalesce(NEW."id", OLD."id")::text)::text);
+    perform pg_notify('widget', json_build_object('op', TG_OP, 'key', json_build_object('id', coalesce(NEW."id", OLD."id")::text))::text);
     return null;
 end;
 $$ language plpgsql;
@@ -68,6 +69,8 @@ create trigger "widget_notify" after insert or update or delete on "widget"
 
 A key change notifies both the old and the new identity, so a watcher of either
 row sees a change. A composite key contributes one JSON field per key column.
+Carrying `TG_OP` is one extra field in the same `json_build_object`; it adds no
+notification and no query.
 
 Declaring both operations installs the row-level trigger, since it serves the
 watch; `notify` ignores the key it carries.
@@ -82,14 +85,14 @@ for await (const change of notifyWidget(db, { signal })) {
 }
 ```
 
-`watch<Entity>` takes the primary keys and yields the requested key that
-changed:
+`watch<Entity>` takes the primary keys and yields the requested key with the
+operation that changed it:
 
 ```ts
 const keys = [{ id: first }, { id: second }];
 
-for await (const changed of watchWidget(db, keys, { signal })) {
-    // changed is one of the key objects passed in
+for await (const { key, op } of watchWidget(db, keys, { signal })) {
+    // key is one of the key objects passed in; op is INSERT, UPDATE, or DELETE
 }
 ```
 
@@ -115,8 +118,9 @@ data:
 ```
 
 `@restQueries watch` serves `GET /<table>/watch?q=<keys>`, where `keys` is the
-same `<entity>PrimaryKey[]` array the writes use. Each event carries the changed
-key in the API's `devalue` codec.
+same `<entity>PrimaryKey[]` array the writes use. Each event is
+`{ key, op }`, carrying the changed key and the `TG_OP`: `INSERT`, `UPDATE`, or
+`DELETE`.
 
 The SDK generates a helper for each:
 
@@ -130,8 +134,8 @@ const all = notifyWidget(http, () => {
     // any widget changed
 });
 
-const one = watchWidget(http, [{ id }], (key) => {
-    // the widget with `key.id` changed
+const one = watchWidget(http, [{ id }], (event) => {
+    // event.key.id is the widget; event.op is INSERT, UPDATE, or DELETE
 });
 
 // later

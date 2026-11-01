@@ -257,18 +257,19 @@ export function renderNotifyModule(entity: string, table: Table): string {
     return lines.join("\n") + "\n";
 }
 
-/** Render one entity's row-scoped change stream, yielding the requested key that changed. */
+/** Render one entity's row-scoped change stream, yielding the requested key and its operation. */
 export function renderWatchModule(entity: string, table: Table): string {
     const keyType = `${entity}PrimaryKey`;
     const fields = primaryKeyColumns(table).map((column) => column.name);
     const lines: string[] = [HEADER];
     lines.push(`import type { ${keyType} } from "sdk/schemas.ts";`);
+    lines.push('import type { WatchEvent } from "sdk/watch.ts";');
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push('import { watchKeys } from "../notifications.ts";');
     lines.push("");
-    lines.push(`/** Subscribe to changes of the given \`${entity}\` rows. See docs/notifications.md. */`);
+    lines.push(`/** Subscribe to changes of the given \`${entity}\` rows, with the statement that changed each. See docs/notifications.md. */`);
     lines.push(
-        `export function watch${entity}(db: SqlExecutor, keys: ${keyType}[], opts?: { signal?: AbortSignal }): AsyncIterable<${keyType}> {`,
+        `export function watch${entity}(db: SqlExecutor, keys: ${keyType}[], opts?: { signal?: AbortSignal }): AsyncIterable<WatchEvent<${keyType}>> {`,
     );
     lines.push(
         `    return watchKeys(db, ${JSON.stringify(table.name)}, keys, ${JSON.stringify(fields)}, opts?.signal);`,

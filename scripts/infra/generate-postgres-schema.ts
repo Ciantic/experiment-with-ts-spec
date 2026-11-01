@@ -223,7 +223,7 @@ function renderNotifyTrigger(table: Table): string[] {
     ];
 }
 
-/** Notify the entity's channel per changed row, publishing only the primary key. See docs/notifications.md. */
+/** Notify the entity's channel per changed row, publishing the primary key and `TG_OP`. See docs/notifications.md. */
 function renderWatchTrigger(table: Table): string[] {
     const keys = table.columns.filter((column) => column.primaryKey);
     // A keyless table is already a diagnostic; there is no row identity to publish.
@@ -239,7 +239,7 @@ function renderWatchTrigger(table: Table): string[] {
                     : `${row === "new" ? "NEW" : "OLD"}.${quote(column.name)}`;
             return `${quoteLiteral(column.name)}, ${keyText(column, value)}`;
         });
-        return `json_build_object(${entries.join(", ")})::text`;
+        return `json_build_object('op', TG_OP, 'key', json_build_object(${entries.join(", ")}))::text`;
     };
     const oldKey = keys.map((column) => `OLD.${quote(column.name)}`).join(", ");
     const newKey = keys.map((column) => `NEW.${quote(column.name)}`).join(", ");

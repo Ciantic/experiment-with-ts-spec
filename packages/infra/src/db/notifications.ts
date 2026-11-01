@@ -1,5 +1,6 @@
 /** The hand-written subscription behind every generated `notify<Entity>` and `watch<Entity>`. See docs/notifications.md. */
 import type { SqlExecutor, SqlSubscription } from "./sql-executor.ts";
+import type { WatchEvent, WatchOperation } from "sdk/watch.ts";
 import { NotificationsUnsupportedError } from "../errors.ts";
 
 /** The trigger's primary-key payload, as JSON text; the plain notify stream drops it. */
@@ -40,13 +41,25 @@ function canonical(value: unknown): string {
     return String(value);
 }
 
-/** The key object a trigger published, or an empty one when the payload is not a key. */
-function readKey(payload: string): Record<string, string> {
+/** Whether a payload's operation is one a row trigger can publish. */
+function isWatchOperation(value: unknown): value is WatchOperation {
+    return value === "INSERT" || value === "UPDATE" || value === "DELETE";
+}
+
+/** The key and operation a trigger published, or undefined when the payload is not an event. */
+function readEvent(payload: string): { key: Record<string, string>; op: WatchOperation } | undefined {
     try {
         const parsed: unknown = JSON.parse(payload);
-        return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, string>) : {};
+        if (typeof parsed !== "object" || parsed === null) {
+            return undefined;
+        }
+        const event = parsed as { key?: unknown; op?: unknown };
+        if (typeof event.key !== "object" || event.key === null || !isWatchOperation(event.op)) {
+            return undefined;
+        }
+        return { key: event.key as Record<string, string>, op: event.op };
     } catch {
-        return {};
+        return undefined;
     }
 }
 
@@ -60,15 +73,18 @@ export async function* watchKeys<T extends Record<string, unknown>>(
     keys: readonly T[],
     fields: readonly string[],
     signal?: AbortSignal,
-): AsyncIterable<T> {
+): AsyncIterable<WatchEvent<T>> {
     if (keys.length === 0) {
         return;
     }
     for await (const payload of subscribe(db, channel, signal)) {
-        const changed = readKey(payload);
-        const match = keys.find((key) => fields.every((field) => canonical(key[field]) === changed[field]));
+        const event = readEvent(payload);
+        if (event === undefined) {
+            continue;
+        }
+        const match = keys.find((key) => fields.every((field) => canonical(key[field]) === event.key[field]));
         if (match !== undefined) {
-            yield match;
+            yield { key: match, op: event.op };
         }
     }
 }

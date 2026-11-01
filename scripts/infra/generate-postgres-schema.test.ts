@@ -936,10 +936,12 @@ describe("generateSchema triggers", () => {
 
         expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
         expect(sql).toContain(
-            `perform pg_notify('thing', json_build_object('id', coalesce(NEW."id", OLD."id")::text)::text);`,
+            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', coalesce(NEW."id", OLD."id")::text))::text);`,
         );
         expect(sql).toContain(`if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then`);
-        expect(sql).toContain(`perform pg_notify('thing', json_build_object('id', OLD."id"::text)::text);`);
+        expect(sql).toContain(
+            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);`,
+        );
         expect(sql).toContain(
             'create trigger "thing_notify" after insert or update or delete on "thing"',
         );

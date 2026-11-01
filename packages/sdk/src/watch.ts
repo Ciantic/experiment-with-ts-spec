@@ -26,6 +26,15 @@ export interface NotificationSubscription {
     close(): void;
 }
 
+/** The statement that changed a watched row. */
+export type WatchOperation = "INSERT" | "UPDATE" | "DELETE";
+
+/** One watched change: the requested key, and what happened to it. */
+export interface WatchEvent<Key> {
+    key: Key;
+    op: WatchOperation;
+}
+
 /** A platform without an `EventSource` and no implementation supplied. */
 export class EventSourceUnavailableError extends AppError {
     constructor(message: string) {
