@@ -5,6 +5,7 @@ import type { Column, Table } from "./postgres-model.ts";
 import {
     buildQueryModel,
     generateQueries,
+    renderNotifyModule,
     renderQueryModule,
 } from "./generate-queries.ts";
 
@@ -279,6 +280,17 @@ describe("renderQueryModule", () => {
     });
 });
 
+describe("renderNotifyModule", () => {
+    it("subscribes to the channel its table's trigger notifies, with no payload", () => {
+        const code = renderNotifyModule("Invoice", invoice);
+
+        expect(code).toContain(
+            'export function notifyInvoice(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<ChangeNotification>',
+        );
+        expect(code).toContain('return subscribe(db, "invoice", opts?.signal);');
+    });
+});
+
 describe("generateQueries", () => {
     it("emits the model, one module per entity, and a barrel", () => {
         const files = generateQueries(tables);
@@ -289,6 +301,19 @@ describe("generateQueries", () => {
             "queryInvoice.ts",
             "querySeller.ts",
         ]);
+    });
+
+    it("writes a notify module only for an entity that declares the read", () => {
+        const notified = { ...invoice, queries: ["query", "notify"] as Table["queries"] };
+        const files = generateQueries(new Map([["Invoice", notified]]));
+
+        expect([...files.keys()].sort()).toEqual([
+            "index.ts",
+            "model.ts",
+            "notifyInvoice.ts",
+            "queryInvoice.ts",
+        ]);
+        expect(files.get("index.ts")).toContain('export * from "./notifyInvoice.ts";');
     });
 
     it("re-exports every module from the barrel", () => {

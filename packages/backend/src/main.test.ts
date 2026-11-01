@@ -89,7 +89,7 @@ describe("the operation routes", () => {
     /** Every id the server answers, which includes the calls `@restOperation` declares. */
     function operationIds(): string[] {
         const entityIds = new Set(mockTables.map((table) => table.entity));
-        const prefixes = /^(?:query|create|upsert|update|delete)[A-Z]/;
+        const prefixes = /^(?:query|notify|create|upsert|update|delete)[A-Z]/;
         return routes
             .map((route) => route.id)
             .filter((id) => !prefixes.test(id) && !entityIds.has(id));
@@ -206,6 +206,28 @@ describe("a live server", () => {
         );
 
         expect(Array.isArray(result)).toBe(true);
+    });
+});
+
+describe("notifications", () => {
+    it("streams a server-sent event when a notified entity changes", async () => {
+        const abort = new AbortController();
+        const response = await fetch(`http://127.0.0.1:${started.port}/invoice/notify`, {
+            signal: abort.signal,
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("text/event-stream");
+
+        // The event stream is open before fetch resolves; this lets LISTEN finish before the change.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await started.app.driver.query(
+            'update "invoice" set "version" = "version" + 1 where "id" = (select "id" from "invoice" limit 1)',
+        );
+
+        const chunk = await response.body!.getReader().read();
+        expect(new TextDecoder().decode(chunk.value)).toBe("data: \n\n");
+
+        abort.abort();
     });
 });
 

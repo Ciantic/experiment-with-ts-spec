@@ -50,14 +50,20 @@ One collection per entity that exposes one. The collection sits at the
 `@restRepository` tags name: a write `@repository` generates but
 `@restRepository` omits is reachable to backend callers and absent from the
 route table and the SDK, and an entity that carries no `@restQueries query` has
-no read route. An entity that names no exposed operation at all has no
-collection: no path, no route module, and no client module. See
-`docs/spec-annotations.md`. A read and a delete carry their argument in a single
-`q` query parameter; a write carries it in the body.
+no read route. A `notify` read adds a server-sent event stream at
+`/<table>/notify`; it has no request argument and no `Call` builder, since it
+opens a connection rather than sending one request. The SDK instead generates
+`notify<Entity>(http, onChange)`, which hands back a subscription. See
+`docs/notifications.md`. An
+entity that names no exposed operation at all has no collection: no path, no
+route module, and no client module. See `docs/spec-annotations.md`. A read and a
+delete carry their argument in a single `q` query parameter; a write carries it
+in the body.
 
 | Call | Id | Method | Path | Argument |
 | --- | --- | --- | --- | --- |
 | query | `query<Entity>` | `GET` | `/<table>/query?q=…` | `query<Entity>Schema` |
+| notify | `notify<Entity>` | `GET` | `/<table>/notify` | none (server-sent events) |
 | create | `create<Entity>` | `POST` | `/<table>` | `[<entity>InsertSchema]` in the body |
 | upsert | `upsert<Entity>` | `PUT` | `/<table>` | `[<entity>UpsertSchema]` in the body |
 | update | `update<Entity>` | `PATCH` | `/<table>` | `[<entity>PatchSchema]` in the body |

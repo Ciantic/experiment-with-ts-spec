@@ -14,3 +14,10 @@ export class MockDataError extends AppError {
         super(message, { kind: "mock-data", status: 500 });
     }
 }
+
+/** A notification subscription on an executor whose driver has no LISTEN support; it never reaches an HTTP response. */
+export class NotificationsUnsupportedError extends AppError {
+    constructor() {
+        super("this executor does not support notifications", { kind: "notifications-unsupported", status: 501 });
+    }
+}

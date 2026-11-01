@@ -1,6 +1,6 @@
 /** The driver port, and the executor a caller derives from it. See docs/transactions.md. */
 import { SavepointOptionsError } from "sdk/errors.ts";
-import type { QueryResult, Run, SqlExecutor, TransactionOptions } from "./sql-executor.ts";
+import type { QueryResult, Run, SqlExecutor, SqlSubscription, TransactionOptions } from "./sql-executor.ts";
 
 /** A connection borrowed for one boundary: statements, and the release that returns it. */
 export interface SqlConnection {
@@ -34,6 +34,8 @@ export abstract class SqlDriver {
     protected abstract connect(): Promise<SqlConnection>;
     /** Run the startup script, several statements included; `query` takes one statement. */
     abstract exec(sql: string): Promise<void>;
+    /** Listen on a channel over a connection of its own, so the subscription outlives a statement. See docs/notifications.md. */
+    abstract listen(channel: string, onNotification: () => void): Promise<SqlSubscription>;
     /** Release the driver's resources. */
     abstract close(): Promise<void>;
 
@@ -97,6 +99,7 @@ export abstract class SqlDriver {
                 sql: string,
                 parameters?: unknown[],
             ) => this.query<Row>(sql, parameters),
+            listen: (channel, onNotification) => this.listen(channel, onNotification),
             transaction: (run) => boundary(undefined, run),
             transactionWith: (options, run) => boundary(options, run),
         };

@@ -208,8 +208,13 @@ export function isRestMethod(value: string): value is RestMethod {
 }
 
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
-export const READ_OPERATIONS = ["query"] as const;
+export const READ_OPERATIONS = ["query", "notify"] as const;
 export type ReadOperation = (typeof READ_OPERATIONS)[number];
+
+/** Whether a token is a read operation a tag may name. */
+export function isReadOperation(value: string): value is ReadOperation {
+    return (READ_OPERATIONS as readonly string[]).includes(value);
+}
 
 /** The JavaScript type a spec value has at the boundary, whatever its storage type spells. */
 export type JsType = "string" | "number" | "bigint" | "boolean" | "Date" | "Uint8Array" | "object";

@@ -13,7 +13,9 @@ See "Why the resolver is hand-written".
   `docs/rest-api.md`.
 - `scripts/infra/generate-queries.ts` — the generator.
 - `packages/infra/src/db/queries/` — generated: `model.ts` (metadata),
-  `query<Entity>.ts` (a `query<Entity>` per `@queries` entity), `index.ts` (barrel).
+  `query<Entity>.ts` (a `query<Entity>` per `@queries` entity),
+  `notify<Entity>.ts` (a change stream per `@queries notify` entity), and
+  `index.ts` (barrel). See `docs/notifications.md`.
 - `packages/infra/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/sdk/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.
@@ -27,12 +29,13 @@ drops `@queries query` leaves no stale file behind.
 
 ## One query per entity
 
-An entity declares its read with `@queries <operation>…`; `@query` is the only
-operation today, so the tag is written `@queries query`. An entity that declares
-no read gets no `query<Entity>` and no read route — the generator writes a
-module only for the tables the tag names. The tag is a list rather than a bare
-marker because a second kind of read would be a token in it, not a new tag. See
-`docs/spec-annotations.md`.
+An entity declares its read with `@queries <operation>…`; `query` is the read
+that returns rows, so the tag is written `@queries query`. The other token,
+`notify`, writes the entity's change stream if it appears beside it. An entity
+that declares no read gets no `query<Entity>` and no read route — the generator
+writes a module only for the tables the tag names. The tag is a list rather than
+a bare marker because a second kind of read is a token in it, not a new tag. See
+`docs/spec-annotations.md` and `docs/notifications.md`.
 
 There is no query alias to write. The generator walks the tables and emits
 `query<Entity>`:

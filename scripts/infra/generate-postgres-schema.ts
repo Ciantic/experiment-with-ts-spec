@@ -188,6 +188,28 @@ function renderTriggers(table: Table): string[] {
     return lines;
 }
 
+/** A Postgres string literal, quoted for the channel `pg_notify` publishes on. */
+function quoteLiteral(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Notify the entity's channel once per statement that changes its table. See docs/notifications.md. */
+function renderNotifyTrigger(table: Table): string[] {
+    const name = quote(`${table.name}_notify`);
+    return [
+        `create function ${name}() returns trigger as $$`,
+        "begin",
+        `    perform pg_notify(${quoteLiteral(table.name)}, '');`,
+        "    return null;",
+        "end;",
+        "$$ language plpgsql;",
+        "",
+        `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
+        `    for each statement execute function ${name}();`,
+        "",
+    ];
+}
+
 /** Render Postgres DDL from the spec. */
 export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Diagnostic[] } {
     const { tables, diagnostics } = buildSpecTables(spec);
@@ -204,6 +226,12 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
 
     for (const table of ordered) {
         lines.push(...renderTriggers(table));
+    }
+
+    for (const table of ordered) {
+        if (table.queries.includes("notify")) {
+            lines.push(...renderNotifyTrigger(table));
+        }
     }
 
     return { sql: lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n", diagnostics };

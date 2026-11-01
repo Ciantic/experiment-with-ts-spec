@@ -2418,8 +2418,8 @@ export interface Draft { }`,
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @queries `read` is not one of: query",
-            "`Invoice`: @restQueries `read` is not one of: query",
+            "`Invoice`: @queries `read` is not one of: query, notify",
+            "`Invoice`: @restQueries `read` is not one of: query, notify",
         ]);
     });
 
@@ -2433,8 +2433,8 @@ export interface Draft { }`,
  */`);
 
         expect(findings).toEqual([
-            "`Invoice`: @queries requires at least one of: query",
-            "`Invoice`: @restQueries requires at least one of: query",
+            "`Invoice`: @queries requires at least one of: query, notify",
+            "`Invoice`: @restQueries requires at least one of: query, notify",
         ]);
     });
 

@@ -55,7 +55,10 @@ to `specErrors.ts` and joins the same table:
 `UsageError` and `MockDataError` stay in `packages/infra/src/errors.ts`. They
 extend `AppError` but never reach an HTTP response — one is a command line the
 entry point cannot interpret, the other is spec mock data with no generated
-create repository — so no client class mirrors them.
+create repository — so no client class mirrors them. `EventSourceUnavailableError`
+in `packages/sdk/src/watch.ts` is the client's own: a platform with no
+`EventSource` and no supplied implementation cannot open a change stream, and no
+server response could raise it.
 
 ## The wire
 

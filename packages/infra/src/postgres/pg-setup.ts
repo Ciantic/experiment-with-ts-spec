@@ -1,7 +1,7 @@
 /** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
 import type { Pool, PoolConfig } from "pg";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
-import type { QueryResult } from "../db/sql-executor.ts";
+import type { QueryResult, SqlSubscription } from "../db/sql-executor.ts";
 
 /** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
 export interface PgModule {
@@ -90,6 +90,11 @@ export interface PgPoolModule extends PgModule {
     Pool: new (config: PoolConfig) => Pool;
 }
 
+/** An SQL identifier, quoted so a channel name is not read as syntax. */
+function quoteIdentifier(name: string): string {
+    return `"${name.replace(/"/g, '""')}"`;
+}
+
 /** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
 export class PgSqlDriver extends SqlDriver {
     readonly #pool: Pool;
@@ -124,6 +129,38 @@ export class PgSqlDriver extends SqlDriver {
 
     async exec(sql: string): Promise<void> {
         await this.#pool.query(sql);
+    }
+
+    async listen(channel: string, onNotification: () => void): Promise<SqlSubscription> {
+        const client = await this.#pool.connect();
+        const onNotice = (notice: { channel: string }) => {
+            if (notice.channel === channel) {
+                onNotification();
+            }
+        };
+        try {
+            client.on("notification", onNotice);
+            await client.query(`listen ${quoteIdentifier(channel)}`);
+        } catch (thrown) {
+            client.removeListener("notification", onNotice);
+            client.release();
+            throw thrown;
+        }
+        let closed = false;
+        return {
+            close: async () => {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                client.removeListener("notification", onNotice);
+                try {
+                    await client.query(`unlisten ${quoteIdentifier(channel)}`);
+                } finally {
+                    client.release();
+                }
+            },
+        };
     }
 
     async close(): Promise<void> {

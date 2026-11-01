@@ -1,7 +1,7 @@
 /** PGlite configuration, result type mapping, and the driver the app injects. See docs/schema-generation.md. */
 import type { DebugLevel, PGlite, ParserOptions } from "@electric-sql/pglite";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
-import type { QueryResult } from "../db/sql-executor.ts";
+import type { QueryResult, SqlSubscription } from "../db/sql-executor.ts";
 
 /** Postgres type OIDs, from src/include/catalog/pg_type.dat. */
 const OID = {
@@ -85,6 +85,19 @@ export class PgliteSqlDriver extends SqlDriver {
     async exec(sql: string): Promise<void> {
         await this.#exclusive(async () => {
             await this.#pglite.exec(sql);
+        });
+    }
+
+    async listen(channel: string, onNotification: () => void): Promise<SqlSubscription> {
+        return await this.#exclusive(async () => {
+            const close = await this.#pglite.listen(channel, () => onNotification());
+            return {
+                close: async () => {
+                    await this.#exclusive(async () => {
+                        await close();
+                    });
+                },
+            };
         });
     }
 

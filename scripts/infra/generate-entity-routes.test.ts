@@ -47,6 +47,22 @@ export interface Marker {
 }
 `.trim();
 
+/** An entity that publishes its change stream over REST. */
+const NOTIFIED = `
+/**
+ * @pgTable notified
+ * @repository create
+ * @restRepository create
+ * @queries query notify
+ * @restQueries query notify
+ * @entity
+ */
+export interface Notified {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -214,6 +230,23 @@ export interface Internal {
         expect(code).toContain("handler: (ctx, body) => createInternal(ctx.db, body as never)");
         expect(code).not.toContain("queryInternal");
         expect(code).not.toContain("/internal/query");
+    });
+
+    it("serves a notify read as a server-sent event stream with no argument", () => {
+        const entity = build({ Notified: NOTIFIED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the notified entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain('import { SseStream } from "../sse.ts";');
+        expect(code).toContain('id: "notifyNotified"');
+        expect(code).toContain('path: "/notified/notify"');
+        expect(code).toContain("stream: true,");
+        expect(code).toContain("input: z.void(),");
+        expect(code).toContain(
+            "handler: async (ctx) => new SseStream((signal) => notifyNotified(ctx.db, { signal })),",
+        );
     });
 });
 

@@ -9,6 +9,7 @@ If you change the TypeScript spec, there are deterministic re-generation scripts
 - Repository functions: create, update, upsert and delete functions
 - Operation function stubs, these should contain the business logic
 - Query function with granular control of which fields are filterable, orderable and so on
+- Change streams backed by Postgres `LISTEN`/`NOTIFY`, over REST through server-sent events
 - REST endpoints, generated from exposed repository functions and operations
 
 TODO: More specifics goes here.
@@ -36,7 +37,7 @@ flowchart TD
             direction TB
             pgSchema["<b>Postgres schema generator</b><br/>generate-postgres-schema.ts<br/>Tables, columns, constraints and triggers"]
             repositories["<b>Repository generator</b><br/>generate-repositories.ts<br/>Create, update, upsert and delete functions"]
-            queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and query metadata"]
+            queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and change streams"]
             entityRoutes["<b>Entity route generator</b><br/>generate-entity-routes.ts<br/>Route table for repositories and queries"]
         end
 

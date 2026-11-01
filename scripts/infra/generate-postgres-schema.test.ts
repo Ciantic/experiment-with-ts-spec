@@ -898,6 +898,28 @@ describe("generateSchema triggers", () => {
         expect(sql).not.toContain("create function");
     });
 
+    it("notifies the table's channel once per change when the entity declares the notify read", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/**
+                 * @entity
+                 * @queries query notify
+                 */
+                export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
+        expect(sql).toContain("    perform pg_notify('thing', '');");
+        expect(sql).toContain(
+            'create trigger "thing_notify" after insert or update or delete on "thing"',
+        );
+        expect(sql).toContain("    for each statement execute function \"thing_notify\"();");
+    });
+
     it("emits an after trigger that maintains a cross-table aggregate", () => {
         const { sql, diagnostics } = generate({
             entities: {

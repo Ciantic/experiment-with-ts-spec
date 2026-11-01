@@ -44,6 +44,8 @@ export interface Route {
     path: string;
     /** Whether the call carries its argument in `q` or in the request body. */
     source: "query" | "body";
+    /** True when the handler answers with a long-lived event stream a group cannot run. See docs/notifications.md. */
+    stream?: boolean;
     /** Validates the decoded argument. */
     input: RouteInput;
     /** Runs the call; it receives the request's context and may open a boundary on it. See docs/transactions.md. */

@@ -186,6 +186,10 @@ function planCall(value: unknown, resolve: ResolveRoute, path: number[]): Planne
     if (!route) {
         throw new BadGroupError(`no operation \`${id}\``, { path });
     }
+    // A stream never finishes, so a group cannot wait for its result.
+    if (route.stream) {
+        throw new BadGroupError(`\`${id}\` is a stream and cannot run in a group`, { path });
+    }
 
     const parsed = route.input.safeParse(value["argument"]);
     if (!parsed.success) {

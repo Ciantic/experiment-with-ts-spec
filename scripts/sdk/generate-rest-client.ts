@@ -83,6 +83,8 @@ function comment(entity: RestEntity, kind: RestKind): string {
     switch (kind) {
         case "query":
             return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
+        case "notify":
+            return `/** The change stream of \`${name}\`, served as server-sent events. See docs/notifications.md. */`;
         case "create":
             return `/** Create \`${name}\` rows. */`;
         case "upsert":
@@ -107,6 +109,7 @@ function keyType(entity: RestEntity): string {
 export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const query = operation(entity, "query");
+    const notify = operation(entity, "notify");
     const create = operation(entity, "create");
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
@@ -157,7 +160,15 @@ export function renderClientModule(entity: RestEntity): string {
             lines.push(`import type { ${names.join(", ")} } from "${WRITE_TYPES_DIR}/${module}";`);
         }
     }
-    lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
+    const callable = query ?? create ?? upsert ?? update ?? remove;
+    if (callable !== undefined) {
+        lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
+    }
+    if (notify) {
+        // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
+        lines.push('import type { HttpClient } from "../http.ts";');
+        lines.push('import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";');
+    }
     if (writeTypes.length > 0) {
         lines.push("");
         lines.push(`export type { ${writeTypes.join(", ")} };`);
@@ -172,6 +183,18 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(
             `    return call<Selected<${name}, S>[]>("${query.id}", "${query.method}", "${query.path}", opts);`,
         );
+        lines.push("}");
+    }
+
+    if (notify) {
+        lines.push("");
+        lines.push(comment(entity, "notify"));
+        lines.push(`export function ${notify.id}(`);
+        lines.push("    http: HttpClient,");
+        lines.push("    onChange: () => void,");
+        lines.push("    options?: WatchOptions,");
+        lines.push("): NotificationSubscription {");
+        lines.push(`    return watch(http.baseUrl + "${notify.path}", onChange, options);`);
         lines.push("}");
     }
 

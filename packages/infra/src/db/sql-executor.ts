@@ -11,6 +11,11 @@ export interface QueryResult<Row> {
     rowCount: number | null;
 }
 
+/** A live subscription to a database channel; closing it stops the callback and releases its connection. */
+export interface SqlSubscription {
+    close(): Promise<void>;
+}
+
 /** One handle: statements, and the boundary a caller can run them in; a root handle is not a connection, so two of its calls may land on different ones. */
 export interface SqlExecutor {
     /** Run one statement, answering its rows and its row count. */
@@ -22,6 +27,8 @@ export interface SqlExecutor {
     transaction<T>(run: Run<T>): Promise<T>;
     /** {@link transaction}, on a root boundary opened with the modes the call names ahead of it. */
     transactionWith<T>(options: TransactionOptions, run: Run<T>): Promise<T>;
+    /** Subscribe to a channel on a connection of its own; absent on an executor whose driver cannot listen. See docs/notifications.md. */
+    listen?(channel: string, onNotification: () => void): Promise<SqlSubscription>;
 }
 
 /** The parameters one statement may carry; past this PGlite drops the statement silently, https://github.com/electric-sql/pglite/issues/1118. */

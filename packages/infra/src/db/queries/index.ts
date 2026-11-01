@@ -4,6 +4,7 @@ export * from "./queryAuditLog.ts";
 export * from "./queryCustomer.ts";
 export * from "./queryEmail.ts";
 export * from "./queryInvoice.ts";
+export * from "./notifyInvoice.ts";
 export * from "./queryInvoiceRow.ts";
 export * from "./queryInvoiceSent.ts";
 export * from "./queryInvoiceSentRow.ts";

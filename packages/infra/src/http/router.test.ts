@@ -60,6 +60,10 @@ class RecordingDriver extends SqlDriver {
 
     async exec(): Promise<void> {}
 
+    async listen(): Promise<{ close(): Promise<void> }> {
+        return { close: async () => {} };
+    }
+
     async close(): Promise<void> {}
 }
 

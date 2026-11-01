@@ -90,6 +90,22 @@ export interface Keyless {
 }
 `.trim();
 
+/** An entity that publishes its change stream over REST. */
+const NOTIFIED = `
+/**
+ * @pgTable notified
+ * @repository create
+ * @restRepository create
+ * @queries query notify
+ * @restQueries query notify
+ * @entity
+ */
+export interface Notified {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -133,7 +149,6 @@ describe("buildRestModel", () => {
 
     it("reads with GET and writes with the method each call means, under the id a group names", () => {
         const widget = model.entities.find((entity) => entity.entity === "Widget");
-
         expect(widget?.operations).toContainEqual({
             id: "queryWidget",
             kind: "query",
@@ -169,6 +184,32 @@ describe("buildRestModel", () => {
             path: "/widget",
             source: "query",
         });
+    });
+
+    it("exposes a notify read as a GET on the entity's stream path", () => {
+        const entity = build({ Notified: NOTIFIED }).entities[0];
+
+        expect(entity?.operations).toContainEqual({
+            id: "notifyNotified",
+            kind: "notify",
+            method: "GET",
+            path: "/notified/notify",
+            source: "query",
+        });
+        expect(entity?.operations.map((operation) => operation.kind)).toEqual([
+            "query",
+            "notify",
+            "create",
+        ]);
+    });
+
+    it("reports a notify read the entity does not generate", () => {
+        const bad = NOTIFIED.replace("@queries query notify", "@queries query");
+        const diagnostics = build({ Notified: bad }).diagnostics;
+
+        expect(messages(diagnostics)).toEqual([
+            "`Notified`: @restQueries `notify` is not in @queries",
+        ]);
     });
 
     it("encodes every call that carries no row data into the query string", () => {

@@ -6,6 +6,8 @@ import type { InvoicePatch } from "../repositories/invoicePatchSchema.ts";
 import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.ts";
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { HttpClient } from "../http.ts";
+import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
@@ -14,6 +16,15 @@ export function queryInvoice<S extends Selection<Invoice>>(
     opts: { filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
 ): Call<Selected<Invoice, S>[]> {
     return call<Selected<Invoice, S>[]>("queryInvoice", "GET", "/invoice/query", opts);
+}
+
+/** The change stream of `Invoice`, served as server-sent events. See docs/notifications.md. */
+export function notifyInvoice(
+    http: HttpClient,
+    onChange: () => void,
+    options?: WatchOptions,
+): NotificationSubscription {
+    return watch(http.baseUrl + "/invoice/notify", onChange, options);
 }
 
 /** Create `Invoice` rows. */

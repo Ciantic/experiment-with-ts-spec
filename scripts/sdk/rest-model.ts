@@ -88,9 +88,9 @@ export interface RestModel {
     diagnostics: Diagnostic[];
 }
 
-/** `/invoice/query`. The argument travels in `q`, so it is a `GET` on the collection. */
-function queryPath(path: string): string {
-    return `${path}/query`;
+/** `/invoice/query` or `/invoice/notify`. A read is a `GET` on the collection. */
+function readPath(path: string, kind: ReadOperation): string {
+    return `${path}/${kind}`;
 }
 
 /** The name a call goes by: the kind it names and the entity it belongs to, e.g. `queryInvoice`. */
@@ -126,7 +126,7 @@ function operationsFor(
     for (const kind of READ_OPERATIONS) {
         // A read is safe and its URL determines its answer, so it is a `GET` with its argument in `q`.
         if (reads.includes(kind)) {
-            operations.push({ id: callId(entity, kind), kind, method: "GET", path: queryPath(path), source: "query" });
+            operations.push({ id: callId(entity, kind), kind, method: "GET", path: readPath(path, kind), source: "query" });
         }
     }
     for (const kind of WRITE_OPERATIONS) {

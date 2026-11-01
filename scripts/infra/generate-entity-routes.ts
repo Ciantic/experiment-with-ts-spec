@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, type SpecModel } from "../spec/spec-model.ts";
+import { isReadOperation, loadSpec, type SpecModel } from "../spec/spec-model.ts";
 // The REST model is shared with the client generator, so both read it from the SDK model.
 import {
     buildRestModel,
@@ -45,11 +45,13 @@ export function routesExportName(entity: RestEntity): string {
     return `${entity.module}Routes`;
 }
 
-/** The generated schema that validates the request body, before the `delete` projection. */
-function schemaName(entity: RestEntity, kind: RestKind): string {
+/** The generated schema that validates the request body, before the `delete` projection. A notify route takes no argument. */
+function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     switch (kind) {
         case "query":
             return `query${entity.entity}Schema`;
+        case "notify":
+            return undefined;
         case "create":
             return `${entity.module}InsertSchema`;
         case "upsert":
@@ -64,29 +66,38 @@ function schemaName(entity: RestEntity, kind: RestKind): string {
 
 /** The expression the router validates the argument with. A read takes options; every write takes rows. */
 function inputExpression(entity: RestEntity, kind: RestKind): string {
-    return kind === "query" ? schemaName(entity, kind) : `z.array(${schemaName(entity, kind)})`;
+    if (kind === "notify") {
+        return "z.void()";
+    }
+    const name = schemaName(entity, kind) as string;
+    return kind === "query" ? name : `z.array(${name})`;
 }
 
 /** Every repository function one entity needs. */
 function repositoryFunctions(entity: RestEntity): string[] {
     // Every write kind names a repository function of its own; a read is served by the query module.
     return entity.operations
-        .filter((operation) => operation.kind !== "query")
+        .filter((operation) => !isReadOperation(operation.kind))
         .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
 
-/** Every query function one entity needs. */
+/** Every read function one entity needs: the query and the change stream both live in the query barrel. */
 function queryFunctions(entity: RestEntity): string[] {
     return entity.operations
-        .filter((operation) => operation.kind === "query")
+        .filter((operation) => isReadOperation(operation.kind))
         .map((operation) => operation.id)
         .sort((a, b) => a.localeCompare(b));
 }
 
 /** Every validation schema one entity needs, de-duplicated. */
 function inputSchemas(entity: RestEntity): string[] {
-    const names = new Set(entity.operations.map((operation) => schemaName(entity, operation.kind)));
+    const names = new Set(
+        entity.operations.flatMap((operation) => {
+            const name = schemaName(entity, operation.kind);
+            return name === undefined ? [] : [name];
+        }),
+    );
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
@@ -98,9 +109,13 @@ export function renderEntityRoutes(entity: RestEntity): string {
 
     const lines: string[] = [HEADER];
     lines.push(`import type { Route } from "${ROUTER_IMPORT}";`);
-    // Only a write wraps its argument in an array, so the batch shape is the only use of `z`.
-    if (entity.operations.some((operation) => operation.kind !== "query")) {
+    const notifies = entity.operations.some((operation) => operation.kind === "notify");
+    // A notify route takes no argument and a write wraps its rows in an array, so either needs `z`.
+    if (notifies || entity.operations.some((operation) => !isReadOperation(operation.kind))) {
         lines.push('import { z } from "zod";');
+    }
+    if (notifies) {
+        lines.push('import { SseStream } from "../sse.ts";');
     }
     if (repositories.length > 0) {
         lines.push(`import { ${repositories.join(", ")} } from "${REPOSITORIES_IMPORT}";`);
@@ -121,9 +136,17 @@ export function renderEntityRoutes(entity: RestEntity): string {
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
         lines.push(`        source: "${operation.source}",`);
+        if (operation.kind === "notify") {
+            lines.push("        stream: true,");
+        }
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
-        // The body is validated against the schema above, so the handler may trust its shape.
-        lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);
+        if (operation.kind === "notify") {
+            // The handler opens the stream when the server starts writing; the response's close aborts it.
+            lines.push(`        handler: async (ctx) => new SseStream((signal) => ${operation.id}(ctx.db, { signal })),`);
+        } else {
+            // The body is validated against the schema above, so the handler may trust its shape.
+            lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);
+        }
         lines.push("    },");
     }
     lines.push("];");

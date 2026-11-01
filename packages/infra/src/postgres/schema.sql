@@ -251,3 +251,13 @@ $$ language plpgsql;
 
 create trigger "invoice_sent_row_compute" before insert or update on "invoice_sent_row"
     for each row execute function "invoice_sent_row_compute"();
+
+create function "invoice_notify"() returns trigger as $$
+begin
+    perform pg_notify('invoice', '');
+    return null;
+end;
+$$ language plpgsql;
+
+create trigger "invoice_notify" after insert or update or delete on "invoice"
+    for each statement execute function "invoice_notify"();

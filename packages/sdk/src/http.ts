@@ -12,6 +12,8 @@ export type SendMethod = "POST" | "PUT" | "PATCH";
 
 /** What the generated modules call. */
 export interface HttpClient {
+    /** The root every path is appended to, so a generated long-lived helper can build its own URL. */
+    readonly baseUrl: string;
     /**
      * Send the argument as the `q` query parameter: the reads and the delete.
      * @throws {AppError} the error class the response names, or `HttpError` when it names none
@@ -89,6 +91,7 @@ export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetc
     }
 
     return {
+        baseUrl: base,
         query(method, path, argument) {
             const suffix = argument === undefined ? "" : `?q=${encodeURIComponent(encode(argument))}`;
             return run(method, `${base}${path}${suffix}`, undefined);

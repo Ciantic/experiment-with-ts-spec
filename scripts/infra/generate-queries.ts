@@ -41,9 +41,14 @@ interface QueryModelData {
     tables: Record<string, QueryTableData>;
 }
 
-/** The module file for an entity, e.g. `Invoice` -> `queryInvoice.ts`. */
+/** The module file for an entity's read, e.g. `Invoice` -> `queryInvoice.ts`. */
 function queryFileName(entity: string): string {
     return `query${entity}.ts`;
+}
+
+/** The module file for an entity's change stream, e.g. `Invoice` -> `notifyInvoice.ts`. */
+function notifyFileName(entity: string): string {
+    return `notify${entity}.ts`;
 }
 
 /** Map the table model to the resolver's metadata: scalar fields plus branch descriptors. */
@@ -232,6 +237,21 @@ function queryArgs(filters: string[]): string {
     return filters.length > 0 ? "opts.filter ?? {}" : "{}";
 }
 
+/** Render one entity's change stream over the channel its table's trigger notifies. */
+export function renderNotifyModule(entity: string, table: Table): string {
+    const lines: string[] = [HEADER];
+    lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
+    lines.push('import { subscribe, type ChangeNotification } from "../notifications.ts";');
+    lines.push("");
+    lines.push(`/** Subscribe to changes of \`${entity}\`; each notification carries no payload. See docs/notifications.md. */`);
+    lines.push(
+        `export function notify${entity}(db: SqlExecutor, opts?: { signal?: AbortSignal }): AsyncIterable<ChangeNotification> {`,
+    );
+    lines.push(`    return subscribe(db, ${JSON.stringify(table.name)}, opts?.signal);`);
+    lines.push("}");
+    return lines.join("\n") + "\n";
+}
+
 /** Render every generated file, keyed by file name (including the barrel). */
 export function generateQueries(tables: Map<string, Table>): Map<string, string> {
     const entities = [...tables.values()].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName));
@@ -243,12 +263,18 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         if (table.queries.includes("query")) {
             files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
         }
+        if (table.queries.includes("notify")) {
+            files.set(notifyFileName(table.interfaceName), renderNotifyModule(table.interfaceName, table));
+        }
     }
 
     const lines = [HEADER, `export * from "./${MODEL_FILE}";`];
     for (const table of entities) {
         if (table.queries.includes("query")) {
             lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
+        }
+        if (table.queries.includes("notify")) {
+            lines.push(`export * from "./${notifyFileName(table.interfaceName)}";`);
         }
     }
     files.set(INDEX_FILE, lines.join("\n") + "\n");

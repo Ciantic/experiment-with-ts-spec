@@ -12,16 +12,19 @@ export { SqlDriver } from "./db/sql-driver.ts";
 export type { SqlConnection } from "./db/sql-driver.ts";
 
 // Error exports
-export { UsageError } from "./errors.ts";
+export { NotificationsUnsupportedError, UsageError } from "./errors.ts";
 
 // Database exports
 export { ACCESS_MODES, ISOLATION_LEVELS } from "./db/sql-executor.ts";
-export type { QueryResult, SqlExecutor, TransactionOptions } from "./db/sql-executor.ts";
+export type { QueryResult, SqlExecutor, SqlSubscription, TransactionOptions } from "./db/sql-executor.ts";
+export { subscribe } from "./db/notifications.ts";
+export type { ChangeNotification } from "./db/notifications.ts";
 
 // Router exports
 export { entityRoutes } from "./http/routes/index.ts";
 export { createApiServer } from "./http/server.ts";
 export type { Route } from "./http/router.ts";
+export { SseStream } from "./http/sse.ts";
 
 // Mock data exports
 export { seedMockData } from "./mock/seed.ts";

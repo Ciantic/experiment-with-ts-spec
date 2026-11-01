@@ -92,6 +92,21 @@ export interface Limited {
 }
 `.trim();
 
+/** An entity that publishes its change stream over REST. */
+const NOTIFIED = `
+/**
+ * @pgTable notified
+ * @repository create
+ * @queries query notify
+ * @restQueries notify
+ * @entity
+ */
+export interface Notified {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -345,6 +360,26 @@ describe("generateRestClient", () => {
                 }
             }
         }
+    });
+});
+
+describe("notify helpers", () => {
+    const withNotify = build({ Notified: NOTIFIED });
+    const module = () => generateRestClient(withNotify).get("notified.ts") ?? "";
+
+    it("opens the entity's stream with the client's base URL", () => {
+        expect(module()).toContain('import type { HttpClient } from "../http.ts";');
+        expect(module()).toContain(
+            'import { watch, type NotificationSubscription, type WatchOptions } from "../watch.ts";',
+        );
+        expect(module()).toContain("export function notifyNotified(");
+        expect(module()).toContain(
+            'return watch(http.baseUrl + "/notified/notify", onChange, options);',
+        );
+    });
+
+    it("builds no Call for a stream, since an EventSource is not one request", () => {
+        expect(module()).not.toContain('from "../client.ts"');
     });
 });
 
