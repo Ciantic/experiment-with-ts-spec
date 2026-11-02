@@ -48,7 +48,7 @@ export interface Route {
     stream?: boolean;
     /** Validates the decoded argument. */
     input: RouteInput;
-    /** Runs the call; it receives the request's context and may open a boundary on it. See docs/transactions.md. */
+    /** Runs the call; it receives the request's context and returns a value the server encodes or a writable it runs. */
     handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
 }
 
@@ -58,7 +58,7 @@ export interface Route {
  * @see {ApiRouter} to create an instance of the router
  **/
 export interface HttpRouter {
-    /** Match, read, decode, validate, call, and answer one request. */
+    /** Match, read, decode, validate, and call one request; the result is a value or a writable. */
     handle(request: IncomingMessage): Promise<unknown>;
 }
 
@@ -80,7 +80,7 @@ export class ApiRouter implements HttpRouter {
     }
 
     /**
-     * Match, read, decode, validate, call, and answer one request.
+     * Match, read, decode, validate, and call one request.
      * @throws {PayloadTooLargeError} when the body passes the byte cap
      * @throws {NotFoundError} when no route matches the method and path
      * @throws {RequestError} when the argument does not decode

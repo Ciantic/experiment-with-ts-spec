@@ -23,7 +23,8 @@ the transport.
   `HttpRouter` interface, the request handler. Hand-written.
 - `packages/infra/src/http/api-http-response.ts` — the `ApiHttpResponse` class,
   which holds a response's payload, encodes its wire form, and writes it to the
-  response. Hand-written.
+  response, and the `WritableResponse` abstract class a route result extends to
+  answer itself. Hand-written.
 - `packages/infra/src/http/server.ts` — the `ApiServer` class and the
   `HttpServer` interface, a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
@@ -289,14 +290,19 @@ Two rules follow from the codec:
   executes nothing. `uneval`/`eval` must never be used, and the transport is a
   parser of untrusted input: the router caps the body at 1 MB.
 
-## Status mapping
+## Responses and status
 
-The router and the group handler answer a value or throw the failure; the server
-turns a thrown error into an `ApiHttpResponse.failure`: a status and a plain-JSON
-payload. An `AppError` names its own status and kind; only an error that is not
-one is matched against the driver's `code` (`statusFor`,
-`src/http/api-http-response.ts`). `docs/errors.md` records the hierarchy and the
-body shape.
+The router and the group handler answer a value, a `WritableResponse`, or throw
+the failure. A writable answers the request itself: the server hands it to
+`writeTo`, and `ApiHttpResponse` and `SseStream` are the two the infrastructure
+provides. Any other value becomes `ApiHttpResponse.ok`, and a thrown error becomes
+`ApiHttpResponse.failure`: a status and a plain-JSON payload. A writable owns the
+response once it commits headers, so a throw after that point destroys the
+connection rather than writing a failure. An `AppError` names its own status and
+kind; only an error that is not one is matched against the driver's `code`
+(`statusFor`, `src/http/api-http-response.ts`). `docs/errors.md` records the
+hierarchy and the body shape. A group entry answers a value, so the group handler
+refuses a writable result.
 
 | Code | Status | Meaning |
 | --- | --- | --- |

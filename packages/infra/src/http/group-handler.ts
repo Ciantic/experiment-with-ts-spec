@@ -8,7 +8,7 @@ import {
     type TransactionOptions,
 } from "../db/sql-executor.ts";
 import { AppError, BadGroupError, RequestError } from "sdk/errors.ts";
-import { statusFor } from "./api-http-response.ts";
+import { statusFor, WritableResponse } from "./api-http-response.ts";
 import type { Route } from "./router.ts";
 
 /** The path the group entry point is mounted at. See docs/rest-api.md. */
@@ -226,10 +226,17 @@ function within(path: number[], ancestor: number[]): boolean {
     return path.length >= ancestor.length && ancestor.every((step, index) => path[index] === step);
 }
 
-/** The body of {@link execute}, without the path bookkeeping. */
+/**
+ * The body of {@link execute}, without the path bookkeeping.
+ * @throws {BadGroupError} when a call answers with a writable the group cannot encode
+ */
 async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
     if (node.kind === "call") {
         const result = await node.route.handler({ db }, node.argument);
+        // A writable answers the request itself; a group entry answers a value the group encodes.
+        if (result instanceof WritableResponse) {
+            throw new BadGroupError(`\`${node.route.id}\` answers the request itself and cannot run in a group`, { path });
+        }
         return result ?? null;
     }
 

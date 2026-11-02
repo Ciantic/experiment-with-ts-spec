@@ -3,6 +3,11 @@ import type { ServerResponse } from "node:http";
 import { stringify as encode } from "devalue";
 import { AppError, apiErrorBody } from "sdk/errors.ts";
 
+/** A route result that answers the request itself, owning the response once it commits headers. */
+export abstract class WritableResponse {
+    abstract writeTo(response: ServerResponse): void | Promise<void>;
+}
+
 /** PostgreSQL error codes to HTTP statuses. Anything else is a server fault. */
 const ERROR_STATUSES: Record<string, number> = {
     "22P02": 400, // invalid_text_representation
@@ -29,13 +34,14 @@ export function statusFor(thrown: unknown): number {
 type BodyEncoding = "devalue" | "json";
 
 /** One API response, holding the value the client receives and how it becomes the wire body. */
-export class ApiHttpResponse {
+export class ApiHttpResponse extends WritableResponse {
     readonly #statusCode: number;
     /** The handler's result for a success, or the error body for a failure. */
     readonly #payload: unknown;
     readonly #encoding: BodyEncoding;
 
     private constructor(statusCode: number, payload: unknown, encoding: BodyEncoding) {
+        super();
         this.#statusCode = statusCode;
         this.#payload = payload;
         this.#encoding = encoding;

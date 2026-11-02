@@ -26,6 +26,7 @@ export { ApiRouter } from "./http/router.ts";
 export type { HttpRouter, Route } from "./http/router.ts";
 export { ApiServer } from "./http/server.ts";
 export type { HttpServer } from "./http/server.ts";
+export { ApiHttpResponse, WritableResponse } from "./http/api-http-response.ts";
 export { SseStream } from "./http/sse.ts";
 
 // Mock data exports

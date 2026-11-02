@@ -1,9 +1,8 @@
 /** A `node:http` server over the generated route table; the router owns every decision. See docs/rest-api.md. */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AppContext } from "../context.ts";
-import { ApiHttpResponse } from "./api-http-response.ts";
+import { ApiHttpResponse, WritableResponse } from "./api-http-response.ts";
 import { ApiRouter, type HttpRouter, type Route } from "./router.ts";
-import { SseStream } from "./sse.ts";
 
 /** 
  * The server lifecycle the entry point drives. 
@@ -34,12 +33,17 @@ export class ApiServer implements HttpServer {
         try {
             // The router owns the request: its method, its URL, and its body.
             const result = await this.#router.handle(request);
-            if (result instanceof SseStream) {
-                result.writeTo(response);
+            if (result instanceof WritableResponse) {
+                await result.writeTo(response);
+            } else {
+                ApiHttpResponse.ok(result).writeTo(response);
+            }
+        } catch (thrown) {
+            // A writable that already committed headers owns the connection; there is no JSON failure left to send.
+            if (response.headersSent) {
+                response.destroy();
                 return;
             }
-            ApiHttpResponse.ok(result).writeTo(response);
-        } catch (thrown) {
             ApiHttpResponse.failure(thrown).writeTo(response);
         }
     }

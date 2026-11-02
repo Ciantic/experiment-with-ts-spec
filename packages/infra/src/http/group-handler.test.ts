@@ -3,8 +3,14 @@ import { stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AppError, BadGroupError, RequestError, VersionConflictError } from "sdk/errors.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
+import { WritableResponse } from "./api-http-response.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { Route, RouteInput } from "./router.ts";
+
+/** A route result that answers the request itself, so the group's refusal is observable. */
+class FakeWritable extends WritableResponse {
+    writeTo(): void {}
+}
 
 /** A schema stand-in that accepts any argument; the group test is not about Zod. */
 const accepts: RouteInput = {
@@ -104,6 +110,18 @@ describe("handleGroup", () => {
         );
 
         expect(value).toEqual([null]);
+    });
+
+    it("refuses a call that answers with a writable instead of a value", async () => {
+        const thrown = await failure(
+            [
+                echoRoute({ handler: async () => new FakeWritable() }),
+            ],
+            groupBody("batch", [callEntry("echo", {})]),
+        );
+
+        expect(thrown.message).toContain("answers the request itself");
+        expect(thrown).toMatchObject({ status: 400, kind: "bad-group", path: [0] });
     });
 
     it("runs a PUT entry, which a group names for an upsert", async () => {

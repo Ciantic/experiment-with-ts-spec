@@ -224,4 +224,5 @@ one.close();
 The helper uses the platform's `EventSource` by default; pass `options.source`
 to supply another implementation, such as a test double. A stream never
 finishes, so the group handler refuses a streaming call rather than waiting for
-its result.
+its result, just as it refuses any route that answers with a writable instead of
+a value.

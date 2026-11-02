@@ -3,7 +3,7 @@ import type { ServerResponse } from "node:http";
 import { parse as decode } from "devalue";
 import { describe, expect, it } from "vitest";
 import { QueryError, RequestError, VersionConflictError } from "sdk/errors.ts";
-import { ApiHttpResponse } from "./api-http-response.ts";
+import { ApiHttpResponse, WritableResponse } from "./api-http-response.ts";
 
 /** A `ServerResponse` stand-in, recording what a write puts on it. */
 function responseSpy(): {
@@ -68,5 +68,10 @@ describe("ApiHttpResponse", () => {
             409,
         );
         expect(statusOf(ApiHttpResponse.failure(new Error("boom")))).toBe(500);
+    });
+
+    it("answers the request itself, so it is a writable", () => {
+        expect(ApiHttpResponse.ok(null)).toBeInstanceOf(WritableResponse);
+        expect(ApiHttpResponse.failure(new Error("boom"))).toBeInstanceOf(WritableResponse);
     });
 });
