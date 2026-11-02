@@ -79,11 +79,11 @@ describe("parseSpec interfaces", () => {
 
     it("reads the notification scopes", () => {
         const { interfaces } = parse({
-            "Thing.ts": "/**\n * @entity\n * @notify all rows\n * @restNotify all rows\n */\nexport interface Thing { id: string; }",
+            "Thing.ts": "/**\n * @entity\n * @watch all rows\n * @restWatch all rows\n */\nexport interface Thing { id: string; }",
         });
 
-        expect(interfaces.get("Thing")?.notify).toEqual(["all", "rows"]);
-        expect(interfaces.get("Thing")?.restNotify).toEqual(["all", "rows"]);
+        expect(interfaces.get("Thing")?.watch).toEqual(["all", "rows"]);
+        expect(interfaces.get("Thing")?.restWatch).toEqual(["all", "rows"]);
     });
 });
 

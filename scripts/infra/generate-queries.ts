@@ -237,7 +237,7 @@ function queryArgs(filters: string[]): string {
     return filters.length > 0 ? "opts.filter ?? {}" : "{}";
 }
 
-/** The filter object a generated watch takes: the fields `@notifyFilter` declares. */
+/** The filter object a generated watch takes: the fields `@watchFilter` declares. */
 function watchFilterType(entity: string, filters: string[]): string | undefined {
     return filters.length === 0
         ? undefined
@@ -261,9 +261,9 @@ function watchOptsType(keyType: string, pks: boolean, entity: string, filters: s
 /** Render one entity's change streams: `watch<Entity>` for the table and `watch<Entity>Rows` for keys. */
 export function renderWatchModule(entity: string, table: Table): string {
     const keyType = `${entity}PrimaryKey`;
-    const all = table.notify.includes("all");
-    const rows = table.notify.includes("rows");
-    const filters = table.notifyFilters;
+    const all = table.watch.includes("all");
+    const rows = table.watch.includes("rows");
+    const filters = table.watchFilters;
     const fields = rows ? primaryKeyColumns(table).map((column) => column.name) : [];
     const channel = JSON.stringify(table.name);
     const lines: string[] = [HEADER];
@@ -329,7 +329,7 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         if (table.queries.includes("query")) {
             files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
         }
-        if (table.notify.length > 0) {
+        if (table.watch.length > 0) {
             files.set(watchFileName(table.interfaceName), renderWatchModule(table.interfaceName, table));
         }
     }
@@ -339,7 +339,7 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         if (table.queries.includes("query")) {
             lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
         }
-        if (table.notify.length > 0) {
+        if (table.watch.length > 0) {
             lines.push(`export * from "./${watchFileName(table.interfaceName)}";`);
         }
     }

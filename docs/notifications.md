@@ -8,16 +8,16 @@ share one channel:
 - `rows` — "one of these rows changed". One event per changed row, carrying the
   primary key; a subscriber receives `{ pks, op }`.
 
-Declare the scopes with `@notify`, and the subset the REST surface exposes with
-`@restNotify`:
+Declare the scopes with `@watch`, and the subset the REST surface exposes with
+`@restWatch`:
 
 ```ts
 /**
  * @pgTable widget
  * @repository create
  * @queries query
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  */
 export interface Widget {
     /** @primaryKey */
@@ -25,8 +25,8 @@ export interface Widget {
 }
 ```
 
-`@notify` may name either or both scopes. `@restNotify` is optional and may only
-name a scope `@notify` declares, so an entity can stream to backend callers and
+`@watch` may name either or both scopes. `@restWatch` is optional and may only
+name a scope `@watch` declares, so an entity can stream to backend callers and
 stay off the wire. `rows` needs a primary key; a keyless table is already a
 diagnostic and gets no row scope.
 
@@ -41,7 +41,7 @@ One generated module holds both streams:
 
 ## Filtering by a field
 
-`@notifyFilter` is a bare marker on a stored scalar field: its value is added to
+`@watchFilter` is a bare marker on a stored scalar field: its value is added to
 the change payload, so a subscriber can narrow the stream to the rows it cares
 about. The field must be a plain column of the interface; a `@relation`,
 `@children`, `@computed`, or array field is a lint finding.
@@ -51,18 +51,18 @@ about. The field must be a plain column of the interface; a `@relation`,
  * @pgTable invoice
  * @repository create
  * @queries query
- * @notify all rows
+ * @watch all rows
  */
 export interface Invoice {
     /** @primaryKey */
     id: InvoiceId;
 
-    /** @notifyFilter */
+    /** @watchFilter */
     tenantId: TenantId;
 }
 ```
 
-The interface must declare `@notify`. The marker affects both scopes and the
+The interface must declare `@watch`. The marker affects both scopes and the
 REST surface whenever the entity exposes a watch.
 
 ## The triggers
@@ -103,7 +103,7 @@ create trigger "widget_notify" after insert or update or delete on "widget"
 A key change notifies both the old and the new identity, so a watcher of either
 row sees a change. A composite key contributes one JSON field per key column.
 
-A `@notifyFilter` adds a `filter` object to the payload: `all` with a filter
+A `@watchFilter` adds a `filter` object to the payload: `all` with a filter
 publishes `{ op, filter }`, and `rows` with a filter publishes
 `{ op, key, filter }`. A statement-level trigger cannot read a changed row's
 values, so a filter promotes the trigger to the row level:
@@ -153,7 +153,7 @@ for await (const { pks, op } of watchWidgetRows(db, { pks: [{ id }], signal })) 
 
 A filter value is compared with the canonical text the trigger published. An
 omitted field is unconstrained, so `{}` matches every row and omitting `filter`
-does too. A field without `@notifyFilter` is not part of the filter type.
+does too. A field without `@watchFilter` is not part of the filter type.
 
 A driver holds one connection per channel, not one per subscriber. The first
 subscription to a channel opens its connection; every later one joins it, and
@@ -187,7 +187,7 @@ measurable.
 
 One route serves both scopes: `GET /<table>/watch`. Its argument is
 `{ pks?, filter?, ops? }`. `filter` is present when a field carries
-`@notifyFilter`, and its values are validated against the entity's own schema.
+`@watchFilter`, and its values are validated against the entity's own schema.
 
 With both scopes exposed, `pks` is optional: omit it for the table stream, or
 send it for the row stream. With only `rows`, the route rejects a call without

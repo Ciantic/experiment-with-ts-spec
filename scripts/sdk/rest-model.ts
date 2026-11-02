@@ -5,7 +5,7 @@ import {
     isCompareOperator,
     lowerFirst,
     type Diagnostic,
-    type NotifyScope,
+    type WatchScope,
     type ReadOperation,
     type SpecInterface,
     type SpecLocation,
@@ -56,12 +56,12 @@ export interface RestEntity {
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
-    /** The `@notify` scopes the entity declares. See docs/notifications.md. */
-    notify: NotifyScope[];
-    /** The `@restNotify` scopes the route exposes; a subset of {@link notify}. */
-    restNotify: NotifyScope[];
-    /** The `@notifyFilter` fields, whose values the change payload carries. See docs/notifications.md. */
-    notifyFilters: string[];
+    /** The `@watch` scopes the entity declares. See docs/notifications.md. */
+    watch: WatchScope[];
+    /** The `@restWatch` scopes the route exposes; a subset of {@link watch}. */
+    restWatch: WatchScope[];
+    /** The `@watchFilter` fields, whose values the change payload carries. See docs/notifications.md. */
+    watchFilters: string[];
     operations: RestOperation[];
 }
 
@@ -128,7 +128,7 @@ function operationsFor(
     path: string,
     reads: ReadOperation[],
     writes: WriteOperation[],
-    notify: NotifyScope[],
+    watch: WatchScope[],
 ): RestOperation[] {
     const operations: RestOperation[] = [];
     for (const kind of READ_OPERATIONS) {
@@ -137,7 +137,7 @@ function operationsFor(
             operations.push({ id: callId(entity, kind), kind, method: "GET", path: readPath(path), source: "query" });
         }
     }
-    if (notify.length > 0) {
+    if (watch.length > 0) {
         operations.push({ id: callId(entity, "watch"), kind: "watch", method: "GET", path: `${path}/watch`, source: "query" });
     }
     for (const kind of WRITE_OPERATIONS) {
@@ -177,10 +177,10 @@ function restEntityFor(spec: SpecInterface): RestEntity {
             .map((property) => property.name),
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
-        notify: spec.notify,
-        restNotify: spec.restNotify,
-        notifyFilters: spec.notifyFilters,
-        operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restNotify),
+        watch: spec.watch,
+        restWatch: spec.restWatch,
+        watchFilters: spec.watchFilters,
+        operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restWatch),
     };
 }
 
@@ -267,11 +267,11 @@ export function buildRestModel(spec: SpecModel): RestModel {
             }
         }
         // A notification scope the entity does not declare cannot be served.
-        for (const scope of entitySpec.restNotify) {
-            if (!entitySpec.notify.includes(scope)) {
+        for (const scope of entitySpec.restWatch) {
+            if (!entitySpec.watch.includes(scope)) {
                 report(
                     entitySpec.location,
-                    `\`${entitySpec.name}\`: @restNotify \`${scope}\` is not in @notify`,
+                    `\`${entitySpec.name}\`: @restWatch \`${scope}\` is not in @watch`,
                 );
             }
         }

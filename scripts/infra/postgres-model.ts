@@ -21,7 +21,7 @@ import {
     type TriggerTiming,
     type ReadOperation,
     type WriteOperation,
-    type NotifyScope,
+    type WatchScope,
     assignsColumn,
     triggerLevel,
 } from "../spec/spec-model.ts";
@@ -114,10 +114,10 @@ export interface Table {
     repositoryOperations: WriteOperation[];
     /** The read operations `@queries` declares, which the query generator renders. */
     queries: ReadOperation[];
-    /** The notification scopes `@notify` declares, which the schema and watch generators read. See docs/notifications.md. */
-    notify: NotifyScope[];
-    /** The fields `@notifyFilter` names, whose values the change payload carries. See docs/notifications.md. */
-    notifyFilters: string[];
+    /** The notification scopes `@watch` declares, which the schema and watch generators read. See docs/notifications.md. */
+    watch: WatchScope[];
+    /** The fields `@watchFilter` names, whose values the change payload carries. See docs/notifications.md. */
+    watchFilters: string[];
 }
 
 interface TypeResolution {
@@ -203,8 +203,8 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         triggers: [],
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
-        notify: spec.notify,
-        notifyFilters: spec.notifyFilters,
+        watch: spec.watch,
+        watchFilters: spec.watchFilters,
     };
 
     for (const property of spec.properties) {
@@ -212,9 +212,9 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
     }
 
     // A filter names a stored column, so a branch or an unknown field has nothing to publish.
-    for (const field of spec.notifyFilters) {
+    for (const field of spec.watchFilters) {
         if (!table.columns.some((column) => column.name === field)) {
-            context.report(spec.location, `\`${spec.name}\`: @notifyFilter \`${field}\` is not a scalar column`);
+            context.report(spec.location, `\`${spec.name}\`: @watchFilter \`${field}\` is not a scalar column`);
         }
     }
 

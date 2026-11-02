@@ -5,7 +5,7 @@ import {
     FIELD_TAGS,
     FOREIGN_KEY_OPTIONS,
     INTERFACE_TAGS,
-    NOTIFY_SCOPES,
+    WATCH_SCOPES,
     READ_OPERATIONS,
     REFERENTIAL_ACTIONS,
     RETIRED_TAGS,
@@ -307,13 +307,13 @@ function lintTenancyTags(spec: SpecInterface, report: Report): void {
     }
 }
 
-/** `@notifyFilter` marks a stored scalar column whose value the change payload carries. See docs/notifications.md. */
-function lintNotifyFilterRequiresNotify(spec: SpecInterface, report: Report): void {
-    const tags = spec.properties.flatMap((property) => property.tags.written.byName.get("notifyFilter") ?? []);
-    if (tags.length === 0 || spec.notify.length > 0) {
+/** `@watchFilter` marks a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+function lintWatchFilterRequiresWatch(spec: SpecInterface, report: Report): void {
+    const tags = spec.properties.flatMap((property) => property.tags.written.byName.get("watchFilter") ?? []);
+    if (tags.length === 0 || spec.watch.length > 0) {
         return;
     }
-    report("@notifyFilter requires @notify", tags[0]);
+    report("@watchFilter requires @watch", tags[0]);
 }
 
 /** Check the tags on the interface itself, and the per-entity uniqueness rules. */
@@ -352,7 +352,7 @@ function lintEntity(
     };
     lintEntityTrigger(spec.tags.written, interfaceReport);
     lintTenancyTags(spec, interfaceReport);
-    lintNotifyFilterRequiresNotify(spec, interfaceReport);
+    lintWatchFilterRequiresWatch(spec, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.
     for (const clock of ["createdAt", "updatedAt"] as const) {
@@ -419,15 +419,15 @@ const SURFACE_TAGS: OperationTag[] = [
     { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: false },
     { name: "queries", vocabulary: READ_OPERATIONS, required: false },
     { name: "restQueries", vocabulary: READ_OPERATIONS, required: false },
-    { name: "notify", vocabulary: NOTIFY_SCOPES, required: false },
-    { name: "restNotify", vocabulary: NOTIFY_SCOPES, required: false },
+    { name: "watch", vocabulary: WATCH_SCOPES, required: false },
+    { name: "restWatch", vocabulary: WATCH_SCOPES, required: false },
 ];
 
 /** The exposed tag of each pair, paired with the tag that declares what it may expose. */
 const EXPOSED_BY: [string, string][] = [
     ["restRepository", "repository"],
     ["restQueries", "queries"],
-    ["restNotify", "notify"],
+    ["restWatch", "watch"],
 ];
 
 /** An entity declares its surface: the operations it generates, and the subset it exposes. */
@@ -511,7 +511,7 @@ interface FieldTags {
     version: SpecTag | undefined;
     queryOrderBy: SpecTag | undefined;
     queryWhere: SpecTag | undefined;
-    notifyFilter: SpecTag | undefined;
+    watchFilter: SpecTag | undefined;
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
@@ -553,7 +553,7 @@ function resolveFieldTags(
         version: first("version"),
         queryOrderBy: first("queryOrderBy"),
         queryWhere: first("queryWhere"),
-        notifyFilter: first("notifyFilter"),
+        watchFilter: first("watchFilter"),
         typeText: property.type.kind === "missing" ? undefined : property.typeText,
         isArray: property.type.kind === "array",
         optional: property.optional,
@@ -953,21 +953,21 @@ function lintQueryFilter(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@notifyFilter` is a bare marker on a stored scalar column whose value the change payload carries. See docs/notifications.md. */
-function lintNotifyFilter(tags: FieldTags, report: Report): void {
-    const tag = tags.notifyFilter;
+/** `@watchFilter` is a bare marker on a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+function lintWatchFilter(tags: FieldTags, report: Report): void {
+    const tag = tags.watchFilter;
     if (!tag) {
         return;
     }
     if ((tag.value ?? "")) {
-        report("@notifyFilter takes no value", tag);
+        report("@watchFilter takes no value", tag);
     }
     reportIfBranch(tags, tag, report);
     if (tags.computed) {
-        report("@notifyFilter must be on a stored column, not a @computed field", tag);
+        report("@watchFilter must be on a stored column, not a @computed field", tag);
     }
     if (tags.isArray) {
-        report("@notifyFilter must be on a scalar field, not an array", tag);
+        report("@watchFilter must be on a scalar field, not an array", tag);
     }
 }
 
@@ -1086,7 +1086,7 @@ function lintProperty(
     lintBranches(tags, report);
     lintKeyTags(tags, report);
     lintQueryFilter(tags, report);
-    lintNotifyFilter(tags, report);
+    lintWatchFilter(tags, report);
     lintVersion(tags, report);
     lintForcedNotNull(tags, report);
     lintQueryOrderBy(tags, report);

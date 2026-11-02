@@ -227,11 +227,11 @@ function changedCondition(columns: Column[]): string {
     return `(${old}) is distinct from (${current})`;
 }
 
-/** Notify the entity's channel per changed row, publishing `TG_OP`, the key, and the `@notifyFilter` values. See docs/notifications.md. */
+/** Notify the entity's channel per changed row, publishing `TG_OP`, the key, and the `@watchFilter` values. See docs/notifications.md. */
 function renderNotifyTriggers(table: Table): string[] {
     const keys = table.columns.filter((column) => column.primaryKey);
-    const filters = table.columns.filter((column) => table.notifyFilters.includes(column.name));
-    const rows = table.notify.includes("rows");
+    const filters = table.columns.filter((column) => table.watchFilters.includes(column.name));
+    const rows = table.watch.includes("rows");
     // A keyless table cannot publish a row identity; the table model already reports it.
     if (rows && keys.length === 0) {
         return [];
@@ -306,7 +306,7 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     }
 
     for (const table of ordered) {
-        if (table.notify.length > 0) {
+        if (table.watch.length > 0) {
             lines.push(...renderNotifyTriggers(table));
         }
     }

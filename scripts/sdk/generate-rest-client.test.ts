@@ -98,8 +98,8 @@ const NOTIFIED = `
 /**
  * @pgTable notified
  * @repository create
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  * @entity
  */
 export interface Notified {
@@ -113,15 +113,15 @@ const FILTERED = `
 /**
  * @pgTable filtered
  * @repository create
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  * @entity
  */
 export interface Filtered {
     /** @primaryKey */
     id: string;
 
-    /** @notifyFilter */
+    /** @watchFilter */
     tenantId: string;
 }
 `.trim();
@@ -408,7 +408,7 @@ describe("watch helpers", () => {
         );
     });
 
-    it("adds a typed filter when the entity declares @notifyFilter", () => {
+    it("adds a typed filter when the entity declares @watchFilter", () => {
         const filtered = generateRestClient(build({ Filtered: FILTERED })).get("filtered.ts") ?? "";
 
         expect(filtered).toContain('import type { Filtered } from "spec/fixtures/Filtered.ts";');

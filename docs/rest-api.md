@@ -47,13 +47,13 @@ entity leaves no route module and no client module behind.
 
 One collection per entity that exposes one. The collection sits at the
 `@pgTable` name and exposes what its `@restQueries`, `@restRepository`, and
-`@restNotify` tags name: a write `@repository` generates but `@restRepository`
+`@restWatch` tags name: a write `@repository` generates but `@restRepository`
 omits is reachable to backend callers and absent from the route table and the
 SDK, and an entity that carries no `@restQueries query` has no read route.
-`@restNotify` adds one server-sent event stream at `/<table>/watch` taking
+`@restWatch` adds one server-sent event stream at `/<table>/watch` taking
 `{ pks?, filter?, ops? }` in `q`. `pks` is required when only `rows` is
 exposed, named nowhere when only `all` is exposed, and optional when both are.
-`filter` is present when a field of the entity carries `@notifyFilter`, and its
+`filter` is present when a field of the entity carries `@watchFilter`, and its
 fields are the ones that tag marks. The stream has no `Call` builder, since it
 opens a connection rather than sending one request; the SDK generates
 `watch<Entity>(http, onChange, options)` for `all` and

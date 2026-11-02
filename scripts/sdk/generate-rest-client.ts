@@ -114,8 +114,8 @@ export function renderClientModule(entity: RestEntity): string {
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
-    const watchAll = watchOperation !== undefined && entity.restNotify.includes("all");
-    const watchRows = watchOperation !== undefined && entity.restNotify.includes("rows");
+    const watchAll = watchOperation !== undefined && entity.restWatch.includes("all");
+    const watchRows = watchOperation !== undefined && entity.restWatch.includes("rows");
 
     const selectionTypes = ["Selection", "Selected"];
     if (entity.filters.length > 0) {
@@ -136,7 +136,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
     }
     // A filter names the entity's fields, so the stream's type needs it too.
-    if (!query && watchOperation && entity.notifyFilters.length > 0) {
+    if (!query && watchOperation && entity.watchFilters.length > 0) {
         lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
     }
     // The write types come from this package's schema modules; a type-only import keeps `zod` out of the runtime.
@@ -179,7 +179,7 @@ export function renderClientModule(entity: RestEntity): string {
         if (watchAll) {
             watchTypes.push("AllWatchEvent");
         }
-        if (entity.notifyFilters.length > 0) {
+        if (entity.watchFilters.length > 0) {
             watchTypes.push("WatchFilter");
         }
         watchTypes.sort((a, b) => a.localeCompare(b));
@@ -207,8 +207,8 @@ export function renderClientModule(entity: RestEntity): string {
 
     if (watchOperation) {
         const key = keyType(entity);
-        const filter = entity.notifyFilters.length > 0
-            ? `WatchFilter<${name}, ${entity.notifyFilters.map((field) => JSON.stringify(field)).join(" | ")}>`
+        const filter = entity.watchFilters.length > 0
+            ? `WatchFilter<${name}, ${entity.watchFilters.map((field) => JSON.stringify(field)).join(" | ")}>`
             : undefined;
         const filterField = filter === undefined ? "" : `; filter?: ${filter} | undefined`;
         lines.push("");

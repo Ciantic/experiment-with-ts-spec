@@ -98,8 +98,8 @@ const NOTIFIED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  * @entity
  */
 export interface Notified {
@@ -116,8 +116,8 @@ const WATCHED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @notify rows
- * @restNotify rows
+ * @watch rows
+ * @restWatch rows
  * @entity
  */
 export interface Watched {
@@ -221,27 +221,27 @@ describe("buildRestModel", () => {
             "watch",
             "create",
         ]);
-        expect(entity?.notify).toEqual(["all", "rows"]);
-        expect(entity?.restNotify).toEqual(["all", "rows"]);
-        expect(entity?.notifyFilters).toEqual([]);
+        expect(entity?.watch).toEqual(["all", "rows"]);
+        expect(entity?.restWatch).toEqual(["all", "rows"]);
+        expect(entity?.watchFilters).toEqual([]);
     });
 
-    it("records the fields @notifyFilter marks", () => {
+    it("records the fields @watchFilter marks", () => {
         const filtered = NOTIFIED.replace(
             "/** @primaryKey */",
-            "/**\n     * @primaryKey\n     * @notifyFilter\n     */",
+            "/**\n     * @primaryKey\n     * @watchFilter\n     */",
         );
         const entity = build({ Notified: filtered }).entities[0];
 
-        expect(entity?.notifyFilters).toEqual(["id"]);
+        expect(entity?.watchFilters).toEqual(["id"]);
     });
 
     it("reports a notification scope the entity does not declare", () => {
-        const bad = NOTIFIED.replace("@notify all rows", "@notify all");
+        const bad = NOTIFIED.replace("@watch all rows", "@watch all");
         const diagnostics = build({ Notified: bad }).diagnostics;
 
         expect(messages(diagnostics)).toEqual([
-            "`Notified`: @restNotify `rows` is not in @notify",
+            "`Notified`: @restWatch `rows` is not in @watch",
         ]);
     });
 
@@ -255,8 +255,8 @@ describe("buildRestModel", () => {
             path: "/watched/watch",
             source: "query",
         });
-        expect(entity?.notify).toEqual(["rows"]);
-        expect(entity?.restNotify).toEqual(["rows"]);
+        expect(entity?.watch).toEqual(["rows"]);
+        expect(entity?.restWatch).toEqual(["rows"]);
     });
 
     it("encodes every call that carries no row data into the query string", () => {

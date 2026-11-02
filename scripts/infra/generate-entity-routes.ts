@@ -64,20 +64,20 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     }
 }
 
-/** The entity's own schema, whose picked fields validate a `@notifyFilter` value. */
+/** The entity's own schema, whose picked fields validate a `@watchFilter` value. */
 function entitySchemaName(entity: RestEntity): string {
     return `${entity.module}Schema`;
 }
 
-/** The filter object a watch accepts: the fields `@notifyFilter` declares, each optional. */
-function notifyFilterExpression(entity: RestEntity): string {
-    const picked = entity.notifyFilters.map((field) => `${field}: true`).join(", ");
+/** The filter object a watch accepts: the fields `@watchFilter` declares, each optional. */
+function watchFilterExpression(entity: RestEntity): string {
+    const picked = entity.watchFilters.map((field) => `${field}: true`).join(", ");
     return `${entitySchemaName(entity)}.pick({ ${picked} }).partial().strict().optional()`;
 }
 
 /** The filter type a watch handler passes through. */
-function notifyFilterType(entity: RestEntity): string {
-    return `WatchFilter<${entity.entity}, ${entity.notifyFilters.map((field) => JSON.stringify(field)).join(" | ")}>`;
+function watchFilterType(entity: RestEntity): string {
+    return `WatchFilter<${entity.entity}, ${entity.watchFilters.map((field) => JSON.stringify(field)).join(" | ")}>`;
 }
 
 /** The generated schema expression for the operations a stream may select. */
@@ -88,9 +88,9 @@ function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "watch") {
         const keys = `z.array(${schemaName(entity, kind) as string})`;
         const ops = `ops: ${OPS_SCHEMA}.optional()`;
-        const filter = entity.notifyFilters.length > 0 ? `filter: ${notifyFilterExpression(entity)}` : undefined;
-        const all = entity.restNotify.includes("all");
-        const rows = entity.restNotify.includes("rows");
+        const filter = entity.watchFilters.length > 0 ? `filter: ${watchFilterExpression(entity)}` : undefined;
+        const all = entity.restWatch.includes("all");
+        const rows = entity.restWatch.includes("rows");
         const members: string[] = [];
         if (all && rows) {
             members.push(`pks: ${keys}.optional()`);
@@ -126,10 +126,10 @@ function queryFunctions(entity: RestEntity): string[] {
             names.add(operation.id);
         } else if (operation.kind === "watch") {
             // The all stream is the table watch; the rows stream is its own function.
-            if (entity.restNotify.includes("all")) {
+            if (entity.restWatch.includes("all")) {
                 names.add(operation.id);
             }
-            if (entity.restNotify.includes("rows")) {
+            if (entity.restWatch.includes("rows")) {
                 names.add(`${operation.id}Rows`);
             }
         }
@@ -146,7 +146,7 @@ function inputSchemas(entity: RestEntity): string[] {
         }),
     );
     // A watch filter picks its fields out of the entity's own schema.
-    if (entity.restNotify.length > 0 && entity.notifyFilters.length > 0) {
+    if (entity.restWatch.length > 0 && entity.watchFilters.length > 0) {
         names.add(entitySchemaName(entity));
     }
     return [...names].sort((a, b) => a.localeCompare(b));
@@ -168,13 +168,13 @@ export function renderEntityRoutes(entity: RestEntity): string {
     }
     if (streams) {
         lines.push(`import { SseStream } from "../sse.ts";`);
-        const watchTypes = entity.restNotify.length > 0 && entity.notifyFilters.length > 0 ? ["WatchFilter", "WatchOperation"] : ["WatchOperation"];
+        const watchTypes = entity.restWatch.length > 0 && entity.watchFilters.length > 0 ? ["WatchFilter", "WatchOperation"] : ["WatchOperation"];
         lines.push(`import type { ${watchTypes.join(", ")} } from "sdk/watch.ts";`);
     }
-    if (watches && entity.notifyFilters.length > 0) {
+    if (watches && entity.watchFilters.length > 0) {
         lines.push(`import type { ${entity.entity} } from "${entity.importSpecifier}";`);
     }
-    if (watches && entity.restNotify.includes("rows")) {
+    if (watches && entity.restWatch.includes("rows")) {
         lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
     }
     if (repositories.length > 0) {
@@ -201,13 +201,13 @@ export function renderEntityRoutes(entity: RestEntity): string {
         }
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
         if (operation.kind === "watch") {
-            const all = entity.restNotify.includes("all");
-            const rows = entity.restNotify.includes("rows");
+            const all = entity.restWatch.includes("all");
+            const rows = entity.restWatch.includes("rows");
             const keyType = `${entity.entity}PrimaryKey`;
-            const filter = entity.notifyFilters.length > 0;
+            const filter = entity.watchFilters.length > 0;
             const bodyFields = [
                 ...(rows ? [`pks${all ? "?" : ""}: ${keyType}[]`] : []),
-                ...(filter ? [`filter?: ${notifyFilterType(entity)}`] : []),
+                ...(filter ? [`filter?: ${watchFilterType(entity)}`] : []),
                 "ops?: WatchOperation[]",
             ].join("; ");
             if (all && rows) {

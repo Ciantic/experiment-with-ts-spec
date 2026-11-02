@@ -55,8 +55,8 @@ const NOTIFIED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  * @entity
  */
 export interface Notified {
@@ -73,8 +73,8 @@ const WATCHED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @notify rows
- * @restNotify rows
+ * @watch rows
+ * @restWatch rows
  * @entity
  */
 export interface Watched {
@@ -91,15 +91,15 @@ const FILTERED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  * @entity
  */
 export interface Filtered {
     /** @primaryKey */
     id: string;
 
-    /** @notifyFilter */
+    /** @watchFilter */
     tenantId: string;
 }
 `.trim();
@@ -311,7 +311,7 @@ export interface Internal {
         expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
     });
 
-    it("accepts a typed filter when the entity declares @notifyFilter", () => {
+    it("accepts a typed filter when the entity declares @watchFilter", () => {
         const entity = build({ Filtered: FILTERED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the filtered entity");

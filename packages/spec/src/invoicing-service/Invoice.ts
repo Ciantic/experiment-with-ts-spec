@@ -20,8 +20,8 @@ export type InvoiceId = BrandedId<"InvoiceId">;
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
- * @notify all rows
- * @restNotify all rows
+ * @watch all rows
+ * @restWatch all rows
  */
 export interface Invoice {
     /**
@@ -39,7 +39,7 @@ export interface Invoice {
      * @fieldName Tenant ID
      * @queryFilter
      * @foreignKey Tenant
-     * @notifyFilter
+     * @watchFilter
      * @widget text
      */
     tenantId: TenantId;

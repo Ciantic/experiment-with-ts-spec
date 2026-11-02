@@ -88,7 +88,7 @@ function settle(): Promise<void> {
 const ALL_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @notify all
+ * @watch all
  */
 export interface Widget {
     /** @primaryKey */
@@ -99,7 +99,7 @@ export interface Widget {
 const ROWS_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @notify rows
+ * @watch rows
  */
 export interface Widget {
     /** @primaryKey */
@@ -110,12 +110,12 @@ export interface Widget {
 const FILTERED_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @notify all
+ * @watch all
  */
 export interface Widget {
     /** @primaryKey */
     id: GUID;
-    /** @notifyFilter */
+    /** @watchFilter */
     tenantId: GUID;
     name: string;
 }`;
@@ -940,12 +940,12 @@ describe("generateSchema triggers", () => {
         expect(sql).not.toContain("create function");
     });
 
-    it("notifies the table's channel once per change when the entity declares the notify read", () => {
+    it("notifies the table's channel once per change when the entity declares the watch scope", () => {
         const { sql } = generate({
             entities: {
                 Thing: `/**
                  * @entity
-                 * @notify all
+                 * @watch all
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -962,12 +962,12 @@ describe("generateSchema triggers", () => {
         expect(sql).toContain("    for each statement execute function \"thing_notify\"();");
     });
 
-    it("publishes the primary key per row when the entity declares the watch read", () => {
+    it("publishes the primary key per row when the entity declares the watch scope", () => {
         const { sql } = generate({
             entities: {
                 Thing: `/**
                  * @entity
-                 * @notify rows
+                 * @watch rows
                  */
                 export interface Thing {
                     /** @primaryKey */

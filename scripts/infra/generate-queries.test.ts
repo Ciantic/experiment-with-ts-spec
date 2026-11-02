@@ -30,8 +30,8 @@ function table(
         triggers: [],
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
-        notify: [],
-        notifyFilters: [],
+        watch: [],
+        watchFilters: [],
     };
 }
 
@@ -284,7 +284,7 @@ describe("renderQueryModule", () => {
 
 describe("renderWatchModule", () => {
     it("renders an all-only watch with no key filter", () => {
-        const code = renderWatchModule("Invoice", { ...invoice, notify: ["all"] });
+        const code = renderWatchModule("Invoice", { ...invoice, watch: ["all"] });
 
         expect(code).toContain('import type { AllWatchEvent, WatchOperation } from "sdk/watch.ts";');
         expect(code).toContain(
@@ -295,7 +295,7 @@ describe("renderWatchModule", () => {
     });
 
     it("renders a rows-only watch with a required key filter", () => {
-        const code = renderWatchModule("Invoice", { ...invoice, notify: ["rows"] });
+        const code = renderWatchModule("Invoice", { ...invoice, watch: ["rows"] });
 
         expect(code).toContain('import type { InvoicePrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('import type { WatchEvent, WatchOperation } from "sdk/watch.ts";');
@@ -307,18 +307,18 @@ describe("renderWatchModule", () => {
     });
 
     it("renders one function per scope when all and rows are both declared", () => {
-        const code = renderWatchModule("Invoice", { ...invoice, notify: ["all", "rows"] });
+        const code = renderWatchModule("Invoice", { ...invoice, watch: ["all", "rows"] });
 
         expect(code).toContain("export function watchInvoice(");
         expect(code).toContain("export function watchInvoiceRows(");
         expect(code).not.toContain("): AsyncIterable<WatchEvent<InvoicePrimaryKey>>;");
     });
 
-    it("accepts a typed filter when @notifyFilter names a field", () => {
+    it("accepts a typed filter when @watchFilter names a field", () => {
         const code = renderWatchModule("Invoice", {
             ...invoice,
-            notify: ["all", "rows"],
-            notifyFilters: ["customerId"],
+            watch: ["all", "rows"],
+            watchFilters: ["customerId"],
         });
 
         expect(code).toContain('import type { Invoice } from "spec/fixtures/Invoice.ts";');
@@ -346,7 +346,7 @@ describe("generateQueries", () => {
     });
 
     it("writes one watch module for an entity that declares a notification scope", () => {
-        const notified = { ...invoice, notify: ["all"] as Table["notify"] };
+        const notified = { ...invoice, watch: ["all"] as Table["watch"] };
         const files = generateQueries(new Map([["Invoice", notified]]));
 
         expect([...files.keys()].sort()).toEqual([
