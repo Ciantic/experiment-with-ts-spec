@@ -146,6 +146,10 @@ values, all of which are domain decisions rather than code behaviour.
   source strings: a documented throw passes, a missing or reasonless `@throws`
   fails, and a plain `Error` fails. It runs through Oxlint's own `RuleTester`, so
   the rule is exercised by the engine that will apply it.
+- `scripts/oxlint/closures.test.ts` — the closure-factory rule, with fixture
+  source strings: a handler over a `map` or `transaction` callback passes, an
+  object method over a factory local fails, and a parameter or import is not
+  counted as state. It also runs through `RuleTester`.
 
 ## Gotchas
 

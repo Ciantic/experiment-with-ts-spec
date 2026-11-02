@@ -1,7 +1,13 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "jsPlugins": ["./scripts/oxlint/errors.ts", "./scripts/oxlint/comments.ts", "./scripts/oxlint/scaffold.ts"],
+    "jsPlugins": [
+        "./scripts/oxlint/errors.ts",
+        "./scripts/oxlint/comments.ts",
+        "./scripts/oxlint/scaffold.ts",
+        "./scripts/oxlint/closures.ts"
+    ],
     "rules": {
+        "closures/factory-closure": "warn",
         "errors/throws-jsdoc": "error",
         "errors/no-plain-error": "error",
         "comments/single-line": ["error", { "maxWidth": 150 }],
