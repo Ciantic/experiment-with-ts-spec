@@ -1,7 +1,7 @@
 /** Unit tests for the client renderer, driven by fixtures; the emitted imports are the invariant. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createHttpClient } from "../../packages/sdk/src/http.ts";
+import { ApiClient } from "../../packages/sdk/src/http.ts";
 import { SPEC_SRC_ROOT, parseInMemorySpec, tsLoadGeneratedModule, tsStubImports } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "./rest-model.ts";
 import { generateRestClient, renderClientModule } from "./generate-rest-client.ts";
@@ -445,7 +445,7 @@ describe("watch helpers", () => {
             onChange: (event: unknown) => void,
             opts: { pks: { id: string }[]; ops?: string[] },
         ) => { close(): void };
-        const http = createHttpClient("http://api.example");
+        const http = new ApiClient("http://api.example");
         const onChange = (event: unknown) => events.push(event);
 
         all(http, onChange, { ops: ["DELETE"] });

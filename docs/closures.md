@@ -74,11 +74,11 @@ listener registry, an event stream. The class gives the state a name, a
 constructor that establishes its invariant, and a `#field` that only its
 methods can reach.
 
-A factory that only wires immutable dependencies stays a function: it builds a
-table from the routes it is given, or wraps a platform object it returns
-unchanged. A class there adds `this`, a `new` call, and a wrapper around an
-object the platform already owns, without adding encapsulation — a closure is
-already private.
+A value that is part of the API is a class even when its dependencies are
+immutable. A router, a server, and a client each get a name the entry point and
+the tests can hold, and an interface can describe; their fields are `readonly`
+and the constructor is the only place that assembles them. A short-lived helper
+that builds a value and returns it stays a function.
 
 `scripts/oxlint/closures.test.ts` drives the rule with in-memory fixtures, so
 the test asserts the rule's contract rather than the repository's current

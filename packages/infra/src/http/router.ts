@@ -52,56 +52,74 @@ export interface Route {
     handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
 }
 
+/** 
+ * The router a server drives: one request in, one answer out. 
+ * 
+ * @see {ApiRouter} to create an instance of the router
+ **/
+export interface HttpRouter {
+    /** Match, read, decode, validate, call, and answer one request. */
+    handle(request: IncomingMessage): Promise<unknown>;
+}
+
 /** A router over a route table, building one request context per call over the app's driver. */
-export function createRouter(app: AppContext, routes: Route[]) {
-    const byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
-    const byId = new Map(routes.map((route) => [route.id, route]));
-    /** Resolve a single request and a group entry out of one table, so the two cannot disagree. */
-    const resolve = (method: string, path: string) => byKey.get(`${method} ${path}`);
+export class ApiRouter implements HttpRouter {
+    readonly #app: AppContext;
+    readonly #byKey: Map<string, Route>;
+    readonly #byId: Map<string, Route>;
 
-    return {
-        /**
-         * Match, read, decode, validate, call, and answer one request.
-         * @throws {PayloadTooLargeError} when the body passes the byte cap
-         * @throws {NotFoundError} when no route matches the method and path
-         * @throws {RequestError} when the argument does not decode
-         * @throws {ValidationError} when the route's schema rejects the argument
-         */
-        async handle(request: IncomingMessage): Promise<unknown> {
-            const url = new URL(request.url ?? "/", "http://localhost");
-            // A missing method is read as `GET`, the method a request without one carries.
-            const method = request.method ?? "GET";
-            // One context per request, so a route never reaches for a dependency the router did not hand it.
-            const context = await createRequestContext(app, request);
-            const body = await readBody(request);
+    constructor(app: AppContext, routes: Route[]) {
+        this.#app = app;
+        this.#byKey = new Map(routes.map((route) => [`${route.method} ${route.path}`, route]));
+        this.#byId = new Map(routes.map((route) => [route.id, route]));
+    }
 
-            if (method === "POST" && url.pathname === GROUP_PATH) {
-                // A group entry names an operation rather than a verb and a path, so it resolves by id.
-                return await handleGroup(context.db, (id) => byId.get(id), body);
-            }
+    /** Resolve a request by its method and path. */
+    #resolve(method: string, path: string): Route | undefined {
+        return this.#byKey.get(`${method} ${path}`);
+    }
 
-            const route = resolve(method, url.pathname);
-            if (!route) {
-                throw new NotFoundError("no route");
-            }
+    /**
+     * Match, read, decode, validate, call, and answer one request.
+     * @throws {PayloadTooLargeError} when the body passes the byte cap
+     * @throws {NotFoundError} when no route matches the method and path
+     * @throws {RequestError} when the argument does not decode
+     * @throws {ValidationError} when the route's schema rejects the argument
+     */
+    async handle(request: IncomingMessage): Promise<unknown> {
+        const url = new URL(request.url ?? "/", "http://localhost");
+        // A missing method is read as `GET`, the method a request without one carries.
+        const method = request.method ?? "GET";
+        // One context per request, so a route never reaches for a dependency the router did not hand it.
+        const context = await createRequestContext(this.#app, request);
+        const body = await readBody(request);
 
-            // A `query` call carries its argument in `q`; a `body` call in the request body.
-            const encoded =
-                route.source === "query" ? (url.searchParams.get("q") ?? undefined) : body === "" ? undefined : body;
+        if (method === "POST" && url.pathname === GROUP_PATH) {
+            // A group entry names an operation rather than a verb and a path, so it resolves by id.
+            return await handleGroup(context.db, (id) => this.#byId.get(id), body);
+        }
 
-            let value: unknown;
-            try {
-                value = encoded === undefined ? undefined : decode(encoded);
-            } catch {
-                throw new RequestError("malformed request");
-            }
+        const route = this.#resolve(method, url.pathname);
+        if (!route) {
+            throw new NotFoundError("no route");
+        }
 
-            const parsed = route.input.safeParse(value);
-            if (!parsed.success) {
-                throw new ValidationError("invalid request", { issues: parsed.error.issues });
-            }
+        // A `query` call carries its argument in `q`; a `body` call in the request body.
+        const encoded =
+            route.source === "query" ? (url.searchParams.get("q") ?? undefined) : body === "" ? undefined : body;
 
-            return await route.handler(context, parsed.data);
-        },
-    };
+        let value: unknown;
+        try {
+            value = encoded === undefined ? undefined : decode(encoded);
+        } catch {
+            throw new RequestError("malformed request");
+        }
+
+        const parsed = route.input.safeParse(value);
+        if (!parsed.success) {
+            throw new ValidationError("invalid request", { issues: parsed.error.issues });
+        }
+
+        return await route.handler(context, parsed.data);
+    }
 }

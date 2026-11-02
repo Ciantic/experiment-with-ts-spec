@@ -46,6 +46,7 @@ const BYTEA = 17;
 const BYTEA_ARRAY = 1001;
 
 /** PostgreSQL result parsers, ported from https://github.com/Ciantic/pg-unified-mapping. */
+// oxlint-disable-next-line closures/factory-closure -- the parsers are pure and immutable
 export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
     const textParser = (value: string) => value;
     const textArrayParser = (value: string) => pg.types.arrayParser.create(value).parse();

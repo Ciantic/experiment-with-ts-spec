@@ -7,7 +7,7 @@ import {
     NoMatchingRowError,
     ValidationError,
     VersionConflictError,
-    createHttpClient,
+    ApiClient,
 } from "./http.ts";
 
 interface Recorded {
@@ -28,9 +28,9 @@ function stubFetch(response: Response): { calls: Recorded[]; impl: typeof fetch 
 /** A value with both of the types a JSON encoding would lose. */
 const payload = { at: new Date("2026-01-02T03:04:05.000Z"), revision: 7n, name: "widget" };
 
-describe("createHttpClient.url", () => {
+describe("ApiClient.url", () => {
     it("builds the URL a stream helper hands to an EventSource", () => {
-        const http = createHttpClient("http://api.example/");
+        const http = new ApiClient("http://api.example/");
 
         const url = new URL(http.url("/widget/watch", { keys: [{ id: "a" }] }));
 
@@ -39,16 +39,16 @@ describe("createHttpClient.url", () => {
     });
 
     it("omits `q` when the argument is absent", () => {
-        const http = createHttpClient("http://api.example");
+        const http = new ApiClient("http://api.example");
 
         expect(http.url("/widget/notify")).toBe("http://api.example/widget/notify");
     });
 });
 
-describe("createHttpClient.query", () => {
+describe("ApiClient.query", () => {
     it("joins the base url, the path, and the encoded argument", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example/", stub.impl);
+        const http = new ApiClient("http://api.example/", stub.impl);
 
         await http.query("GET", "/widget/query", payload);
 
@@ -59,7 +59,7 @@ describe("createHttpClient.query", () => {
 
     it("round-trips through URLSearchParams, as the server reads it", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         await http.query("GET", "/widget/query", payload);
 
@@ -69,7 +69,7 @@ describe("createHttpClient.query", () => {
 
     it("sends no body and no content type", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         await http.query("GET", "/widget/query", payload);
 
@@ -80,7 +80,7 @@ describe("createHttpClient.query", () => {
 
     it("omits the parameter when there is no argument", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         await http.query("DELETE", "/widget");
 
@@ -88,10 +88,10 @@ describe("createHttpClient.query", () => {
     });
 });
 
-describe("createHttpClient.send", () => {
+describe("ApiClient.send", () => {
     it("sends the body as devalue under the json content type", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         await http.send("POST", "/widget", [payload]);
 
@@ -102,7 +102,7 @@ describe("createHttpClient.send", () => {
 
     it("carries the verb through", async () => {
         const stub = stubFetch(new Response(stringify(null), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         await http.send("PATCH", "/widget", []);
 
@@ -110,10 +110,10 @@ describe("createHttpClient.send", () => {
     });
 });
 
-describe("createHttpClient responses", () => {
+describe("ApiClient responses", () => {
     it("decodes a response, restoring a Date and a bigint", async () => {
         const stub = stubFetch(new Response(stringify(payload), { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         const result = await http.query("GET", "/widget/query", {});
 
@@ -122,7 +122,7 @@ describe("createHttpClient responses", () => {
 
     it("resolves undefined when the response carries no body", async () => {
         const stub = stubFetch(new Response("", { status: 200 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         expect(await http.send("POST", "/widget", [])).toBeUndefined();
     });
@@ -131,7 +131,7 @@ describe("createHttpClient responses", () => {
         const stub = stubFetch(
             new Response(JSON.stringify({ error: "version conflict" }), { status: 409 }),
         );
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         const failure = await http.send("PATCH", "/widget", []).catch((thrown: unknown) => thrown);
 
@@ -145,7 +145,7 @@ describe("createHttpClient responses", () => {
         const stub = stubFetch(
             new Response(JSON.stringify({ error: "no row", kind: "version-conflict" }), { status: 409 }),
         );
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         const failure = await http.send("PATCH", "/widget", []).catch((thrown: unknown) => thrown);
 
@@ -167,10 +167,10 @@ describe("createHttpClient responses", () => {
             new Response(JSON.stringify({ error: "invalid", kind: "validation", issues }), { status: 400 }),
         );
 
-        const stale = await createHttpClient("http://api.example", pathStub.impl)
+        const stale = await new ApiClient("http://api.example", pathStub.impl)
             .send("PATCH", "/widget", [])
             .catch((thrown: unknown) => thrown);
-        const invalid = await createHttpClient("http://api.example", issuesStub.impl)
+        const invalid = await new ApiClient("http://api.example", issuesStub.impl)
             .send("POST", "/widget", [])
             .catch((thrown: unknown) => thrown);
 
@@ -186,7 +186,7 @@ describe("createHttpClient responses", () => {
                 status: 501,
             }),
         );
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         const failure = await http.send("POST", "/widget", []).catch((thrown: unknown) => thrown);
 
@@ -196,7 +196,7 @@ describe("createHttpClient responses", () => {
 
     it("keeps a non-JSON error body as text", async () => {
         const stub = stubFetch(new Response("upstream is down", { status: 502 }));
-        const http = createHttpClient("http://api.example", stub.impl);
+        const http = new ApiClient("http://api.example", stub.impl);
 
         const failure = await http.query("GET", "/widget/query", {}).catch((thrown: unknown) => thrown);
 

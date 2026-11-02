@@ -1,30 +1,19 @@
 /** The backend entry point: run an API server, optionally seeded with mock data. See docs/mockdata.md. */
-import type { Server } from "node:http";
 import { pathToFileURL } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import {
-    createApiServer,
+    ApiServer,
     createAppContext,
     PgliteSqlDriver,
     seedMockData,
     UsageError,
     type AppContext,
+    type HttpServer,
 } from "infra";
 import { routes } from "./http/routes/index.ts";
 
 /** The port used when `--port` is absent. */
 const DEFAULT_PORT = 3000;
-
-/** Listen on `port`; `0` picks a free one. Resolves with the bound port. */
-function listen(server: Server, port: number): Promise<number> {
-    return new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, () => {
-            const address = server.address();
-            resolve(typeof address === "object" && address !== null ? address.port : port);
-        });
-    });
-}
 
 /** How a server is started. */
 export interface StartOptions {
@@ -36,7 +25,7 @@ export interface StartOptions {
 
 /** A running server and the context behind it. */
 export interface StartedServer {
-    server: Server;
+    server: HttpServer;
     app: AppContext;
     port: number;
 }
@@ -49,8 +38,8 @@ export async function startServer(options: StartOptions = {}): Promise<StartedSe
     if (options.seed) {
         await seedMockData(app.driver.createExecutor());
     }
-    const server = createApiServer(app, routes);
-    const port = await listen(server, options.port ?? DEFAULT_PORT);
+    const server = new ApiServer(app, routes);
+    const port = await server.listen(options.port ?? DEFAULT_PORT);
     return { server, app, port };
 }
 

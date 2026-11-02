@@ -71,7 +71,7 @@ export function watch<T = void>(
         const data = event?.data;
         onChange((typeof data === "string" && data !== "" ? decode(data) : undefined) as T);
     };
-    return { close: () => source.close() };
+    return source;
 }
 
 /** The platform's `EventSource`, when it has one.

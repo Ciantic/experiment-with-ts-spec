@@ -19,17 +19,20 @@ the transport.
   calls a `@restOperation` declares, plus the `index.ts` barrel joining infra's
   `entityRoutes` with them into the table the router matches a request on and
   the group handler resolves an id in. See `docs/operations.md`.
-- `packages/infra/src/http/router.ts` — the request handler. Hand-written.
+- `packages/infra/src/http/router.ts` — the `ApiRouter` class and the
+  `HttpRouter` interface, the request handler. Hand-written.
 - `packages/infra/src/http/api-http-response.ts` — the `ApiHttpResponse` class,
   which holds a response's payload and encodes it in its wire form. Hand-written.
-- `packages/infra/src/http/server.ts` — a `node:http` server. Hand-written.
+- `packages/infra/src/http/server.ts` — the `ApiServer` class and the
+  `HttpServer` interface, a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
   re-exporting them. Imported by name, not re-exported by the entry.
 - `packages/sdk/src/index.ts` — the package entry: the call model and the
   transport, and nothing generated. Hand-written.
 - `packages/sdk/src/client.ts` — the call model: builders, `exec`, and the
   combinators. Hand-written.
-- `packages/sdk/src/http.ts` — the client transport and codec. Hand-written.
+- `packages/sdk/src/http.ts` — the `ApiClient` class and the `HttpClient`
+  interface it implements: the client transport and codec. Hand-written.
 - `packages/infra/src/http/group-handler.ts` — the group entry point.
   Hand-written; see `docs/transactions.md`.
 
@@ -362,7 +365,7 @@ No mode reaches the statement unvalidated.
   rather than a silent skip. An id that is not there answers the same way.
   `upsert` requires one too, and answers the same way when the stored row is at
   another version.
-- **The server reads no configuration.** `createApiServer(app, routes)` takes the
+- **The server reads no configuration.** `new ApiServer(app, routes)` takes the
   context startup built and the assembled route table; the caller owns the port
   and TLS.
 

@@ -10,7 +10,11 @@ export type QueryMethod = "GET" | "DELETE";
 /** The verbs that carry their argument in the request body. */
 export type SendMethod = "POST" | "PUT" | "PATCH";
 
-/** What the generated modules call. */
+/** 
+ * What the generated modules call. 
+ * 
+ * @see {ApiClient} to create instance of the client
+ **/
 export interface HttpClient {
     /** The root every path is appended to, so a generated long-lived helper can build its own URL. */
     readonly baseUrl: string;
@@ -64,29 +68,52 @@ function readError(text: string): unknown {
     }
 }
 
-/**
- * A client over `baseUrl`, using `fetch` unless another implementation is given.
- * @throws {AppError} the error class the response names, or `HttpError` when it names none
- */
-export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetch): HttpClient {
-    const base = baseUrl.replace(/\/$/, "");
-    const urlFor = (path: string, argument?: unknown): string =>
-        argument === undefined
-            ? `${base}${path}`
-            : `${base}${path}?q=${encodeURIComponent(encode(argument))}`;
+/** A client over `baseUrl`, using `fetch` unless another implementation is given. */
+export class ApiClient implements HttpClient {
+    /** The root every path is appended to, with a trailing slash removed. */
+    readonly baseUrl: string;
+    readonly #fetchImpl: typeof fetch;
+
+    constructor(baseUrl: string, fetchImpl: typeof fetch = fetch) {
+        this.baseUrl = baseUrl.replace(/\/$/, "");
+        this.#fetchImpl = fetchImpl;
+    }
+
+    /** The URL a call with its argument in `q` would use; an `EventSource` takes a URL rather than a call. */
+    url(path: string, argument?: unknown): string {
+        return argument === undefined
+            ? `${this.baseUrl}${path}`
+            : `${this.baseUrl}${path}?q=${encodeURIComponent(encode(argument))}`;
+    }
+
+    /**
+     * Send the argument as the `q` query parameter: the reads and the delete.
+     * @throws {AppError} the error class the response names, or `HttpError` when it names none
+     */
+    async query<T>(method: QueryMethod, path: string, argument?: unknown): Promise<T> {
+        return await this.#send(method, this.url(path, argument), undefined);
+    }
+
+    /**
+     * Send the argument as the request body: the writes that carry rows.
+     * @throws {AppError} the error class the response names, or `HttpError` when it names none
+     */
+    async send<T>(method: SendMethod, path: string, body: unknown): Promise<T> {
+        return await this.#send(method, `${this.baseUrl}${path}`, encode(body));
+    }
 
     /**
      * Send one request and decode its answer, raising the error the body names.
      * @throws {AppError} the error class the response names, or `HttpError` when it names none
      */
-    async function run<T>(method: string, url: string, body: string | undefined): Promise<T> {
+    async #send<T>(method: string, url: string, body: string | undefined): Promise<T> {
         const init: RequestInit = { method };
         if (body !== undefined) {
             init.headers = { "content-type": "application/json" };
             init.body = body;
         }
 
-        const response = await fetchImpl(url, init);
+        const response = await this.#fetchImpl(url, init);
         const text = await response.text();
         if (!response.ok) {
             const failure = readError(text);
@@ -95,15 +122,4 @@ export function createHttpClient(baseUrl: string, fetchImpl: typeof fetch = fetc
         // A void call answers `null`, which the generated signature types as `void`.
         return (text === "" ? undefined : decode(text)) as T;
     }
-
-    return {
-        baseUrl: base,
-        url: urlFor,
-        query(method, path, argument) {
-            return run(method, urlFor(path, argument), undefined);
-        },
-        send(method, path, body) {
-            return run(method, `${base}${path}`, encode(body));
-        },
-    };
 }

@@ -18,7 +18,7 @@ import type { AppContext } from "../context.ts";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
-import { createRouter, type Route, type RouteInput } from "./router.ts";
+import { ApiRouter, type Route, type RouteInput } from "./router.ts";
 
 /** The request the server hands the router: a stream over `body`, plus the method and URL Node sets on it. */
 function request(method: string, url: string, body = ""): IncomingMessage {
@@ -122,9 +122,9 @@ async function failure(promise: Promise<unknown>): Promise<unknown> {
     throw new Error("expected the request to fail");
 }
 
-describe("createRouter", () => {
+describe("ApiRouter", () => {
     it("throws NotFoundError for a call the table does not expose", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
 
         const thrown = await failure(router.handle(request("POST", "/missing")));
 
@@ -132,7 +132,7 @@ describe("createRouter", () => {
     });
 
     it("matches on the method as well as the path", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
 
         const thrown = await failure(router.handle(request("PATCH", "/echo")));
 
@@ -140,13 +140,13 @@ describe("createRouter", () => {
     });
 
     it("serves a PUT, the verb an upsert reaches the server with", async () => {
-        const router = createRouter(app, [echoRoute({ method: "PUT" })]);
+        const router = new ApiRouter(app, [echoRoute({ method: "PUT" })]);
 
         expect(await router.handle(request("PUT", "/echo", stringify(payload)))).toEqual(payload);
     });
 
     it("throws RequestError for a body that is not decodable", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
 
         const thrown = await failure(router.handle(request("POST", "/echo", "not devalue")));
 
@@ -155,7 +155,7 @@ describe("createRouter", () => {
     });
 
     it("refuses a body past the transport's cap", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
 
         const thrown = await failure(router.handle(request("POST", "/echo", "x".repeat(1_000_001))));
 
@@ -164,7 +164,7 @@ describe("createRouter", () => {
     });
 
     it("throws ValidationError with the issues when the schema rejects", async () => {
-        const router = createRouter(app, [echoRoute({ input: rejects })]);
+        const router = new ApiRouter(app, [echoRoute({ input: rejects })]);
 
         const thrown = await failure(router.handle(request("POST", "/echo")));
 
@@ -173,19 +173,19 @@ describe("createRouter", () => {
     });
 
     it("passes the decoded body to the handler and answers the result", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
 
         expect(await router.handle(request("POST", "/echo", stringify(payload)))).toEqual(payload);
     });
 
     it("decodes the query parameter for a call that carries its argument there", async () => {
-        const router = createRouter(app, [queryRoute()]);
+        const router = new ApiRouter(app, [queryRoute()]);
 
         expect(await router.handle(request("GET", queryUrl(payload)))).toEqual(payload);
     });
 
     it("reads the argument from where the route says, ignoring the other", async () => {
-        const router = createRouter(app, [queryRoute(), echoRoute()]);
+        const router = new ApiRouter(app, [queryRoute(), echoRoute()]);
 
         const fromQuery = await router.handle(
             request("GET", queryUrl({ from: "query" }), stringify({ from: "body" })),
@@ -199,7 +199,7 @@ describe("createRouter", () => {
     });
 
     it("throws RequestError for a query parameter that is not decodable", async () => {
-        const router = createRouter(app, [queryRoute()]);
+        const router = new ApiRouter(app, [queryRoute()]);
 
         const thrown = await failure(router.handle(request("GET", "/echo?q=not%20devalue")));
 
@@ -217,7 +217,7 @@ describe("createRouter", () => {
                 },
             },
         });
-        const router = createRouter(app, [route]);
+        const router = new ApiRouter(app, [route]);
 
         const value = await router.handle(request("GET", "/echo"));
 
@@ -233,7 +233,7 @@ describe("createRouter", () => {
             },
         });
         const own = createApp();
-        const router = createRouter(own.app, [route]);
+        const router = new ApiRouter(own.app, [route]);
 
         await router.handle(request("POST", "/echo"));
 
@@ -241,7 +241,7 @@ describe("createRouter", () => {
     });
 
     it("answers an undefined result as undefined", async () => {
-        const router = createRouter(app, [echoRoute({ handler: async () => undefined })]);
+        const router = new ApiRouter(app, [echoRoute({ handler: async () => undefined })]);
 
         expect(await router.handle(request("POST", "/echo"))).toBeUndefined();
     });
@@ -252,7 +252,7 @@ describe("createRouter", () => {
                 throw Object.assign(new Error("version conflict"), { code: "40001" });
             },
         });
-        const router = createRouter(app, [route]);
+        const router = new ApiRouter(app, [route]);
 
         const thrown = await failure(router.handle(request("POST", "/echo")));
 
@@ -265,7 +265,7 @@ describe("createRouter", () => {
         const cases = [new QueryError("bad read"), new VersionConflictError("stale"), new ShortWriteError("lost rows")];
 
         for (const thrown of cases) {
-            const router = createRouter(app, [
+            const router = new ApiRouter(app, [
                 echoRoute({
                     handler: async () => {
                         throw thrown;
@@ -293,7 +293,7 @@ describe("createRouter", () => {
     });
 
     it("opens a boundary when a handler asks for one, and no other", async () => {
-        const router = createRouter(app, [
+        const router = new ApiRouter(app, [
             echoRoute({
                 handler: async (ctx) => await ctx.db.transaction(async () => null),
             }),
@@ -305,7 +305,7 @@ describe("createRouter", () => {
     });
 
     it("serves the group path, handing the body to the group handler", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
         const body = stringify({
             group: { kind: "batch", calls: [{ call: { operation: "echo", argument: { n: 1 } } }] },
         });
@@ -316,7 +316,7 @@ describe("createRouter", () => {
     });
 
     it("resolves a group entry by its operation id, not its path", async () => {
-        const router = createRouter(app, [echoRoute()]);
+        const router = new ApiRouter(app, [echoRoute()]);
         const body = stringify({
             group: { kind: "batch", calls: [{ call: { operation: "/echo", argument: { n: 1 } } }] },
         });

@@ -203,10 +203,10 @@ data: {"op":"INSERT"}
 The SDK generates one helper per exposed scope:
 
 ```ts
-import { createHttpClient } from "sdk/index.ts";
+import { ApiClient } from "sdk/index.ts";
 import { watchWidget, watchWidgetRows } from "sdk/api/widget.ts";
 
-const http = createHttpClient("http://127.0.0.1:3000");
+const http = new ApiClient("http://127.0.0.1:3000");
 
 const all = watchWidget(http, (event) => {
     // event.op is INSERT, UPDATE, or DELETE

@@ -13,7 +13,7 @@ import {
     type Attempted,
     type Call,
 } from "./client.ts";
-import { createHttpClient, HttpError, VersionConflictError, type HttpClient } from "./http.ts";
+import { ApiClient, HttpError, VersionConflictError, type HttpClient } from "./http.ts";
 
 interface Recorded {
     url: string;
@@ -33,7 +33,7 @@ function stubFetch(response: Response): { calls: Recorded[]; impl: typeof fetch 
 /** A client over a stub that answers `body` with `status`. */
 function client(body: string, status = 200) {
     const stub = stubFetch(new Response(body, { status }));
-    return { ...stub, http: createHttpClient("http://api.example", stub.impl) };
+    return { ...stub, http: new ApiClient("http://api.example", stub.impl) };
 }
 
 /** The body a recorded request sent. */

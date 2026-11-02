@@ -89,7 +89,7 @@ class in `builtinErrors.ts` and an entry in its table, and a spec kind needs an
 
 ## The SDK
 
-`createHttpClient` parses the body of a non-2xx response and calls
+`ApiClient` parses the body of a non-2xx response and calls
 `apiErrorFromBody`. A known `kind` becomes its class with the response's status,
 and the message, path, and issues the body carried. An absent or unknown kind
 becomes `HttpError`, which extends `AppError` and keeps the raw `body`. So:
