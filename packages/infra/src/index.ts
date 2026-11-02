@@ -9,13 +9,14 @@ export { applySchema } from "./postgres/schema.ts";
 
 // Driver exports
 export { PgliteSqlDriver } from "./postgres/pglite-setup.ts";
-export type { PgliteConstructor } from "./postgres/pglite-setup.ts";
+export type { PgliteConstructor, PgliteDriverOptions } from "./postgres/pglite-setup.ts";
 export { PgSqlDriver } from "./postgres/pg-setup.ts";
+export type { PgMapperOptions } from "./postgres/pg-setup.ts";
 export { SqlDriver } from "./db/sql-driver.ts";
 export type { SqlConnection } from "./db/sql-driver.ts";
 
 // Error exports
-export { NotificationsUnsupportedError, UsageError } from "./errors.ts";
+export { NotificationsUnsupportedError } from "./errors.ts";
 
 // Database exports
 export { ACCESS_MODES, ISOLATION_LEVELS } from "./db/sql-executor.ts";

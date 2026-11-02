@@ -1,17 +1,7 @@
 /** `pg` driver setup: result type mapping, pool construction, and the driver the app injects. Mirrors src/postgres/pglite-setup.ts. */
-import type { Pool, PoolConfig } from "pg";
+import type * as pgRuntime from "pg";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import type { QueryResult, SqlSubscription } from "../db/sql-executor.ts";
-
-/** The subset of the `pg` module the mapper needs, taken as a parameter so `pg` stays an optional dependency. */
-export interface PgModule {
-    types: {
-        getTypeParser: (oid: number, format?: "text" | "binary") => (value: string) => unknown;
-        arrayParser: {
-            create: (source: string, transform?: unknown) => { parse: () => unknown[] };
-        };
-    };
-}
 
 /** Passed to `new pg.Client({ types: ... })` or `new pg.Pool({ types: ... })`. */
 export interface PgMapperOptions {
@@ -47,9 +37,9 @@ const BYTEA_ARRAY = 1001;
 
 /** PostgreSQL result parsers, ported from https://github.com/Ciantic/pg-unified-mapping. */
 // oxlint-disable-next-line closures/factory-closure -- the parsers are pure and immutable
-export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
+export function createPgMapperTypes(pg: typeof pgRuntime): PgMapperOptions {
     const textParser = (value: string) => value;
-    const textArrayParser = (value: string) => pg.types.arrayParser.create(value).parse();
+    const textArrayParser = (value: string) => (pg.types.arrayParser as any).create(value).parse();
 
     return {
         getTypeParser: (oid, format) => {
@@ -60,17 +50,17 @@ export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
             }
             if (oid === INT8_ARRAY) {
                 return (value: string) =>
-                    pg.types.arrayParser
+                    (pg.types.arrayParser as any)
                         .create(value)
                         .parse()
-                        .map((item) => BigInt(String(item)));
+                        .map((item: any) => BigInt(String(item)));
             }
             if (oid === BYTEA) {
                 const parser = pg.types.getTypeParser(oid, format);
                 return (value: string) => new Uint8Array(parser(value) as ArrayLike<number>);
             }
             if (oid === BYTEA_ARRAY) {
-                const parser = pg.types.getTypeParser(oid, format);
+                const parser = pg.types.getTypeParser(oid as any, format);
                 return (value: string) =>
                     (parser(value) as unknown[]).map((item) => new Uint8Array(item as ArrayLike<number>));
             }
@@ -86,11 +76,6 @@ export function createPgMapperTypes(pg: PgModule): PgMapperOptions {
     };
 }
 
-/** The `pg` module as pool construction needs it: the `Pool` class, plus the parser surface the mapper reads. */
-export interface PgPoolModule extends PgModule {
-    Pool: new (config: PoolConfig) => Pool;
-}
-
 /** An SQL identifier, quoted so a channel name is not read as syntax. */
 function quoteIdentifier(name: string): string {
     return `"${name.replace(/"/g, '""')}"`;
@@ -98,9 +83,9 @@ function quoteIdentifier(name: string): string {
 
 /** A `pg` driver as the app's driver: the mapped pool, a batch for the DDL, and shutdown. */
 export class PgSqlDriver extends SqlDriver {
-    readonly #pool: Pool;
+    readonly #pool: pgRuntime.Pool;
 
-    constructor(pg: PgPoolModule, config: PoolConfig = {}) {
+    constructor(pg: typeof pgRuntime, config: pgRuntime.PoolConfig = {}) {
         super();
         // The mapper's `types` wins over one the caller passes, so the pool cannot silently lose the spec types.
         this.#pool = new pg.Pool({ ...config, types: createPgMapperTypes(pg) });

@@ -4,19 +4,11 @@ import type { PoolConfig } from "pg";
 import { describe, expect, it } from "vitest";
 import type { SqlExecutor } from "../db/sql-executor.ts";
 import type { SqlConnection } from "../db/sql-driver.ts";
-import { createPgMapperTypes, PgSqlDriver, type PgModule, type PgPoolModule } from "./pg-setup.ts";
-
-// `@types/pg` describes the pre-v3 `arrayParser`; only that member needs a cast, and the rest fits by assignment.
-const pgModule: PgPoolModule = {
-    Pool: realPg.Pool,
-    types: {
-        getTypeParser: realPg.types.getTypeParser,
-        arrayParser: realPg.types.arrayParser as unknown as PgModule["types"]["arrayParser"],
-    },
-};
+import { createPgMapperTypes, PgSqlDriver } from "./pg-setup.ts";
+const pgModule = realPg;
 
 /** A `Pool` stand-in that records the config the driver constructs it with. */
-function recordingModule(): { module: PgPoolModule; config: () => PoolConfig } {
+function recordingModule(): { module: typeof realPg; config: () => PoolConfig } {
     let received: PoolConfig = {};
     class RecordingPool {
         constructor(config: PoolConfig = {}) {
@@ -33,7 +25,7 @@ function recordingModule(): { module: PgPoolModule; config: () => PoolConfig } {
         }
     }
     return {
-        module: { ...pgModule, Pool: RecordingPool as unknown as PgPoolModule["Pool"] },
+        module: { ...pgModule, Pool: RecordingPool } as unknown as typeof pgModule,
         config: () => received,
     };
 }
@@ -135,7 +127,7 @@ describe("PgSqlDriver", () => {
                 return;
             }
         }
-        const module = { ...pgModule, Pool: CountingPool as unknown as PgPoolModule["Pool"] };
+        const module = { ...pgModule, Pool: CountingPool } as unknown as typeof pgModule;
         const driver = new PgSqlDriver(module);
         const db = driver.createExecutor();
 
@@ -196,7 +188,7 @@ describe("the channel a subscription listens on", () => {
             }
             async end() {}
         }
-        const module = { ...pgModule, Pool: ListeningPool as unknown as PgPoolModule["Pool"] };
+        const module = { ...pgModule, Pool: ListeningPool }  as unknown as typeof pgModule;
         const driver = new PgSqlDriver(module);
         const db = driver.createExecutor();
         const seen: string[] = [];

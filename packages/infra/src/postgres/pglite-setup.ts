@@ -22,14 +22,24 @@ export function createPgliteParsers(): ParserOptions {
 /** The PGlite class, taken as a parameter so the package stays a development dependency of infra. */
 export type PgliteConstructor = typeof PGlite;
 
-/** A PGlite driver whose results match the spec types, over the one connection it opens. `debug` is PGlite's own log level. */
+/** How the driver opens its database. */
+export interface PgliteDriverOptions {
+    /** The directory PGlite stores its files in; absent keeps the database in memory. */
+    dataDir?: string;
+    /** PGlite's own log level. */
+    debug?: DebugLevel;
+}
+
+/** A PGlite driver whose results match the spec types, over the one connection it opens; `dataDir` persists it to files. */
 export class PgliteSqlDriver extends SqlDriver {
     readonly #pglite: PGlite;
     #turn: Promise<void> = Promise.resolve();
 
-    constructor(Pglite: PgliteConstructor, options: { debug?: DebugLevel } = {}) {
+    constructor(Pglite: PgliteConstructor, options: PgliteDriverOptions = {}) {
         super();
-        this.#pglite = new Pglite({ parsers: createPgliteParsers(), debug: options.debug ?? 0 });
+        const config = { parsers: createPgliteParsers(), debug: options.debug ?? 0 };
+        // PGlite reads its options from the first argument when there is no dataDir, so an in-memory database passes only them.
+        this.#pglite = options.dataDir === undefined ? new Pglite(config) : new Pglite(options.dataDir, config);
     }
 
     /** Wait for the current turn, then hold the connection until it is released. */

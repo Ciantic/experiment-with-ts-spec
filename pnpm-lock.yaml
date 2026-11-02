@@ -231,12 +231,12 @@ importers:
 
   packages/backend:
     dependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.8
-        version: 0.5.8
       infra:
         specifier: workspace:*
         version: link:../infra
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       sdk:
         specifier: workspace:*
         version: link:../sdk
@@ -244,9 +244,15 @@ importers:
         specifier: workspace:*
         version: link:../spec
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@types/node':
         specifier: ^26.6.2
         version: 26.6.2
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))

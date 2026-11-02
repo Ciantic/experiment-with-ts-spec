@@ -237,7 +237,8 @@ right JavaScript types. Both are ported from
 https://github.com/Ciantic/pg-unified-mapping.
 
 - `packages/infra/src/postgres/pglite-setup.ts` — PGlite. `new PgliteSqlDriver(Pglite, options)`
-  builds an instance configured with result parsers and makes it the app's driver.
+  builds an instance configured with result parsers, and with `options.dataDir` the
+  directory it persists to, and makes it the app's driver.
 - `packages/infra/src/postgres/pg-setup.ts` — node-postgres. `createPgMapperTypes(pg)` returns the
   `types` option for `new pg.Client(...)`, and `new PgSqlDriver(pg, config)` builds a
   mapped `Pool` and makes it the app's driver.

@@ -1,4 +1,7 @@
 /** Asserts that a PGlite driver serialises its one connection behind the checkouts a boundary takes. See docs/transactions.md. */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 import { PgliteSqlDriver } from "./pglite-setup.ts";
@@ -122,6 +125,37 @@ describe("PgliteSqlDriver", () => {
         await expect(driver.query("show transaction_isolation")).resolves.toMatchObject({ rowCount: null });
 
         await driver.close();
+    });
+
+    it("applies the spec's result parsers to an in-memory database", async () => {
+        const driver = new PgliteSqlDriver(PGlite);
+
+        await expect(driver.query("select 42::int8 as value")).resolves.toMatchObject({ rows: [{ value: 42n }] });
+
+        await driver.close();
+    });
+
+    it("persists to a data directory, and starts empty in memory without one", async () => {
+        const dataDir = await mkdtemp(join(tmpdir(), "pglite-driver-"));
+        try {
+            const first = new PgliteSqlDriver(PGlite, { dataDir });
+            await first.exec("create table widget (id text primary key)");
+            await first.query("insert into widget (id) values ('a')");
+            await first.close();
+
+            const reopened = new PgliteSqlDriver(PGlite, { dataDir });
+            await expect(reopened.query("select id from widget")).resolves.toEqual({
+                rows: [{ id: "a" }],
+                rowCount: 1,
+            });
+            await reopened.close();
+
+            const memory = new PgliteSqlDriver(PGlite);
+            await expect(memory.query("select id from widget")).rejects.toThrow();
+            await memory.close();
+        } finally {
+            await rm(dataDir, { recursive: true, force: true });
+        }
     });
 
     it("runs the DDL batch, and shuts the connection down", async () => {
