@@ -25,27 +25,20 @@ export function statusFor(thrown: unknown): number {
     return ERROR_STATUSES[code] ?? 500;
 }
 
-/** What `node:http` writes: the status line, the headers, and the body. */
-interface WireResponse {
-    statusCode: number;
-    headers: Record<string, string>;
-    body: string;
-}
-
 /** How a response's payload becomes its wire body. */
 type BodyEncoding = "devalue" | "json";
 
 /** One API response, holding the value the client receives and how it becomes the wire body. */
 export class ApiHttpResponse {
-    readonly statusCode: number;
+    readonly #statusCode: number;
     /** The handler's result for a success, or the error body for a failure. */
-    readonly payload: unknown;
-    private readonly encoding: BodyEncoding;
+    readonly #payload: unknown;
+    readonly #encoding: BodyEncoding;
 
     private constructor(statusCode: number, payload: unknown, encoding: BodyEncoding) {
-        this.statusCode = statusCode;
-        this.payload = payload;
-        this.encoding = encoding;
+        this.#statusCode = statusCode;
+        this.#payload = payload;
+        this.#encoding = encoding;
     }
 
     /** A success carrying `value`; `undefined` encodes as `null`, as a miss and a void write do. */
@@ -60,14 +53,8 @@ export class ApiHttpResponse {
 
     /** Write this response to `response`. */
     writeTo(response: ServerResponse): void {
-        const wire = this.toWire();
-        response.writeHead(wire.statusCode, wire.headers);
-        response.end(wire.body);
-    }
-
-    /** This response as the status, headers, and body `node:http` writes. */
-    private toWire(): WireResponse {
-        const body = this.encoding === "devalue" ? encode(this.payload) : JSON.stringify(this.payload);
-        return { statusCode: this.statusCode, headers: { "content-type": "application/json" }, body };
+        const body = this.#encoding === "devalue" ? encode(this.#payload) : JSON.stringify(this.#payload);
+        response.writeHead(this.#statusCode, { "content-type": "application/json" });
+        response.end(body);
     }
 }

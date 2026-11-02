@@ -4,10 +4,10 @@ import { stringify as encode } from "devalue";
 
 /** The events a stream writes; the server opens it with the signal that ends with the response. */
 export class SseStream {
-    readonly open: (signal: AbortSignal) => AsyncIterable<unknown>;
+    readonly #open: (signal: AbortSignal) => AsyncIterable<unknown>;
 
     constructor(open: (signal: AbortSignal) => AsyncIterable<unknown>) {
-        this.open = open;
+        this.#open = open;
     }
 
     /** Write the stream to `response` until it ends or the client closes it. */
@@ -25,7 +25,7 @@ export class SseStream {
 
         void (async () => {
             try {
-                for await (const event of this.open(abort.signal)) {
+                for await (const event of this.#open(abort.signal)) {
                     // A plain notify carries no payload; a watch carries the key, in the same codec as the rest of the API.
                     response.write(event === undefined ? "data: \n\n" : `data: ${encode(event)}\n\n`);
                 }

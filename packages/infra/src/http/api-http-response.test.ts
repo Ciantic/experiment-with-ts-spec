@@ -23,47 +23,50 @@ function responseSpy(): {
     return { response, written };
 }
 
+/** The status a response writes. */
+function statusOf(response: ApiHttpResponse): number | undefined {
+    const { response: stream, written } = responseSpy();
+    response.writeTo(stream);
+    return written.statusCode;
+}
+
 describe("ApiHttpResponse", () => {
-    it("carries a success value and encodes it with devalue on the wire", () => {
+    it("writes a success value encoded with devalue", () => {
         const response = ApiHttpResponse.ok({ at: new Date(0) });
         const { response: stream, written } = responseSpy();
 
         response.writeTo(stream);
 
-        expect(response.statusCode).toBe(200);
-        expect(response.payload).toEqual({ at: new Date(0) });
         expect(written.statusCode).toBe(200);
         expect(written.headers).toEqual({ "content-type": "application/json" });
         expect(decode(written.body ?? "")).toEqual({ at: new Date(0) });
     });
 
-    it("carries an undefined value as null", () => {
+    it("writes an undefined value as null", () => {
         const response = ApiHttpResponse.ok(undefined);
         const { response: stream, written } = responseSpy();
 
         response.writeTo(stream);
 
-        expect(response.payload).toBeNull();
         expect(decode(written.body ?? "")).toBeNull();
     });
 
-    it("carries a failure as a plain error body and writes it as JSON", () => {
+    it("writes a failure as a plain-JSON error body", () => {
         const response = ApiHttpResponse.failure(new RequestError("malformed request"));
         const { response: stream, written } = responseSpy();
 
         response.writeTo(stream);
 
-        expect(response.statusCode).toBe(400);
-        expect(response.payload).toEqual({ error: "malformed request", kind: "request" });
+        expect(written.statusCode).toBe(400);
         expect(written.body).toBe(JSON.stringify({ error: "malformed request", kind: "request" }));
     });
 
     it("takes the status from the AppError, or from the driver's SQLSTATE", () => {
-        expect(ApiHttpResponse.failure(new QueryError("bad read")).statusCode).toBe(400);
-        expect(ApiHttpResponse.failure(new VersionConflictError("stale")).statusCode).toBe(409);
-        expect(ApiHttpResponse.failure(Object.assign(new Error("version conflict"), { code: "40001" })).statusCode).toBe(
+        expect(statusOf(ApiHttpResponse.failure(new QueryError("bad read")))).toBe(400);
+        expect(statusOf(ApiHttpResponse.failure(new VersionConflictError("stale")))).toBe(409);
+        expect(statusOf(ApiHttpResponse.failure(Object.assign(new Error("version conflict"), { code: "40001" })))).toBe(
             409,
         );
-        expect(ApiHttpResponse.failure(new Error("boom")).statusCode).toBe(500);
+        expect(statusOf(ApiHttpResponse.failure(new Error("boom")))).toBe(500);
     });
 });
