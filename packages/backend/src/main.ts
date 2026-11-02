@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import {
     ApiServer,
+    applySchema,
     createAppContext,
     PgliteSqlDriver,
     seedMockData,
@@ -34,10 +35,11 @@ export interface StartedServer {
 export async function startServer(options: StartOptions = {}): Promise<StartedServer> {
     // The process is the composition root: it picks PGlite and hands infra the driver.
     const driver = new PgliteSqlDriver(PGlite, options.logSql ? { debug: 1 } : {});
-    const app = await createAppContext({ driver });
     if (options.seed) {
-        await seedMockData(app.driver.createExecutor());
+        await applySchema(driver);
+        await seedMockData(driver.createExecutor());
     }
+    const app = createAppContext({ driver });
     const server = new ApiServer(app, routes);
     const port = await server.listen(options.port ?? DEFAULT_PORT);
     return { server, app, port };

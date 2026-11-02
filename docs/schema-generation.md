@@ -14,6 +14,8 @@ generator and the repository generator consume. Only the rendering differs; see
 
 The output file is committed. It is generated, so regenerate rather than editing
 it by hand; nothing enforces that it stays in step with the spec.
+`packages/infra/src/postgres/schema.ts` reads the committed file and applies it
+over a driver, which the backend's `startServer` calls before serving.
 
 The tags it consumes are defined in `docs/spec-annotations.md`.
 

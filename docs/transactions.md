@@ -87,16 +87,16 @@ PGlite's one connection and serialises every statement behind a checkout. The
 base class also owns `createExecutor`, the boundary implementation below, so a
 caller never builds it itself.
 
-The process owns the driver; a boundary owns only a checkout. `createAppContext`
-applies the generated DDL through the driver's `exec`, and `createExecutor` uses
-only the driver's `query` and its protected `connect` — so a boundary never
-reaches the batch or the shutdown, and `context.ts` names no driver. `exec` is
-not `query` with the result discarded: PGlite's `query` takes one statement
-through the extended protocol and refuses a second, while `exec` takes the whole
-script, trigger bodies included. On `pg`, a parameterless `query` uses the simple
-protocol, so the adapter maps both onto the same call. `exec` is startup-only: on
-PGlite it takes the one connection's turn, so the batch waits for an open
-boundary rather than interleaving with it.
+The process owns the driver; a boundary owns only a checkout. Startup applies
+the generated DDL through the driver's `exec` with `applySchema`, and
+`createExecutor` uses only the driver's `query` and its protected `connect` — so
+a boundary never reaches the batch or the shutdown, and `context.ts` names no
+driver. `exec` is not `query` with the result discarded: PGlite's `query` takes
+one statement through the extended protocol and refuses a second, while `exec`
+takes the whole script, trigger bodies included. On `pg`, a parameterless `query`
+uses the simple protocol, so the adapter maps both onto the same call. `exec` is
+startup-only: on PGlite it takes the one connection's turn, so the batch waits
+for an open boundary rather than interleaving with it.
 
 `SqlExecutor.query` answers a `QueryResult<Row>`. `rowCount` is the number the
 command tag carries — the rows a select returned, the rows an update wrote, the

@@ -7,20 +7,21 @@ import { mockTables } from "spec/mockdata/index.ts";
 /** A generated read, as this test sees it: a database and an unfiltered selection. */
 type Query = (db: infra.SqlExecutor, opts: { select: object }) => Promise<unknown[]>;
 
-let app!: infra.AppContext;
-let db!: infra.SqlExecutor;
-
-beforeAll(async () => {
-    app = await infra.createAppContext({ driver: new infra.PgliteSqlDriver(PGlite) });
-    db = app.driver.createExecutor();
-    await infra.seedMockData(db);
-});
-
-afterAll(async () => {
-    await app.driver.close();
-});
-
 describe("mock data", () => {
+    let driver: infra.PgliteSqlDriver;
+    let db: infra.SqlExecutor;
+
+    beforeAll(async () => {
+        driver = new infra.PgliteSqlDriver(PGlite);
+        await infra.applySchema(driver);
+        db = driver.createExecutor();
+        await infra.seedMockData(db);
+    });
+
+    afterAll(async () => {
+        await driver.close();
+    });
+
     it("names at least one table, so the loop below is not vacuous", () => {
         expect(mockTables.length).toBeGreaterThan(0);
     });

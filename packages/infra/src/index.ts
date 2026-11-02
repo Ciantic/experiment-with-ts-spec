@@ -4,6 +4,9 @@
 export { createAppContext } from "./context.ts";
 export type { AppContext, AppOptions, RequestContext } from "./context.ts";
 
+// Schema exports
+export { applySchema } from "./postgres/schema.ts";
+
 // Driver exports
 export { PgliteSqlDriver } from "./postgres/pglite-setup.ts";
 export type { PgliteConstructor } from "./postgres/pglite-setup.ts";
