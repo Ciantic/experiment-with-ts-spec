@@ -1,4 +1,5 @@
 /** The API response value and the plain-JSON failures both handlers answer with. See docs/rest-api.md. */
+import type { ServerResponse } from "node:http";
 import { stringify as encode } from "devalue";
 import { AppError, apiErrorBody } from "sdk/errors.ts";
 
@@ -25,7 +26,7 @@ export function statusFor(thrown: unknown): number {
 }
 
 /** What `node:http` writes: the status line, the headers, and the body. */
-export interface WireResponse {
+interface WireResponse {
     statusCode: number;
     headers: Record<string, string>;
     body: string;
@@ -57,8 +58,15 @@ export class ApiHttpResponse {
         return new ApiHttpResponse(statusFor(thrown), apiErrorBody(thrown), "json");
     }
 
+    /** Write this response to `response`. */
+    writeTo(response: ServerResponse): void {
+        const wire = this.toWire();
+        response.writeHead(wire.statusCode, wire.headers);
+        response.end(wire.body);
+    }
+
     /** This response as the status, headers, and body `node:http` writes. */
-    toWire(): WireResponse {
+    private toWire(): WireResponse {
         const body = this.encoding === "devalue" ? encode(this.payload) : JSON.stringify(this.payload);
         return { statusCode: this.statusCode, headers: { "content-type": "application/json" }, body };
     }

@@ -5,6 +5,7 @@ import type { AppContext } from "../context.ts";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import type { Route } from "./router.ts";
 import { ApiServer } from "./server.ts";
+import { SseStream } from "./sse.ts";
 
 /** A driver over no database; the tests exercise the HTTP path, not a statement. */
 class StubDriver extends SqlDriver {
@@ -41,6 +42,22 @@ const echoRoute: Route = {
     handler: async (_ctx, argument) => argument,
 };
 
+/** A stream that yields one change and ends. */
+const watchRoute: Route = {
+    id: "watch",
+    method: "GET",
+    path: "/watch",
+    source: "query",
+    stream: true,
+    input: { safeParse: (value) => ({ success: true, data: value }) },
+    handler: async () =>
+        new SseStream(() =>
+            (async function* () {
+                yield { op: "INSERT" };
+            })(),
+        ),
+};
+
 /** The context startup builds, over the stub driver. */
 function createApp(): AppContext {
     return { driver: new StubDriver() };
@@ -61,6 +78,22 @@ describe("ApiServer", () => {
 
             expect(response.status).toBe(200);
             expect(parse(await response.text())).toEqual(payload);
+        } finally {
+            await server.close();
+        }
+    });
+
+    it("writes an event stream and ends it", async () => {
+        const server = new ApiServer(createApp(), [watchRoute]);
+        const port = await server.listen(0);
+
+        try {
+            const response = await fetch(`http://127.0.0.1:${port}/watch`, {
+                headers: { connection: "close" },
+            });
+
+            expect(response.headers.get("content-type")).toBe("text/event-stream");
+            expect(await response.text()).toBe(`data: ${stringify({ op: "INSERT" })}\n\n`);
         } finally {
             await server.close();
         }

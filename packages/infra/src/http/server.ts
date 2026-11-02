@@ -1,46 +1,9 @@
 /** A `node:http` server over the generated route table; the router owns every decision. See docs/rest-api.md. */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { stringify as encode } from "devalue";
 import type { AppContext } from "../context.ts";
 import { ApiHttpResponse } from "./api-http-response.ts";
 import { ApiRouter, type HttpRouter, type Route } from "./router.ts";
 import { SseStream } from "./sse.ts";
-
-/** Write a router response. */
-function write(response: ServerResponse, result: ApiHttpResponse): void {
-    const wire = result.toWire();
-    response.writeHead(wire.statusCode, wire.headers);
-    response.end(wire.body);
-}
-
-/** Write an event stream until it ends or the client closes the response. */
-function writeStream(response: ServerResponse, stream: SseStream): void {
-    response.writeHead(200, {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        connection: "keep-alive",
-    });
-    const abort = new AbortController();
-    const onClose = () => abort.abort();
-    response.on("close", onClose);
-    // Send the event-stream headers before the first change, so a client's `fetch` resolves.
-    response.flushHeaders();
-
-    void (async () => {
-        try {
-            for await (const event of stream.open(abort.signal)) {
-                // A plain notify carries no payload; a watch carries the key, in the same codec as the rest of the API.
-                response.write(event === undefined ? "data: \n\n" : `data: ${encode(event)}\n\n`);
-            }
-            response.end();
-        } catch {
-            response.destroy();
-        } finally {
-            response.off("close", onClose);
-            abort.abort();
-        }
-    })();
-}
 
 /** 
  * The server lifecycle the entry point drives. 
@@ -72,12 +35,12 @@ export class ApiServer implements HttpServer {
             // The router owns the request: its method, its URL, and its body.
             const result = await this.#router.handle(request);
             if (result instanceof SseStream) {
-                writeStream(response, result);
+                result.writeTo(response);
                 return;
             }
-            write(response, ApiHttpResponse.ok(result));
+            ApiHttpResponse.ok(result).writeTo(response);
         } catch (thrown) {
-            write(response, ApiHttpResponse.failure(thrown));
+            ApiHttpResponse.failure(thrown).writeTo(response);
         }
     }
 

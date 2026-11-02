@@ -22,7 +22,8 @@ the transport.
 - `packages/infra/src/http/router.ts` — the `ApiRouter` class and the
   `HttpRouter` interface, the request handler. Hand-written.
 - `packages/infra/src/http/api-http-response.ts` — the `ApiHttpResponse` class,
-  which holds a response's payload and encodes it in its wire form. Hand-written.
+  which holds a response's payload, encodes its wire form, and writes it to the
+  response. Hand-written.
 - `packages/infra/src/http/server.ts` — the `ApiServer` class and the
   `HttpServer` interface, a `node:http` server. Hand-written.
 - `packages/sdk/src/api/` — generated: one module per entity plus a barrel
