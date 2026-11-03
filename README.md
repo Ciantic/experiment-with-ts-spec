@@ -40,6 +40,7 @@ flowchart TD
             pgSchema["<b>Postgres schema generator</b><br/>generate-postgres-schema.ts<br/>Tables, columns, constraints and triggers"]
             repositories["<b>Repository generator</b><br/>generate-repositories.ts<br/>Create, update, upsert and delete functions"]
             queries["<b>Query generator</b><br/>generate-queries.ts<br/>Typed query functions and change streams"]
+            guards["<b>Guard generator</b><br/>generate-guards.ts<br/>One can&lt;Call&gt; guard per exposed route"]
             entityRoutes["<b>Entity route generator</b><br/>generate-entity-routes.ts<br/>Route table for repositories and queries"]
         end
 
@@ -91,6 +92,7 @@ flowchart TD
     pgModel --> repositories
     pgModel --> queries
     zodModel --> validation
+    restModel --> guards
     restModel --> entityRoutes
     restModel --> operationRoutes
     restModel --> restClient

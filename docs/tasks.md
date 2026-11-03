@@ -49,8 +49,8 @@ The order is load-bearing:
 only the entity declarations, so they need nothing from another generator. It
 then writes the operation errors and scaffolds
 the operation modules, then runs the schema generator before the repository
-generator, then the query generator, the validation generator, and the two REST
-generators last. Errors go before operations because an operation's scaffold
+generator, then the query generator, the validation generator, the guard
+generator, and the two REST generators last. Errors go before operations because an operation's scaffold
 documents the classes its `@throws` tags declare. Operations go before the REST
 pair because the generated route imports the module the scaffold writes. The driver parses the
 spec once through
@@ -86,8 +86,8 @@ generator, so it stays in `scripts/operations` beside the routes it checks.
 The permissions generator is in `scripts/sdk` with the other SDK generators,
 because it writes `packages/sdk/src/permissions.ts`. See `docs/permissions.md`.
 The per-entity tenant lookups are written by the query generator, since they are
-reads over the same tables; the route generator names the `@tenantOwned` column
-it passes to a guard.
+reads over the same tables. The guard generator is in `scripts/infra` beside the
+route generator, whose listing names the `can<Call>` modules it writes.
 `scripts/paths.ts` derives each package root, so an output path never depends on
 the cwd.
 

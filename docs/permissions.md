@@ -62,54 +62,82 @@ Every generated entity route carries a `guard`: the router runs it after the
 input validates and before the handler, and it refuses the call by throwing. A
 single request and a `/$group` entry run the same check.
 
-The route listing names the guard the way it names a schema:
+`scripts/infra/generate-guards.ts` writes one module per exposed call into
+`packages/infra/src/http/guards/`, named for the check it makes, so the route
+listing reads as a sentence:
 
 ```ts
+import { canDeleteInvoice } from "../guards/index.ts";
+
 defineRoute({
     id: "deleteInvoice",
     method: "DELETE",
     path: "/invoice",
     source: "query",
     input: z.array(invoicePrimaryKeySchema),
-    guard: tenantOwnedDeleteGuard("invoice", getInvoiceTenants),
+    guard: canDeleteInvoice,
     handler: (ctx, body) => deleteInvoice(ctx.db, body),
 }),
 ```
 
-A global entity carries `permissionGuard`, named for the action the call kind is:
+The module holds the check itself, so a reader sees exactly what the route
+refuses without following a factory:
 
 ```ts
-guard: permissionGuard("tenant", "create"),
+// packages/infra/src/http/guards/canDeleteInvoice.ts
+export const canDeleteInvoice: RouteGuard<readonly InvoicePrimaryKey[]> = async (ctx, argument) => {
+    if (argument.length === 0 || (await ctx.hasPermission("invoice", "delete"))) {
+        return;
+    }
+    const tenants = [...new Set(await getInvoiceTenants(ctx.db, argument))];
+    if (tenants.length === 0) {
+        throw new ForbiddenError("invoice:delete names no tenant the session can be checked against");
+    }
+    for (const tenant of tenants) {
+        if (!(await ctx.hasPermission("invoice", "delete", tenant))) {
+            throw new ForbiddenError(`missing permission invoice:delete in tenant ${tenant}`);
+        }
+    }
+};
 ```
 
-| Guard | Route | Tenants it checks |
-| --- | --- | --- |
-| `tenantOwnedQueryGuard(scope, tenantFieldName)` | `query` | every tenant the filter names |
-| `tenantOwnedCreateGuard(scope, tenantFieldName)` | `create` | every inserted row's tenant |
-| `tenantOwnedWatchGuard(scope, tenantFieldName, lookup)` | `watch` | the filter tenant, or the tenant of every key named |
-| `tenantOwnedUpsertGuard(scope, tenantFieldName, lookup)` | `upsert` | every row's tenant, and the stored tenant it leaves |
-| `tenantOwnedUpdateGuard(scope, tenantFieldName, lookup)` | `update` | the stored tenant, and the tenant a patch moves it to |
-| `tenantOwnedDeleteGuard(scope, lookup)` | `delete` | the stored tenant of every key |
+A global entity's module asks for the one permission its kind names and nothing
+else:
 
-`tenantFieldName` is the entity's `@tenantOwned` field, written into the call by
-the route generator; a delete reads no tenant from its argument, so it takes only
-the lookup.
+```ts
+// packages/infra/src/http/guards/canCreateTenant.ts
+export const canCreateTenant: RouteGuard = async (ctx) => {
+    if (!(await ctx.hasPermission("tenant", "create"))) {
+        throw new ForbiddenError("missing permission tenant:create");
+    }
+};
+```
 
-A read and a create take the tenant from the argument, so they need no lookup. A
-route that addresses a stored row receives the entity's generated
-`get<Entity>Tenants`, which names that row's tenants; the guard calls it before
-the handler and never builds SQL itself.
+| Route | Tenants the module checks |
+| --- | --- |
+| `query` | every tenant the filter names |
+| `create` | every inserted row's tenant |
+| `watch` | the filter tenant, or the tenant of every key named |
+| `upsert` | every row's tenant, and the stored tenant it leaves |
+| `update` | the stored tenant, and the tenant a patch moves it to |
+| `delete` | the stored tenant of every key |
 
-The argument a guard reads is the one the handler receives, so the tenant a call
-names in its filter or rows is the tenant it would read or write.
+The tenant field is the entity's `@tenantOwned` field, written into the module as
+a literal; a delete reads no tenant from its argument, so it names only the
+lookup. A read and a create take the tenant from the argument and need no lookup.
+A route that addresses a stored row calls the entity's generated
+`get<Entity>Tenants` directly; the module never builds SQL itself.
 
-Each factory is generic over that argument and defaults to the shape it reads:
-`TenantFilterArgument` for a read, `TenantRowsArgument` for a write, and
-`TenantWatchArgument` for a stream. A call site names no type argument, so the
-route's own `input` supplies it, and the guard's argument is checked against the
-schema's type — `{ filter?: { tenantId?: TenantId[] } }` for an invoice read. The
-factory body sees only the constraint, since one guard serves every entity and
-reads the tenant field by its runtime name.
+The argument type is the route's schema type — `InvoiceInsert`, `InvoicePatch`,
+`InvoiceUpsert`, `InvoicePrimaryKey`, or a structural filter for a read — so the
+module and the handler receive the same shape.
+
+Every module is plain TypeScript over the parsed argument, with no shared guard
+helper: a read's filter names its tenant as a set, so the module spreads
+`filter?.tenantId`; a row names its tenant as one value, so the module reads
+`row.tenantId`; a watch names one filter value and falls back to the lookup. The
+set is deduplicated with `new Set`, and a value that is absent simply contributes
+none.
 
 ### The two-level check
 
@@ -121,11 +149,11 @@ it, the guard resolves the tenants the call addresses and requires
 several tenants is refused as a whole when the session lacks any one of them; a
 guard never narrows a read to the permitted subset.
 
-`tenantOwnedUpdateGuard` and `tenantOwnedUpsertGuard` check both sides of a move:
-the tenant the row is stored in and the tenant it is written into. A create
-checks only the row's tenant, since no row exists yet. The stored tenant comes
-from the entity's `get<Entity>Tenants`, run on the request's executor (`ctx.db`),
-which inside a `transaction` group is the same boundary as the write.
+An upsert and a patch check both sides of a move: the tenant the row is stored in
+and the tenant it is written into. A create checks only the row's tenant, since no
+row exists yet. The stored tenant comes from the entity's `get<Entity>Tenants`,
+run on the request's executor (`ctx.db`), which inside a `transaction` group is
+the same boundary as the write.
 
 A read or a watch that names no tenant, and a key that resolves to no stored row,
 cannot be checked against a tenant, so the guard refuses the call. An empty batch
@@ -154,10 +182,8 @@ export async function getInvoiceTenants(
 }
 ```
 
-The parameter is the entity's own primary-key type. `TenantLookup<TKey>` is
-generic over the key rows, and a guard infers `TKey` from the generated function,
-so the route's argument is checked against that key: a delete takes exactly the
-keys, and a patch or an upsert must carry them. A composite key matches one
+The parameter is the entity's own primary-key type, so a guard passes patch or
+upsert rows only because both carry that key. A composite key matches one
 `unnest($n::type[])` per key column. No generated function hardcodes a domain
 name, and neither does a guard.
 
@@ -183,7 +209,8 @@ other generated list does.
 `pnpm run generate:permissions` writes the permissions file. The pipeline runs it
 right after the linter, since it reads only the entity declarations.
 `pnpm run generate:queries` writes the `get<Entity>Tenants` lookups with the
-other read modules. `--out <file>` writes elsewhere, as the error generator does. Like
+other read modules, and `pnpm run generate:guards` writes the `can<Call>`
+modules before the route generator runs. `--out <file>` writes elsewhere, as the error generator does. Like
 the other generated files, a stale copy is caught by running the generator, not
 by a check.
 

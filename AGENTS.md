@@ -10,7 +10,7 @@
   write the schemas and the permissions.
 - `packages/infra/` — Postgres schema, generated repositories, queries and
   entity routes, the generated per-entity tenant lookups the route guards read,
-  the permission guards, the request contexts, the HTTP router and server, and the
+  the generated `can<Call>` guards and the permission factories they wrap, the request contexts, the HTTP router and server, and the
   mock seed. Consumed by the backend.
 - `packages/operations/` — The operation implementations, one module per
   `@operation`, and the operation routes, written over `infra`.

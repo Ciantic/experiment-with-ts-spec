@@ -26,15 +26,6 @@ export type { ChangeNotification } from "./db/notifications.ts";
 
 // Router exports
 export { entityRoutes } from "./http/routes/index.ts";
-export {
-    permissionGuard,
-    tenantOwnedCreateGuard,
-    tenantOwnedDeleteGuard,
-    tenantOwnedQueryGuard,
-    tenantOwnedUpdateGuard,
-    tenantOwnedUpsertGuard,
-    tenantOwnedWatchGuard,
-} from "./http/guards.ts";
 export { ApiRouter, defineRoute } from "./http/router.ts";
 export type { HttpRouter, Route } from "./http/router.ts";
 export { ApiServer } from "./http/server.ts";

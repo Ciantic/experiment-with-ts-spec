@@ -10,6 +10,7 @@ import {
     type RestKind,
     type RestModel,
 } from "../sdk/rest-model.ts";
+import { guardName } from "./generate-guards.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
 type Output = Pick<Console, "log" | "error">;
@@ -32,6 +33,7 @@ const ENTITY_ROUTES_EXPORT = "entityRoutes";
 
 /** The module specifiers of the generated pieces the routes call into. */
 const QUERIES_IMPORT = "../../db/queries/index.ts";
+const GUARDS_IMPORT = "../guards/index.ts";
 const REPOSITORIES_IMPORT = "../../db/repositories/index.ts";
 const SCHEMAS_IMPORT = "sdk/schemas.ts";
 
@@ -43,32 +45,6 @@ export function routesModuleName(entity: RestEntity): string {
 /** Invoice -> invoiceRoutes. */
 export function routesExportName(entity: RestEntity): string {
     return `${entity.module}Routes`;
-}
-
-/** The guard factory each operation kind uses on an `@tenantOwned` entity: the argument carries or addresses the tenant. */
-const TENANT_OWNED_GUARDS: Record<RestKind, string> = {
-    query: "tenantOwnedQueryGuard",
-    watch: "tenantOwnedWatchGuard",
-    create: "tenantOwnedCreateGuard",
-    upsert: "tenantOwnedUpsertGuard",
-    update: "tenantOwnedUpdateGuard",
-    delete: "tenantOwnedDeleteGuard",
-};
-
-/** The kinds whose guard resolves a stored row's tenant, so the route hands it the generated lookup. */
-const TENANT_LOOKUP_KINDS: ReadonlySet<RestKind> = new Set<RestKind>(["watch", "upsert", "update", "delete"]);
-
-/** The guard a route carries, and the factory that makes it: global on a global entity, per tenant on an owned one. */
-function guardCall(entity: RestEntity, kind: RestKind): { name: string; expression: string } {
-    const scope = JSON.stringify(entity.module);
-    if (entity.tenantOwned === undefined) {
-        return { name: "permissionGuard", expression: `permissionGuard(${scope}, ${JSON.stringify(kind)})` };
-    }
-    const name = TENANT_OWNED_GUARDS[kind];
-    // A delete reads no tenant from the argument, so only its lookup names one.
-    const column = kind === "delete" ? "" : `, ${JSON.stringify(entity.tenantOwned)}`;
-    const lookup = TENANT_LOOKUP_KINDS.has(kind) ? `, get${entity.entity}Tenants` : "";
-    return { name, expression: `${name}(${scope}${column}${lookup})` };
 }
 
 /** The generated schema that validates the request body, before the `delete` projection. */
@@ -158,10 +134,6 @@ function queryBarrelFunctions(entity: RestEntity): string[] {
             }
         }
     }
-    // A guard that resolves a stored row reads it through the entity's generated tenant lookup.
-    if (entity.tenantOwned !== undefined && entity.operations.some((operation) => TENANT_LOOKUP_KINDS.has(operation.kind))) {
-        names.add(`get${entity.entity}Tenants`);
-    }
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
@@ -188,10 +160,8 @@ export function renderEntityRoutes(entity: RestEntity): string {
 
     const lines: string[] = [HEADER];
     lines.push(`import { defineRoute, type Route } from "${ROUTER_IMPORT}";`);
-    const guards = [...new Set(entity.operations.map((operation) => guardCall(entity, operation.kind).name))].sort(
-        (a, b) => a.localeCompare(b),
-    );
-    lines.push(`import { ${guards.join(", ")} } from "../guards.ts";`);
+    const guards = entity.operations.map(guardName).sort((a, b) => a.localeCompare(b));
+    lines.push(`import { ${guards.join(", ")} } from "${GUARDS_IMPORT}";`);
     const streams = entity.operations.some((operation) => operation.kind === "watch");
     // A stream takes a row/operation filter, and a write wraps its rows in an array, so both need `z`.
     if (streams || entity.operations.some((operation) => operation.kind !== "query" && operation.kind !== "watch")) {
@@ -223,7 +193,7 @@ export function renderEntityRoutes(entity: RestEntity): string {
             lines.push("        stream: true,");
         }
         lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
-        lines.push(`        guard: ${guardCall(entity, operation.kind).expression},`);
+        lines.push(`        guard: ${guardName(operation)},`);
         if (operation.kind === "watch") {
             const all = entity.restWatch.includes("all");
             const rows = entity.restWatch.includes("rows");

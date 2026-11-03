@@ -211,18 +211,20 @@ describe("renderEntityRoutes", () => {
         expect(code).toContain("handler: (ctx, body) => deleteWidget(ctx.db, body)");
     });
 
-    it("guards a global entity with the permission its kind names", () => {
+    it("guards a global entity with its generated can<Call> modules", () => {
         const code = render();
 
-        expect(code).toContain('import { permissionGuard } from "../guards.ts";');
-        expect(code).toContain('guard: permissionGuard("widget", "query"),');
-        expect(code).toContain('guard: permissionGuard("widget", "create"),');
-        expect(code).toContain('guard: permissionGuard("widget", "upsert"),');
-        expect(code).toContain('guard: permissionGuard("widget", "update"),');
-        expect(code).toContain('guard: permissionGuard("widget", "delete"),');
+        expect(code).toContain(
+            'import { canCreateWidget, canDeleteWidget, canQueryWidget, canUpdateWidget, canUpsertWidget } from "../guards/index.ts";',
+        );
+        expect(code).toContain("guard: canQueryWidget,");
+        expect(code).toContain("guard: canCreateWidget,");
+        expect(code).toContain("guard: canUpsertWidget,");
+        expect(code).toContain("guard: canUpdateWidget,");
+        expect(code).toContain("guard: canDeleteWidget,");
     });
 
-    it("guards a tenant-owned entity with the per-tenant guard its kind names", () => {
+    it("guards a tenant-owned entity with its generated can<Call> modules", () => {
         const entity = build({ Owned: OWNED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the owned entity");
@@ -230,34 +232,40 @@ describe("renderEntityRoutes", () => {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain(
-            'import { tenantOwnedCreateGuard, tenantOwnedDeleteGuard, tenantOwnedQueryGuard, tenantOwnedUpdateGuard, tenantOwnedUpsertGuard, tenantOwnedWatchGuard } from "../guards.ts";',
+            'import { canCreateOwned, canDeleteOwned, canQueryOwned, canUpdateOwned, canUpsertOwned, canWatchOwned } from "../guards/index.ts";',
         );
-        expect(code).toContain('guard: tenantOwnedQueryGuard("owned", "tenantId"),');
-        expect(code).toContain('guard: tenantOwnedCreateGuard("owned", "tenantId"),');
-        expect(code).toContain('guard: tenantOwnedWatchGuard("owned", "tenantId", getOwnedTenants),');
-        expect(code).toContain('guard: tenantOwnedUpsertGuard("owned", "tenantId", getOwnedTenants),');
-        expect(code).toContain('guard: tenantOwnedUpdateGuard("owned", "tenantId", getOwnedTenants),');
-        expect(code).toContain('guard: tenantOwnedDeleteGuard("owned", getOwnedTenants),');
+        expect(code).toContain("guard: canQueryOwned,");
+        expect(code).toContain("guard: canCreateOwned,");
+        expect(code).toContain("guard: canWatchOwned,");
+        expect(code).toContain("guard: canUpsertOwned,");
+        expect(code).toContain("guard: canUpdateOwned,");
+        expect(code).toContain("guard: canDeleteOwned,");
         expect(code).not.toContain("permissionGuard");
     });
 
-    it("hands a stored-row guard the generated tenant lookup, imported from the query barrel", () => {
+    it("leaves the tenant lookup to the guard module, not the route", () => {
         const entity = build({ Owned: OWNED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the owned entity");
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toMatch(/import \{ [^}]*\bgetOwnedTenants\b[^}]* \} from "\.\.\/\.\.\/db\/queries\/index\.ts";/);
+        expect(code).not.toContain("getOwnedTenants");
     });
 
     it("imports only the guards this collection's calls need, once each", () => {
-        const guards = render().match(/import \{ ([^}]+) \} from "\.\.\/guards\.ts"/)?.[1] ?? "";
+        const guards = render().match(/import \{ ([^}]+) \} from "\.\.\/guards\/index\.ts"/)?.[1] ?? "";
         const names = guards.split(", ");
 
         expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
         expect(new Set(names).size).toBe(names.length);
-        expect(names).toEqual(["permissionGuard"]);
+        expect(names).toEqual([
+            "canCreateWidget",
+            "canDeleteWidget",
+            "canQueryWidget",
+            "canUpdateWidget",
+            "canUpsertWidget",
+        ]);
     });
 
     it("imports every generated piece from its barrel", () => {
