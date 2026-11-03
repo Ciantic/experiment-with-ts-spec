@@ -634,7 +634,7 @@ the client imports nothing from infra or the backend.
   possible without an autonomous transaction, which Postgres only offers through
   an extension.
 - **Authorization.** A group runs each entry through its route, so a guard on
-  the route would apply per entry, but no guard exists yet
+  the route applies per entry, but no guard enforces authorization yet
   (`docs/rest-api.md`, "Deliberately not implemented").
 - **A route that refuses to run inside a caller's boundary.** A handler that asks
   for a boundary gets a savepoint when one is ambient, and any route may be a

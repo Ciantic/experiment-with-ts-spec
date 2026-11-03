@@ -130,6 +130,7 @@ export class ApiRouter implements HttpRouter {
             throw new ValidationError("invalid request", { issues: parsed.error.issues });
         }
 
+        await route.guard?.(ctx, parsed.data);
         return await route.handler(ctx, parsed.data);
     }
 }

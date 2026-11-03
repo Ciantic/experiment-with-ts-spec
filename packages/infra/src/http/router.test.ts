@@ -14,7 +14,7 @@ import {
     ValidationError,
     VersionConflictError,
 } from "sdk/errors.ts";
-import type { AppContext } from "../context.ts";
+import { type AppContext, RequestContext } from "../context.ts";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
@@ -170,6 +170,58 @@ describe("ApiRouter", () => {
 
         expect(thrown).toBeInstanceOf(ValidationError);
         expect(thrown).toMatchObject({ status: 400, kind: "validation", issues: ["bad"] });
+    });
+
+    it("does not run the guard when the schema rejects", async () => {
+        let guarded = false;
+        const route = echoRoute({
+            input: rejects,
+            guard: () => {
+                guarded = true;
+            },
+        });
+        const router = new ApiRouter(app, [route]);
+
+        expect(await failure(router.handle(request("POST", "/echo")))).toBeInstanceOf(ValidationError);
+        expect(guarded).toBe(false);
+    });
+
+    it("awaits the guard with the parsed argument and the request's context before the handler", async () => {
+        const seen: { step: string; argument: unknown; ctx: RequestContext }[] = [];
+        const route = echoRoute({
+            guard: async (ctx, argument) => {
+                await Promise.resolve();
+                seen.push({ step: "guard", argument, ctx });
+            },
+            handler: async (ctx, argument) => {
+                seen.push({ step: "handler", argument, ctx });
+                return argument;
+            },
+        });
+        const router = new ApiRouter(app, [route]);
+
+        expect(await router.handle(request("POST", "/echo", stringify(payload)))).toEqual(payload);
+        expect(seen.map(({ step }) => step)).toEqual(["guard", "handler"]);
+        expect(seen.map(({ argument }) => argument)).toEqual([payload, payload]);
+        expect(seen[0]?.ctx).toBeInstanceOf(RequestContext);
+        expect(seen[0]?.ctx).toBe(seen[1]?.ctx);
+    });
+
+    it("does not run the handler when the guard refuses", async () => {
+        let handled = false;
+        const refused = new QueryError("refused");
+        const route = echoRoute({
+            guard: () => {
+                throw refused;
+            },
+            handler: async () => {
+                handled = true;
+            },
+        });
+        const router = new ApiRouter(app, [route]);
+
+        expect(await failure(router.handle(request("POST", "/echo")))).toBe(refused);
+        expect(handled).toBe(false);
     });
 
     it("passes the decoded body to the handler and answers the result", async () => {

@@ -232,6 +232,7 @@ function within(path: number[], ancestor: number[]): boolean {
  */
 async function runNode(ctx: RequestContext, node: Planned, path: number[]): Promise<unknown> {
     if (node.kind === "call") {
+        await node.route.guard?.(ctx, node.argument);
         const result = await node.route.handler(ctx, node.argument);
         // A writable answers the request itself; a group entry answers a value the group encodes.
         if (result instanceof WritableResponse) {

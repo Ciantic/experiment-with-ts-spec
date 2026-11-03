@@ -164,6 +164,74 @@ describe("handleGroup", () => {
         expect(ran).toEqual([]);
     });
 
+    it("runs each entry's guard with the group's context and parsed argument before its handler", async () => {
+        const seen: string[] = [];
+        const guarded: unknown[] = [];
+        const routes = [
+            echoRoute({
+                guard: async (ctx, argument) => {
+                    await Promise.resolve();
+                    expect(ctx.db).toBe(db);
+                    guarded.push(argument);
+                    seen.push("guard echo");
+                },
+                handler: async (_ctx, argument) => {
+                    seen.push("handler echo");
+                    return argument;
+                },
+            }),
+            echoRoute({
+                id: "other",
+                guard: (ctx, argument) => {
+                    expect(ctx.db).toBe(db);
+                    guarded.push(argument);
+                    seen.push("guard other");
+                },
+                handler: async (_ctx, argument) => {
+                    seen.push("handler other");
+                    return argument;
+                },
+            }),
+        ];
+
+        const value = await handle(
+            routes,
+            groupBody("batch", [callEntry("echo", { n: 1 }), callEntry("other", { n: 2 })]),
+        );
+
+        expect(value).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(guarded).toEqual([{ n: 1 }, { n: 2 }]);
+        expect(seen).toEqual(["guard echo", "handler echo", "guard other", "handler other"]);
+    });
+
+    it("reports a guard's refusal at the entry's path and does not run its handler", async () => {
+        let handled = false;
+        const routes = [
+            echoRoute(),
+            echoRoute({
+                id: "inner",
+                guard: () => {
+                    throw new VersionConflictError("refused");
+                },
+                handler: async () => {
+                    handled = true;
+                },
+            }),
+        ];
+
+        const thrown = await failure(
+            routes,
+            groupBody("transaction", [
+                callEntry("echo", {}),
+                { group: { kind: "batch", calls: [callEntry("inner", {})] } },
+            ]),
+        );
+
+        expect(thrown.message).toBe("refused");
+        expect(thrown).toMatchObject({ status: 409, kind: "version-conflict", path: [1, 0] });
+        expect(handled).toBe(false);
+    });
+
     it("refuses a body that is a lone call rather than a group", async () => {
         const thrown = await failure([echoRoute()], stringify(callEntry("echo", {})));
 
