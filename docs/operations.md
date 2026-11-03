@@ -178,20 +178,20 @@ choose one: it writes `unknown`, which compiles because the annotation supplies
 the parameter types, and says plainly that the implementation must decide.
 
 Every route handler receives one context, `RequestContext` in
-`packages/infra/src/context.ts`, whose only field is `db`. Startup builds the
-driver it chose — the backend builds PGlite — applies the generated schema with
-`applySchema` from `packages/infra/src/postgres/schema.ts`, and calls
-`createAppContext` once to build the process's context. The context holds the
-driver, and the router calls
-`createRequestContext(app, request)` per request, which gives that request its
-own executor over the driver's pool; a test or a worker that needs only a
-database derives one with `app.driver.createExecutor()`. An operation annotated
+`packages/infra/src/context.ts`, which holds the executor its request runs on and
+the request itself. Startup builds the driver it chose — the backend builds PGlite
+— applies the generated schema with `applySchema` from
+`packages/infra/src/postgres/schema.ts`, and calls `createAppContext` once to build
+the process's context. The context holds the driver, and the router builds
+`new RequestContext(app.driver.createExecutor(), request)` per request, which gives
+that request its own executor over the driver's pool; a test or a worker that needs
+only a database derives one with `app.driver.createExecutor()`. An operation annotated
 `WidgetOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
 An operation that wanted more, such as `<{ db: SqlExecutor; clock: Clock }>`,
 would fail to compile in the generated route, because the HTTP layer cannot build
 a clock. Widening `RequestContext` is therefore a deliberate change: it is where
-a request-level dependency is introduced, and `createRequestContext` is
-hand-written for that reason. A resource that outlives one request belongs on
+a request-level dependency is introduced, and `RequestContext` is hand-written for
+that reason. A resource that outlives one request belongs on
 `AppContext` instead, because a fresh PGlite instance per request would lose its
 data.
 
@@ -296,7 +296,7 @@ actually throws it.
 
 - **Per-operation context construction.** Every REST operation receives the
   `RequestContext` built for its request; a dependency another context would
-  need is added to `createRequestContext`, not resolved per operation.
+  need is added to `RequestContext`, not resolved per operation.
 - **Validating the response.** The route encodes the result unvalidated, as with
   every other call, so no result schema is generated.
 - **Deleting an implementation for a removed operation.** The generator reports

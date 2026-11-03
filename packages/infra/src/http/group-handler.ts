@@ -4,12 +4,12 @@ import { attempt, attemptWith, batch, transaction, transactionWith } from "../db
 import {
     ACCESS_MODES,
     ISOLATION_LEVELS,
-    type SqlExecutor,
     type TransactionOptions,
 } from "../db/sql-executor.ts";
 import { AppError, BadGroupError, RequestError } from "sdk/errors.ts";
 import { statusFor, WritableResponse } from "./api-http-response.ts";
 import type { Route } from "./router.ts";
+import type { RequestContext } from "../context.ts";
 
 /** The path the group entry point is mounted at. See docs/rest-api.md. */
 export const GROUP_PATH = "/$group";
@@ -211,10 +211,10 @@ function planGroup(value: unknown, resolve: ResolveRoute): PlannedGroup {
     return node;
 }
 
-/** Run one checked node on the boundary its `SqlExecutor` already carries. See docs/transactions.md. */
-async function execute(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
+/** Run one checked node on the boundary its context's `SqlExecutor` already carries. See docs/transactions.md. */
+async function execute(ctx: RequestContext, node: Planned, path: number[]): Promise<unknown> {
     try {
-        return await runNode(db, node, path);
+        return await runNode(ctx, node, path);
     } catch (thrown) {
         // The innermost entry wins, so the path names the call that actually raised.
         throw thrown instanceof GroupFailure ? thrown : new GroupFailure(thrown, path);
@@ -230,9 +230,9 @@ function within(path: number[], ancestor: number[]): boolean {
  * The body of {@link execute}, without the path bookkeeping.
  * @throws {BadGroupError} when a call answers with a writable the group cannot encode
  */
-async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<unknown> {
+async function runNode(ctx: RequestContext, node: Planned, path: number[]): Promise<unknown> {
     if (node.kind === "call") {
-        const result = await node.route.handler({ db }, node.argument);
+        const result = await node.route.handler(ctx, node.argument);
         // A writable answers the request itself; a group entry answers a value the group encodes.
         if (result instanceof WritableResponse) {
             throw new BadGroupError(`\`${node.route.id}\` answers the request itself and cannot run in a group`, { path });
@@ -240,24 +240,24 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
         return result ?? null;
     }
 
-    // A step runs on whatever `SqlExecutor` its group's boundary hands it; `db/group.ts` owns that handoff.
+    // A step runs on the context its group's boundary hands it; `db/group.ts` owns that handoff.
     const steps = node.calls.map(
-        (child, index) => async (inner: SqlExecutor) => await execute(inner, child, [...path, index]),
+        (child, index) => async (inner: RequestContext) => await execute(inner, child, [...path, index]),
     );
 
     if (node.kind === "batch") {
-        return await batch(db, ...steps);
+        return await batch(ctx, ...steps);
     }
 
     // The modes a group named ride on the `begin` that opens it; a nested boundary is a savepoint and names none.
     if (node.kind === "transaction") {
         return node.options === undefined
-            ? await transaction(db, ...steps)
-            : await transactionWith(db, node.options, ...steps);
+            ? await transaction(ctx, ...steps)
+            : await transactionWith(ctx, node.options, ...steps);
     }
 
     const outcome =
-        node.options === undefined ? await attempt(db, ...steps) : await attemptWith(db, node.options, ...steps);
+        node.options === undefined ? await attempt(ctx, ...steps) : await attemptWith(ctx, node.options, ...steps);
     if (outcome.ok) {
         return { ok: true, value: outcome.value };
     }
@@ -281,7 +281,7 @@ async function runNode(db: SqlExecutor, node: Planned, path: number[]): Promise<
  * @throws {RequestError} when the body does not decode
  * @throws {BadGroupError} when the group body is malformed
  */
-export async function handleGroup(db: SqlExecutor, resolve: ResolveRoute, body: string): Promise<unknown> {
+export async function handleGroup(ctx: RequestContext, resolve: ResolveRoute, body: string): Promise<unknown> {
     let value: unknown;
     try {
         value = body === "" ? undefined : decode(body);
@@ -290,5 +290,5 @@ export async function handleGroup(db: SqlExecutor, resolve: ResolveRoute, body: 
     }
 
     const planned = planGroup(value, resolve);
-    return await execute(db, planned, []);
+    return await execute(ctx, planned, []);
 }

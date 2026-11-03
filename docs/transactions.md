@@ -153,8 +153,9 @@ a `query` made on the pool while a checkout is open waits for the one connection
 and on `pg` it would land on another connection and escape the transaction.
 
 The group handler (`src/http/group-handler.ts`) opens one boundary per
-`transaction` group it meets while walking the tree, and hands every handler the
-`SqlExecutor` of the boundary it is in. A nested group does not join the outer
+`transaction` group it meets while walking the tree, and hands every call and
+step the request's `RequestContext`, whose `db` is the `SqlExecutor` of the
+boundary it is in. A nested group does not join the outer
 one — it opens a savepoint inside it, so it can roll back on its own while the
 outer boundary still commits. Two sibling `transaction` groups are two
 boundaries, atomic separately, inside one request.
@@ -165,27 +166,28 @@ boundary semantics over the port, and the group handler only maps a group's
 the same boundaries on both sides:
 
 ```ts
-export type Step = (db: SqlExecutor) => Promise<unknown>;
+export type Step = (ctx: RequestContext) => Promise<unknown>;
 export type Attempted<T> =
     | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly error: unknown };
 
-export function batch<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
-export function transaction<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Results<T>>;
+export function batch<const T extends readonly Step[]>(ctx: RequestContext, ...steps: T): Promise<Results<T>>;
+export function transaction<const T extends readonly Step[]>(ctx: RequestContext, ...steps: T): Promise<Results<T>>;
 export function transactionWith<const T extends readonly Step[]>(
-    db: SqlExecutor,
+    ctx: RequestContext,
     options: TransactionOptions,
     ...steps: T
 ): Promise<Results<T>>;
-export function attempt<const T extends readonly Step[]>(db: SqlExecutor, ...steps: T): Promise<Attempted<Results<T>>>;
+export function attempt<const T extends readonly Step[]>(ctx: RequestContext, ...steps: T): Promise<Attempted<Results<T>>>;
 export function attemptWith<const T extends readonly Step[]>(
-    db: SqlExecutor,
+    ctx: RequestContext,
     options: TransactionOptions,
     ...steps: T
 ): Promise<Attempted<Results<T>>>;
 ```
 
-A step is one unit of work that is handed the `SqlExecutor` it must run on, so
+A step is one unit of work that is handed the `RequestContext` whose `db` is the
+boundary it runs on, so
 the three kinds differ in exactly two ways: whether the steps share a boundary,
 and whether a step's failure is raised or reported. The two that open a boundary
 also come in a `With` form that names the modes it opens with — `transactionWith`
@@ -196,10 +198,10 @@ each step's own result:
 
 ```ts
 const [found, written] = await transaction(
-    db,
-    (tx) => queryWidget(tx, { filter: { tenantId: [tenantId] }, select: { id: true } }),
-    async (tx) => {
-        await createWidget(tx, [widget]);
+    ctx,
+    (inner) => queryWidget(inner.db, { filter: { tenantId: [tenantId] }, select: { id: true } }),
+    async (inner) => {
+        await createWidget(inner.db, [widget]);
     },
 );
 // found: Selected<Widget, { id: true }>[]; written: void
@@ -215,12 +217,12 @@ table it creates itself, so it asserts the boundary behaviour — that a failed
 `transaction` leaves nothing behind, that a nested one is a savepoint the outer
 transaction survives — without naming a domain type or a route. The load-bearing
 property it can assert and a mock cannot is that the steps really do receive the
-boundary handle: were `transaction` to hand its steps the outer `db`, the rows
+boundary handle: were `transaction` to hand its steps the outer context, the rows
 would survive the rollback and the assertion would fail.
 
 ## Who owns the boundary
 
-A handler owns its boundary. It receives a `SqlExecutor` scoped to the request, and it
+A handler owns its boundary. It receives a `RequestContext` whose `db` is scoped to the request, and it
 opens a unit of work when it needs one:
 
 ```ts
@@ -230,13 +232,13 @@ export interface Route {
     path: string;
     source: "query" | "body";
     input: RouteInput;
-    handler: (db: SqlExecutor, argument: unknown) => Promise<unknown>;
+    handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
 }
 ```
 
 ```ts
-export function sendWidget(db: SqlExecutor, opts: SendWidgetOptions): Promise<void> {
-    return db.transaction(async (tx) => { … });
+export function sendWidget(ctx: { db: SqlExecutor }, opts: SendWidgetOptions): Promise<void> {
+    return ctx.db.transaction(async (tx) => { … });
 }
 ```
 
@@ -328,13 +330,14 @@ A boundary is worth asking for where one request is more than one repository
 call. `sendWidget` is the case: it reads the draft, writes `widget_snapshot` and
 `widget_snapshot_row`, freezes the parties, and delivers.
 
-Nothing marks it as such. The implementation is hand-written, takes `SqlExecutor`, and
-opens the boundary itself — `transaction(db, …)` where it wants a unit of work,
-`attempt(db, …)` where a step may fail without taking the rest down — which is
-what makes it callable outside the router too: a seed script or a test passes
-any `SqlExecutor` and the same function works. No route is a named operation
-yet, because the operations contract has no implementation; `Route.handler`
-taking `SqlExecutor` is the seam it lands on.
+Nothing marks it as such. The implementation is hand-written, takes `{ db: SqlExecutor }`,
+and opens the boundary itself with `ctx.db.transaction(…)` where it wants a unit of work.
+That is what makes it callable outside the router too: a seed script or a test passes
+any `SqlExecutor` as `{ db }` and the same function works. The router exposes the
+operation as a route, and `Route.handler` receives the request's `RequestContext`, of
+which the operation sees only the `{ db }` it declares. The group functions in
+`db/group.ts` take a `RequestContext`, which the router builds per request, so an
+operation opens its boundary through `ctx.db` instead.
 
 A client composes its own boundary with a group instead, which is the subject of
 the rest of this note. The distinction is who authored the sequence, not what the
@@ -613,7 +616,7 @@ the client imports nothing from infra or the backend.
   one call. Serial execution bounds it; it does not scope it.
 - **The seed has no transaction.** The mock data is written call by call
   (`docs/mockdata.md`); wrapping it is a use of `SqlExecutor`, not part of this surface.
-- **The backend keeps its tuples.** A hand-written `transaction(db, writeA, writeB)`
+- **The backend keeps its tuples.** A hand-written `transaction(ctx, writeA, writeB)`
   answers `[void, void]`; only the SDK's all-void group collapses to `void`. The
   positions are what a caller destructures, so `db/group.ts` keeps them and casts
   once, at the one place the variadic spread loses the pairing of a step to its

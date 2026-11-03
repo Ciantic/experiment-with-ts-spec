@@ -100,12 +100,13 @@ call and the body for a `body` call, and ignores the other. A group entry carrie
 its argument as a field of the tree, so it is the one place `source` does not
 apply.
 
-A route handler receives one `RequestContext`, whose only field is `db`; a
-generated entity route reads `ctx.db`, and a generated operation route passes
-`ctx` itself to the module, so the operation's chosen context is compile-checked
-against it. `createAppContext` in `packages/infra/src/context.ts` builds the
-process's context once at startup, and `createRequestContext(app, request)` builds
-a request's context over it. See `docs/operations.md`.
+A route handler receives one `RequestContext`, whose `db` is the request's
+executor; a generated entity route reads `ctx.db`, and a generated operation route
+passes `ctx` itself to the module, so the operation's chosen context is
+compile-checked against it. `createAppContext` in `packages/infra/src/context.ts`
+builds the process's context once at startup, and the router builds a request's
+`RequestContext` over it with `new RequestContext(app.driver.createExecutor(), request)`.
+See `docs/operations.md`.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows
 (default 1000) starting at `offset`, in the `order` the caller names, narrowed by

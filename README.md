@@ -143,4 +143,4 @@ Data for the requests flows through two contexts:
 
 1. `AppContext` is application specific context, created once on startup.
 2. `RequestContext` is request specific context, created from `AppContext` for each request.
-3. REST endpoint functionality then use parts from the `RequestContext` such as `db: SqlExecutor` or request details like headers.
+3. REST endpoint functionality then use parts from the `RequestContext` such as `db: SqlExecutor`.

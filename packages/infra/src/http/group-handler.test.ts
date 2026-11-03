@@ -1,7 +1,9 @@
 /** Unit tests for the group entry point, over fixture routes it resolves by operation id. See docs/testing.md and docs/transactions.md. */
+import type { IncomingMessage } from "node:http";
 import { stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AppError, BadGroupError, RequestError, VersionConflictError } from "sdk/errors.ts";
+import { RequestContext } from "../context.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
 import { WritableResponse } from "./api-http-response.ts";
 import { handleGroup } from "./group-handler.ts";
@@ -77,7 +79,7 @@ function groupBody(kind: "batch" | "transaction" | "attempt", calls: unknown[], 
 /** Handle one body against a fixture route table, resolving calls the way the router does. */
 async function handle(routes: Route[], body: string): Promise<unknown> {
     const byId = new Map(routes.map((route) => [route.id, route]));
-    return await handleGroup(db, (id) => byId.get(id), body);
+    return await handleGroup(new RequestContext(db, {} as IncomingMessage), (id) => byId.get(id), body);
 }
 
 /** The error a group failed with, so its type and fields are both assertable. */

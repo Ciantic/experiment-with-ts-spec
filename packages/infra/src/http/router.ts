@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import type { IncomingMessage } from "node:http";
 import { parse as decode } from "devalue";
 import { NotFoundError, PayloadTooLargeError, RequestError, ValidationError } from "sdk/errors.ts";
-import { createRequestContext, type AppContext, type RequestContext } from "../context.ts";
+import { type AppContext, RequestContext } from "../context.ts";
 import { GROUP_PATH, handleGroup } from "./group-handler.ts";
 
 /** The largest request body accepted, in bytes. */
@@ -91,12 +91,12 @@ export class ApiRouter implements HttpRouter {
         // A missing method is read as `GET`, the method a request without one carries.
         const method = request.method ?? "GET";
         // One context per request, so a route never reaches for a dependency the router did not hand it.
-        const context = await createRequestContext(this.#app, request);
+        const ctx = new RequestContext(this.#app.driver.createExecutor(), request);
         const body = await readBody(request);
 
         if (method === "POST" && url.pathname === GROUP_PATH) {
             // A group entry names an operation rather than a verb and a path, so it resolves by id.
-            return await handleGroup(context.db, (id) => this.#byId.get(id), body);
+            return await handleGroup(ctx, (id) => this.#byId.get(id), body);
         }
 
         const route = this.#resolve(method, url.pathname);
@@ -120,6 +120,6 @@ export class ApiRouter implements HttpRouter {
             throw new ValidationError("invalid request", { issues: parsed.error.issues });
         }
 
-        return await route.handler(context, parsed.data);
+        return await route.handler(ctx, parsed.data);
     }
 }
