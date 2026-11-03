@@ -6,13 +6,7 @@ import { DEFAULT_PORT, parseServerArgs } from "./args.ts";
 
 /** Read the flags, then serve over the pool `pg` builds. */
 async function main(): Promise<void> {
-    const parsed = parseServerArgs(process.argv.slice(2));
-    if (!parsed.ok) {
-        console.error(parsed.message);
-        process.exitCode = 1;
-        return;
-    }
-    const { options } = parsed;
+    const options = parseServerArgs(process.argv.slice(2));
     const url = options.databaseUrl ?? process.env.DATABASE_URL;
     const driver = new PgSqlDriver(pgRuntime, url === undefined ? {} : { connectionString: url });
     if (options.seed) {

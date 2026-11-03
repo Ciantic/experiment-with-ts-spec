@@ -9,7 +9,7 @@ client has something to read without a fixture being written per test.
 - `packages/spec/mockdata/index.ts` — the barrel, plus `mockTables`, the
   ordered list of `{ entity, rows }`.
 - `packages/infra/src/mock/seed.ts` — `seedMockData(db)`.
-- `packages/backend/src/main.pglite.ts` — the development server entry, optionally seeded.
+- `packages/backend/src/main.pglite.ts` — the development server entry, seeded by default.
 
 The `mockTables` are ordered so foreign keys resolve: the tenancy root every row
 belongs to, then the entities it references, then children after their parents,
@@ -40,13 +40,14 @@ declared, but the identity sequence assigns the stored value, not the row
 ## Running the server
 
 ```
-pnpm --filter backend run example:server --port 4123 --seed
+pnpm --filter backend run example:server --port 4123
 ```
 
-`node src/main.pglite.ts` also works. Flags:
+`node src/main.pglite.ts` also works. The PGlite entry seeds by default; flags:
 
 - `--port <n>` — the listen port. Default `3000`; `0` picks a free one.
-- `--seed` (alias `--mock`) — insert the mock data before serving.
+- `--seed` (alias `--mock`) — insert the mock data before serving. The PGlite
+  entry already does this; the `pg` entry needs the flag.
 - `--log-sql` — let PGlite print every statement it runs, the `BEGIN`, `COMMIT`,
   and `ROLLBACK` it issues around a transaction included. PGlite's own startup
   and server logs come with it, so the output is verbose.
@@ -55,9 +56,9 @@ pnpm --filter backend run example:server --port 4123 --seed
 - `--data-dir <path>` — keep PGlite's database in that directory instead of
   memory, so a seeded run survives a restart. The `pg` entry ignores it.
 
-Without `--seed` the server runs against the empty generated schema. The PGlite
-entry builds an in-memory driver and serves over it; the `pg` entry does the
-same over `DATABASE_URL` (`docs/entrypoints.md`).
+The PGlite entry builds an in-memory driver and serves over it, seeded by
+default; the `pg` entry builds one over `DATABASE_URL` and runs against the
+empty generated schema unless given `--seed` (`docs/entrypoints.md`).
 
 ## The mock data test
 

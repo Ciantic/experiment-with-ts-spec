@@ -2,13 +2,17 @@
 
 A process picks its database once, in the module the command line launches.
 `packages/backend/src/args.ts` holds what does not depend on that pick:
-`parseServerArgs` reads the command line with `node:util`'s `parseArgs`:
-`--port <n>`, `--seed` (alias `--mock`), `--log-sql`, `--database-url <url>`, and
-`--data-dir <path>`; `DEFAULT_PORT` is the port a run listens on when `--port` is
-absent. Reading the command line returns a result rather than
-throwing: a malformed one is a message the entry prints before setting exit
-status `1`. The entries export nothing: each parses, builds its driver, applies
-the generated schema and seeds the mock data when asked, starts the server, and
+`parseServerArgs(argv, defaults)` reads the command line with `node:util`'s
+`parseArgs`: `--port <n>`, `--seed` (alias `--mock`), `--log-sql`,
+`--database-url <url>`, `--data-dir <path>`, and `--help` (alias `-h`);
+`DEFAULT_PORT` is the port a run listens on when `--port` is absent, and `HELP`
+is the usage text a help request prints. Reading the command line is
+self-contained: a malformed one is a message `parseServerArgs` prints to stderr
+before exiting with status `1`, a help request prints `HELP` and exits `0`, and
+anything else returns `defaults` with the flags layered over them. The PGlite
+entry passes `{ seed: true }`, so the development server always seeds. The
+entries export nothing: each parses, builds its driver, applies the generated
+schema and seeds the mock data when its options say so, starts the server, and
 prints the port.
 
 Two modules make the pick, and each imports one driver:

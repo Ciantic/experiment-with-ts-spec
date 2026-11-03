@@ -17,6 +17,19 @@ export interface CliOptions extends ServerOptions {
     dataDir?: string;
 }
 
+/** The usage text `--help` and `-h` print. */
+export const HELP = [
+    "Usage: <entry point> [options]",
+    "",
+    "Options:",
+    "  --port <n>             port to listen on (default 3000)",
+    "  --seed, --mock         apply the schema and seed the mock data (PGlite seeds by default)",
+    "  --log-sql              log every statement PGlite runs",
+    "  --database-url <url>   Postgres connection string (defaults to DATABASE_URL)",
+    "  --data-dir <path>      directory PGlite persists to",
+    "  --help, -h             print this help",
+].join("\n");
+
 /** The shared flags, so `parseArgs` rejects anything it does not know. */
 const CLI_FLAGS = {
     port: { type: "string" },
@@ -25,29 +38,31 @@ const CLI_FLAGS = {
     "log-sql": { type: "boolean" },
     "database-url": { type: "string" },
     "data-dir": { type: "string" },
+    help: { type: "boolean", short: "h" },
 } as const satisfies ParseArgsOptionsConfig;
 
-/** What reading the command line answered: the flags, or the message an entry prints before exiting. */
-export type ParseResult =
-    | { ok: true; options: CliOptions }
-    | { ok: false; message: string };
-
-/** Read `--port <n>`, `--seed` (alias `--mock`), `--log-sql`, `--database-url <url>`, and `--data-dir <path>`. */
-export function parseServerArgs(argv: readonly string[]): ParseResult {
+/** Read the flags over `defaults`, printing the help or the bad command line's message and exiting instead of returning. */
+export function parseServerArgs(argv: readonly string[], defaults: ServerOptions = {}): CliOptions {
     let values;
     try {
         ({ values } = parseArgs({ args: argv, options: CLI_FLAGS, strict: true, allowPositionals: false }));
     } catch (thrown) {
-        return { ok: false, message: thrown instanceof Error ? thrown.message : String(thrown) };
+        console.error(thrown instanceof Error ? thrown.message : String(thrown));
+        process.exit(1);
     }
-    const options: CliOptions = {};
+    if (values.help === true) {
+        console.log(HELP);
+        process.exit(0);
+    }
+    const options: CliOptions = { ...defaults };
     if (values.seed === true || values.mock === true) {
         options.seed = true;
     }
     const port = values.port;
     if (port !== undefined) {
         if (!/^\d+$/.test(port)) {
-            return { ok: false, message: "--port needs an integer" };
+            console.error("--port needs an integer");
+            process.exit(1);
         }
         options.port = Number(port);
     }
@@ -62,5 +77,5 @@ export function parseServerArgs(argv: readonly string[]): ParseResult {
     if (dataDir !== undefined) {
         options.dataDir = dataDir;
     }
-    return { ok: true, options };
+    return options;
 }

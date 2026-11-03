@@ -4,15 +4,9 @@ import { ApiServer, PgliteSqlDriver, applySchema, createAppContext, seedMockData
 import { routes } from "./http/routes/index.ts";
 import { DEFAULT_PORT, parseServerArgs } from "./args.ts";
 
-/** Read the flags, then serve over a fresh in-memory database. */
+/** Read the flags, then serve over a fresh in-memory database, seeded by default. */
 async function main(): Promise<void> {
-    const parsed = parseServerArgs(process.argv.slice(2));
-    if (!parsed.ok) {
-        console.error(parsed.message);
-        process.exitCode = 1;
-        return;
-    }
-    const { options } = parsed;
+    const options = parseServerArgs(process.argv.slice(2), { seed: true });
     const driver = new PgliteSqlDriver(PGlite, {
         debug: options.logSql === true ? 1 : 0,
         ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
