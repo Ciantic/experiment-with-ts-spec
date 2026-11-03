@@ -8,21 +8,21 @@ import type { RouteGuard } from "./router.ts";
 /** One row of a write, or one key a delete or watch names. */
 type Row = Record<string, unknown>;
 
-/** The argument of a read: the filter whose tenant column a guard reads. */
+/** The argument of a read: the filter whose tenant field a guard reads. */
 export interface TenantFilterArgument {
-    readonly filter?: object | undefined;
+    readonly filter?: Record<string, unknown> | undefined;
 }
 
-/** The argument of a write: the rows whose tenant column a guard reads. */
+/** The argument of a write: the rows whose tenant field a guard reads. */
 export type TenantRowsArgument = readonly object[];
 
 /** The argument of a change stream: the filter it watches, or the keys it selects. */
-export interface TenantWatchArgument extends TenantFilterArgument {
-    readonly pks?: readonly object[] | undefined;
+export interface TenantWatchArgument<TKey extends object = object> extends TenantFilterArgument {
+    readonly pks?: readonly TKey[] | undefined;
 }
 
 /** The entity's generated `get<Entity>Tenants`: the distinct tenants the named key rows belong to. */
-export type TenantLookup<T = any> = (db: SqlExecutor, pks: readonly T[]) => Promise<TenantId[]>;
+export type TenantLookup<TKey extends object = object> = (db: SqlExecutor, pks: readonly TKey[]) => Promise<TenantId[]>;
 
 /**
  * A permission no tenant narrows: `tenant:create`, or an `invoice:query` covering every tenant.
@@ -40,26 +40,25 @@ export function permissionGuard(scope: string, action: string): RouteGuard {
 /** The guard for a read: the tenants its filter names. */
 export function tenantOwnedQueryGuard<T extends TenantFilterArgument = TenantFilterArgument>(
     scope: string,
-    column: string,
+    tenantFieldName: string,
 ): RouteGuard<T> {
     return async (ctx, argument) => {
-        const filter = rowOf(argument.filter);
-        await requirePermission(ctx, scope, "query", () => tenantValues(filter[column]));
+        const tenantFilters = argument.filter?.[tenantFieldName];
+        await requirePermission(ctx, scope, "query", () => tenantValues(tenantFilters));
     };
 }
 
 /** The guard for a change stream: its filter tenant, or the stored tenant of every key it names. */
-export function tenantOwnedWatchGuard<T extends TenantWatchArgument | undefined = TenantWatchArgument | undefined>(
+export function tenantOwnedWatchGuard<TKey extends object>(
     scope: string,
-    column: string,
-    tenants: TenantLookup,
-): RouteGuard<T> {
+    tenantFieldName: string,
+    tenants: TenantLookup<TKey>,
+): RouteGuard<TenantWatchArgument<TKey> | undefined> {
     return async (ctx, argument) => {
-        const options = rowOf(argument);
-        const named = tenantValues(rowOf(options.filter)[column]);
-        const keys = rowsOf(options.pks);
+        const tenantFilters = argument?.filter?.[tenantFieldName];
+        const pks = argument?.pks;
         await requirePermission(ctx, scope, "watch", async () =>
-            named.length > 0 ? named : await tenants(ctx.db, keys),
+            tenantFilters !== undefined ? tenantValues(tenantFilters) : await tenants(ctx.db, pks ?? []),
         );
     };
 }
@@ -67,64 +66,62 @@ export function tenantOwnedWatchGuard<T extends TenantWatchArgument | undefined 
 /** The guard for a create: the tenant every inserted row names. */
 export function tenantOwnedCreateGuard<T extends TenantRowsArgument = TenantRowsArgument>(
     scope: string,
-    column: string,
+    tenantFieldName: string,
 ): RouteGuard<T> {
     return async (ctx, argument) => {
-        const rows = rowsOf(argument);
-        if (rows.length === 0) {
+        if (argument.length === 0) {
             return;
         }
-        await requirePermission(ctx, scope, "create", () => rows.flatMap((row) => tenantValues(row[column])));
+        await requirePermission(ctx, scope, "create", () =>
+            argument.flatMap((row) => tenantValues(rowOf(row)[tenantFieldName])),
+        );
     };
 }
 
 /** The guard for an upsert: the tenant every row names, and the stored tenant a replaced row leaves. */
-export function tenantOwnedUpsertGuard<T extends TenantRowsArgument = TenantRowsArgument>(
+export function tenantOwnedUpsertGuard<TKey extends object>(
     scope: string,
-    column: string,
-    tenants: TenantLookup,
-): RouteGuard<T> {
+    tenantFieldName: string,
+    tenants: TenantLookup<TKey>,
+): RouteGuard<readonly TKey[]> {
     return async (ctx, argument) => {
-        const rows = rowsOf(argument);
-        if (rows.length === 0) {
+        if (argument.length === 0) {
             return;
         }
         await requirePermission(ctx, scope, "upsert", async () => [
-            ...(await tenants(ctx.db, rows)),
-            ...rows.flatMap((row) => tenantValues(row[column])),
+            ...(await tenants(ctx.db, argument)),
+            ...argument.flatMap((row) => tenantValues(rowOf(row)[tenantFieldName])),
         ]);
     };
 }
 
 /** The guard for a patch: a row's stored tenant, and the tenant the patch moves it to when it names one. */
-export function tenantOwnedUpdateGuard<T extends TenantRowsArgument = TenantRowsArgument>(
+export function tenantOwnedUpdateGuard<TKey extends object>(
     scope: string,
-    column: string,
-    tenants: TenantLookup,
-): RouteGuard<T> {
+    tenantFieldName: string,
+    tenants: TenantLookup<TKey>,
+): RouteGuard<readonly TKey[]> {
     return async (ctx, argument) => {
-        const rows = rowsOf(argument);
-        if (rows.length === 0) {
+        if (argument.length === 0) {
             return;
         }
         await requirePermission(ctx, scope, "update", async () => [
-            ...(await tenants(ctx.db, rows)),
-            ...rows.flatMap((row) => tenantValues(row[column])),
+            ...(await tenants(ctx.db, argument)),
+            ...argument.flatMap((row) => tenantValues(rowOf(row)[tenantFieldName])),
         ]);
     };
 }
 
 /** The guard for a delete: the stored tenant of every key it names. */
-export function tenantOwnedDeleteGuard<T extends TenantRowsArgument = TenantRowsArgument>(
+export function tenantOwnedDeleteGuard<TKey extends object>(
     scope: string,
-    tenants: TenantLookup,
-): RouteGuard<T> {
+    tenants: TenantLookup<TKey>,
+): RouteGuard<readonly TKey[]> {
     return async (ctx, argument) => {
-        const rows = rowsOf(argument);
-        if (rows.length === 0) {
+        if (argument.length === 0) {
             return;
         }
-        await requirePermission(ctx, scope, "delete", () => tenants(ctx.db, rows));
+        await requirePermission(ctx, scope, "delete", () => tenants(ctx.db, argument));
     };
 }
 
@@ -155,11 +152,6 @@ async function requirePermission(
 /** A value read as an object, so an absent or malformed argument reads as one with no fields. */
 function rowOf(value: unknown): Row {
     return typeof value === "object" && value !== null ? (value as Row) : {};
-}
-
-/** A value read as the array of rows a write or a key list carries. */
-function rowsOf(value: unknown): Row[] {
-    return Array.isArray(value) ? value.map(rowOf) : [];
 }
 
 /** One tenant id, or the set a filter carries; an absent value or a null test names no tenant. */

@@ -84,16 +84,16 @@ guard: permissionGuard("tenant", "create"),
 
 | Guard | Route | Tenants it checks |
 | --- | --- | --- |
-| `tenantOwnedQueryGuard(scope, column)` | `query` | every tenant the filter names |
-| `tenantOwnedCreateGuard(scope, column)` | `create` | every inserted row's tenant |
-| `tenantOwnedWatchGuard(scope, column, lookup)` | `watch` | the filter tenant, or the tenant of every key named |
-| `tenantOwnedUpsertGuard(scope, column, lookup)` | `upsert` | every row's tenant, and the stored tenant it leaves |
-| `tenantOwnedUpdateGuard(scope, column, lookup)` | `update` | the stored tenant, and the tenant a patch moves it to |
+| `tenantOwnedQueryGuard(scope, tenantFieldName)` | `query` | every tenant the filter names |
+| `tenantOwnedCreateGuard(scope, tenantFieldName)` | `create` | every inserted row's tenant |
+| `tenantOwnedWatchGuard(scope, tenantFieldName, lookup)` | `watch` | the filter tenant, or the tenant of every key named |
+| `tenantOwnedUpsertGuard(scope, tenantFieldName, lookup)` | `upsert` | every row's tenant, and the stored tenant it leaves |
+| `tenantOwnedUpdateGuard(scope, tenantFieldName, lookup)` | `update` | the stored tenant, and the tenant a patch moves it to |
 | `tenantOwnedDeleteGuard(scope, lookup)` | `delete` | the stored tenant of every key |
 
-`column` is the entity's `@tenantOwned` field, written into the call by the route
-generator; a delete reads no tenant from its argument, so it takes only the
-lookup.
+`tenantFieldName` is the entity's `@tenantOwned` field, written into the call by
+the route generator; a delete reads no tenant from its argument, so it takes only
+the lookup.
 
 A read and a create take the tenant from the argument, so they need no lookup. A
 route that addresses a stored row receives the entity's generated
@@ -109,7 +109,7 @@ Each factory is generic over that argument and defaults to the shape it reads:
 route's own `input` supplies it, and the guard's argument is checked against the
 schema's type — `{ filter?: { tenantId?: TenantId[] } }` for an invoice read. The
 factory body sees only the constraint, since one guard serves every entity and
-reads the tenant column by its runtime name.
+reads the tenant field by its runtime name.
 
 ### The two-level check
 
@@ -154,10 +154,10 @@ export async function getInvoiceTenants(
 }
 ```
 
-The parameter is the entity's own primary-key type. `TenantLookup` leaves the row
-type open, so a lookup accepting the narrower key type still satisfies the
-guard's uniform contract: the guard hands over the parsed rows it holds, which
-for a patch or an upsert are a superset of the key. A composite key matches one
+The parameter is the entity's own primary-key type. `TenantLookup<TKey>` is
+generic over the key rows, and a guard infers `TKey` from the generated function,
+so the route's argument is checked against that key: a delete takes exactly the
+keys, and a patch or an upsert must carry them. A composite key matches one
 `unnest($n::type[])` per key column. No generated function hardcodes a domain
 name, and neither does a guard.
 
@@ -195,7 +195,7 @@ by a check.
   separate statement from the write, so a row whose tenant changes between the
   two is a narrow window. Carrying the allowed tenants into the generated
   statement's `where` would close it and remove the extra `select`.
-- **The guard reads the argument's tenant column.** A column that disagrees with
+- **The guard reads the argument's tenant field.** A field that disagrees with
   the row's tenant is the database's problem, not the guard's — the composite
   foreign keys in `docs/tenancy.md` are what stop it.
 - **Nothing lints the actions.** The const has no tags for the linter to check,
