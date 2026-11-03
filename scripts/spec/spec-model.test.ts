@@ -830,6 +830,72 @@ describe("tenancy tags", () => {
     });
 });
 
+describe("tenant id type", () => {
+    /** A tenancy root whose key is a branded id alias. */
+    const TENANT = `
+/** The unique identifier for a tenant. */
+export type TenantId = string;
+
+/**
+ * @tenant
+ * @entity
+ */
+export interface Tenant {
+    /** @primaryKey */
+    id: TenantId;
+}
+`.trim();
+
+    it("reads the tenant id type from the root's primary key", () => {
+        expect(parse({ "Tenant.ts": TENANT }).tenantIdType).toEqual({
+            name: "TenantId",
+            importSpecifier: "spec/fixtures/Tenant.ts",
+        });
+    });
+
+    it("answers no tenant id type when the spec declares no root", () => {
+        const spec = parse({ "Thing.ts": "/** @entity */\nexport interface Thing {\n    id: string;\n}" });
+
+        expect(spec.tenantIdType).toBeUndefined();
+    });
+
+    it("answers no tenant id type when the root has a composite key", () => {
+        const spec = parse({
+            "Tenant.ts": `
+/**
+ * @tenant
+ * @entity
+ */
+export interface Tenant {
+    /** @primaryKey */
+    id: TenantId;
+    /** @primaryKey */
+    region: string;
+}
+`,
+        });
+
+        expect(spec.tenantIdType).toBeUndefined();
+    });
+
+    it("answers no tenant id type when the root's key is an inline generic", () => {
+        const spec = parse({
+            "Tenant.ts": `
+/**
+ * @tenant
+ * @entity
+ */
+export interface Tenant {
+    /** @primaryKey */
+    id: BrandedId<"TenantId">;
+}
+`,
+        });
+
+        expect(spec.tenantIdType).toBeUndefined();
+    });
+});
+
 describe("alias storage types", () => {
     /** The `pgType` each alias in the fixture resolves to. */
     function storage(files: Record<string, string>): Record<string, string | undefined> {

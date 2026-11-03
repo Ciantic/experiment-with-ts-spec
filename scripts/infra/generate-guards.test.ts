@@ -11,7 +11,7 @@ import {
     type SpecModel,
 } from "../spec/spec-model.ts";
 import { buildRestModel, type RestKind } from "../sdk/rest-model.ts";
-import { generateGuards, guardName, renderGuardModule, run, tenantFieldTypes } from "./generate-guards.ts";
+import { generateGuards, guardName, renderGuardModule, run } from "./generate-guards.ts";
 
 /** The generator's two channels with nothing behind them, so an assertion reads the exit code. */
 const SILENT = { log: () => undefined, error: () => undefined };
@@ -19,10 +19,20 @@ const SILENT = { log: () => undefined, error: () => undefined };
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
 
-/** The tenant key type the owned fixture's field is declared with. */
+/** The tenancy root the owned fixture links to, whose key names the tenant type. */
 const TENANT_ID = `
 /** The unique identifier for a tenant. */
 export type TenantId = string;
+
+/**
+ * @pgTable tenant
+ * @tenant
+ * @entity
+ */
+export interface Tenant {
+    /** @primaryKey */
+    id: TenantId;
+}
 `.trim();
 
 /** A global entity: every call needs its global permission. */
@@ -86,7 +96,7 @@ function moduleOf(domain: Record<string, string>, entityName: string, kind: Rest
     if (!operation) {
         throw new Error(`the fixture exposes no ${kind} call for ${entityName}`);
     }
-    return renderGuardModule(entity, operation, tenantFieldTypes(spec, model).get(entityName));
+    return renderGuardModule(entity, operation, spec.tenantIdType);
 }
 
 /** `getOwnedTenants` as the runtime test drives it, standing in for the generated lookup. */

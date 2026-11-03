@@ -1143,6 +1143,20 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
         reportEntity(duplicate, `@${TENANT_TAG} is already declared on \`${root?.name}\`; the root is unique`, tag);
     }
 
+    // One key on the root names the tenant id type, so every owned column can repeat one declared type.
+    const rootKeys = root?.properties.filter((property) => property.tags.primaryKey) ?? [];
+    const rootKey = rootKeys.length === 1 ? rootKeys[0] : undefined;
+    if (root !== undefined && rootKey === undefined) {
+        const keyTag = root.properties.flatMap((property) => property.tags.written.byName.get("primaryKey") ?? [])[0];
+        reportEntity(
+            root,
+            rootKeys.length === 0
+                ? `@${TENANT_TAG} needs a @primaryKey field, whose type names every owned column's type`
+                : `@${TENANT_TAG} needs one @primaryKey field, whose type names every owned column's type`,
+            keyTag ?? (root.tags.written.byName.get(TENANT_TAG) ?? [])[0],
+        );
+    }
+
     // An owned interface declares one required scalar column, links to the root, and requires the filter.
     for (const entity of spec.interfaces.values()) {
         const column = entity.tags.tenantOwned;
@@ -1167,6 +1181,13 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
             );
         } else if (root !== undefined && scoped.tags.foreignKey?.entity !== root.name) {
             reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which must carry \`@foreignKey ${root.name}\``, tag);
+        }
+        if (rootKey !== undefined && scoped.typeText !== rootKey.typeText) {
+            reportEntity(
+                entity,
+                `@${TENANT_OWNED_TAG} names \`${column}\`, which must have the root key's type \`${rootKey.typeText}\`, found \`${scoped.typeText}\``,
+                tag,
+            );
         }
     }
 

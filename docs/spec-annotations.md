@@ -806,12 +806,14 @@ Enforced:
   with `onDelete=setNull`. The linter checks the referencing interface; the
   target's half is checked when the tables are built. See `docs/tenancy.md`.
 - `@tenant` is a bare marker on one interface, which the linter enforces, and is
-  mutually exclusive with `@tenantOwned`. `@tenantOwned` requires a column name:
-  it must name a required scalar field of the interface, that field must carry
-  `@foreignKey` at the `@tenant` interface, and it is the only field of the
-  interface linking to the root. Every reference to an owned interface must state
-  `scope=<that column>` and must come from an interface owned by the same column;
-  a scope anywhere else is a finding. See `docs/tenancy.md`.
+  mutually exclusive with `@tenantOwned`. The root carries one `@primaryKey`
+  field, whose type every owned column repeats. `@tenantOwned` requires a column
+  name: it must name a required scalar field of the interface, that field must
+  carry `@foreignKey` at the `@tenant` interface and the root key's type, and it
+  is the only field of the interface linking to the root. Every reference to an
+  owned interface must state `scope=<that column>` and must come from an
+  interface owned by the same column; a scope anywhere else is a finding. See
+  `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`, or
   `default=<value>`: the keywords `isNull` and `isNotNull`, a boolean, a number,
   or a string (a bare token is a string, and so is a quoted keyword). A branch

@@ -2698,6 +2698,47 @@ describe("tenancy tags", () => {
         expect(messages(findings)).toEqual(["`Alpha`: @tenant takes no value"]);
     });
 
+    it("reports a root without a primary key, which leaves the tenant id type unknown", () => {
+        const { findings } = lintSpec(parse({ "/src/domain/Alpha.ts": entity("Alpha", ["tenant"], "") }));
+
+        expect(messages(findings)).toEqual([
+            "`Alpha`: @tenant needs a @primaryKey field, whose type names every owned column's type",
+        ]);
+    });
+
+    it("reports a root with a composite key, which names more than one tenant id type", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": entity(
+                    "Alpha",
+                    ["tenant"],
+                    `${key}\n\n${field(["@fieldName Region", "@primaryKey", "@widget text"], "region: string;")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Alpha`: @tenant needs one @primaryKey field, whose type names every owned column's type",
+        ]);
+    });
+
+    it("reports an owned column whose type differs from the root key", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": entity(
+                    "Alpha",
+                    ["tenant"],
+                    field(["@fieldName ID", "@widget text", "@primaryKey"], "id: TenantId;"),
+                ),
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned names `ownerId`, which must have the root key's type `TenantId`, found `string`",
+        ]);
+    });
+
     it("leaves the graph rules to a whole model, since a snippet holds one interface", () => {
         const findings = lintSourceText(
             `/**

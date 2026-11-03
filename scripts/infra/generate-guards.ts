@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, specImportSpecifier, type SpecModel } from "../spec/spec-model.ts";
+import { loadSpec, type DeclaredType, type SpecModel } from "../spec/spec-model.ts";
 import {
     buildRestModel,
     type RestEntity,
@@ -47,44 +47,12 @@ const CHECKS: Record<RestKind, string> = {
 /** The kinds whose body resolves a stored row's tenant through the entity's generated lookup. */
 const LOOKUP_KINDS: ReadonlySet<RestKind> = new Set<RestKind>(["watch", "upsert", "update", "delete"]);
 
-/** The declared type of one entity's `@tenantOwned` field, e.g. `TenantId` from `spec/user-service/Tenant.ts`. */
-export interface TenantFieldType {
-    name: string;
-    /** The module that exports the type; absent when the field is a keyword such as `string`. */
-    importSpecifier?: string;
-}
-
-/** Resolve each tenant-owned entity's field type, so a guard names it instead of indexing the entity. */
-export function tenantFieldTypes(spec: SpecModel, model: RestModel): Map<string, TenantFieldType> {
-    const types = new Map<string, TenantFieldType>();
-    for (const entity of model.entities) {
-        if (entity.tenantOwned === undefined) {
-            continue;
-        }
-        const property = spec.interfaces
-            .get(entity.entity)
-            ?.properties.find((candidate) => candidate.name === entity.tenantOwned);
-        if (property?.type.kind === "reference") {
-            const alias = spec.aliases.get(property.type.name);
-            if (alias !== undefined) {
-                types.set(entity.entity, {
-                    name: property.type.name,
-                    importSpecifier: specImportSpecifier(alias.filePath),
-                });
-            }
-        } else if (property?.type.kind === "keyword") {
-            types.set(entity.entity, { name: property.type.name });
-        }
-    }
-    return types;
-}
-
 /** The argument type a guard receives, the imports it needs, and whether it names the entity itself. */
 export function argumentType(
     entity: RestEntity,
     kind: RestKind,
     field: string,
-    tenantType?: TenantFieldType,
+    tenantType?: DeclaredType,
 ): { type: string; payload?: string; importSpecifier?: string } {
     const name = entity.entity;
     // A field typed by an alias is named as such; an unresolved shape still reads through the entity.
@@ -157,7 +125,7 @@ function tenantLines(entity: RestEntity, kind: RestKind, lookup: string | undefi
 export function renderGuardModule(
     entity: RestEntity,
     operation: RestOperation,
-    tenantType?: TenantFieldType,
+    tenantType?: DeclaredType,
 ): string {
     const name = guardName(operation);
     const scope = JSON.stringify(entity.module);
@@ -215,12 +183,11 @@ export function renderGuardModule(
 /** Render every generated guard module, keyed by file name (the barrel included). */
 export function generateGuards(model: RestModel, spec: SpecModel): Map<string, string> {
     const files = new Map<string, string>();
-    const tenantTypes = tenantFieldTypes(spec, model);
     const names: string[] = [];
     for (const entity of model.entities) {
         for (const operation of entity.operations) {
             const name = guardName(operation);
-            files.set(`${name}.ts`, renderGuardModule(entity, operation, tenantTypes.get(entity.entity)));
+            files.set(`${name}.ts`, renderGuardModule(entity, operation, spec.tenantIdType));
             names.push(name);
         }
     }

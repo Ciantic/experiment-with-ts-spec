@@ -1,6 +1,6 @@
 /** Unit tests for the query generator, driven by self-contained fixtures. See docs/testing.md. */
 import { describe, expect, it } from "vitest";
-import { WRITE_OPERATIONS } from "../spec/spec-model.ts";
+import { WRITE_OPERATIONS, type DeclaredType } from "../spec/spec-model.ts";
 import type { Column, Table } from "./postgres-model.ts";
 import {
     buildQueryModel,
@@ -334,6 +334,9 @@ describe("renderWatchModule", () => {
     });
 });
 
+/** The spec's tenancy key type, which every lookup returns. */
+const TENANT_ID: DeclaredType = { name: "TenantId", importSpecifier: "spec/fixtures/Tenant.ts" };
+
 describe("renderTenantsModule", () => {
     const widget = {
         ...table("widget", "Widget", [
@@ -344,13 +347,14 @@ describe("renderTenantsModule", () => {
     };
 
     it("selects the distinct tenants of the named keys with one array parameter", () => {
-        const code = renderTenantsModule(widget);
+        const code = renderTenantsModule(widget, TENANT_ID);
 
-        expect(code).toContain('import type { Widget } from "spec/fixtures/Widget.ts";');
+        expect(code).toContain('import type { TenantId } from "spec/fixtures/Tenant.ts";');
         expect(code).toContain('import type { WidgetPrimaryKey } from "sdk/repositories/widgetPrimaryKeySchema.ts";');
         expect(code).toContain(
-            'export async function getWidgetTenants(db: SqlExecutor, pks: readonly WidgetPrimaryKey[]): Promise<Widget["tenantId"][]> {',
+            "export async function getWidgetTenants(db: SqlExecutor, pks: readonly WidgetPrimaryKey[]): Promise<TenantId[]> {",
         );
+        expect(code).toContain("const result = await db.query<{ tenant: TenantId }>(");
         expect(code).not.toContain("as readonly WidgetPrimaryKey[]");
         expect(code).toContain('select distinct "tenantId" as "tenant" from "widget" where "id" = any($1)');
         expect(code).toContain("[pks.map((key) => key.id)]");
@@ -366,10 +370,10 @@ describe("renderTenantsModule", () => {
             ]),
             tenantOwned: "tenantId",
         };
-        const code = renderTenantsModule(part);
+        const code = renderTenantsModule(part, TENANT_ID);
 
         expect(code).toContain(
-            'export async function getWidgetPartTenants(db: SqlExecutor, pks: readonly WidgetPartPrimaryKey[]): Promise<WidgetPart["tenantId"][]> {',
+            "export async function getWidgetPartTenants(db: SqlExecutor, pks: readonly WidgetPartPrimaryKey[]): Promise<TenantId[]> {",
         );
         expect(code).toContain(
             'where ("widgetId", "partKey") in (select * from unnest($1::uuid[], $2::text[]))',
@@ -378,7 +382,7 @@ describe("renderTenantsModule", () => {
     });
 
     it("answers no keys without a statement", () => {
-        const code = renderTenantsModule(widget);
+        const code = renderTenantsModule(widget, TENANT_ID);
 
         expect(code).toContain("if (pks.length === 0) {");
     });
@@ -411,7 +415,7 @@ describe("generateQueries", () => {
 
     it("writes a tenant lookup for a @tenantOwned entity and exports it", () => {
         const owned = { ...invoice, tenantOwned: "tenantId" };
-        const files = generateQueries(new Map([["Invoice", owned]]));
+        const files = generateQueries(new Map([["Invoice", owned]]), TENANT_ID);
 
         expect([...files.keys()].sort()).toEqual([
             "getInvoiceTenants.ts",

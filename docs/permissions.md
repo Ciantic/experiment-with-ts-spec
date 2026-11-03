@@ -130,9 +130,10 @@ A route that addresses a stored row calls the entity's generated
 
 The argument type is the route's schema type: `InvoiceInsert`, `InvoicePatch`,
 `InvoiceUpsert`, or `InvoicePrimaryKey` for a write, and a filter for a read whose
-tenant names the `@tenantOwned` field's own type. The generator resolves that type
-from the spec — `TenantId` from `spec/user-service/Tenant.ts`, say — so the guard
-reads `filter?.tenantId` or `row.tenantId` without indexing the entity.
+tenant names the `@tenant` root's primary-key type. The parser resolves that type
+once into `SpecModel.tenantIdType` — `TenantId` from `spec/user-service/Tenant.ts`,
+say — so the guard reads `filter?.tenantId` or `row.tenantId` without indexing the
+entity.
 
 Every module is plain TypeScript over the parsed argument, with no shared guard
 helper: a read's filter names its tenant as a set, so the module spreads
@@ -169,14 +170,16 @@ into `packages/infra/src/db/queries/get<Entity>Tenants.ts`, with the same SQL a
 hand-written read would use:
 
 ```ts
+import type { TenantId } from "spec/user-service/Tenant.ts";
+
 export async function getInvoiceTenants(
     db: SqlExecutor,
     pks: readonly InvoicePrimaryKey[],
-): Promise<Invoice["tenantId"][]> {
+): Promise<TenantId[]> {
     if (pks.length === 0) {
         return [];
     }
-    const result = await db.query<{ tenant: Invoice["tenantId"] }>(
+    const result = await db.query<{ tenant: TenantId }>(
         'select distinct "tenantId" as "tenant" from "invoice" where "id" = any($1)',
         [pks.map((key) => key.id)],
     );
@@ -184,8 +187,9 @@ export async function getInvoiceTenants(
 }
 ```
 
-The parameter is the entity's own primary-key type, so a guard passes patch or
-upsert rows only because both carry that key. A composite key matches one
+The return type is the `@tenant` root's primary-key type, so every tenant lookup
+answers the same type; the parameter is the entity's own primary-key type, so a
+guard passes patch or upsert rows only because both carry that key. A composite key matches one
 `unnest($n::type[])` per key column. No generated function hardcodes a domain
 name, and neither does a guard.
 

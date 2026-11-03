@@ -530,6 +530,8 @@ export interface SpecModel {
     /** Operations carrying `@todo`, which no generator reads. See docs/spec-annotations.md. */
     todoOperations: SpecOperation[];
     aliases: Map<string, SpecTypeAlias>;
+    /** The tenancy root's single key type, resolved once because the root is unique. See docs/tenancy.md. */
+    tenantIdType?: DeclaredType;
 }
 
 /** Inputs to {@link parseSpec}. */
@@ -636,6 +638,43 @@ export function lowerFirst(name: string): string {
 export function specImportSpecifier(sourceFile: string): string {
     const relativeToSrc = relativePath(SPEC_SRC_ROOT, sourceFile);
     return `spec/${relativeToSrc}`;
+}
+
+/** A parsed type as an emitting generator needs it: the name to write, and the module that exports it. */
+export interface DeclaredType {
+    name: string;
+    /** Absent for a keyword such as `string`. */
+    importSpecifier?: string;
+}
+
+/** Resolve a type against the spec's own declarations, by name. An inline generic has no single name to emit. */
+function declaredTypeIn(
+    interfaces: Map<string, SpecInterface>,
+    aliases: Map<string, SpecTypeAlias>,
+    type: SpecType,
+): DeclaredType | undefined {
+    if (type.kind === "keyword") {
+        return { name: type.name };
+    }
+    if (type.kind !== "reference" || type.arguments.length > 0) {
+        return undefined;
+    }
+    const alias = aliases.get(type.name);
+    const importSpecifier =
+        alias === undefined ? interfaces.get(type.name)?.importSpecifier : specImportSpecifier(alias.filePath);
+    return importSpecifier === undefined ? undefined : { name: type.name, importSpecifier };
+}
+
+/** The root's key type: the one primary key on the interface that carries `@tenant`. */
+function tenantIdTypeOf(
+    interfaces: Map<string, SpecInterface>,
+    aliases: Map<string, SpecTypeAlias>,
+): DeclaredType | undefined {
+    const roots = [...interfaces.values()].filter((entity) => entity.tags.tenant);
+    const root = roots.length === 1 ? roots[0] : undefined;
+    const keys = root?.properties.filter((property) => property.tags.primaryKey) ?? [];
+    const key = keys.length === 1 ? keys[0] : undefined;
+    return key === undefined ? undefined : declaredTypeIn(interfaces, aliases, key.type);
 }
 
 /** The trimmed comment on a JSDoc tag, or undefined when it carries none. */
@@ -1487,7 +1526,16 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     const generated = operations.filter((operation) => operation.todo === undefined);
     const todoOperations = operations.filter((operation) => operation.todo !== undefined);
 
-    return { interfaces, nonEntityInterfaces, todoInterfaces, operations: generated, todoOperations, aliases };
+    const tenantIdType = tenantIdTypeOf(interfaces, aliases);
+    return {
+        interfaces,
+        nonEntityInterfaces,
+        todoInterfaces,
+        operations: generated,
+        todoOperations,
+        aliases,
+        ...(tenantIdType === undefined ? {} : { tenantIdType }),
+    };
 }
 
 /** The tsconfig the generators read, with every spec source added to it. */

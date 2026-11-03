@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, lowerFirst, type FilterDefault, type SpecModel } from "../spec/spec-model.ts";
+import { loadSpec, lowerFirst, type DeclaredType, type FilterDefault, type SpecModel } from "../spec/spec-model.ts";
 import {
     buildSpecTables,
     primaryKeyColumns,
@@ -329,14 +329,19 @@ export function renderWatchModule(entity: string, table: Table): string {
 }
 
 /** Render one entity's tenant lookup: the distinct tenants the named rows belong to. See docs/permissions.md. */
-export function renderTenantsModule(table: Table): string {
+export function renderTenantsModule(table: Table, declared?: DeclaredType): string {
     const module = lowerFirst(table.interfaceName);
     const tenant = table.tenantOwned as string;
     const keys = primaryKeyColumns(table);
-    const tenantType = `${table.interfaceName}[${JSON.stringify(tenant)}]`;
+    // The spec's tenant key type names the column, so the lookup does not index the entity.
+    const tenantType = declared?.name ?? `${table.interfaceName}[${JSON.stringify(tenant)}]`;
     const keyType = `${table.interfaceName}PrimaryKey`;
     const lines: string[] = [HEADER];
-    lines.push(`import type { ${table.interfaceName} } from "${table.importSpecifier}";`);
+    if (declared?.importSpecifier !== undefined) {
+        lines.push(`import type { ${declared.name} } from "${declared.importSpecifier}";`);
+    } else if (declared === undefined) {
+        lines.push(`import type { ${table.interfaceName} } from "${table.importSpecifier}";`);
+    }
     lines.push(`import type { ${keyType} } from "sdk/repositories/${module}PrimaryKeySchema.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push("");
@@ -365,7 +370,7 @@ export function renderTenantsModule(table: Table): string {
 }
 
 /** Render every generated file, keyed by file name (including the barrel). */
-export function generateQueries(tables: Map<string, Table>): Map<string, string> {
+export function generateQueries(tables: Map<string, Table>, declared?: DeclaredType): Map<string, string> {
     const entities = [...tables.values()].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName));
 
     const files = new Map<string, string>();
@@ -379,7 +384,7 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
             files.set(watchFileName(table.interfaceName), renderWatchModule(table.interfaceName, table));
         }
         if (table.tenantOwned !== undefined) {
-            files.set(tenantsFileName(table.interfaceName), renderTenantsModule(table));
+            files.set(tenantsFileName(table.interfaceName), renderTenantsModule(table, declared));
         }
     }
 
@@ -430,7 +435,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
         return 1;
     }
 
-    const files = generateQueries(tables);
+    const files = generateQueries(tables, spec.tenantIdType);
     mkdirSync(outDir, { recursive: true });
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);

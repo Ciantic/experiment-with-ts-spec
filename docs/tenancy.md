@@ -37,6 +37,11 @@ reports a second one: one root keeps every scope unambiguous. The root is never
 `@tenantOwned`, since there is no higher scope for it to agree with, and a
 reference to it is never scoped.
 
+The root's single `@primaryKey` field declares the tenant id type. Every
+`@tenantOwned` column must declare exactly that type, which the linter checks, so
+the generated guard and tenant lookup name one canonical type instead of indexing
+each entity. The parser resolves it once into `SpecModel.tenantIdType`.
+
 `Tenant` is the only interface in the example that carries the tag.
 
 ## Ownership: `@tenantOwned <column>`

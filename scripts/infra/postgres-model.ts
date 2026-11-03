@@ -183,8 +183,8 @@ export function buildSpecTables(spec: SpecModel): { tables: Map<string, Table>; 
     };
     const tables = new Map<string, Table>();
 
-    for (const spec of interfaces.values()) {
-        tables.set(spec.name, buildTable(context, spec));
+    for (const entity of interfaces.values()) {
+        tables.set(entity.name, buildTable(context, entity));
     }
 
     attachTriggers(tables, interfaces, context);
