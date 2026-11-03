@@ -1,6 +1,7 @@
 /** Lint the spec, then run every generator from one parse; this driver only orders the steps. See docs/spec-annotations.md. */
 import { loadSpec, type SpecModel } from "./spec/spec-model.ts";
 import { run as runLint } from "./spec/lint-spec.ts";
+import { run as runPermissions } from "./sdk/generate-permissions.ts";
 import { run as runPostgresSchema } from "./infra/generate-postgres-schema.ts";
 import { run as runRepositories } from "./infra/generate-repositories.ts";
 import { run as runQueries } from "./infra/generate-queries.ts";
@@ -21,6 +22,7 @@ const spec = loadSpec();
 // The linter goes first: it is the authority on a well-formed tag, so it gates every writer.
 const steps: Step[] = [
     runLint,
+    runPermissions,
     runErrors,
     runOperations,
     runSpecTests,

@@ -3,9 +3,10 @@
 - `packages/spec/` — TypeScript interfaces that form the definition of the
   application.
 - `packages/sdk/` — generated type-safe REST client, the generated Zod schemas
-  and shared Patch/Insert/read types, the shared API error classes, and the
-  hand-written transport and package entry. Consumed by the backend and,
-  eventually, the frontend. Owns the generator that writes the schemas.
+  and shared Patch/Insert/read types, the generated `PERMISSIONS` const, the
+  shared API error classes, and the hand-written transport and package entry.
+  Consumed by the backend and, eventually, the frontend. Owns the generators that
+  write the schemas and the permissions.
 - `packages/infra/` — Postgres schema, generated repositories, queries and
   entity routes, the request contexts, the HTTP router and server, and the mock
   seed. Consumed by the backend.
@@ -29,9 +30,9 @@
   and entity-route generators because they share the table and REST models,
   `scripts/operations` for the operation, spec-test, and operation-route
   generators because they write the operations package, `scripts/sdk` for the
-  Zod and REST client generators because they write the SDK, and `scripts/spec`
-  for the parser and the linter. The artifact still belongs to its package;
-  `scripts/paths.ts` anchors every output root.
+  Zod, REST client, and permissions generators because they write the SDK, and
+  `scripts/spec` for the parser and the linter. The artifact still belongs to its
+  package; `scripts/paths.ts` anchors every output root.
 - The root `package.json` carries the dependencies the scripts need —
   `ts-morph`, `vitest`, `zod`, and PGlite — so a package keeps only what its
   `src` imports at runtime. Scripts that read a module in `packages/*/src` import

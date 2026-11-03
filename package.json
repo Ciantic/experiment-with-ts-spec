@@ -12,6 +12,7 @@
     "lint:spec-tests": "node scripts/operations/generate-spec-tests.ts --check",
     "lint:oxlint": "oxlint",
     "generate": "node scripts/generate.ts",
+    "generate:permissions": "node scripts/sdk/generate-permissions.ts",
     "generate:schema": "node scripts/infra/generate-postgres-schema.ts",
     "generate:schema:stdout": "node scripts/infra/generate-postgres-schema.ts --stdout",
     "generate:repositories": "node scripts/infra/generate-repositories.ts",

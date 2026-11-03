@@ -6,6 +6,7 @@ Humans, this readme is for you.
 
 If you change the TypeScript spec, there are deterministic re-generation scripts that generate:
 
+- Permissions: the infra actions each entity permits, as one const in `packages/sdk`
 - Repository functions: create, update, upsert and delete functions
 - Operation function stubs, these should contain the business logic
 - Query function with granular control of which fields are filterable, orderable and so on
@@ -28,6 +29,7 @@ flowchart TD
     subgraph scripts["scripts/"]
         direction TB
         lint["<b>Spec linter</b><br/>scripts/spec/lint-spec.ts<br/>Gates every generator"]
+        permissions["<b>Permissions generator</b><br/>scripts/sdk/generate-permissions.ts<br/>Infra actions each entity permits"]
 
         pgModel["<b>Postgres model</b><br/>scripts/infra/postgres-model.ts"]
         zodModel["<b>Zod model</b><br/>scripts/sdk/zod-model.ts"]
@@ -79,6 +81,7 @@ flowchart TD
     end
 
     specModel --> lint
+    specModel --> permissions
     specModel --> pgModel
     specModel --> zodModel
     specModel --> restModel
