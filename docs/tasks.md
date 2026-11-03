@@ -14,8 +14,8 @@ runs, in order:
 
 1. `pnpm run generate` — `node scripts/generate.ts`, which lints the spec and
    then writes every generated artifact: `generate:operations`,
-   `generate:operation-routes`, and `generate:spec-tests` under
-   `packages/backend`; `generate:schema`, `generate:repositories`,
+   `generate:spec-tests`, and `generate:operation-routes` under
+   `packages/operations`; `generate:schema`, `generate:repositories`,
    `generate:queries`, and `generate:entity-routes` under `packages/infra`; and
    `generate:errors` and `generate:validation` under `packages/sdk`. The
    generators run from `scripts/`, but each artifact belongs to its package.
@@ -23,8 +23,9 @@ runs, in order:
    defines a `build` runs it, in dependency order.
 
 Step 2 is a no-op today: no package emits. `packages/spec` is consumed as `.ts`
-through its `exports` map, and `packages/infra` and `packages/backend` are
-`noEmit` because `node` runs their TypeScript directly. The step exists so that
+through its `exports` map, and `packages/infra`, `packages/operations`, and
+`packages/backend` are `noEmit` because `node` runs their TypeScript directly.
+The step exists so that
 adding a `build` script to any package joins the pipeline without touching the
 root.
 
@@ -60,8 +61,8 @@ query generators map it to columns in
 Zod schemas in `scripts/sdk/zod-model.ts`, and the REST pair maps
 it to the HTTP surface in `scripts/sdk/rest-model.ts`. The error
 generator reads the `@throws` tags and writes `specErrors.ts`; the operations
-generator reads the parsed `@operation` methods and writes only the modules that
-do not exist yet. See `docs/errors.md` and `docs/operations.md`. The route
+generator reads the parsed `@operation` methods and writes the modules that do not
+exist yet, plus the package's root barrel. See `docs/errors.md` and `docs/operations.md`. The route
 generators reference the validation schemas by name, which is why they run after
 them. None reads another's
 output, so the
@@ -72,13 +73,13 @@ failing exit code, and the driver stops rather than running the steps after it.
 A generator lives under `scripts/<package>`, named for the package whose
 artifact it writes. The schema, repository, query, and entity-route generators
 are in `scripts/infra`, because they share `postgres-model.ts` or the REST model
-and write infra's own tables, modules, and servable route table. The operation,
-spec-test, and operation-route generators are in `scripts/backend`, beside the
-implementation they wire. The Zod generator and the REST client
+and write infra's own tables, modules, and servable route table. The operation
+and spec-test generators, and the operation-route generator, are in
+`scripts/operations`, beside the `operations` package they write. The Zod generator and the REST client
 generator are in `scripts/sdk`, with the client artifact they render and, for
 the REST pair, the `rest-model.ts` both read; the route generators import that
 model rather than owning a second copy. The drift check drives every route
-generator, so it stays in `scripts/backend` beside the table that joins them.
+generator, so it stays in `scripts/operations` beside the routes it checks.
 `scripts/paths.ts` derives each package root, so an output path never depends on
 the cwd.
 

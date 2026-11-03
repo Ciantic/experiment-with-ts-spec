@@ -1,7 +1,7 @@
 /** The PGlite entry point: a server over an in-memory database, for development and tests. See docs/entrypoints.md. */
 import { PGlite } from "@electric-sql/pglite";
 import { ApiServer, PgliteSqlDriver, applySchema, createAppContext, seedMockData } from "infra";
-import { routes } from "./http/routes/index.ts";
+import { routes } from "./routes.ts";
 import { parseServerArgs } from "./args.pglite.ts";
 
 /** Read the flags, then serve over a fresh in-memory database, schema applied and seeded by default. */

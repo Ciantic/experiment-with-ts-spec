@@ -1,12 +1,12 @@
-/** Unit tests for the operation route renderer and the table the backend serves. See docs/testing.md. */
+/** Unit tests for the operation route renderer and the exposure check across the generated routes. See docs/testing.md. */
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "../sdk/rest-model.ts";
 import { renderEntityRoutesFiles } from "../infra/generate-entity-routes.ts";
-// The drift check drives both route generators from one model, so it lives here with the backend's table.
+// The drift check drives the route and client generators from one model, so it lives with the routes.
 import { generateRestClient } from "../sdk/generate-rest-client.ts";
-import { renderOperationRoutes, renderRouteFiles, renderRoutesIndex } from "./generate-operation-routes.ts";
+import { renderOperationRoutes, renderRouteFiles } from "./generate-operation-routes.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
@@ -98,10 +98,11 @@ describe("renderOperationRoutes", () => {
         expect(code).toContain('import { sendWidgetSchema, type SendWidgetInput } from "sdk/schemas.ts";');
     });
 
-    it("imports each operation module by file and validates a call with no input against undefined", () => {
+    it("imports each operation module beside the routes and validates a call with no input against undefined", () => {
         const code = renderOperationRoutes(withOperations.operations);
 
-        expect(code).toContain('import { sendWidget } from "../../operations/sendWidget.ts";');
+        expect(code).toContain('import { sendWidget } from "./sendWidget.ts";');
+        expect(code).toContain('import { resetWidgets } from "./resetWidgets.ts";');
         expect(code).toContain('import { z } from "zod";');
         expect(code).toContain("input: z.undefined()");
         expect(code).toContain("handler: (ctx) => resetWidgets(ctx)");
@@ -120,30 +121,10 @@ describe("renderOperationRoutes", () => {
     });
 });
 
-describe("renderRoutesIndex", () => {
-    const withOperations = build({ Widget: WIDGET, Marker: MARKER, WidgetOperations: OPERATIONS });
-
-    it("spreads infra's entity routes and this package's operation routes", () => {
-        const code = renderRoutesIndex(withOperations);
-
-        expect(code).toContain('import { entityRoutes, type Route } from "infra";');
-        expect(code).toContain("export const routes: Route[] = [");
-        expect(code).toContain("    ...entityRoutes,");
-        expect(code).toContain('import { operationRoutes } from "./operationRoutes.ts";');
-        expect(code).toContain("    ...operationRoutes,");
-    });
-
-    it("gives the operation module and the barrel a file", () => {
-        const files = renderRouteFiles(withOperations);
-
-        expect([...files.keys()]).toEqual(["operationRoutes.ts", "index.ts"]);
-    });
-});
-
 describe("the pair", () => {
     it("exposes exactly the calls the server exposes", () => {
         const model = build({ Widget: WIDGET, Marker: MARKER, WidgetOperations: OPERATIONS });
-        // Every route module, barrels included; a barrel names no id, so it adds nothing.
+        // Every generated route module; the backend's table names no id of its own.
         const exposed = [...renderEntityRoutesFiles(model).values(), ...renderRouteFiles(model).values()].flatMap(
             (content) => [...content.matchAll(/id: "(\w+)",/g)].map((match) => match[1]),
         );

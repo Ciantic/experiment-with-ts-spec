@@ -1,9 +1,9 @@
 # Operations
 
 A method carrying `@operation` on a contract interface is an operation. The
-operations generator scaffolds one backend module per operation under
-`packages/backend/src/operations/`, and after that the module is hand-written
-code that regeneration only verifies.
+operations generator scaffolds one module per operation under
+`packages/operations/src/`, and after that the module is hand-written code that
+regeneration only verifies.
 
 A contract interface groups the operations for one area. One such contract might
 declare `sendWidget` with `@operation` and `@restOperation POST /widget/send`,
@@ -56,7 +56,7 @@ A method the spec adds gets a module that compiles and fails the contract at
 runtime rather than at the compiler:
 
 ```ts
-// Generated for implementation by: scripts/backend/generate-operations.ts
+// Generated for implementation by: scripts/operations/generate-operations.ts
 import type { WidgetOperations } from "spec/<app>/operations/…";
 import { NotImplemented } from "sdk/errors.ts";
 
@@ -85,7 +85,7 @@ receives; it only knows the spec's parameter names. Naming the context also
 buys the implementation a typed `ctx`:
 
 ```ts
-import type { SqlExecutor } from "../db/sql-executor.ts";
+import type { SqlExecutor } from "infra";
 
 export const sendWidget: WidgetOperations<{ db: SqlExecutor }>["sendWidget"] = async (ctx, opts) => {
     // ctx.db is the executor
@@ -99,6 +99,13 @@ the moment it is written.
 The scaffold is written only when the file is missing. It is never rewritten:
 from the first generation on, the module is hand-written code, and a later
 change to the spec's prose or parameter names does not touch it.
+
+The package's root, `packages/operations/src/index.ts`, is the one entry the
+package exposes, and the backend imports the operations and their routes from it
+by package name. The generator writes it on every run, since it is a list of the
+spec's operations rather than hand-written code: each operation is re-exported
+from its module, sorted by name, followed by the operation routes. The `--check`
+run reports it when it no longer matches.
 
 ## Regeneration checks
 
@@ -144,7 +151,7 @@ written. See `docs/spec-tests.md`.
 
 ## Removing an operation
 
-The generator owns the set of files under `src/operations/`, but only the
+The generator owns the set of files under `packages/operations/src/`, but only the
 scaffold half of each one. When an operation is gone from its contract the
 generator decides by the module's contents:
 
@@ -197,7 +204,7 @@ An operation that writes more than one row opens its own boundary with
 same model as the entity routes:
 
 ```ts
-// packages/backend/src/http/routes/operationRoutes.ts
+// packages/operations/src/operationRoutes.ts
 {
     id: "sendWidget",
     method: "POST",

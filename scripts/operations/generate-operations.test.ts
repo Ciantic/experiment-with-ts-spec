@@ -9,6 +9,7 @@ import {
     isScaffold,
     meetsContract,
     renderOperationFile,
+    renderOperationsIndex,
     run,
     SCAFFOLD_MARKER,
 } from "./generate-operations.ts";
@@ -379,7 +380,33 @@ export interface Other<T> {
     });
 });
 
+describe("renderOperationsIndex", () => {
+    it("re-exports the operation from its module under the package root", () => {
+        const code = renderOperationsIndex([operation(build())]);
+
+        expect(code).toContain('export { sendInvoice } from "./sendInvoice.ts";');
+    });
+
+    it("exports the operation routes even when the spec declares no operation", () => {
+        expect(renderOperationsIndex([])).toContain('export { operationRoutes } from "./operationRoutes.ts";');
+    });
+
+    it("is written beside the modules, so the package root resolves after a run", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+
+        expect(readFileSync(join(dir, "index.ts"), "utf8")).toBe(renderOperationsIndex([operation(build())]));
+    });
+});
+
 describe("--check", () => {
+    it("fails when the root barrel no longer re-exports the spec's operations", () => {
+        const dir = tempDir();
+        expect(run(build(), ["--out", dir], SILENT)).toBe(0);
+        writeFileSync(join(dir, "index.ts"), "export {};\n");
+
+        expect(run(build(), ["--check", "--out", dir], SILENT)).toBe(1);
+    });
     it("passes when the committed modules declare the spec's operations", () => {
         const dir = tempDir();
         expect(run(build(), ["--out", dir], SILENT)).toBe(0);

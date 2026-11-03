@@ -1,7 +1,7 @@
 /** The `pg` entry point: a server over an external Postgres. See docs/entrypoints.md. */
 import * as pgRuntime from "pg";
 import { ApiServer, PgSqlDriver, applySchema, createAppContext, seedMockData } from "infra";
-import { routes } from "./http/routes/index.ts";
+import { routes } from "./routes.ts";
 import { parseServerArgs } from "./args.pg.ts";
 
 /** Read the flags, then serve over the pool `pg` builds. */

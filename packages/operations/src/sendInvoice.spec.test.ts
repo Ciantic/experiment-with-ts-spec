@@ -1,4 +1,4 @@
-// Generated for implementation by: scripts/backend/generate-spec-tests.ts
+// Generated for implementation by: scripts/operations/generate-spec-tests.ts
 import { afterEach, describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
 import type { Customer, CustomerId } from "spec/invoicing-service/Customer.ts";

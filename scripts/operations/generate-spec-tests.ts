@@ -1,7 +1,7 @@
 /** Scaffold one `{operation}.spec.test.ts` per `@testDescribe`/`@testIt`, and verify a hand-written one declares those tests. See docs/spec-tests.md. */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { BACKEND_PACKAGE_ROOT } from "../paths.ts";
+import { OPERATIONS_PACKAGE_ROOT } from "../paths.ts";
 import { loadSpec, type Diagnostic, type SpecModel, type SpecOperation } from "../spec/spec-model.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
@@ -10,13 +10,13 @@ type Output = Pick<Console, "log" | "error">;
 export type { Diagnostic };
 
 /** Where the spec tests are written when no `--out` is given: beside the operation modules they exercise. */
-const DEFAULT_OUT_DIR = join(BACKEND_PACKAGE_ROOT, "src/operations");
+const DEFAULT_OUT_DIR = join(OPERATIONS_PACKAGE_ROOT, "src");
 
 /** The suffix a spec test takes, so it sits beside the operation module rather than in its own directory. */
 export const SPEC_TEST_SUFFIX = ".spec.test.ts";
 
 /** The first line of a scaffold: it names the generator that started the file, and who finishes it. */
-export const SPEC_TEST_MARKER = "// Generated for implementation by: scripts/backend/generate-spec-tests.ts";
+export const SPEC_TEST_MARKER = "// Generated for implementation by: scripts/operations/generate-spec-tests.ts";
 
 /** The shared errors module the scaffold throws from. */
 const ERRORS_IMPORT = "sdk/errors.ts";

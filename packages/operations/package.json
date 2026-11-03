@@ -1,0 +1,27 @@
+{
+  "name": "operations",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The operation implementations: one module per @operation in the spec, written over the infra package.",
+  "license": "ISC",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "infra": "workspace:*",
+    "sdk": "workspace:*",
+    "spec": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@types/node": "^26.6.2",
+    "vitest": "^5.0.2"
+  }
+}

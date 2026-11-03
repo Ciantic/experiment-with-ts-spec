@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "infra": "workspace:*",
+    "operations": "workspace:*",
     "pg": "^8.23.1",
     "sdk": "workspace:*",
     "spec": "workspace:*"

@@ -9,8 +9,10 @@
 - `packages/infra/` — Postgres schema, generated repositories, queries and
   entity routes, the request contexts, the HTTP router and server, and the mock
   seed. Consumed by the backend.
-- `packages/backend/` — The application implementation: the operation logic and
-  the process entry point (`main`) over `infra`.
+- `packages/operations/` — The operation implementations, one module per
+  `@operation`, and the operation routes, written over `infra`.
+- `packages/backend/` — The process entry point (`main`) and the route table that
+  joins infra's entity routes with the operation routes.
 
 ## Scripts
 
@@ -25,8 +27,8 @@
 - Every generator lives at the root, in the directory named for the package
   whose artifact it writes: `scripts/infra` for the schema, repository, query,
   and entity-route generators because they share the table and REST models,
-  `scripts/backend` for the operation, spec-test, and operation-route
-  generators because they write the implementation, `scripts/sdk` for the
+  `scripts/operations` for the operation, spec-test, and operation-route
+  generators because they write the operations package, `scripts/sdk` for the
   Zod and REST client generators because they write the SDK, and `scripts/spec`
   for the parser and the linter. The artifact still belongs to its package;
   `scripts/paths.ts` anchors every output root.

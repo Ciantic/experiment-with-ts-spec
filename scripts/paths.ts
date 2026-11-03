@@ -7,8 +7,8 @@ export const REPO_ROOT = dirname(import.meta.dirname);
 /** The `spec` package root. */
 export const SPEC_PACKAGE_ROOT = join(REPO_ROOT, "packages/spec");
 
-/** The `backend` package root. */
-export const BACKEND_PACKAGE_ROOT = join(REPO_ROOT, "packages/backend");
+/** The `operations` package root. */
+export const OPERATIONS_PACKAGE_ROOT = join(REPO_ROOT, "packages/operations");
 
 /** The `infra` package root. */
 export const INFRA_PACKAGE_ROOT = join(REPO_ROOT, "packages/infra");

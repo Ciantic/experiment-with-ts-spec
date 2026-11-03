@@ -42,7 +42,7 @@ tags decide what it is. No directory does:
 - An interface carrying no `@entity` is a **contract**, such as the ones in
   `src/<app>/operations/`; the entity generators ignore it. A method carrying
   `@operation` is read by the operations generator instead, which scaffolds one
-  backend module per operation. An entity tag on a contract is a lint finding,
+  module per operation in `packages/operations/src/`. An entity tag on a contract is a lint finding,
   not a silent omission. See `docs/operations.md`.
 
 ## Tags

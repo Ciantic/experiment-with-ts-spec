@@ -41,10 +41,10 @@ flowchart TD
             entityRoutes["<b>Entity route generator</b><br/>generate-entity-routes.ts<br/>Route table for repositories and queries"]
         end
 
-        subgraph backendScripts["backend/"]
+        subgraph operationsScripts["operations/"]
             direction TB
             operations["<b>Operation scaffolder</b><br/>generate-operations.ts<br/>One module per @operation"]
-            operationRoutes["<b>Operation route generator</b><br/>generate-operation-routes.ts<br/>Operation routes and the combined table"]
+            operationRoutes["<b>Operation route generator</b><br/>generate-operation-routes.ts<br/>One route per @restOperation"]
         end
 
         subgraph sdkScripts["sdk/"]
@@ -68,9 +68,12 @@ flowchart TD
             infraRoutes["<b>Generated entity route table</b>"]
             infraRuntime["<b>Context, router, server and mock seed</b>"]
         end
+        subgraph operationsPkg["operations"]
+            operationModules["<b>Operation modules</b><br/>Business logic filled in by hand"]
+            operationRouteModules["<b>Generated operation routes</b><br/>Re-exported from the package root"]
+        end
         subgraph backendPkg["backend"]
-            backendRoutes["<b>Generated operation routes and table</b>"]
-            backendOperations["<b>Operation scaffolds</b><br/>Business logic filled in by hand"]
+            backendRoutes["<b>Route table</b><br/>Entity routes and operation routes"]
             backendMain["<b>Process entry point</b>"]
         end
     end
@@ -95,16 +98,19 @@ flowchart TD
     repositories --> infraData
     queries --> infraData
     entityRoutes --> infraRoutes
-    operationRoutes --> backendRoutes
-    operations --> backendOperations
+    operationRoutes --> operationRouteModules
+    operationRouteModules --> backendRoutes
+    operations --> operationModules
 ```
 
 ### Packages
 
 - `infra` - Postgres schema, generated repositories, queries and entity routes,
   plus the request contexts and HTTP runtime.
-- `backend` - The application implementation: operation logic and the process
-  entry point over `infra`.
+- `operations` - The operation implementations, one module per `@operation`,
+  plus their generated routes, written over `infra`.
+- `backend` - The process entry point and the route table, joining infra's
+  entity routes with the operation routes.
 - `sdk` - Type-safe REST API SDK, shared validation schemas, and shared types
 - `spec` - Domain models
 
@@ -113,12 +119,17 @@ flowchart LR
     spec["<b>spec</b><br/>Domain interfaces and primitives"]
     sdk["<b>sdk</b><br/>Generated REST client, Zod schemas,<br/>shared write and read types"]
     infra["<b>infra</b><br/>Postgres schema, repositories,<br/>queries, contexts and HTTP runtime"]
-    backend["<b>backend</b><br/>Operations and process entry point"]
+    operations["<b>operations</b><br/>One module per @operation, and its routes"]
+    backend["<b>backend</b><br/>Process entry point and route table"]
 
     sdk --> spec
     infra --> spec
     infra --> sdk
+    operations --> infra
+    operations --> sdk
+    operations --> spec
     backend --> infra
+    backend --> operations
     backend --> spec
     backend --> sdk
 ```
