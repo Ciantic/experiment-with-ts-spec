@@ -7,7 +7,7 @@ export const loginLinkSchema = z.object({
     email: primitives.emailAddressSchema,
     tokenHash: primitives.loginLinkTokenHashSchema,
     expiresAt: z.date(),
-    consumedAt: z.date().optional(),
+    consumedAt: z.date().exactOptional(),
     createdAt: z.date(),
     updatedAt: z.date(),
     version: primitives.versionSchema,

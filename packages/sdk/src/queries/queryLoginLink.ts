@@ -5,34 +5,34 @@ import * as primitives from "../primitives.ts";
 /** A `select` over LoginLink: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryLoginLinkSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        email: z.literal(true).optional(),
-        tokenHash: z.literal(true).optional(),
-        expiresAt: z.literal(true).optional(),
-        consumedAt: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
-        updatedAt: z.literal(true).optional(),
-        version: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        email: z.literal(true).exactOptional(),
+        tokenHash: z.literal(true).exactOptional(),
+        expiresAt: z.literal(true).exactOptional(),
+        consumedAt: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
+        updatedAt: z.literal(true).exactOptional(),
+        version: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryLoginLinkSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"LoginLinkId">()).optional(),
-        email: z.array(primitives.emailAddressSchema).optional(),
-        tokenHash: z.array(primitives.loginLinkTokenHashSchema).optional(),
-    }).optional(),
+        id: z.array(primitives.brandedIdSchema<"LoginLinkId">()).exactOptional(),
+        email: z.array(primitives.emailAddressSchema).exactOptional(),
+        tokenHash: z.array(primitives.loginLinkTokenHashSchema).exactOptional(),
+    }).exactOptional(),
     where: z.strictObject({
         expiresAt: z.strictObject({
-            gt: z.date().optional(),
-            lte: z.date().optional(),
-        }).optional(),
+            gt: z.date().exactOptional(),
+            lte: z.date().exactOptional(),
+        }).exactOptional(),
         consumedAt: z.strictObject({
-            isNull: z.literal(true).optional(),
-            isNotNull: z.literal(true).optional(),
-        }).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+            isNull: z.literal(true).exactOptional(),
+            isNotNull: z.literal(true).exactOptional(),
+        }).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryLoginLinkSelectSchema,
 });

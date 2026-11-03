@@ -7,7 +7,7 @@ export const userSessionSchema = z.object({
     userId: primitives.brandedIdSchema<"UserId">(),
     tokenHash: primitives.userSessionTokenHashSchema,
     expiresAt: z.date(),
-    revokedAt: z.date().optional(),
+    revokedAt: z.date().exactOptional(),
     createdAt: z.date(),
     updatedAt: z.date(),
     version: primitives.versionSchema,

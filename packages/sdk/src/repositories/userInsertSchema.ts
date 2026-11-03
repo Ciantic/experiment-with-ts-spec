@@ -5,13 +5,11 @@ import { userSchema } from "../domain/userSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const userInsertSchema = userSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: userSchema.shape.id.exactOptional(),
+        createdAt: userSchema.shape.createdAt.exactOptional(),
+        updatedAt: userSchema.shape.updatedAt.exactOptional(),
+        version: userSchema.shape.version.exactOptional(),
         emailVerifiedAt: userSchema.shape.emailVerifiedAt.nullable(),
         deletedAt: userSchema.shape.deletedAt.nullable(),
     })

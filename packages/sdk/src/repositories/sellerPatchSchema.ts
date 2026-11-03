@@ -8,11 +8,14 @@ export const sellerPatchSchema = sellerSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        eInvoiceAddress: sellerSchema.shape.eInvoiceAddress.nullable(),
-        eInvoiceOperator: sellerSchema.shape.eInvoiceOperator.nullable(),
-        language: sellerSchema.shape.language.nullable(),
+        tenantId: sellerSchema.shape.tenantId.exactOptional(),
+        name: sellerSchema.shape.name.exactOptional(),
+        businessId: sellerSchema.shape.businessId.exactOptional(),
+        eInvoiceAddress: sellerSchema.shape.eInvoiceAddress.nullable().exactOptional(),
+        eInvoiceOperator: sellerSchema.shape.eInvoiceOperator.nullable().exactOptional(),
+        language: sellerSchema.shape.language.nullable().exactOptional(),
+        updatedAt: sellerSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

@@ -8,10 +8,20 @@ export const invoiceSentPatchSchema = invoiceSentSchema
     .omit({
         rows: true,
     })
-    .partial()
     .extend({
-        customer: invoiceSentSchema.shape.customer.nullable(),
-        seller: invoiceSentSchema.shape.seller.nullable(),
+        tenantId: invoiceSentSchema.shape.tenantId.exactOptional(),
+        invoiceId: invoiceSentSchema.shape.invoiceId.exactOptional(),
+        sentAt: invoiceSentSchema.shape.sentAt.exactOptional(),
+        number: invoiceSentSchema.shape.number.exactOptional(),
+        customer: invoiceSentSchema.shape.customer.nullable().exactOptional(),
+        seller: invoiceSentSchema.shape.seller.nullable().exactOptional(),
+        language: invoiceSentSchema.shape.language.exactOptional(),
+        issueDate: invoiceSentSchema.shape.issueDate.exactOptional(),
+        dueDate: invoiceSentSchema.shape.dueDate.exactOptional(),
+        notes: invoiceSentSchema.shape.notes.exactOptional(),
+        netAmount: invoiceSentSchema.shape.netAmount.exactOptional(),
+        taxAmount: invoiceSentSchema.shape.taxAmount.exactOptional(),
+        totalAmount: invoiceSentSchema.shape.totalAmount.exactOptional(),
     })
     .required({
         id: true,

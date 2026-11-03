@@ -314,7 +314,7 @@ function resolveObjectFields(members: SpecTypeMember[], context: ResolveContext)
         }
         fields.push({
             name: member.name,
-            expression: member.optional ? `${resolvedMember}.optional()` : resolvedMember,
+            expression: member.optional ? `${resolvedMember}.exactOptional()` : resolvedMember,
         });
     }
     return fields;
@@ -445,7 +445,7 @@ function buildEntities(
             }
             fields.push({
                 name: property.name,
-                expression: property.optional ? `${resolved}.optional()` : resolved,
+                expression: property.optional ? `${resolved}.exactOptional()` : resolved,
             });
             if (property.tags.primaryKey || property.tags.version) {
                 required.push(property.name);
@@ -530,7 +530,7 @@ function buildQueries(
             filterFields.push({
                 name: property.name,
                 // A required filter is always named; an optional one may be left out.
-                expression: `${expression}${property.tags.queryFilter.required ? "" : ".optional()"}`,
+                expression: property.tags.queryFilter.required ? expression : `${expression}.exactOptional()`,
             });
             if (property.tags.queryFilter.required) {
                 requiredFilterFields.push(property.name);

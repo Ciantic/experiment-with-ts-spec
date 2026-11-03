@@ -129,8 +129,10 @@ describe("renderEntityRoutes", () => {
     it("emits a typed route table for one collection", () => {
         const code = render();
 
-        expect(code).toContain('import type { Route } from "../router.ts";');
+        expect(code).toContain('import { defineRoute, type Route } from "../router.ts";');
         expect(code).toContain("export const widgetRoutes: Route[] = [");
+        expect(code).toContain("    defineRoute({");
+        expect(code).toContain("    }),");
     });
 
     it("names the operation, the path, the method, and the schema of each call", () => {
@@ -181,11 +183,11 @@ describe("renderEntityRoutes", () => {
     it("wires each route to its generated function", () => {
         const code = render();
 
-        expect(code).toContain("handler: (ctx, body) => queryWidget(ctx.db, body as never)");
-        expect(code).toContain("handler: (ctx, body) => createWidget(ctx.db, body as never)");
-        expect(code).toContain("handler: (ctx, body) => upsertWidget(ctx.db, body as never)");
-        expect(code).toContain("handler: (ctx, body) => updateWidget(ctx.db, body as never)");
-        expect(code).toContain("handler: (ctx, body) => deleteWidget(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => queryWidget(ctx.db, body)");
+        expect(code).toContain("handler: (ctx, body) => createWidget(ctx.db, body)");
+        expect(code).toContain("handler: (ctx, body) => upsertWidget(ctx.db, body)");
+        expect(code).toContain("handler: (ctx, body) => updateWidget(ctx.db, body)");
+        expect(code).toContain("handler: (ctx, body) => deleteWidget(ctx.db, body)");
     });
 
     it("imports every generated piece from its barrel", () => {
@@ -240,8 +242,8 @@ export interface AuditLog {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain("handler: (ctx, body) => createAuditLog(ctx.db, body as never)");
-        expect(code).toContain("handler: (ctx, body) => queryAuditLog(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => createAuditLog(ctx.db, body)");
+        expect(code).toContain("handler: (ctx, body) => queryAuditLog(ctx.db, body)");
         expect(code).not.toContain("upsertAuditLog");
         expect(code).not.toContain("updateAuditLog");
         expect(code).not.toContain("deleteAuditLog");
@@ -268,7 +270,7 @@ export interface Internal {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain("handler: (ctx, body) => createInternal(ctx.db, body as never)");
+        expect(code).toContain("handler: (ctx, body) => createInternal(ctx.db, body)");
         expect(code).not.toContain("queryInternal");
         expect(code).not.toContain("/internal/query");
     });
@@ -281,15 +283,13 @@ export interface Internal {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain('import { SseStream } from "../sse.ts";');
-        expect(code).toContain('import type { WatchOperation } from "sdk/watch.ts";');
-        expect(code).toContain('import type { NotifiedPrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('id: "watchNotified"');
         expect(code).toContain('path: "/notified/watch"');
         expect(code).toContain("stream: true,");
         expect(code).toContain(
-            'input: z.strictObject({ pks: z.array(notifiedPrimaryKeySchema).optional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }).optional(),',
+            'input: z.strictObject({ pks: z.array(notifiedPrimaryKeySchema).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }).optional(),',
         );
-        expect(code).toContain("const opts = body as { pks?: NotifiedPrimaryKey[]; ops?: WatchOperation[] } | undefined;");
+        expect(code).toContain("const opts = body;");
         expect(code).toContain("? watchNotified(ctx.db, { ops: opts?.ops, signal })");
         expect(code).toContain(": watchNotifiedRows(ctx.db, { pks: opts.pks, ops: opts.ops, signal });");
     });
@@ -302,12 +302,11 @@ export interface Internal {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain('import { SseStream } from "../sse.ts";');
-        expect(code).toContain('import type { WatchedPrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('id: "watchWatched"');
         expect(code).toContain('path: "/watched/watch"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain('input: z.strictObject({ pks: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).optional() }),');
-        expect(code).toContain("const opts = body as { pks: WatchedPrimaryKey[]; ops?: WatchOperation[] };");
+        expect(code).toContain('input: z.strictObject({ pks: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }),');
+        expect(code).toContain("const opts = body;");
         expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
     });
 
@@ -318,13 +317,9 @@ export interface Internal {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain('import type { WatchFilter, WatchOperation } from "sdk/watch.ts";');
-        expect(code).toContain('import type { Filtered } from "spec/fixtures/Filtered.ts";');
+        expect(code).toContain("const opts = body;");
         expect(code).toContain(
-            "filter: filteredSchema.pick({ tenantId: true }).partial().strict().optional()",
-        );
-        expect(code).toContain(
-            "const opts = body as { pks?: FilteredPrimaryKey[]; filter?: WatchFilter<Filtered, \"tenantId\">; ops?: WatchOperation[] } | undefined;",
+            "input: z.strictObject({ pks: z.array(filteredPrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: filteredSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum([\"INSERT\", \"UPDATE\", \"DELETE\"])).exactOptional() }).optional(),",
         );
         expect(code).toContain("? watchFiltered(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })");
         expect(code).toContain(

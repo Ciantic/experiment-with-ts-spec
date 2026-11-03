@@ -8,10 +8,11 @@ export const userPatchSchema = userSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        emailVerifiedAt: userSchema.shape.emailVerifiedAt.nullable(),
-        deletedAt: userSchema.shape.deletedAt.nullable(),
+        email: userSchema.shape.email.exactOptional(),
+        emailVerifiedAt: userSchema.shape.emailVerifiedAt.nullable().exactOptional(),
+        updatedAt: userSchema.shape.updatedAt.exactOptional(),
+        deletedAt: userSchema.shape.deletedAt.nullable().exactOptional(),
     })
     .required({
         id: true,

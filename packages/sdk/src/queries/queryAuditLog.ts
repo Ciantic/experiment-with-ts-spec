@@ -5,17 +5,17 @@ import * as primitives from "../primitives.ts";
 /** A `select` over AuditLog: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryAuditLogSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        message: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        message: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryAuditLogSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.autoIncrementSchema<"AuditLogId">()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        id: z.array(primitives.autoIncrementSchema<"AuditLogId">()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryAuditLogSelectSchema,
 });

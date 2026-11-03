@@ -10,13 +10,11 @@ export const invoiceRowInsertSchema = invoiceRowSchema
         taxAmount: true,
         totalAmount: true,
     })
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: invoiceRowSchema.shape.id.exactOptional(),
+        createdAt: invoiceRowSchema.shape.createdAt.exactOptional(),
+        updatedAt: invoiceRowSchema.shape.updatedAt.exactOptional(),
+        version: invoiceRowSchema.shape.version.exactOptional(),
         description: invoiceRowSchema.shape.description.nullable(),
         quantity: invoiceRowSchema.shape.quantity.nullable(),
         unit: invoiceRowSchema.shape.unit.nullable(),

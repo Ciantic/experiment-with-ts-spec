@@ -5,13 +5,11 @@ import { sellerSchema } from "../domain/sellerSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const sellerInsertSchema = sellerSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: sellerSchema.shape.id.exactOptional(),
+        createdAt: sellerSchema.shape.createdAt.exactOptional(),
+        updatedAt: sellerSchema.shape.updatedAt.exactOptional(),
+        version: sellerSchema.shape.version.exactOptional(),
         eInvoiceAddress: sellerSchema.shape.eInvoiceAddress.nullable(),
         eInvoiceOperator: sellerSchema.shape.eInvoiceOperator.nullable(),
         language: sellerSchema.shape.language.nullable(),

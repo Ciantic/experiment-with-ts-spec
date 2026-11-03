@@ -8,6 +8,10 @@ export const translationUpsertSchema = translationSchema
     .extend({
         value: translationSchema.shape.value.nullable(),
     })
+    .required({
+        lang: true,
+        key: true,
+    })
     .strict();
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */

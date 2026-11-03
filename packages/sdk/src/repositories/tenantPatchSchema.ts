@@ -8,7 +8,10 @@ export const tenantPatchSchema = tenantSchema
     .omit({
         createdAt: true,
     })
-    .partial()
+    .extend({
+        name: tenantSchema.shape.name.exactOptional(),
+        updatedAt: tenantSchema.shape.updatedAt.exactOptional(),
+    })
     .required({
         id: true,
         version: true,

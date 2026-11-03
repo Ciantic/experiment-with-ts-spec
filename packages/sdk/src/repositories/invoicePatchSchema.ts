@@ -14,16 +14,17 @@ export const invoicePatchSchema = invoiceSchema
         rows: true,
         createdAt: true,
     })
-    .partial()
     .extend({
-        number: invoiceSchema.shape.number.nullable(),
-        customerId: invoiceSchema.shape.customerId.nullable(),
-        sellerId: invoiceSchema.shape.sellerId.nullable(),
-        language: invoiceSchema.shape.language.nullable(),
-        issueDate: invoiceSchema.shape.issueDate.nullable(),
-        dueDate: invoiceSchema.shape.dueDate.nullable(),
-        notes: invoiceSchema.shape.notes.nullable(),
-        deletedAt: invoiceSchema.shape.deletedAt.nullable(),
+        tenantId: invoiceSchema.shape.tenantId.exactOptional(),
+        number: invoiceSchema.shape.number.nullable().exactOptional(),
+        customerId: invoiceSchema.shape.customerId.nullable().exactOptional(),
+        sellerId: invoiceSchema.shape.sellerId.nullable().exactOptional(),
+        language: invoiceSchema.shape.language.nullable().exactOptional(),
+        issueDate: invoiceSchema.shape.issueDate.nullable().exactOptional(),
+        dueDate: invoiceSchema.shape.dueDate.nullable().exactOptional(),
+        notes: invoiceSchema.shape.notes.nullable().exactOptional(),
+        updatedAt: invoiceSchema.shape.updatedAt.exactOptional(),
+        deletedAt: invoiceSchema.shape.deletedAt.nullable().exactOptional(),
     })
     .required({
         id: true,

@@ -4,18 +4,18 @@ import { z } from "zod";
 /** A `select` over Translation: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryTranslationSelectSchema = z.lazy(() =>
     z.strictObject({
-        lang: z.literal(true).optional(),
-        key: z.literal(true).optional(),
-        value: z.literal(true).optional(),
+        lang: z.literal(true).exactOptional(),
+        key: z.literal(true).exactOptional(),
+        value: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryTranslationSchema = z.strictObject({
     filter: z.strictObject({
-        lang: z.array(z.string()).optional(),
-        key: z.array(z.string()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        lang: z.array(z.string()).exactOptional(),
+        key: z.array(z.string()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryTranslationSelectSchema,
 });

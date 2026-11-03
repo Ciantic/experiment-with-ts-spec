@@ -32,7 +32,7 @@ Required in the spec does not mean required on the wire. A create relaxes each
 field whose column has a fallback:
 
 - A clock column and a defaulted `@version` stay in `<Entity>Insert`, but
-  optional: the schema `.partial()`s them and the statement writes the supplied
+  optional: the schema marks them `.exactOptional()` and the statement writes the supplied
   value, or the column default when the row omits it.
 - A `@pgDefault` field is relaxed the same way.
 

@@ -5,19 +5,20 @@ import { emailSchema } from "../domain/emailSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const emailUpsertSchema = emailSchema
-    .partial({
-        id: true,
-        status: true,
-        attempts: true,
-        maxAttempts: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        status: emailSchema.shape.status.exactOptional(),
+        attempts: emailSchema.shape.attempts.exactOptional(),
+        maxAttempts: emailSchema.shape.maxAttempts.exactOptional(),
+        createdAt: emailSchema.shape.createdAt.exactOptional(),
+        updatedAt: emailSchema.shape.updatedAt.exactOptional(),
         lastError: emailSchema.shape.lastError.nullable(),
         sentAt: emailSchema.shape.sentAt.nullable(),
+    })
+    .required({
+        id: true,
+        version: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type EmailUpsert = Upsert<Email, never, "id" | "version", "lastError" | "sentAt", "id" | "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;
+export type EmailUpsert = Upsert<Email, never, "id" | "version", "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;

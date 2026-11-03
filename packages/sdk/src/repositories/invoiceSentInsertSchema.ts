@@ -2,8 +2,8 @@
 import type { InvoiceSent } from "spec/invoicing-service/InvoiceSent.ts";
 import type { Insert } from "../insert.ts";
 import { invoiceSentSchema } from "../domain/invoiceSentSchema.ts";
-import { customerInsertSchema } from "./customerInsertSchema.ts";
-import { sellerInsertSchema } from "./sellerInsertSchema.ts";
+import { customerInsertSchema, type CustomerInsert } from "./customerInsertSchema.ts";
+import { sellerInsertSchema, type SellerInsert } from "./sellerInsertSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const invoiceSentInsertSchema = invoiceSentSchema
@@ -11,13 +11,11 @@ export const invoiceSentInsertSchema = invoiceSentSchema
         rows: true,
     })
     .extend({
-        customer: customerInsertSchema.nullable().optional(),
-        seller: sellerInsertSchema.nullable().optional(),
-    })
-    .partial({
-        id: true,
+        customer: customerInsertSchema.nullable().exactOptional(),
+        seller: sellerInsertSchema.nullable().exactOptional(),
+        id: invoiceSentSchema.shape.id.exactOptional(),
     })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type InvoiceSentInsert = Insert<InvoiceSent, "rows", "customer" | "seller", "id">;
+export type InvoiceSentInsert = Omit<Insert<InvoiceSent, "rows", "customer" | "seller", "id">, "customer" | "seller"> & { customer?: CustomerInsert | null; seller?: SellerInsert | null };

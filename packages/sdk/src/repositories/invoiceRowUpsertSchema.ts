@@ -10,19 +10,20 @@ export const invoiceRowUpsertSchema = invoiceRowSchema
         taxAmount: true,
         totalAmount: true,
     })
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: invoiceRowSchema.shape.createdAt.exactOptional(),
+        updatedAt: invoiceRowSchema.shape.updatedAt.exactOptional(),
         description: invoiceRowSchema.shape.description.nullable(),
         quantity: invoiceRowSchema.shape.quantity.nullable(),
         unit: invoiceRowSchema.shape.unit.nullable(),
         unitPrice: invoiceRowSchema.shape.unitPrice.nullable(),
         taxRate: invoiceRowSchema.shape.taxRate.nullable(),
     })
+    .required({
+        id: true,
+        version: true,
+    })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type InvoiceRowUpsert = Upsert<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount", "id" | "version", "description" | "quantity" | "unit" | "unitPrice" | "taxRate", "id" | "createdAt" | "updatedAt">;
+export type InvoiceRowUpsert = Upsert<InvoiceRow, "netAmount" | "taxAmount" | "totalAmount", "id" | "version", "description" | "quantity" | "unit" | "unitPrice" | "taxRate", "createdAt" | "updatedAt">;

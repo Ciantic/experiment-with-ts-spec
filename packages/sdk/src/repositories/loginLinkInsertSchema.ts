@@ -5,13 +5,11 @@ import { loginLinkSchema } from "../domain/loginLinkSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const loginLinkInsertSchema = loginLinkSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: loginLinkSchema.shape.id.exactOptional(),
+        createdAt: loginLinkSchema.shape.createdAt.exactOptional(),
+        updatedAt: loginLinkSchema.shape.updatedAt.exactOptional(),
+        version: loginLinkSchema.shape.version.exactOptional(),
         consumedAt: loginLinkSchema.shape.consumedAt.nullable(),
     })
     .strict();

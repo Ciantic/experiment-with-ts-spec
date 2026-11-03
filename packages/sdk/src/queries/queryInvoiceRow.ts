@@ -5,29 +5,29 @@ import * as primitives from "../primitives.ts";
 /** A `select` over InvoiceRow: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryInvoiceRowSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        tenantId: z.literal(true).optional(),
-        invoiceId: z.literal(true).optional(),
-        description: z.literal(true).optional(),
-        quantity: z.literal(true).optional(),
-        unit: z.literal(true).optional(),
-        unitPrice: z.literal(true).optional(),
-        taxRate: z.literal(true).optional(),
-        netAmount: z.literal(true).optional(),
-        taxAmount: z.literal(true).optional(),
-        totalAmount: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
-        updatedAt: z.literal(true).optional(),
-        version: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        tenantId: z.literal(true).exactOptional(),
+        invoiceId: z.literal(true).exactOptional(),
+        description: z.literal(true).exactOptional(),
+        quantity: z.literal(true).exactOptional(),
+        unit: z.literal(true).exactOptional(),
+        unitPrice: z.literal(true).exactOptional(),
+        taxRate: z.literal(true).exactOptional(),
+        netAmount: z.literal(true).exactOptional(),
+        taxAmount: z.literal(true).exactOptional(),
+        totalAmount: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
+        updatedAt: z.literal(true).exactOptional(),
+        version: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryInvoiceRowSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        id: z.array(primitives.brandedIdSchema<"InvoiceRowId">()).exactOptional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryInvoiceRowSelectSchema,
 });

@@ -5,13 +5,11 @@ import { userSessionSchema } from "../domain/userSessionSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const userSessionInsertSchema = userSessionSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: userSessionSchema.shape.id.exactOptional(),
+        createdAt: userSessionSchema.shape.createdAt.exactOptional(),
+        updatedAt: userSessionSchema.shape.updatedAt.exactOptional(),
+        version: userSessionSchema.shape.version.exactOptional(),
         revokedAt: userSessionSchema.shape.revokedAt.nullable(),
     })
     .strict();

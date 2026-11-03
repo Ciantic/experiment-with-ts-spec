@@ -8,10 +8,18 @@ export const emailPatchSchema = emailSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        lastError: emailSchema.shape.lastError.nullable(),
-        sentAt: emailSchema.shape.sentAt.nullable(),
+        tenantId: emailSchema.shape.tenantId.exactOptional(),
+        from: emailSchema.shape.from.exactOptional(),
+        to: emailSchema.shape.to.exactOptional(),
+        subject: emailSchema.shape.subject.exactOptional(),
+        body: emailSchema.shape.body.exactOptional(),
+        status: emailSchema.shape.status.exactOptional(),
+        attempts: emailSchema.shape.attempts.exactOptional(),
+        maxAttempts: emailSchema.shape.maxAttempts.exactOptional(),
+        lastError: emailSchema.shape.lastError.nullable().exactOptional(),
+        sentAt: emailSchema.shape.sentAt.nullable().exactOptional(),
+        updatedAt: emailSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

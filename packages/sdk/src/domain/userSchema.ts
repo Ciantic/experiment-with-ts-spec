@@ -5,9 +5,9 @@ import * as primitives from "../primitives.ts";
 export const userSchema = z.object({
     id: primitives.brandedIdSchema<"UserId">(),
     email: primitives.emailAddressSchema,
-    emailVerifiedAt: z.date().optional(),
+    emailVerifiedAt: z.date().exactOptional(),
     createdAt: z.date(),
     updatedAt: z.date(),
-    deletedAt: z.date().optional(),
+    deletedAt: z.date().exactOptional(),
     version: primitives.versionSchema,
 });

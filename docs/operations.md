@@ -247,9 +247,8 @@ needs refusing before it reaches a handler. The result is the spec's own type
 text under a name the client and the route can import; a route that never
 validates its own answer has nothing to gain from a schema for it. Emitting the
 text rather than inferring from a schema keeps the type identical to the
-contract — a `z.infer` of an optional field is `string | undefined`, which is not
-assignable to `field?: string` under `exactOptionalPropertyTypes`. The input type
-is what the route hands the implementation, so it is the parsed value, not a
+contract, which is what the implementation and the client both name. The input
+type is what the route hands the implementation, so it is the parsed value, not a
 pre-parse one.
 
 A result type is therefore not resolved into a schema, and any type the spec can

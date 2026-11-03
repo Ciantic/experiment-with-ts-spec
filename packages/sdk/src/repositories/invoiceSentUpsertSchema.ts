@@ -2,8 +2,8 @@
 import type { InvoiceSent } from "spec/invoicing-service/InvoiceSent.ts";
 import type { Upsert } from "../upsert.ts";
 import { invoiceSentSchema } from "../domain/invoiceSentSchema.ts";
-import { customerInsertSchema } from "./customerInsertSchema.ts";
-import { sellerInsertSchema } from "./sellerInsertSchema.ts";
+import { customerInsertSchema, type CustomerInsert } from "./customerInsertSchema.ts";
+import { sellerInsertSchema, type SellerInsert } from "./sellerInsertSchema.ts";
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */
 export const invoiceSentUpsertSchema = invoiceSentSchema
@@ -11,13 +11,13 @@ export const invoiceSentUpsertSchema = invoiceSentSchema
         rows: true,
     })
     .extend({
-        customer: customerInsertSchema.nullable().optional(),
-        seller: sellerInsertSchema.nullable().optional(),
+        customer: customerInsertSchema.nullable().exactOptional(),
+        seller: sellerInsertSchema.nullable().exactOptional(),
     })
-    .partial({
+    .required({
         id: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */
-export type InvoiceSentUpsert = Upsert<InvoiceSent, "rows", "id", "customer" | "seller", "id">;
+export type InvoiceSentUpsert = Omit<Upsert<InvoiceSent, "rows", "id", "customer" | "seller", never>, "customer" | "seller"> & { customer?: CustomerInsert | null; seller?: SellerInsert | null };

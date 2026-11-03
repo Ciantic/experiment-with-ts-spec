@@ -5,7 +5,18 @@ import { invoiceSentRowSchema } from "../domain/invoiceSentRowSchema.ts";
 
 /** A partial update: every field is optional except the key. */
 export const invoiceSentRowPatchSchema = invoiceSentRowSchema
-    .partial()
+    .extend({
+        tenantId: invoiceSentRowSchema.shape.tenantId.exactOptional(),
+        invoiceSentId: invoiceSentRowSchema.shape.invoiceSentId.exactOptional(),
+        description: invoiceSentRowSchema.shape.description.exactOptional(),
+        quantity: invoiceSentRowSchema.shape.quantity.exactOptional(),
+        unit: invoiceSentRowSchema.shape.unit.exactOptional(),
+        unitPrice: invoiceSentRowSchema.shape.unitPrice.exactOptional(),
+        taxRate: invoiceSentRowSchema.shape.taxRate.exactOptional(),
+        netAmount: invoiceSentRowSchema.shape.netAmount.exactOptional(),
+        taxAmount: invoiceSentRowSchema.shape.taxAmount.exactOptional(),
+        totalAmount: invoiceSentRowSchema.shape.totalAmount.exactOptional(),
+    })
     .required({
         id: true,
     })

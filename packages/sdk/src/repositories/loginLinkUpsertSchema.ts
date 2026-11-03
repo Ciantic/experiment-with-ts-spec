@@ -5,15 +5,16 @@ import { loginLinkSchema } from "../domain/loginLinkSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const loginLinkUpsertSchema = loginLinkSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: loginLinkSchema.shape.createdAt.exactOptional(),
+        updatedAt: loginLinkSchema.shape.updatedAt.exactOptional(),
         consumedAt: loginLinkSchema.shape.consumedAt.nullable(),
+    })
+    .required({
+        id: true,
+        version: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type LoginLinkUpsert = Upsert<LoginLink, never, "id" | "version", "consumedAt", "id" | "createdAt" | "updatedAt">;
+export type LoginLinkUpsert = Upsert<LoginLink, never, "id" | "version", "consumedAt", "createdAt" | "updatedAt">;

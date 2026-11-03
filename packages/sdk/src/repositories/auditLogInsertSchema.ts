@@ -8,8 +8,8 @@ export const auditLogInsertSchema = auditLogSchema
     .omit({
         id: true,
     })
-    .partial({
-        createdAt: true,
+    .extend({
+        createdAt: auditLogSchema.shape.createdAt.exactOptional(),
     })
     .strict();
 

@@ -30,14 +30,17 @@ async function readBody(request: IncomingMessage): Promise<string> {
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** The part of a schema the router uses, structurally, so the router couples to no Zod version. */
-export interface RouteInput {
+export interface RouteInput<T = unknown> {
     safeParse(
         value: unknown,
-    ): { success: true; data: unknown } | { success: false; error: { issues: unknown } };
+    ): { success: true; data: T } | { success: false; error: { issues: unknown } };
 }
 
+/** A check a route runs after its argument validates and before its handler; throwing refuses the call. */
+export type RouteGuard<T = unknown> = (ctx: RequestContext, argument: T) => void | Promise<void>;
+
 /** One exposed call: an HTTP route a single request matches, and an id a group entry names. */
-export interface Route {
+export interface Route<T = unknown> {
     /** The operation's name, e.g. `queryInvoice`. The generated builder and a group entry both use it. */
     id: string;
     method: HttpMethod;
@@ -47,9 +50,16 @@ export interface Route {
     /** True when the handler answers with a long-lived event stream a group cannot run. See docs/notifications.md. */
     stream?: boolean;
     /** Validates the decoded argument. */
-    input: RouteInput;
+    input: RouteInput<T>;
+    /** Refuses the call by throwing; absent when the route needs no check. */
+    guard?: RouteGuard<T>;
     /** Runs the call; it receives the request's context and returns a value the server encodes or a writable it runs. */
-    handler: (ctx: RequestContext, argument: unknown) => Promise<unknown>;
+    handler: (ctx: RequestContext, argument: T) => Promise<unknown>;
+}
+
+/** Check one route's input, guard, and handler against one type, then erase it for the route table. */
+export function defineRoute<T>(route: Route<T>): Route {
+    return route as Route;
 }
 
 /** 

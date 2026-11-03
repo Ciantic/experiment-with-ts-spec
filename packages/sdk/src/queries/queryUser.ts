@@ -5,29 +5,29 @@ import * as primitives from "../primitives.ts";
 /** A `select` over User: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryUserSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        email: z.literal(true).optional(),
-        emailVerifiedAt: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
-        updatedAt: z.literal(true).optional(),
-        deletedAt: z.literal(true).optional(),
-        version: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        email: z.literal(true).exactOptional(),
+        emailVerifiedAt: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
+        updatedAt: z.literal(true).exactOptional(),
+        deletedAt: z.literal(true).exactOptional(),
+        version: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryUserSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"UserId">()).optional(),
-        email: z.array(primitives.emailAddressSchema).optional(),
-        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),
-    }).optional(),
+        id: z.array(primitives.brandedIdSchema<"UserId">()).exactOptional(),
+        email: z.array(primitives.emailAddressSchema).exactOptional(),
+        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).exactOptional(),
+    }).exactOptional(),
     where: z.strictObject({
         emailVerifiedAt: z.strictObject({
-            isNull: z.literal(true).optional(),
-            isNotNull: z.literal(true).optional(),
-        }).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+            isNull: z.literal(true).exactOptional(),
+            isNotNull: z.literal(true).exactOptional(),
+        }).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryUserSelectSchema,
 });

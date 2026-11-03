@@ -8,11 +8,16 @@ export const customerPatchSchema = customerSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        eInvoiceAddress: customerSchema.shape.eInvoiceAddress.nullable(),
-        eInvoiceOperator: customerSchema.shape.eInvoiceOperator.nullable(),
-        language: customerSchema.shape.language.nullable(),
+        tenantId: customerSchema.shape.tenantId.exactOptional(),
+        name: customerSchema.shape.name.exactOptional(),
+        email: customerSchema.shape.email.exactOptional(),
+        address: customerSchema.shape.address.exactOptional(),
+        businessId: customerSchema.shape.businessId.exactOptional(),
+        eInvoiceAddress: customerSchema.shape.eInvoiceAddress.nullable().exactOptional(),
+        eInvoiceOperator: customerSchema.shape.eInvoiceOperator.nullable().exactOptional(),
+        language: customerSchema.shape.language.nullable().exactOptional(),
+        updatedAt: customerSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

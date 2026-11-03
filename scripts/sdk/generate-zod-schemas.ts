@@ -124,13 +124,13 @@ export function generateQueryFile(
         lines.push("    z.strictObject({");
         for (const field of entitySchema.selectFields) {
             if (field.target === undefined) {
-                lines.push(`        ${field.name}: z.literal(true).optional(),`);
+                lines.push(`        ${field.name}: z.literal(true).exactOptional(),`);
                 continue;
             }
             const target = entitiesByName.get(field.target);
             const targetArgs = target ? querySchemaName(target.name) : "z.never()";
             lines.push(
-                `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetArgs})]).optional(),`,
+                `        ${field.name}: z.union([z.literal(true), z.lazy(() => ${targetArgs})]).exactOptional(),`,
             );
         }
         lines.push("    }),");
@@ -143,12 +143,12 @@ export function generateQueryFile(
         // The filter is its own object so a data field can never collide with `select`.
         if (query.filterFields.length > 0) {
             // A required filter makes the object mandatory: a read may not leave out what it must name.
-            const optional = query.requiredFilterFields.length === 0 ? ".optional()" : "";
+            const filterOptional = query.requiredFilterFields.length === 0;
             lines.push("    filter: z.strictObject({");
             for (const field of query.filterFields) {
                 lines.push(`        ${field.name}: ${field.expression},`);
             }
-            lines.push(`    })${optional},`);
+            lines.push(`    })${filterOptional ? ".exactOptional()" : ""},`);
         }
         // Ordering is whitelisted by `@queryOrderBy`, so an unknown field fails rather than reaching SQL.
         if (query.orderFields.length > 0) {
@@ -156,7 +156,7 @@ export function generateQueryFile(
             // A clause is a tuple: `["createdAt", "desc"]`.
             lines.push("    order: z.array(");
             lines.push(`        z.tuple([z.enum([${names}]), z.enum(["asc", "desc"])]),`);
-            lines.push("    ).optional(),");
+            lines.push("    ).exactOptional(),");
         }
         // Comparisons are whitelisted by `@queryWhere`: a field and an operator are both checked here.
         if (query.whereFields.length > 0) {
@@ -166,11 +166,11 @@ export function generateQueryFile(
                 for (const operator of field.operators) {
                     // A null test takes `true`; every other operator takes a value of the field's type.
                     const expression = isNullOperator(operator) ? "z.literal(true)" : field.expression;
-                    lines.push(`            ${operator}: ${expression}.optional(),`);
+                    lines.push(`            ${operator}: ${expression}.exactOptional(),`);
                 }
-                lines.push("        }).optional(),");
+                lines.push("        }).exactOptional(),");
             }
-            lines.push("    }).optional(),");
+            lines.push("    }).exactOptional(),");
         }
         lines.push(...PAGING_FIELDS);
         lines.push(`    select: ${entitySchema ? entitySchema.querySelectName : "z.never()"},`);
@@ -181,8 +181,8 @@ export function generateQueryFile(
 
 /** The paging keys every read accepts, validated before they reach the SQL. See docs/queries.md. */
 const PAGING_FIELDS = [
-    "    limit: z.number().int().positive().optional(),",
-    "    offset: z.number().int().nonnegative().optional(),",
+    "    limit: z.number().int().positive().exactOptional(),",
+    "    offset: z.number().int().nonnegative().exactOptional(),",
 ];
 
 /** Render the barrel that re-exports every query schema module. */
@@ -312,6 +312,10 @@ export function generateDomainEntity(entity: ZodEntity, byName: Map<string, ZodE
 
 /** Render one entity's patch module: `<name>PatchSchema` and the `<Entity>Patch` type. */
 export function generatePatchSchema(entity: ZodEntity): string {
+    const optionalFields = entity.fields
+        .map((field) => field.name)
+        .filter((name) => !entity.patchOmit.includes(name) && !entity.required.includes(name));
+
     const lines: string[] = [HEADER];
     lines.push(`import type { ${entity.name} } from "${entity.importSpecifier}";`);
     lines.push(`import type { Patch } from "../patch.ts";`);
@@ -330,20 +334,22 @@ export function generatePatchSchema(entity: ZodEntity): string {
         }
         lines.push("    })");
     }
-    lines.push("    .partial()");
-    // A nullable column's field also accepts `null`, which clears it; omitting the field keeps the stored value.
-    if (entity.patchNullable.length > 0) {
+    // Every field a patch may carry is optional except the key and version; a nullable one also takes `null`.
+    if (optionalFields.length > 0) {
         lines.push("    .extend({");
-        for (const name of entity.patchNullable) {
-            lines.push(`        ${name}: ${entity.schemaName}.shape.${name}.nullable(),`);
+        for (const name of optionalFields) {
+            const nullable = entity.patchNullable.includes(name) ? ".nullable()" : "";
+            lines.push(`        ${name}: ${entity.schemaName}.shape.${name}${nullable}.exactOptional(),`);
         }
         lines.push("    })");
     }
-    lines.push("    .required({");
-    for (const name of entity.required) {
-        lines.push(`        ${name}: true,`);
+    if (entity.required.length > 0) {
+        lines.push("    .required({");
+        for (const name of entity.required) {
+            lines.push(`        ${name}: true,`);
+        }
+        lines.push("    })");
     }
-    lines.push("    })");
     lines.push("    .strict();");
 
     // The write types use the schemas' omit lists, so the caller's type and the accepted value name one field set.
@@ -370,6 +376,8 @@ interface WriteShape {
     nullable: string[];
     /** The required field names the shape relaxes to optional, because the column default fills them. */
     relaxed: string[];
+    /** The field names the shape must require even when the entity schema marks them optional. */
+    required: string[];
     /** The rendered type alias. */
     typeExpression: string;
     /** The import the type alias needs, when one of the shared write helpers builds it. */
@@ -386,6 +394,7 @@ function insertShape(entity: ZodEntity): WriteShape {
         // A create writes a nullable column as `null` whether the caller omits it or sends it, so the schema takes both.
         nullable: entity.patchNullable,
         relaxed: entity.insertOptional,
+        required: [],
         typeExpression: `Insert<${entity.name}, ${unionType(entity.insertOmit)}, ${unionType(entity.patchNullable)}, ${unionType(entity.insertOptional)}>`,
         helperImport: 'import type { Insert } from "../insert.ts";',
     };
@@ -397,8 +406,8 @@ function upsertShape(entity: ZodEntity): WriteShape {
     const claimed = [...entity.versionFields, ...entity.autoIncrementFields];
     const omit = entity.insertOmit.filter((name) => !claimed.includes(name));
     const locked = [...entity.keys, ...entity.versionFields];
-    // An upsert always claims the version, so it cannot also relax it to optional.
-    const relaxed = entity.insertOptional.filter((name) => !claimed.includes(name));
+    // An upsert claims every locked field, so the schema may not also relax one to optional.
+    const relaxed = entity.insertOptional.filter((name) => !claimed.includes(name) && !locked.includes(name));
     const plus =
         entity.versionFields.length > 0 && entity.autoIncrementFields.length > 0
             ? "the `@version` it claims and the key it assigns"
@@ -417,6 +426,7 @@ function upsertShape(entity: ZodEntity): WriteShape {
         // An upsert writes the row whole, so a nullable column takes `null` as a patch does.
         nullable: entity.patchNullable,
         relaxed,
+        required: locked,
         typeExpression: `Upsert<${entity.name}, ${unionType(omit)}, ${unionType(locked)}, ${unionType(entity.patchNullable)}, ${unionType(relaxed)}>`,
         helperImport: 'import type { Upsert } from "../upsert.ts";',
     };
@@ -434,6 +444,32 @@ export function generateUpsertSchema(entity: ZodEntity, byName: Map<string, ZodE
 
 /** Render one entity's write module: a schema derived from the entity's own, and the type beside it. */
 function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, shape: WriteShape): string {
+    const overrides: { name: string; expression: string }[] = [];
+    const handled = new Set<string>();
+    for (const branch of entity.insertInlined) {
+        const target = byName.get(branch.target);
+        const insertName = target ? target.insertName : "z.never()";
+        // A snapshot the caller can clear: `null` writes a null into every inlined column.
+        const nullable = shape.nullable.includes(branch.name) ? ".nullable()" : "";
+        overrides.push({ name: branch.name, expression: `${insertName}${nullable}.exactOptional()` });
+        handled.add(branch.name);
+    }
+    for (const name of shape.relaxed) {
+        if (handled.has(name) || shape.omit.includes(name)) {
+            continue;
+        }
+        const nullable = shape.nullable.includes(name) ? ".nullable()" : "";
+        overrides.push({ name, expression: `${entity.schemaName}.shape.${name}${nullable}.exactOptional()` });
+        handled.add(name);
+    }
+    // A nullable column's field also accepts `null`; `optional` keeps a relaxed one omittable.
+    for (const name of shape.nullable) {
+        if (handled.has(name) || shape.omit.includes(name)) {
+            continue;
+        }
+        overrides.push({ name, expression: `${entity.schemaName}.shape.${name}.nullable()` });
+        handled.add(name);
+    }
     const lines: string[] = [HEADER];
     // Every write schema derives from the entity's, so `z` is needed only for an `@inlined` branch's fallback.
     if (entity.insertInlined.some((branch) => !byName.has(branch.target))) {
@@ -452,7 +488,9 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
     for (const dependency of inlinedTargets) {
         const target = byName.get(dependency);
         if (target) {
-            lines.push(`import { ${target.insertName} } from "./${insertModuleName(target.name)}";`);
+            lines.push(
+                `import { ${target.insertName}, type ${target.name}Insert } from "./${insertModuleName(target.name)}";`,
+            );
         }
     }
 
@@ -466,39 +504,40 @@ function renderWriteSchema(entity: ZodEntity, byName: Map<string, ZodEntity>, sh
         }
         lines.push("    })");
     }
-    if (entity.insertInlined.length > 0) {
+    if (overrides.length > 0) {
         lines.push("    .extend({");
-        for (const branch of entity.insertInlined) {
-            const target = byName.get(branch.target);
-            const insertName = target ? target.insertName : "z.never()";
-            // A snapshot the caller can clear: `null` writes a null into every inlined column.
-            const nullable = shape.nullable.includes(branch.name) ? ".nullable()" : "";
-            lines.push(`        ${branch.name}: ${insertName}${nullable}.optional(),`);
+        for (const override of overrides) {
+            lines.push(`        ${override.name}: ${override.expression},`);
         }
         lines.push("    })");
     }
-    if (shape.relaxed.length > 0) {
-        lines.push("    .partial({");
-        for (const name of shape.relaxed) {
+    if (shape.required.length > 0) {
+        lines.push("    .required({");
+        for (const name of shape.required) {
             lines.push(`        ${name}: true,`);
-        }
-        lines.push("    })");
-    }
-    // An inlined branch above was widened where it was extended, so only the plain columns are left.
-    const inlinedNames = new Set(entity.insertInlined.map((branch) => branch.name));
-    const plainNullable = shape.nullable.filter((name) => !inlinedNames.has(name));
-    if (plainNullable.length > 0) {
-        lines.push("    .extend({");
-        for (const name of plainNullable) {
-            lines.push(`        ${name}: ${entity.schemaName}.shape.${name}.nullable(),`);
         }
         lines.push("    })");
     }
     lines.push("    .strict();");
 
+    // An inlined branch validates as the target's insert schema, so its type replaces the read entity's.
+    const inlinedTypes = entity.insertInlined
+        .filter((branch) => byName.has(branch.target))
+        .map((branch) => ({
+            name: branch.name,
+            target: branch.target,
+            nullable: shape.nullable.includes(branch.name),
+        }));
+    const typeExpression =
+        inlinedTypes.length === 0
+            ? shape.typeExpression
+            : `Omit<${shape.typeExpression}, ${unionType(inlinedTypes.map((branch) => branch.name))}> & { ${inlinedTypes
+                  .map((branch) => `${branch.name}?: ${branch.target}Insert${branch.nullable ? " | null" : ""}`)
+                  .join("; ")} }`;
+
     lines.push("");
     lines.push(shape.comment);
-    lines.push(`export type ${shape.typeName} = ${shape.typeExpression};`);
+    lines.push(`export type ${shape.typeName} = ${typeExpression};`);
 
     return lines.join("\n") + "\n";
 }

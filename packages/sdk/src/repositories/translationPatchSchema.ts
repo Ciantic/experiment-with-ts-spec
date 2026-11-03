@@ -5,9 +5,8 @@ import { translationSchema } from "../domain/translationSchema.ts";
 
 /** A partial update: every field is optional except the key. */
 export const translationPatchSchema = translationSchema
-    .partial()
     .extend({
-        value: translationSchema.shape.value.nullable(),
+        value: translationSchema.shape.value.nullable().exactOptional(),
     })
     .required({
         lang: true,

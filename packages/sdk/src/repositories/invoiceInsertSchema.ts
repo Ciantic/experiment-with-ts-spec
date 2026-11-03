@@ -13,13 +13,11 @@ export const invoiceInsertSchema = invoiceSchema
         totalAmount: true,
         rows: true,
     })
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: invoiceSchema.shape.id.exactOptional(),
+        createdAt: invoiceSchema.shape.createdAt.exactOptional(),
+        updatedAt: invoiceSchema.shape.updatedAt.exactOptional(),
+        version: invoiceSchema.shape.version.exactOptional(),
         number: invoiceSchema.shape.number.nullable(),
         customerId: invoiceSchema.shape.customerId.nullable(),
         sellerId: invoiceSchema.shape.sellerId.nullable(),

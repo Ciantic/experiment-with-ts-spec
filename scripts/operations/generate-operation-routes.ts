@@ -39,7 +39,7 @@ function operationImport(id: string): string {
 /** Render the calls the spec's `@restOperation` tags declare, one route each. */
 export function renderOperationRoutes(operations: RestOperationCall[]): string {
     const lines: string[] = [HEADER];
-    lines.push(`import type { Route } from "${ROUTE_TYPE_IMPORT}";`);
+    lines.push(`import { defineRoute, type Route } from "${ROUTE_TYPE_IMPORT}";`);
     if (operations.length > 0) {
         for (const operation of operations) {
             lines.push(`import { ${operation.id} } from "${operationImport(operation.id)}";`);
@@ -47,17 +47,8 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
         const schemas = operations
             .flatMap((operation) => (operation.inputSchemaName === undefined ? [] : [operation.inputSchemaName]))
             .sort((a, b) => a.localeCompare(b));
-        const types = [
-            ...new Set(
-                operations.flatMap((operation) =>
-                    operation.inputTypeName === undefined ? [] : [operation.inputTypeName],
-                ),
-            ),
-        ].sort((a, b) => a.localeCompare(b));
-        // One import per module: the schemas are values, the type names ride along as type-only specifiers.
-        const named = [...schemas, ...types.map((type) => `type ${type}`)];
-        if (named.length > 0) {
-            lines.push(`import { ${named.join(", ")} } from "${SCHEMAS_IMPORT}";`);
+        if (schemas.length > 0) {
+            lines.push(`import { ${schemas.join(", ")} } from "${SCHEMAS_IMPORT}";`);
         }
         // A call with no input still validates the decoded argument, which is `undefined` for an empty body.
         if (operations.some((operation) => operation.inputSchemaName === undefined)) {
@@ -73,7 +64,7 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
     }
     lines.push(`export const ${OPERATION_ROUTES_EXPORT}: Route[] = [`);
     for (const operation of operations) {
-        lines.push("    {");
+        lines.push("    defineRoute({");
         lines.push(`        id: "${operation.id}",`);
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
@@ -83,9 +74,9 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
         lines.push(
             operation.inputTypeName === undefined
                 ? `        handler: (ctx) => ${operation.id}(ctx),`
-                : `        handler: (ctx, body) => ${operation.id}(ctx, body as ${operation.inputTypeName}),`,
+                : `        handler: (ctx, body) => ${operation.id}(ctx, body),`,
         );
-        lines.push("    },");
+        lines.push("    }),");
     }
     lines.push("];");
 

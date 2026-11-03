@@ -11,13 +11,15 @@ export const invoiceRowPatchSchema = invoiceRowSchema
         totalAmount: true,
         createdAt: true,
     })
-    .partial()
     .extend({
-        description: invoiceRowSchema.shape.description.nullable(),
-        quantity: invoiceRowSchema.shape.quantity.nullable(),
-        unit: invoiceRowSchema.shape.unit.nullable(),
-        unitPrice: invoiceRowSchema.shape.unitPrice.nullable(),
-        taxRate: invoiceRowSchema.shape.taxRate.nullable(),
+        tenantId: invoiceRowSchema.shape.tenantId.exactOptional(),
+        invoiceId: invoiceRowSchema.shape.invoiceId.exactOptional(),
+        description: invoiceRowSchema.shape.description.nullable().exactOptional(),
+        quantity: invoiceRowSchema.shape.quantity.nullable().exactOptional(),
+        unit: invoiceRowSchema.shape.unit.nullable().exactOptional(),
+        unitPrice: invoiceRowSchema.shape.unitPrice.nullable().exactOptional(),
+        taxRate: invoiceRowSchema.shape.taxRate.nullable().exactOptional(),
+        updatedAt: invoiceRowSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

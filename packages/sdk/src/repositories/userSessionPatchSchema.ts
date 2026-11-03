@@ -8,9 +8,12 @@ export const userSessionPatchSchema = userSessionSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        revokedAt: userSessionSchema.shape.revokedAt.nullable(),
+        userId: userSessionSchema.shape.userId.exactOptional(),
+        tokenHash: userSessionSchema.shape.tokenHash.exactOptional(),
+        expiresAt: userSessionSchema.shape.expiresAt.exactOptional(),
+        revokedAt: userSessionSchema.shape.revokedAt.nullable().exactOptional(),
+        updatedAt: userSessionSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

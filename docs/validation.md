@@ -87,17 +87,22 @@ nothing, so importing it still loads no `zod`.
 ```typescript
 export const widgetSchema = z.object({
     id: primitives.brandedIdSchema<"WidgetId">(),
-    code: z.string().optional(),
-    account: z.lazy(() => accountSchema).optional(),
-    rows: z.array(z.lazy(() => widgetRowSchema)).optional(),
+    code: z.string().exactOptional(),
+    account: z.lazy(() => accountSchema).exactOptional(),
+    rows: z.array(z.lazy(() => widgetRowSchema)).exactOptional(),
     version: primitives.versionSchema,
 });
 
 /** A partial update: every field is optional except the key and the version. */
-export const widgetPatchSchema = widgetSchema.partial().required({
-    id: true,
-    version: true,
-});
+export const widgetPatchSchema = widgetSchema
+    .omit({ account: true, rows: true })
+    .extend({
+        code: widgetSchema.shape.code.nullable().exactOptional(),
+    })
+    .required({
+        id: true,
+        version: true,
+    });
 
 /** A partial update: every field is optional except the key and the version. */
 export type WidgetPatch = Omit<Partial<Widget>, "account" | "rows"> & Required<Pick<Widget, "id" | "version">>;
@@ -115,7 +120,14 @@ export type WidgetPatch = Omit<Partial<Widget>, "account" | "rows"> & Required<P
 | `@children` array | `z.array(z.lazy(() => <entity>Schema))` |
 | string-literal union | `z.enum([...])` |
 | open union (`string & {}`) | `z.enum([...]).or(z.string())` |
-| optional field | the expression gains `.optional()` |
+| optional field | the expression gains `.exactOptional()` |
+
+`exactOptional` is the one that makes the schema output match the spec:
+`z.string().optional()` parses to `string | undefined`, which `exactOptionalPropertyTypes`
+refuses to assign to a `field?: string`; `.exactOptional()` accepts the field
+omitted, rejects an explicit `undefined`, and parses to `field?: string`. Every
+generated schema uses it for optional fields, so the schema's output, the write
+type, and the route handler's argument are the same shape.
 
 The mapping reads annotations, not domain names. A new primitive is a spec-only
 change: `primitives.ts` picks it up from its `@primitive` and `@zod` tags, and a
@@ -163,10 +175,9 @@ export const widgetPatchSchema = widgetSchema
         rows: true,
         createdAt: true,
     })
-    .partial()
     .extend({
-        code: widgetSchema.shape.code.nullable(),
-        notes: widgetSchema.shape.notes.nullable(),
+        code: widgetSchema.shape.code.nullable().exactOptional(),
+        notes: widgetSchema.shape.notes.nullable().exactOptional(),
     })
     .required({
         id: true,
@@ -197,8 +208,8 @@ the list: a patch may override a default, exactly as a create may.
 ## Insert schemas
 
 `<name>InsertSchema` is the schema's `.omit()` of everything a create does not
-write, `.partial()` for the fields that fall back to a column default, and
-`.extend()` for the nullable columns it may send as `null`, made `.strict()`. It
+write, `.extend()` for the fields that fall back to a column default and the
+nullable columns it may send as `null`, made `.strict()`. It
 mirrors the repository's insert contract (`docs/repositories.md`): a `create`
 writes the columns the database does not own, and a key the schema rejects is a
 400 rather than a field that is silently dropped on the way to the SQL.
@@ -213,12 +224,10 @@ export const widgetInsertSchema = widgetSchema
         total: true,
         rows: true,
     })
-    .partial({
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        createdAt: widgetSchema.shape.createdAt.exactOptional(),
+        updatedAt: widgetSchema.shape.updatedAt.exactOptional(),
+        version: widgetSchema.shape.version.exactOptional(),
         code: widgetSchema.shape.code.nullable(),
         notes: widgetSchema.shape.notes.nullable(),
     })
@@ -243,7 +252,7 @@ A `@pgDefault` column is deliberately absent from the omit list, whether the
 expression sits on the field or comes from its type. A create may
 supply it or leave it out; an omitted one writes the declared default, so the row
 gets the value the database would have filled. A *required* defaulted field is
-relaxed with `.partial()` so the schema agrees that omitting it is allowed. The
+widened with `.exactOptional()` so the schema agrees that omitting it is allowed. The
 clock tags and a defaulted `@version` follow the same rule: a create may claim a
 historical value, or omit the field and take `now()` / `0`.
 
@@ -284,13 +293,15 @@ export const widgetUpsertSchema = widgetSchema
         total: true,
         rows: true,
     })
-    .partial({
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: widgetSchema.shape.createdAt.exactOptional(),
+        updatedAt: widgetSchema.shape.updatedAt.exactOptional(),
         code: widgetSchema.shape.code.nullable(),
         notes: widgetSchema.shape.notes.nullable(),
+    })
+    .required({
+        id: true,
+        version: true,
     })
     .strict();
 
@@ -303,8 +314,8 @@ that the caller has to name: the `@version` field, and an `@pgAutoIncrement` key
 Everything else follows the
 create: the same branches and derivable values are absent, the same `@inlined`
 branches nest as the target's own insert schema, and a defaulted field is relaxed
-with the same `.partial()` — except the version, which the upsert always claims
-and therefore requires.
+with the same `.exactOptional()` — except the version, which the upsert always
+claims and therefore requires with `.required()`.
 
 An entity with neither a version nor an assigned key therefore has two identical
 field sets, and the modules differ only in the doc their schema and type carry.
@@ -364,28 +375,28 @@ fields and their operators from `@queryWhere`. The schema is named after the rea
 ```typescript
 export const queryWidgetSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"WidgetId">()).optional(),
+        id: z.array(primitives.brandedIdSchema<"WidgetId">()).exactOptional(),
         tenantId: z.array(primitives.brandedIdSchema<"TenantId">()),
-        accountId: z.array(primitives.brandedIdSchema<"AccountId">()).optional(),
-        supplierId: z.array(primitives.brandedIdSchema<"SupplierId">()).optional(),
+        accountId: z.array(primitives.brandedIdSchema<"AccountId">()).exactOptional(),
+        supplierId: z.array(primitives.brandedIdSchema<"SupplierId">()).exactOptional(),
     }),
     order: z.array(
         z.tuple([z.enum(["createdAt", "updatedAt"]), z.enum(["asc", "desc"])]),
-    ).optional(),
+    ).exactOptional(),
     where: z.strictObject({
         startsAt: z.strictObject({
-            gte: z.date().optional(),
-            lte: z.date().optional(),
-        }).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+            gte: z.date().exactOptional(),
+            lte: z.date().exactOptional(),
+        }).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryWidgetSelectSchema,
 });
 ```
 
 Every filter is optional — mirroring the generated `Filters<…>` type — except the
-one `@queryFilter required` marks, which drops the `.optional()` on the field and
+one `@queryFilter required` marks, which drops the `.exactOptional()` on the field and
 on the `filter` object that holds it, so `queryWidgetSchema` rejects a read that
 names no tenant. A `@queryFilter default=<value>` stays optional: the value
 is applied by the resolver when the read omits the field, so it needs no schema
@@ -418,10 +429,10 @@ into branches. So it is validated against a generated per-query schema,
 ```typescript
 export const queryWidgetSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        total: z.literal(true).optional(),
-        account: z.union([z.literal(true), z.lazy(() => queryAccountSchema)]).optional(),
-        rows: z.union([z.literal(true), z.lazy(() => queryWidgetRowSchema)]).optional(),
+        id: z.literal(true).exactOptional(),
+        total: z.literal(true).exactOptional(),
+        account: z.union([z.literal(true), z.lazy(() => queryAccountSchema)]).exactOptional(),
+        rows: z.union([z.literal(true), z.lazy(() => queryWidgetRowSchema)]).exactOptional(),
     }),
 );
 ```

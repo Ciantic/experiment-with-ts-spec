@@ -5,19 +5,19 @@ import * as primitives from "../primitives.ts";
 /** A `select` over Tenant: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryTenantSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        name: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
-        updatedAt: z.literal(true).optional(),
-        version: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        name: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
+        updatedAt: z.literal(true).exactOptional(),
+        version: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryTenantSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        id: z.array(primitives.brandedIdSchema<"TenantId">()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryTenantSelectSchema,
 });

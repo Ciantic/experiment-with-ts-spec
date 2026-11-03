@@ -345,14 +345,14 @@ describe("generateDomainEntity", () => {
 
         expect(code).toContain('import * as primitives from "../primitives.ts";');
         expect(code).toContain('id: primitives.brandedIdSchema<"ThingId">(),');
-        expect(code).toContain("amount: primitives.moneySchema.optional(),");
+        expect(code).toContain("amount: primitives.moneySchema.exactOptional(),");
     });
 
     it("marks an optional field optional and a required one not", () => {
         const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
-        expect(code).toContain("name: z.string().optional(),");
+        expect(code).toContain("name: z.string().exactOptional(),");
         expect(code).toContain('id: primitives.brandedIdSchema<"ThingId">(),');
     });
 
@@ -362,15 +362,15 @@ describe("generateDomainEntity", () => {
 
         expect(code).toContain('import { childSchema } from "./childSchema.ts";');
         expect(code).toContain('import { parentSchema } from "./parentSchema.ts";');
-        expect(code).toContain("children: z.array(z.lazy(() => childSchema)).optional(),");
-        expect(code).toContain("parent: z.lazy(() => parentSchema).optional(),");
+        expect(code).toContain("children: z.array(z.lazy(() => childSchema)).exactOptional(),");
+        expect(code).toContain("parent: z.lazy(() => parentSchema).exactOptional(),");
     });
 
     it("resolves an open-union alias to an enum plus a string", () => {
         const { files } = generate({ entities: { Thing: THING } });
         const code = domainFile(files, "Thing");
 
-        expect(code).toContain('format: z.enum(["short", "long"]).or(z.string()).optional(),');
+        expect(code).toContain('format: z.enum(["short", "long"]).or(z.string()).exactOptional(),');
     });
 
     it("imports no entity type, because it declares no write type", () => {
@@ -477,11 +477,13 @@ describe("generateRepositoryEntity", () => {
         const upsert = upsertFile(files, "Revision");
 
         // A create writes the version when supplied and falls back to its default.
-        expect(insert).toContain("    .partial({\n        status: true,\n        version: true,\n    })");
+        expect(insert).toContain("        status: revisionSchema.shape.status.exactOptional(),");
+        expect(insert).toContain("        version: revisionSchema.shape.version.exactOptional(),");
         expect(insert).toContain('export type RevisionInsert = Insert<Revision, never, never, "status" | "version">;');
         // An upsert claims the version, and still lets a caller omit the field the database defaults.
-        expect(upsert).toContain("    .partial({\n        status: true,\n    })");
-        expect(upsert).not.toContain("        version: true,");
+        expect(upsert).toContain("        status: revisionSchema.shape.status.exactOptional(),");
+        expect(upsert).toContain("        version: true,");
+        expect(upsert).not.toContain("version: revisionSchema.shape.version.exactOptional()");
         expect(upsert).toContain('export type RevisionUpsert = Upsert<Revision, never, "id" | "version", never, "status">;');
         expect(upsert).toContain('import type { Upsert } from "../upsert.ts";');
         expect(upsert).toContain("plus the `@version` it claims");
@@ -499,7 +501,8 @@ describe("generateRepositoryEntity", () => {
         // An upsert names the key, which is what its conflict matches, so nothing is omitted.
         expect(upsert).toContain('export type CounterUpsert = Upsert<Counter, never, "id", "label", never>;');
         expect(upsert).toContain("plus the key it assigns");
-        expect(upsert).not.toContain("id: true");
+        expect(upsert).not.toContain("    .omit({\n        id: true,\n    })");
+        expect(upsert).toContain("    .required({\n        id: true,\n    })");
         // A patch addresses the row by the key the create handed back, so it requires it.
         expect(patch).toContain('export type CounterPatch = Patch<Counter, never, "id", "label">;');
         expect(patch).toContain("    .required({\n        id: true,\n    })");
@@ -532,7 +535,7 @@ describe("generateRepositoryEntity", () => {
         const code = upsertFile(files, "Thing");
 
         // `snapshot` is optional, so its column is nullable and the branch takes `null` as a patch does.
-        expect(code).toContain("snapshot: childInsertSchema.nullable().optional(),");
+        expect(code).toContain("snapshot: childInsertSchema.nullable().exactOptional(),");
         expect(code).toContain('"snapshot"');
         // The widening rides on the branch's own insert schema, not the domain schema it replaced.
         expect(code).not.toContain("snapshot: thingSchema.shape.snapshot.nullable()");
@@ -618,7 +621,7 @@ describe("buildZodModel queries", () => {
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
         expect(queryThing?.filterFields).toEqual([
-            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).optional()' },
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).exactOptional()' },
         ]);
         expect(queryThing?.usesPrimitives).toBe(true);
     });
@@ -628,7 +631,7 @@ describe("buildZodModel queries", () => {
         const queryChild = model.queries.find((query) => query.entity === "Child");
 
         expect(queryChild?.filterFields).toEqual([
-            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ChildId">()).optional()' },
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ChildId">()).exactOptional()' },
         ]);
     });
 
@@ -637,7 +640,7 @@ describe("buildZodModel queries", () => {
         const queryScoped = model.queries.find((query) => query.entity === "Scoped");
 
         expect(queryScoped?.filterFields).toEqual([
-            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ScopedId">()).optional()' },
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ScopedId">()).exactOptional()' },
             { name: "tenantId", expression: 'z.array(primitives.brandedIdSchema<"ScopedTenantId">())' },
         ]);
         expect(queryScoped?.requiredFilterFields).toEqual(["tenantId"]);
@@ -675,11 +678,11 @@ describe("buildZodModel queries", () => {
         const queryFiltered = model.queries.find((query) => query.entity === "Filtered");
 
         expect(queryFiltered?.filterFields).toEqual([
-            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"FilteredId">()).optional()' },
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"FilteredId">()).exactOptional()' },
             {
                 name: "deletedAt",
                 expression:
-                    "z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional()",
+                    "z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).exactOptional()",
             },
         ]);
     });
@@ -689,7 +692,7 @@ describe("buildZodModel queries", () => {
         const queryThing = model.queries.find((query) => query.entity === "Thing");
 
         expect(queryThing?.filterFields).toEqual([
-            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).optional()' },
+            { name: "id", expression: 'z.array(primitives.brandedIdSchema<"ThingId">()).exactOptional()' },
         ]);
     });
 });
@@ -700,23 +703,23 @@ describe("generateQueryFile", () => {
         const code = files.get(join("queries", "queryThing.ts")) ?? "";
 
         expect(code).toContain("export const queryThingSelectSchema = z.lazy(() =>");
-        expect(code).toContain("        id: z.literal(true).optional(),");
+        expect(code).toContain("        id: z.literal(true).exactOptional(),");
         expect(code).toContain('import { queryChildSchema } from "./queryChild.ts";');
         expect(code).toContain(
-            "        children: z.union([z.literal(true), z.lazy(() => queryChildSchema)]).optional(),",
+            "        children: z.union([z.literal(true), z.lazy(() => queryChildSchema)]).exactOptional(),",
         );
         expect(code).toContain("export const queryThingSchema = z.strictObject({");
         expect(code).toContain("    filter: z.strictObject({");
-        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ThingId">()).optional(),');
-        expect(code).toContain("    }).optional(),");
+        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ThingId">()).exactOptional(),');
+        expect(code).toContain("    }).exactOptional(),");
         expect(code).toContain("    order: z.array(");
         expect(code).toContain('        z.tuple([z.enum(["name", "amount"]), z.enum(["asc", "desc"])]),');
         expect(code).toContain("    where: z.strictObject({");
         expect(code).toContain("        amount: z.strictObject({");
-        expect(code).toContain("            gte: primitives.moneySchema.optional(),");
-        expect(code).toContain("            lte: primitives.moneySchema.optional(),");
-        expect(code).toContain("    limit: z.number().int().positive().optional(),");
-        expect(code).toContain("    offset: z.number().int().nonnegative().optional(),");
+        expect(code).toContain("            gte: primitives.moneySchema.exactOptional(),");
+        expect(code).toContain("            lte: primitives.moneySchema.exactOptional(),");
+        expect(code).toContain("    limit: z.number().int().positive().exactOptional(),");
+        expect(code).toContain("    offset: z.number().int().nonnegative().exactOptional(),");
         expect(code).toContain("    select: queryThingSelectSchema,");
     });
 
@@ -735,10 +738,10 @@ describe("generateQueryFile", () => {
         const code = generateQueryFile("Filtered", queries, byName);
 
         expect(code).toContain(
-            '        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).optional(),',
+            '        deletedAt: z.union([z.array(z.date()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).exactOptional(),',
         );
-        expect(code).toContain("            isNull: z.literal(true).optional(),");
-        expect(code).toContain("            isNotNull: z.literal(true).optional(),");
+        expect(code).toContain("            isNull: z.literal(true).exactOptional(),");
+        expect(code).toContain("            isNotNull: z.literal(true).exactOptional(),");
     });
 
     it("accepts a null test in a filter and rejects a value where the test belongs", () => {
@@ -787,8 +790,8 @@ describe("generateQueryFile", () => {
         const code = generateQueryFile("Scoped", queries, byName);
 
         expect(code).toContain('        tenantId: z.array(primitives.brandedIdSchema<"ScopedTenantId">()),');
-        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ScopedId">()).optional(),');
-        expect(code).not.toContain("}).optional(),");
+        expect(code).toContain('        id: z.array(primitives.brandedIdSchema<"ScopedId">()).exactOptional(),');
+        expect(code).not.toContain("}).exactOptional(),");
     });
 
     it("rejects a read that leaves out a required filter", () => {
@@ -959,7 +962,7 @@ describe("select schemas", () => {
         const code = files.get(join("queries", "queryChild.ts")) ?? "";
 
         expect(code).toContain("export const queryChildSelectSchema = z.lazy(() =>");
-        expect(code).toContain("        thingId: z.literal(true).optional(),");
+        expect(code).toContain("        thingId: z.literal(true).exactOptional(),");
     });
 });
 
@@ -1189,7 +1192,7 @@ export interface Thing {
         const { files } = generate({ entities: { Thing: entity } });
         const code = insertFile(files, "Thing");
 
-        expect(code).toContain("    .partial({\n        source: true,\n    })");
+        expect(code).toContain("        source: thingSchema.shape.source.exactOptional(),");
         expect(code).toContain('export type ThingInsert = Insert<Thing, never, never, "source">;');
     });
 
@@ -1210,7 +1213,7 @@ export interface Thing {
         const { files } = generate({ entities: { Thing: entity } });
         const code = insertFile(files, "Thing");
 
-        expect(code).toContain("    .partial({\n        id: true,\n    })");
+        expect(code).toContain("        id: thingSchema.shape.id.exactOptional(),");
         expect(code).toContain('export type ThingInsert = Insert<Thing, never, never, "id">;');
     });
 
@@ -1218,8 +1221,8 @@ export interface Thing {
         const { files } = generate({ entities: { Thing: INLINED } });
         const code = insertFile(files, "Thing");
 
-        expect(code).toContain('import { childInsertSchema } from "./childInsertSchema.ts";');
-        expect(code).toContain("        snapshot: childInsertSchema.nullable().optional(),");
+        expect(code).toContain('import { childInsertSchema, type ChildInsert } from "./childInsertSchema.ts";');
+        expect(code).toContain("        snapshot: childInsertSchema.nullable().exactOptional(),");
         expect(code).not.toContain("        snapshot: true,");
     });
 
@@ -1228,15 +1231,9 @@ export interface Thing {
         const code = insertFile(files, "Thing");
 
         // The same nullable set a patch and an upsert widen, from the same helper.
-        expect(code).toContain(
-            [
-                "    .extend({",
-                "        name: thingSchema.shape.name.nullable(),",
-                "        amount: thingSchema.shape.amount.nullable(),",
-                "        format: thingSchema.shape.format.nullable(),",
-                "    })",
-            ].join("\n"),
-        );
+        expect(code).toContain("        name: thingSchema.shape.name.nullable(),");
+        expect(code).toContain("        amount: thingSchema.shape.amount.nullable(),");
+        expect(code).toContain("        format: thingSchema.shape.format.nullable(),");
         // The key is a create's, and the version is the create's precondition, so neither is widened.
         expect(code).not.toContain("id: thingSchema.shape.id.nullable()");
         expect(code).not.toContain("version: thingSchema.shape.version.nullable()");
@@ -1251,7 +1248,7 @@ describe("patch schemas", () => {
         expect(code).toContain("export const thingPatchSchema = thingSchema");
         expect(code).toContain("        children: true,");
         expect(code).toContain("        parent: true,");
-        expect(code).toContain("    .partial()");
+        expect(code).toContain("    .extend({");
     });
 
     it("keeps the version a create omits, since a patch must carry it", () => {
@@ -1265,11 +1262,10 @@ describe("patch schemas", () => {
                 "        children: true,",
                 "        parent: true,",
                 "    })",
-                "    .partial()",
                 "    .extend({",
-                "        name: thingSchema.shape.name.nullable(),",
-                "        amount: thingSchema.shape.amount.nullable(),",
-                "        format: thingSchema.shape.format.nullable(),",
+                "        name: thingSchema.shape.name.nullable().exactOptional(),",
+                "        amount: thingSchema.shape.amount.nullable().exactOptional(),",
+                "        format: thingSchema.shape.format.nullable().exactOptional(),",
                 "    })",
                 "    .required({",
                 "        id: true,",
@@ -1280,11 +1276,12 @@ describe("patch schemas", () => {
         );
     });
 
-    it("leaves a required field with no nullable shape to extend", () => {
+    it("widens no field to null when the entity has no nullable column", () => {
         const { files } = generate({ entities: { Thing: THING } });
         const code = patchFile(files, "Child");
 
-        expect(code).not.toContain(".extend({");
+        expect(code).not.toContain(".nullable()");
+        expect(code).toContain("        thingId: childSchema.shape.thingId.exactOptional(),");
     });
     it("requires only the key when the entity has no version", () => {
         const { files } = generate({ entities: { Thing: THING } });

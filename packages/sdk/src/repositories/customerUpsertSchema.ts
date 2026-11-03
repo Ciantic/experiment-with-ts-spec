@@ -5,17 +5,18 @@ import { customerSchema } from "../domain/customerSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const customerUpsertSchema = customerSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: customerSchema.shape.createdAt.exactOptional(),
+        updatedAt: customerSchema.shape.updatedAt.exactOptional(),
         eInvoiceAddress: customerSchema.shape.eInvoiceAddress.nullable(),
         eInvoiceOperator: customerSchema.shape.eInvoiceOperator.nullable(),
         language: customerSchema.shape.language.nullable(),
     })
+    .required({
+        id: true,
+        version: true,
+    })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type CustomerUpsert = Upsert<Customer, never, "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", "id" | "createdAt" | "updatedAt">;
+export type CustomerUpsert = Upsert<Customer, never, "id" | "version", "eInvoiceAddress" | "eInvoiceOperator" | "language", "createdAt" | "updatedAt">;

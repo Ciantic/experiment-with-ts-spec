@@ -5,10 +5,10 @@ import { invoiceSentRowSchema } from "../domain/invoiceSentRowSchema.ts";
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */
 export const invoiceSentRowUpsertSchema = invoiceSentRowSchema
-    .partial({
+    .required({
         id: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, since the entity carries no version. */
-export type InvoiceSentRowUpsert = Upsert<InvoiceSentRow, never, "id", never, "id">;
+export type InvoiceSentRowUpsert = Upsert<InvoiceSentRow, never, "id", never, never>;

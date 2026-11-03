@@ -5,26 +5,26 @@ import * as primitives from "../primitives.ts";
 /** A `select` over InvoiceSentRow: `true` for a scalar, a branch's read arguments for a branch. */
 export const queryInvoiceSentRowSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        tenantId: z.literal(true).optional(),
-        invoiceSentId: z.literal(true).optional(),
-        description: z.literal(true).optional(),
-        quantity: z.literal(true).optional(),
-        unit: z.literal(true).optional(),
-        unitPrice: z.literal(true).optional(),
-        taxRate: z.literal(true).optional(),
-        netAmount: z.literal(true).optional(),
-        taxAmount: z.literal(true).optional(),
-        totalAmount: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        tenantId: z.literal(true).exactOptional(),
+        invoiceSentId: z.literal(true).exactOptional(),
+        description: z.literal(true).exactOptional(),
+        quantity: z.literal(true).exactOptional(),
+        unit: z.literal(true).exactOptional(),
+        unitPrice: z.literal(true).exactOptional(),
+        taxRate: z.literal(true).exactOptional(),
+        netAmount: z.literal(true).exactOptional(),
+        taxAmount: z.literal(true).exactOptional(),
+        totalAmount: z.literal(true).exactOptional(),
     }),
 );
 
 export const queryInvoiceSentRowSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        id: z.array(primitives.brandedIdSchema<"InvoiceSentRowId">()).exactOptional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: queryInvoiceSentRowSelectSchema,
 });

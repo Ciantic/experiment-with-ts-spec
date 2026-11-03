@@ -5,11 +5,11 @@ import { tenantSchema } from "../domain/tenantSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const tenantInsertSchema = tenantSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
+    .extend({
+        id: tenantSchema.shape.id.exactOptional(),
+        createdAt: tenantSchema.shape.createdAt.exactOptional(),
+        updatedAt: tenantSchema.shape.updatedAt.exactOptional(),
+        version: tenantSchema.shape.version.exactOptional(),
     })
     .strict();
 

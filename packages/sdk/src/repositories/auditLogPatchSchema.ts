@@ -8,7 +8,9 @@ export const auditLogPatchSchema = auditLogSchema
     .omit({
         createdAt: true,
     })
-    .partial()
+    .extend({
+        message: auditLogSchema.shape.message.exactOptional(),
+    })
     .required({
         id: true,
     })

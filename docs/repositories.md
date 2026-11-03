@@ -127,7 +127,7 @@ back to the value the row already holds. A create may therefore omit a column
 with a database default, and the statement writes the declared default,
 since the `default` keyword is not allowed outside an `insert … values` list. A
 required field with a default is relaxed to optional in `<Entity>Insert`, and its
-schema is `.partial()`, so the type and the wire agree that omitting it is
+schema marks it `.exactOptional()`, so the type and the wire agree that omitting it is
 allowed. A supplied value always wins, which is what lets a seed or a backfill
 carry a historical `createdAt`, `updatedAt`, or `version`.
 

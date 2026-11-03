@@ -94,8 +94,8 @@ describe("renderOperationRoutes", () => {
     it("hands the route's context straight to the operation, so the compiler checks it", () => {
         const code = renderOperationRoutes(withOperations.operations);
 
-        expect(code).toContain("handler: (ctx, body) => sendWidget(ctx, body as SendWidgetInput)");
-        expect(code).toContain('import { sendWidgetSchema, type SendWidgetInput } from "sdk/schemas.ts";');
+        expect(code).toContain("handler: (ctx, body) => sendWidget(ctx, body)");
+        expect(code).toContain('import { sendWidgetSchema } from "sdk/schemas.ts";');
     });
 
     it("imports each operation module beside the routes and validates a call with no input against undefined", () => {
@@ -111,7 +111,9 @@ describe("renderOperationRoutes", () => {
     it("types the table against infra's router", () => {
         const code = renderOperationRoutes(withOperations.operations);
 
-        expect(code).toContain('import type { Route } from "infra";');
+        expect(code).toContain('import { defineRoute, type Route } from "infra";');
+        expect(code).toContain("    defineRoute({");
+        expect(code).toContain("    }),");
     });
 
     it("writes the operation module even when the spec declares none", () => {

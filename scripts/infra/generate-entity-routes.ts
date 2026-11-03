@@ -71,13 +71,10 @@ function entitySchemaName(entity: RestEntity): string {
 
 /** The filter object a watch accepts: the fields `@watchFilter` declares, each optional. */
 function watchFilterExpression(entity: RestEntity): string {
-    const picked = entity.watchFilters.map((field) => `${field}: true`).join(", ");
-    return `${entitySchemaName(entity)}.pick({ ${picked} }).partial().strict().optional()`;
-}
-
-/** The filter type a watch handler passes through. */
-function watchFilterType(entity: RestEntity): string {
-    return `WatchFilter<${entity.entity}, ${entity.watchFilters.map((field) => JSON.stringify(field)).join(" | ")}>`;
+    const members = entity.watchFilters
+        .map((field) => `${field}: ${entitySchemaName(entity)}.shape.${field}.exactOptional()`)
+        .join(", ");
+    return `z.strictObject({ ${members} })`;
 }
 
 /** The generated schema expression for the operations a stream may select. */
@@ -87,13 +84,14 @@ const OPS_SCHEMA = 'z.array(z.enum(["INSERT", "UPDATE", "DELETE"]))';
 function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "watch") {
         const keys = `z.array(${schemaName(entity, kind) as string})`;
-        const ops = `ops: ${OPS_SCHEMA}.optional()`;
-        const filter = entity.watchFilters.length > 0 ? `filter: ${watchFilterExpression(entity)}` : undefined;
+        const ops = `ops: ${OPS_SCHEMA}.exactOptional()`;
+        const filter =
+            entity.watchFilters.length > 0 ? `filter: ${watchFilterExpression(entity)}.exactOptional()` : undefined;
         const all = entity.restWatch.includes("all");
         const rows = entity.restWatch.includes("rows");
         const members: string[] = [];
         if (all && rows) {
-            members.push(`pks: ${keys}.optional()`);
+            members.push(`pks: ${keys}.exactOptional()`);
         } else if (rows) {
             members.push(`pks: ${keys}`);
         }
@@ -159,23 +157,14 @@ export function renderEntityRoutes(entity: RestEntity): string {
     const schemas = inputSchemas(entity);
 
     const lines: string[] = [HEADER];
-    lines.push(`import type { Route } from "${ROUTER_IMPORT}";`);
+    lines.push(`import { defineRoute, type Route } from "${ROUTER_IMPORT}";`);
     const streams = entity.operations.some((operation) => operation.kind === "watch");
-    const watches = streams;
     // A stream takes a row/operation filter, and a write wraps its rows in an array, so both need `z`.
     if (streams || entity.operations.some((operation) => operation.kind !== "query" && operation.kind !== "watch")) {
         lines.push('import { z } from "zod";');
     }
     if (streams) {
         lines.push(`import { SseStream } from "../sse.ts";`);
-        const watchTypes = entity.restWatch.length > 0 && entity.watchFilters.length > 0 ? ["WatchFilter", "WatchOperation"] : ["WatchOperation"];
-        lines.push(`import type { ${watchTypes.join(", ")} } from "sdk/watch.ts";`);
-    }
-    if (watches && entity.watchFilters.length > 0) {
-        lines.push(`import type { ${entity.entity} } from "${entity.importSpecifier}";`);
-    }
-    if (watches && entity.restWatch.includes("rows")) {
-        lines.push(`import type { ${entity.entity}PrimaryKey } from "${SCHEMAS_IMPORT}";`);
     }
     if (repositories.length > 0) {
         lines.push(`import { ${repositories.join(", ")} } from "${REPOSITORIES_IMPORT}";`);
@@ -191,7 +180,7 @@ export function renderEntityRoutes(entity: RestEntity): string {
     lines.push(`/** The calls \`${entity.path}\` exposes: each under its id, its verb, and its path. */`);
     lines.push(`export const ${routesExportName(entity)}: Route[] = [`);
     for (const operation of entity.operations) {
-        lines.push("    {");
+        lines.push("    defineRoute({");
         lines.push(`        id: "${operation.id}",`);
         lines.push(`        method: "${operation.method}",`);
         lines.push(`        path: "${operation.path}",`);
@@ -203,17 +192,11 @@ export function renderEntityRoutes(entity: RestEntity): string {
         if (operation.kind === "watch") {
             const all = entity.restWatch.includes("all");
             const rows = entity.restWatch.includes("rows");
-            const keyType = `${entity.entity}PrimaryKey`;
             const filter = entity.watchFilters.length > 0;
-            const bodyFields = [
-                ...(rows ? [`pks${all ? "?" : ""}: ${keyType}[]`] : []),
-                ...(filter ? [`filter?: ${watchFilterType(entity)}`] : []),
-                "ops?: WatchOperation[]",
-            ].join("; ");
             if (all && rows) {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
-                lines.push(`                const opts = body as { ${bodyFields} } | undefined;`);
+                lines.push("                const opts = body;");
                 lines.push("                return opts?.pks === undefined");
                 lines.push(
                     `                    ? ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal })`,
@@ -225,21 +208,21 @@ export function renderEntityRoutes(entity: RestEntity): string {
             } else if (rows) {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
-                lines.push(`                const opts = body as { ${bodyFields} };`);
+                lines.push("                const opts = body;");
                 lines.push(`                return ${operation.id}Rows(ctx.db, { ...opts, signal });`);
                 lines.push("            }),");
             } else {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
-                lines.push(`                const opts = body as { ${bodyFields} } | undefined;`);
+                lines.push("                const opts = body;");
                 lines.push(`                return ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`);
                 lines.push("            }),");
             }
         } else {
             // The body is validated against the schema above, so the handler may trust its shape.
-            lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body as never),`);
+            lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body),`);
         }
-        lines.push("    },");
+        lines.push("    }),");
     }
     lines.push("];");
 

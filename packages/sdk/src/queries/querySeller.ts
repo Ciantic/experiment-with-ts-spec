@@ -5,25 +5,25 @@ import * as primitives from "../primitives.ts";
 /** A `select` over Seller: `true` for a scalar, a branch's read arguments for a branch. */
 export const querySellerSelectSchema = z.lazy(() =>
     z.strictObject({
-        id: z.literal(true).optional(),
-        tenantId: z.literal(true).optional(),
-        name: z.literal(true).optional(),
-        businessId: z.literal(true).optional(),
-        eInvoiceAddress: z.literal(true).optional(),
-        eInvoiceOperator: z.literal(true).optional(),
-        language: z.literal(true).optional(),
-        createdAt: z.literal(true).optional(),
-        updatedAt: z.literal(true).optional(),
-        version: z.literal(true).optional(),
+        id: z.literal(true).exactOptional(),
+        tenantId: z.literal(true).exactOptional(),
+        name: z.literal(true).exactOptional(),
+        businessId: z.literal(true).exactOptional(),
+        eInvoiceAddress: z.literal(true).exactOptional(),
+        eInvoiceOperator: z.literal(true).exactOptional(),
+        language: z.literal(true).exactOptional(),
+        createdAt: z.literal(true).exactOptional(),
+        updatedAt: z.literal(true).exactOptional(),
+        version: z.literal(true).exactOptional(),
     }),
 );
 
 export const querySellerSchema = z.strictObject({
     filter: z.strictObject({
-        id: z.array(primitives.brandedIdSchema<"SellerId">()).optional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).optional(),
-    }).optional(),
-    limit: z.number().int().positive().optional(),
-    offset: z.number().int().nonnegative().optional(),
+        id: z.array(primitives.brandedIdSchema<"SellerId">()).exactOptional(),
+        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).exactOptional(),
+    }).exactOptional(),
+    limit: z.number().int().positive().exactOptional(),
+    offset: z.number().int().nonnegative().exactOptional(),
     select: querySellerSelectSchema,
 });

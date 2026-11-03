@@ -8,9 +8,12 @@ export const loginLinkPatchSchema = loginLinkSchema
     .omit({
         createdAt: true,
     })
-    .partial()
     .extend({
-        consumedAt: loginLinkSchema.shape.consumedAt.nullable(),
+        email: loginLinkSchema.shape.email.exactOptional(),
+        tokenHash: loginLinkSchema.shape.tokenHash.exactOptional(),
+        expiresAt: loginLinkSchema.shape.expiresAt.exactOptional(),
+        consumedAt: loginLinkSchema.shape.consumedAt.nullable().exactOptional(),
+        updatedAt: loginLinkSchema.shape.updatedAt.exactOptional(),
     })
     .required({
         id: true,

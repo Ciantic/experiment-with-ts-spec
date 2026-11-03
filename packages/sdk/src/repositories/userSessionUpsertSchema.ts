@@ -5,15 +5,16 @@ import { userSessionSchema } from "../domain/userSessionSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const userSessionUpsertSchema = userSessionSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: userSessionSchema.shape.createdAt.exactOptional(),
+        updatedAt: userSessionSchema.shape.updatedAt.exactOptional(),
         revokedAt: userSessionSchema.shape.revokedAt.nullable(),
+    })
+    .required({
+        id: true,
+        version: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type UserSessionUpsert = Upsert<UserSession, never, "id" | "version", "revokedAt", "id" | "createdAt" | "updatedAt">;
+export type UserSessionUpsert = Upsert<UserSession, never, "id" | "version", "revokedAt", "createdAt" | "updatedAt">;

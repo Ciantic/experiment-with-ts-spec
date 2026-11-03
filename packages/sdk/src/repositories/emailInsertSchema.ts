@@ -5,16 +5,14 @@ import { emailSchema } from "../domain/emailSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const emailInsertSchema = emailSchema
-    .partial({
-        id: true,
-        status: true,
-        attempts: true,
-        maxAttempts: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-    })
     .extend({
+        id: emailSchema.shape.id.exactOptional(),
+        status: emailSchema.shape.status.exactOptional(),
+        attempts: emailSchema.shape.attempts.exactOptional(),
+        maxAttempts: emailSchema.shape.maxAttempts.exactOptional(),
+        createdAt: emailSchema.shape.createdAt.exactOptional(),
+        updatedAt: emailSchema.shape.updatedAt.exactOptional(),
+        version: emailSchema.shape.version.exactOptional(),
         lastError: emailSchema.shape.lastError.nullable(),
         sentAt: emailSchema.shape.sentAt.nullable(),
     })

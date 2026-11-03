@@ -5,8 +5,8 @@ import { invoiceSentRowSchema } from "../domain/invoiceSentRowSchema.ts";
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
 export const invoiceSentRowInsertSchema = invoiceSentRowSchema
-    .partial({
-        id: true,
+    .extend({
+        id: invoiceSentRowSchema.shape.id.exactOptional(),
     })
     .strict();
 

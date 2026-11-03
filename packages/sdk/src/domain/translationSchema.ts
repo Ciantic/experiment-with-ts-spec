@@ -4,5 +4,5 @@ import { z } from "zod";
 export const translationSchema = z.object({
     lang: z.string(),
     key: z.string(),
-    value: z.string().optional(),
+    value: z.string().exactOptional(),
 });

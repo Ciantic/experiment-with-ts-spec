@@ -13,12 +13,9 @@ export const invoiceUpsertSchema = invoiceSchema
         totalAmount: true,
         rows: true,
     })
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: invoiceSchema.shape.createdAt.exactOptional(),
+        updatedAt: invoiceSchema.shape.updatedAt.exactOptional(),
         number: invoiceSchema.shape.number.nullable(),
         customerId: invoiceSchema.shape.customerId.nullable(),
         sellerId: invoiceSchema.shape.sellerId.nullable(),
@@ -28,7 +25,11 @@ export const invoiceUpsertSchema = invoiceSchema
         notes: invoiceSchema.shape.notes.nullable(),
         deletedAt: invoiceSchema.shape.deletedAt.nullable(),
     })
+    .required({
+        id: true,
+        version: true,
+    })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "id" | "createdAt" | "updatedAt">;
+export type InvoiceUpsert = Upsert<Invoice, "customer" | "seller" | "netAmount" | "taxAmount" | "totalAmount" | "rows", "id" | "version", "number" | "customerId" | "sellerId" | "language" | "issueDate" | "dueDate" | "notes" | "deletedAt", "createdAt" | "updatedAt">;

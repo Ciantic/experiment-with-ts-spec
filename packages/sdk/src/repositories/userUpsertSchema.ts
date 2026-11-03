@@ -5,16 +5,17 @@ import { userSchema } from "../domain/userSchema.ts";
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
 export const userUpsertSchema = userSchema
-    .partial({
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-    })
     .extend({
+        createdAt: userSchema.shape.createdAt.exactOptional(),
+        updatedAt: userSchema.shape.updatedAt.exactOptional(),
         emailVerifiedAt: userSchema.shape.emailVerifiedAt.nullable(),
         deletedAt: userSchema.shape.deletedAt.nullable(),
+    })
+    .required({
+        id: true,
+        version: true,
     })
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type UserUpsert = Upsert<User, never, "id" | "version", "emailVerifiedAt" | "deletedAt", "id" | "createdAt" | "updatedAt">;
+export type UserUpsert = Upsert<User, never, "id" | "version", "emailVerifiedAt" | "deletedAt", "createdAt" | "updatedAt">;
