@@ -44,6 +44,8 @@ export interface RestEntity {
     importSpecifier: string;
     /** The collection path, e.g. `/invoice`, taken from the `@pgTable` name. */
     path: string;
+    /** The column `@tenantOwned` names, or absent on a global entity. See docs/tenancy.md. */
+    tenantOwned?: string;
     /** The primary-key fields, which name the row a write targets; one for a single key. */
     keys: string[];
     /** The `@queryFilter` fields: `query` accepts them all. */
@@ -166,6 +168,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         module: lowerFirst(spec.name),
         importSpecifier: spec.importSpecifier,
         path,
+        ...(spec.tags.tenantOwned === undefined ? {} : { tenantOwned: spec.tags.tenantOwned }),
         // The parser defaults `@queryFilter` on a primary key, so a key is always a filter.
         keys: properties.filter((property) => property.tags.primaryKey).map((property) => property.name),
         filters: properties.filter((property) => property.tags.queryFilter).map((property) => property.name),

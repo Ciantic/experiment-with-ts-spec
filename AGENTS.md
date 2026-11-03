@@ -3,13 +3,15 @@
 - `packages/spec/` — TypeScript interfaces that form the definition of the
   application.
 - `packages/sdk/` — generated type-safe REST client, the generated Zod schemas
-  and shared Patch/Insert/read types, the generated `PERMISSIONS` const, the
+  and shared Patch/Insert/read types, the generated `PERMISSIONS` and
+  `TENANT_OWNED_PERMISSIONS` consts, the
   shared API error classes, and the hand-written transport and package entry.
   Consumed by the backend and, eventually, the frontend. Owns the generators that
   write the schemas and the permissions.
 - `packages/infra/` — Postgres schema, generated repositories, queries and
-  entity routes, the request contexts, the HTTP router and server, and the mock
-  seed. Consumed by the backend.
+  entity routes, the generated per-entity tenant lookups the route guards read,
+  the permission guards, the request contexts, the HTTP router and server, and the
+  mock seed. Consumed by the backend.
 - `packages/operations/` — The operation implementations, one module per
   `@operation`, and the operation routes, written over `infra`.
 - `packages/backend/` — The process entry point (`main`) and the route table that

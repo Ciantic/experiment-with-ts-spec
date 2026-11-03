@@ -18,3 +18,17 @@ export const PERMISSIONS = {
 
 /** The type of PERMISSIONS, for naming an entity or an action without a value. */
 export type Permissions = typeof PERMISSIONS;
+
+/** The infra-level actions each @tenantOwned entity permits, keyed by its camel-cased name. */
+export const TENANT_OWNED_PERMISSIONS = {
+    "customer": ["create", "upsert", "update", "delete", "query"],
+    "email": ["create", "upsert", "update", "delete", "query"],
+    "invoice": ["create", "upsert", "update", "delete", "query", "watch"],
+    "invoiceRow": ["create", "upsert", "update", "delete", "query"],
+    "invoiceSent": ["create", "upsert", "update", "delete", "query"],
+    "invoiceSentRow": ["create", "upsert", "update", "delete", "query"],
+    "seller": ["create", "upsert", "update", "delete", "query"],
+} as const;
+
+/** The type of TENANT_OWNED_PERMISSIONS, for naming an entity or an action without a value. */
+export type TenantOwnedPermissions = typeof TENANT_OWNED_PERMISSIONS;

@@ -14,8 +14,10 @@ See "Why the resolver is hand-written".
 - `scripts/infra/generate-queries.ts` — the generator.
 - `packages/infra/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per `@queries` entity),
-  `watch<Entity>.ts` (a change stream per `@watch` entity), and `index.ts`
-  (barrel). See `docs/notifications.md`.
+  `watch<Entity>.ts` (a change stream per `@watch` entity),
+  `get<Entity>Tenants.ts` (the tenants the named rows belong to, for a
+  `@tenantOwned` entity only), and `index.ts` (barrel). See
+  `docs/notifications.md` and `docs/permissions.md`.
 - `packages/infra/src/db/resolvers.ts` — the reader. Hand-written.
 - `packages/sdk/src/queries/` — generated read argument
   schemas. See `docs/validation.md`.

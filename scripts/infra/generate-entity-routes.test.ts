@@ -104,6 +104,27 @@ export interface Filtered {
 }
 `.trim();
 
+/** An entity a tenant scopes, so its routes carry the per-tenant guards. */
+const OWNED = `
+/**
+ * @pgTable owned
+ * @tenantOwned tenantId
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
+ * @watch all rows
+ * @restWatch all rows
+ * @entity
+ */
+export interface Owned {
+    /** @primaryKey */
+    id: string;
+
+    tenantId: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -188,6 +209,55 @@ describe("renderEntityRoutes", () => {
         expect(code).toContain("handler: (ctx, body) => upsertWidget(ctx.db, body)");
         expect(code).toContain("handler: (ctx, body) => updateWidget(ctx.db, body)");
         expect(code).toContain("handler: (ctx, body) => deleteWidget(ctx.db, body)");
+    });
+
+    it("guards a global entity with the permission its kind names", () => {
+        const code = render();
+
+        expect(code).toContain('import { permissionGuard } from "../guards.ts";');
+        expect(code).toContain('guard: permissionGuard("widget", "query"),');
+        expect(code).toContain('guard: permissionGuard("widget", "create"),');
+        expect(code).toContain('guard: permissionGuard("widget", "upsert"),');
+        expect(code).toContain('guard: permissionGuard("widget", "update"),');
+        expect(code).toContain('guard: permissionGuard("widget", "delete"),');
+    });
+
+    it("guards a tenant-owned entity with the per-tenant guard its kind names", () => {
+        const entity = build({ Owned: OWNED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the owned entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain(
+            'import { tenantOwnedCreateGuard, tenantOwnedDeleteGuard, tenantOwnedQueryGuard, tenantOwnedUpdateGuard, tenantOwnedUpsertGuard, tenantOwnedWatchGuard } from "../guards.ts";',
+        );
+        expect(code).toContain('guard: tenantOwnedQueryGuard("owned", "tenantId"),');
+        expect(code).toContain('guard: tenantOwnedCreateGuard("owned", "tenantId"),');
+        expect(code).toContain('guard: tenantOwnedWatchGuard("owned", "tenantId", getOwnedTenants),');
+        expect(code).toContain('guard: tenantOwnedUpsertGuard("owned", "tenantId", getOwnedTenants),');
+        expect(code).toContain('guard: tenantOwnedUpdateGuard("owned", "tenantId", getOwnedTenants),');
+        expect(code).toContain('guard: tenantOwnedDeleteGuard("owned", getOwnedTenants),');
+        expect(code).not.toContain("permissionGuard");
+    });
+
+    it("hands a stored-row guard the generated tenant lookup, imported from the query barrel", () => {
+        const entity = build({ Owned: OWNED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the owned entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toMatch(/import \{ [^}]*\bgetOwnedTenants\b[^}]* \} from "\.\.\/\.\.\/db\/queries\/index\.ts";/);
+    });
+
+    it("imports only the guards this collection's calls need, once each", () => {
+        const guards = render().match(/import \{ ([^}]+) \} from "\.\.\/guards\.ts"/)?.[1] ?? "";
+        const names = guards.split(", ");
+
+        expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+        expect(new Set(names).size).toBe(names.length);
+        expect(names).toEqual(["permissionGuard"]);
     });
 
     it("imports every generated piece from its barrel", () => {

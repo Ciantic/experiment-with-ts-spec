@@ -118,6 +118,8 @@ export interface Table {
     watch: WatchScope[];
     /** The fields `@watchFilter` names, whose values the change payload carries. See docs/notifications.md. */
     watchFilters: string[];
+    /** The column `@tenantOwned` names, or absent on a global entity. See docs/tenancy.md. */
+    tenantOwned?: string;
 }
 
 interface TypeResolution {
@@ -205,6 +207,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         queries: spec.queries,
         watch: spec.watch,
         watchFilters: spec.watchFilters,
+        ...(spec.tags.tenantOwned === undefined ? {} : { tenantOwned: spec.tags.tenantOwned }),
     };
 
     for (const property of spec.properties) {

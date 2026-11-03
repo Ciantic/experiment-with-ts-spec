@@ -45,8 +45,8 @@ The order is load-bearing:
 - **Build last.** It is the only step that consumes the generated output as
   input.
 
-`pnpm run generate` lints first, then writes the `PERMISSIONS` const, which reads
-only the entity declarations, so it needs nothing from another generator. It
+`pnpm run generate` lints first, then writes the `PERMISSIONS` consts, which read
+only the entity declarations, so they need nothing from another generator. It
 then writes the operation errors and scaffolds
 the operation modules, then runs the schema generator before the repository
 generator, then the query generator, the validation generator, and the two REST
@@ -85,6 +85,9 @@ model rather than owning a second copy. The drift check drives every route
 generator, so it stays in `scripts/operations` beside the routes it checks.
 The permissions generator is in `scripts/sdk` with the other SDK generators,
 because it writes `packages/sdk/src/permissions.ts`. See `docs/permissions.md`.
+The per-entity tenant lookups are written by the query generator, since they are
+reads over the same tables; the route generator names the `@tenantOwned` column
+it passes to a guard.
 `scripts/paths.ts` derives each package root, so an output path never depends on
 the cwd.
 

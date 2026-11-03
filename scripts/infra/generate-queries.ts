@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, type FilterDefault, type SpecModel } from "../spec/spec-model.ts";
+import { loadSpec, lowerFirst, type FilterDefault, type SpecModel } from "../spec/spec-model.ts";
 import {
     buildSpecTables,
     primaryKeyColumns,
@@ -49,6 +49,16 @@ function queryFileName(entity: string): string {
 /** The module file for an entity's row-scoped change stream, e.g. `Invoice` -> `watchInvoice.ts`. */
 function watchFileName(entity: string): string {
     return `watch${entity}.ts`;
+}
+
+/** The module file for an entity's tenant lookup, e.g. `Invoice` -> `getInvoiceTenants.ts`. */
+function tenantsFileName(entity: string): string {
+    return `${tenantsFunctionName(entity)}.ts`;
+}
+
+/** The tenant lookup's function name, e.g. `getInvoiceTenants`. See docs/permissions.md. */
+export function tenantsFunctionName(entity: string): string {
+    return `get${entity}Tenants`;
 }
 
 /** Map the table model to the resolver's metadata: scalar fields plus branch descriptors. */
@@ -318,6 +328,42 @@ export function renderWatchModule(entity: string, table: Table): string {
     return lines.join("\n") + "\n";
 }
 
+/** Render one entity's tenant lookup: the distinct tenants the named rows belong to. See docs/permissions.md. */
+export function renderTenantsModule(table: Table): string {
+    const module = lowerFirst(table.interfaceName);
+    const tenant = table.tenantOwned as string;
+    const keys = primaryKeyColumns(table);
+    const tenantType = `${table.interfaceName}[${JSON.stringify(tenant)}]`;
+    const keyType = `${table.interfaceName}PrimaryKey`;
+    const lines: string[] = [HEADER];
+    lines.push(`import type { ${table.interfaceName} } from "${table.importSpecifier}";`);
+    lines.push(`import type { ${keyType} } from "sdk/repositories/${module}PrimaryKeySchema.ts";`);
+    lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
+    lines.push("");
+    lines.push(`/** The distinct tenants the named \`${table.name}\` rows belong to, read on the caller's executor. */`);
+    lines.push(
+        `export async function ${tenantsFunctionName(table.interfaceName)}(db: SqlExecutor, pks: readonly ${keyType}[]): Promise<${tenantType}[]> {`,
+    );
+    lines.push("    if (pks.length === 0) {");
+    lines.push("        return [];");
+    lines.push("    }");
+    // One array parameter per key column keeps the statement fixed however many keys the call names.
+    const parameters = keys.length === 1
+        ? `[pks.map((key) => key.${keys[0]?.name as string})]`
+        : `[${keys.map((key) => `pks.map((row) => row.${key.name})`).join(", ")}]`;
+    const where = keys.length === 1
+        ? `"${keys[0]?.name as string}" = any($1)`
+        : `(${keys.map((key) => `"${key.name}"`).join(", ")}) in (select * from unnest(${keys.map((key, index) => `$${index + 1}::${key.sqlType}[]`).join(", ")}))`;
+    const sql = `'select distinct "${tenant}" as "tenant" from "${table.name}" where ${where}'`;
+    lines.push(`    const result = await db.query<{ tenant: ${tenantType} }>(`);
+    lines.push(`        ${sql},`);
+    lines.push(`        ${parameters},`);
+    lines.push("    );");
+    lines.push("    return result.rows.map((row) => row.tenant);");
+    lines.push("}");
+    return lines.join("\n") + "\n";
+}
+
 /** Render every generated file, keyed by file name (including the barrel). */
 export function generateQueries(tables: Map<string, Table>): Map<string, string> {
     const entities = [...tables.values()].sort((a, b) => a.interfaceName.localeCompare(b.interfaceName));
@@ -332,6 +378,9 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         if (table.watch.length > 0) {
             files.set(watchFileName(table.interfaceName), renderWatchModule(table.interfaceName, table));
         }
+        if (table.tenantOwned !== undefined) {
+            files.set(tenantsFileName(table.interfaceName), renderTenantsModule(table));
+        }
     }
 
     const lines = [HEADER, `export * from "./${MODEL_FILE}";`];
@@ -341,6 +390,9 @@ export function generateQueries(tables: Map<string, Table>): Map<string, string>
         }
         if (table.watch.length > 0) {
             lines.push(`export * from "./${watchFileName(table.interfaceName)}";`);
+        }
+        if (table.tenantOwned !== undefined) {
+            lines.push(`export * from "./${tenantsFileName(table.interfaceName)}";`);
         }
     }
     files.set(INDEX_FILE, lines.join("\n") + "\n");

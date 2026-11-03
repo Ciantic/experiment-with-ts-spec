@@ -126,6 +126,25 @@ export interface Watched {
 }
 `.trim();
 
+/** An entity that a tenant scopes, so the routes know to check the tenant. */
+const OWNED = `
+/**
+ * @pgTable owned
+ * @tenantOwned tenantId
+ * @repository create
+ * @restRepository create
+ * @queries query
+ * @restQueries query
+ * @entity
+ */
+export interface Owned {
+    /** @primaryKey */
+    id: string;
+
+    tenantId: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -153,6 +172,13 @@ describe("buildRestModel", () => {
         expect(widget?.path).toBe("/widget");
         expect(widget?.module).toBe("widget");
         expect(widget?.importSpecifier).toBe("spec/fixtures/Widget.ts");
+    });
+
+    it("carries the @tenantOwned column, and leaves it off a global entity", () => {
+        const entities = build({ Widget: WIDGET, Owned: OWNED }).entities;
+
+        expect(entities.find((entity) => entity.entity === "Owned")?.tenantOwned).toBe("tenantId");
+        expect(entities.find((entity) => entity.entity === "Widget")?.tenantOwned).toBeUndefined();
     });
 
     it("exposes a read, a write, and a delete for every entity", () => {

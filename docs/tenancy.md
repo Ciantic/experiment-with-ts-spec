@@ -140,7 +140,9 @@ it does for every other annotation.
   `LogEntry` are global because they carry neither `@tenantOwned` nor a
   `tenantId`, and nothing tells that apart from an entity whose tenancy someone
   forgot. Intent is checkable once one of the two is written.
-- **Authorization.** Nothing reads a principal. A constraint stops two tenants
-  from being linked; it does not stop a caller from naming one tenant and reading
-  another's rows in a filter. Postgres RLS with a per-request executor is the
-  mechanism for that, and it is not implemented — see `docs/rest-api.md`.
+- **Authorization inside the SQL.** The generated routes guard every call: a
+  global permission allows it, otherwise the guard resolves the tenants the
+  argument names and requires a permission in each (`docs/permissions.md`).
+  Nothing scopes the statement itself: a resolver that ignored the filter would
+  still read across tenants. Postgres RLS with a per-request executor is the
+  database-level mechanism, and it is not implemented — see `docs/rest-api.md`.

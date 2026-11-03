@@ -27,6 +27,7 @@ other.
 | `RequestError` | `request` | 400 | a request the server refuses before a handler |
 | `NotFoundError` | `not-found` | 404 | no route serves the method and path |
 | `ValidationError` | `validation` | 400 | the route's schema refuses the decoded argument |
+| `ForbiddenError` | `forbidden` | 403 | the session lacks the permission the route's guard requires |
 | `PayloadTooLargeError` | `payload-too-large` | 413 | a body past the transport's 1 MB cap |
 | `BadGroupError` | `bad-group` | 400 | a group body is malformed before any call runs |
 | `QueryError` | `query` | 400 | a read names a field, filter, order, or page the query model refuses |

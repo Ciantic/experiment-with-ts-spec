@@ -382,12 +382,16 @@ No mode reaches the statement unvalidated.
 
 ## Deliberately not implemented
 
-- **Authorization.** Nothing scopes a read to a principal, so the API exposes the
-  whole database to whoever can reach it. The two shapes are Postgres RLS with a
-  per-request executor, or a guard reading the annotation model; both are a
-  decision before this is deployable, not a generator change. What the schema
-  does enforce is that a row cannot be *linked* across tenants, and that a read
-  of a tenanted entity names its tenant — see `docs/tenancy.md`.
+- **Authorization.** The generated routes carry guards: a call needs either the
+  global permission or a permission in every tenant it names, and a key-addressed
+  write is checked against the stored tenant (`docs/permissions.md`). A global
+  entity requires its global permission, as in `tenant:create`.
+  `RequestContext.hasPermission` is still the scaffold, so no principal is
+  resolved and a guarded server answers `501` until it is implemented. Postgres
+  RLS with a per-request executor is the database-level mechanism, and it is not
+  implemented either. What the schema does enforce is that a row cannot be
+  *linked* across tenants; the guard refuses a tenant-owned call that names no
+  tenant — see `docs/tenancy.md`.
 - **A JSON encoding for non-JS clients.** `devalue` cannot be described by an
   OpenAPI document, so no such document is emitted. The fix when a non-JS
   consumer is real is `Accept` negotiation adding a JSON encoding, not a document

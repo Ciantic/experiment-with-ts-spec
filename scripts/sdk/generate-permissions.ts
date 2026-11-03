@@ -1,4 +1,4 @@
-/** Generate the `PERMISSIONS` const: the infra-level actions each entity permits, read from its declarations. See docs/permissions.md. */
+/** Generate the permission tables: the infra-level actions each entity permits, and the tenant-owned subset. See docs/permissions.md. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SDK_PACKAGE_ROOT } from "../paths.ts";
@@ -27,22 +27,30 @@ export function entityActions(entity: SpecInterface): string[] {
     return actions;
 }
 
-/** One entry per entity, in the model's name order; the REST declarations expose these actions and add none. */
-export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
-    return [...spec.interfaces.values()].map((entity) => ({
-        key: lowerFirst(entity.name),
-        actions: entityActions(entity),
-    }));
+/** One entry for an entity: its camel-cased name and the actions it permits. */
+function permissionEntry(entity: SpecInterface): PermissionEntry {
+    return { key: lowerFirst(entity.name), actions: entityActions(entity) };
 }
 
-/** Render the module: one const holding each entity's actions, and the type the SDK reads them back through. */
-export function renderPermissionsModule(entries: PermissionEntry[]): string {
-    const lines: string[] = [HEADER];
-    lines.push("/** The infra-level actions each entity permits, keyed by its camel-cased name. */");
+/** One entry per entity, in the model's name order; the REST declarations expose these actions and add none. */
+export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
+    return [...spec.interfaces.values()].map(permissionEntry);
+}
+
+/** The subset of the table for the entities that declare `@tenantOwned`, in the same name order. See docs/tenancy.md. */
+export function buildTenantOwnedPermissionsModel(spec: SpecModel): PermissionEntry[] {
+    return [...spec.interfaces.values()]
+        .filter((entity) => entity.tags.tenantOwned !== undefined)
+        .map(permissionEntry);
+}
+
+/** Append one `as const` table and the type that names it. */
+function renderTable(lines: string[], name: string, typeName: string, description: string, entries: PermissionEntry[]): void {
+    lines.push(`/** ${description} */`);
     if (entries.length === 0) {
-        lines.push("export const PERMISSIONS = {} as const;");
+        lines.push(`export const ${name} = {} as const;`);
     } else {
-        lines.push("export const PERMISSIONS = {");
+        lines.push(`export const ${name} = {`);
         for (const entry of entries) {
             const actions = entry.actions.map((action) => `"${action}"`).join(", ");
             lines.push(`    "${entry.key}": [${actions}],`);
@@ -50,9 +58,22 @@ export function renderPermissionsModule(entries: PermissionEntry[]): string {
         lines.push("} as const;");
     }
     lines.push("");
-    lines.push("/** The type of PERMISSIONS, for naming an entity or an action without a value. */");
-    lines.push("export type Permissions = typeof PERMISSIONS;");
+    lines.push(`/** The type of ${name}, for naming an entity or an action without a value. */`);
+    lines.push(`export type ${typeName} = typeof ${name};`);
     lines.push("");
+}
+
+/** Render the module: a const for every entity and one for the tenant-owned subset, each with its type. */
+export function renderPermissionsModule(entries: PermissionEntry[], tenantOwned: PermissionEntry[]): string {
+    const lines: string[] = [HEADER];
+    renderTable(lines, "PERMISSIONS", "Permissions", "The infra-level actions each entity permits, keyed by its camel-cased name.", entries);
+    renderTable(
+        lines,
+        "TENANT_OWNED_PERMISSIONS",
+        "TenantOwnedPermissions",
+        "The infra-level actions each @tenantOwned entity permits, keyed by its camel-cased name.",
+        tenantOwned,
+    );
     return lines.join("\n");
 }
 
@@ -66,9 +87,10 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
     }
 
     const entries = buildPermissionsModel(spec);
+    const tenantOwned = buildTenantOwnedPermissionsModel(spec);
     mkdirSync(dirname(outFile), { recursive: true });
-    writeFileSync(outFile, renderPermissionsModule(entries));
-    output.log(`wrote ${entries.length} entity permission(s) to ${outFile}`);
+    writeFileSync(outFile, renderPermissionsModule(entries, tenantOwned));
+    output.log(`wrote ${entries.length} entity permission(s), ${tenantOwned.length} tenant-owned, to ${outFile}`);
     return 0;
 }
 

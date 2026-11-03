@@ -3,6 +3,7 @@ import type { IncomingMessage } from "node:http";
 import type { SqlExecutor } from "./db/sql-executor.ts";
 import type { SqlDriver } from "./db/sql-driver.ts";
 import type { AuthSession } from "spec/user-service/AuthSession.ts";
+import type { TenantId } from "spec/user-service/Tenant.ts";
 import { NotImplemented } from "sdk/errors.ts";
 
 /** How to build the app context. */
@@ -51,9 +52,11 @@ export class RequestContext {
     }
 
     /**
+     * Whether the session holds `scope:action`, globally or within `tenant`; the guards ask globally first.
+     *
      * @throws {NotImplemented} until permissions are checked against the authenticated session
      */
-    async hasPermission(_scope: string, _action: string, _resource?: unknown): Promise<boolean> {
+    async hasPermission(_scope: string, _action: string, _tenant?: TenantId): Promise<boolean> {
         throw new NotImplemented("hasPermission not implemented");
     }
 }

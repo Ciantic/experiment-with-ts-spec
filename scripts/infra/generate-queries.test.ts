@@ -6,6 +6,7 @@ import {
     buildQueryModel,
     generateQueries,
     renderQueryModule,
+    renderTenantsModule,
     renderWatchModule,
 } from "./generate-queries.ts";
 
@@ -333,6 +334,56 @@ describe("renderWatchModule", () => {
     });
 });
 
+describe("renderTenantsModule", () => {
+    const widget = {
+        ...table("widget", "Widget", [
+            column("id", { primaryKey: true, sqlType: "uuid" }),
+            column("tenantId", { sqlType: "uuid" }),
+        ]),
+        tenantOwned: "tenantId",
+    };
+
+    it("selects the distinct tenants of the named keys with one array parameter", () => {
+        const code = renderTenantsModule(widget);
+
+        expect(code).toContain('import type { Widget } from "spec/fixtures/Widget.ts";');
+        expect(code).toContain('import type { WidgetPrimaryKey } from "sdk/repositories/widgetPrimaryKeySchema.ts";');
+        expect(code).toContain(
+            'export async function getWidgetTenants(db: SqlExecutor, pks: readonly WidgetPrimaryKey[]): Promise<Widget["tenantId"][]> {',
+        );
+        expect(code).not.toContain("as readonly WidgetPrimaryKey[]");
+        expect(code).toContain('select distinct "tenantId" as "tenant" from "widget" where "id" = any($1)');
+        expect(code).toContain("[pks.map((key) => key.id)]");
+        expect(code).toContain("return result.rows.map((row) => row.tenant);");
+    });
+
+    it("matches a composite key with one unnest per key column", () => {
+        const part = {
+            ...table("widget_part", "WidgetPart", [
+                column("widgetId", { primaryKey: true, sqlType: "uuid" }),
+                column("partKey", { primaryKey: true }),
+                column("tenantId", { sqlType: "uuid" }),
+            ]),
+            tenantOwned: "tenantId",
+        };
+        const code = renderTenantsModule(part);
+
+        expect(code).toContain(
+            'export async function getWidgetPartTenants(db: SqlExecutor, pks: readonly WidgetPartPrimaryKey[]): Promise<WidgetPart["tenantId"][]> {',
+        );
+        expect(code).toContain(
+            'where ("widgetId", "partKey") in (select * from unnest($1::uuid[], $2::text[]))',
+        );
+        expect(code).toContain("[pks.map((row) => row.widgetId), pks.map((row) => row.partKey)]");
+    });
+
+    it("answers no keys without a statement", () => {
+        const code = renderTenantsModule(widget);
+
+        expect(code).toContain("if (pks.length === 0) {");
+    });
+});
+
 describe("generateQueries", () => {
     it("emits the model, one module per entity, and a barrel", () => {
         const files = generateQueries(tables);
@@ -356,6 +407,25 @@ describe("generateQueries", () => {
             "watchInvoice.ts",
         ]);
         expect(files.get("index.ts")).toContain('export * from "./watchInvoice.ts";');
+    });
+
+    it("writes a tenant lookup for a @tenantOwned entity and exports it", () => {
+        const owned = { ...invoice, tenantOwned: "tenantId" };
+        const files = generateQueries(new Map([["Invoice", owned]]));
+
+        expect([...files.keys()].sort()).toEqual([
+            "getInvoiceTenants.ts",
+            "index.ts",
+            "model.ts",
+            "queryInvoice.ts",
+        ]);
+        expect(files.get("index.ts")).toContain('export * from "./getInvoiceTenants.ts";');
+    });
+
+    it("writes no tenant lookup for a global entity", () => {
+        const files = generateQueries(tables);
+
+        expect([...files.keys()]).not.toContain("getInvoiceTenants.ts");
     });
 
     it("re-exports every module from the barrel", () => {

@@ -25,6 +25,13 @@ export class ValidationError extends AppError {
     }
 }
 
+/** A session that lacks the permission the route requires. */
+export class ForbiddenError extends AppError {
+    constructor(message: string, options: AppErrorOptions = {}) {
+        super(message, { kind: "forbidden", status: 403 }, options);
+    }
+}
+
 /** A request body past the transport's cap. */
 export class PayloadTooLargeError extends AppError {
     constructor(message: string, options: AppErrorOptions = {}) {
@@ -93,6 +100,7 @@ export const BUILTIN_ERROR_CLASSES: Record<string, ErrorClass> = {
     "request": RequestError,
     "not-found": NotFoundError,
     "validation": ValidationError,
+    "forbidden": ForbiddenError,
     "payload-too-large": PayloadTooLargeError,
     "bad-group": BadGroupError,
     "query": QueryError,
