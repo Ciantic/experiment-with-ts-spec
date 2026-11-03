@@ -89,8 +89,8 @@ export const canDeleteInvoice: RouteGuard<readonly InvoicePrimaryKey[]> = async 
     if (argument.length === 0 || (await ctx.hasPermission("invoice", "delete"))) {
         return;
     }
-    const tenants = [...new Set(await getInvoiceTenants(ctx.db, argument))];
-    if (tenants.length === 0) {
+    const tenants = new Set(await getInvoiceTenants(ctx.db, argument));
+    if (tenants.size === 0) {
         throw new ForbiddenError("invoice:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
@@ -128,9 +128,11 @@ lookup. A read and a create take the tenant from the argument and need no lookup
 A route that addresses a stored row calls the entity's generated
 `get<Entity>Tenants` directly; the module never builds SQL itself.
 
-The argument type is the route's schema type — `InvoiceInsert`, `InvoicePatch`,
-`InvoiceUpsert`, `InvoicePrimaryKey`, or a structural filter for a read — so the
-module and the handler receive the same shape.
+The argument type is the route's schema type: `InvoiceInsert`, `InvoicePatch`,
+`InvoiceUpsert`, or `InvoicePrimaryKey` for a write, and a filter for a read whose
+tenant names the `@tenantOwned` field's own type. The generator resolves that type
+from the spec — `TenantId` from `spec/user-service/Tenant.ts`, say — so the guard
+reads `filter?.tenantId` or `row.tenantId` without indexing the entity.
 
 Every module is plain TypeScript over the parsed argument, with no shared guard
 helper: a read's filter names its tenant as a set, so the module spreads

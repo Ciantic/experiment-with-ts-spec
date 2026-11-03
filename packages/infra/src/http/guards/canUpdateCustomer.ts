@@ -12,11 +12,11 @@ export const canUpdateCustomer: RouteGuard<readonly CustomerPatch[]> = async (ct
     if (argument.length === 0 || (await ctx.hasPermission("customer", "update"))) {
         return;
     }
-    const tenants = [...new Set([
+    const tenants = new Set([
         ...(await getCustomerTenants(ctx.db, argument)),
-        ...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),
-    ])];
-    if (tenants.length === 0) {
+        ...argument.flatMap((row) => row.tenantId ?? []),
+    ]);
+    if (tenants.size === 0) {
         throw new ForbiddenError("customer:update names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {

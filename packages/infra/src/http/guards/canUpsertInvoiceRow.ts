@@ -12,11 +12,11 @@ export const canUpsertInvoiceRow: RouteGuard<readonly InvoiceRowUpsert[]> = asyn
     if (argument.length === 0 || (await ctx.hasPermission("invoiceRow", "upsert"))) {
         return;
     }
-    const tenants = [...new Set([
+    const tenants = new Set([
         ...(await getInvoiceRowTenants(ctx.db, argument)),
-        ...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),
-    ])];
-    if (tenants.length === 0) {
+        ...argument.flatMap((row) => row.tenantId ?? []),
+    ]);
+    if (tenants.size === 0) {
         throw new ForbiddenError("invoiceRow:upsert names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {

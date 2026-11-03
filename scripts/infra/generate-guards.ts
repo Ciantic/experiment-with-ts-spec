@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, type SpecModel } from "../spec/spec-model.ts";
+import { loadSpec, specImportSpecifier, type SpecModel } from "../spec/spec-model.ts";
 import {
     buildRestModel,
     type RestEntity,
@@ -47,25 +47,60 @@ const CHECKS: Record<RestKind, string> = {
 /** The kinds whose body resolves a stored row's tenant through the entity's generated lookup. */
 const LOOKUP_KINDS: ReadonlySet<RestKind> = new Set<RestKind>(["watch", "upsert", "update", "delete"]);
 
+/** The declared type of one entity's `@tenantOwned` field, e.g. `TenantId` from `spec/user-service/Tenant.ts`. */
+export interface TenantFieldType {
+    name: string;
+    /** The module that exports the type; absent when the field is a keyword such as `string`. */
+    importSpecifier?: string;
+}
+
+/** Resolve each tenant-owned entity's field type, so a guard names it instead of indexing the entity. */
+export function tenantFieldTypes(spec: SpecModel, model: RestModel): Map<string, TenantFieldType> {
+    const types = new Map<string, TenantFieldType>();
+    for (const entity of model.entities) {
+        if (entity.tenantOwned === undefined) {
+            continue;
+        }
+        const property = spec.interfaces
+            .get(entity.entity)
+            ?.properties.find((candidate) => candidate.name === entity.tenantOwned);
+        if (property?.type.kind === "reference") {
+            const alias = spec.aliases.get(property.type.name);
+            if (alias !== undefined) {
+                types.set(entity.entity, {
+                    name: property.type.name,
+                    importSpecifier: specImportSpecifier(alias.filePath),
+                });
+            }
+        } else if (property?.type.kind === "keyword") {
+            types.set(entity.entity, { name: property.type.name });
+        }
+    }
+    return types;
+}
+
 /** The argument type a guard receives, the imports it needs, and whether it names the entity itself. */
 export function argumentType(
     entity: RestEntity,
     kind: RestKind,
     field: string,
-): { type: string; payload?: string; entity?: boolean } {
+    tenantType?: TenantFieldType,
+): { type: string; payload?: string; importSpecifier?: string } {
     const name = entity.entity;
-    const tenant = `${name}[${JSON.stringify(field)}]`;
+    // A field typed by an alias is named as such; an unresolved shape still reads through the entity.
+    const tenant = tenantType?.name ?? `${name}[${JSON.stringify(field)}]`;
+    const importSpecifier = tenantType?.importSpecifier ?? (tenantType === undefined ? entity.importSpecifier : undefined);
     switch (kind) {
         case "query":
             return {
                 type: `{ filter?: { ${field}?: readonly ${tenant}[] | undefined } | undefined }`,
-                entity: true,
+                ...(importSpecifier === undefined ? {} : { importSpecifier }),
             };
         case "watch":
             return {
                 type: `{ filter?: { ${field}?: ${tenant} | undefined } | undefined; pks?: readonly ${name}PrimaryKey[] | undefined } | undefined`,
                 payload: `${name}PrimaryKey`,
-                entity: true,
+                ...(importSpecifier === undefined ? {} : { importSpecifier }),
             };
         case "create":
             return { type: `readonly ${name}Insert[]`, payload: `${name}Insert` };
@@ -82,7 +117,7 @@ export function argumentType(
 function checkLines(scope: string, action: string): string[] {
     const permission = `${scope}:${action}`;
     return [
-        "    if (tenants.length === 0) {",
+        "    if (tenants.size === 0) {",
         `        throw new ForbiddenError("${permission} names no tenant the session can be checked against");`,
         "    }",
         "    for (const tenant of tenants) {",
@@ -97,31 +132,33 @@ function checkLines(scope: string, action: string): string[] {
 function tenantLines(entity: RestEntity, kind: RestKind, lookup: string | undefined, field: string): string[] {
     switch (kind) {
         case "query":
-            return [`    const tenants = [...new Set(argument.filter?.${field} ?? [])];`];
+            return [`    const tenants = new Set(argument.filter?.${field});`];
         case "watch":
             return [
                 `    const filtered = argument?.filter?.${field};`,
-                `    const tenants = [...new Set(filtered !== undefined ? [filtered] : await ${lookup as string}(ctx.db, argument?.pks ?? []))];`,
+                `    const tenants = new Set(filtered !== undefined ? [filtered] : await ${lookup as string}(ctx.db, argument?.pks ?? []));`,
             ];
         case "create":
-            return [
-                `    const tenants = [...new Set(argument.flatMap((row) => (row.${field} === undefined ? [] : [row.${field}])))];`,
-            ];
+            return [`    const tenants = new Set(argument.flatMap((row) => row.${field} ?? []));`];
         case "upsert":
         case "update":
             return [
-                "    const tenants = [...new Set([",
+                "    const tenants = new Set([",
                 `        ...(await ${lookup as string}(ctx.db, argument)),`,
-                `        ...argument.flatMap((row) => (row.${field} === undefined ? [] : [row.${field}])),`,
-                "    ])];",
+                `        ...argument.flatMap((row) => row.${field} ?? []),`,
+                "    ]);",
             ];
         case "delete":
-            return [`    const tenants = [...new Set(await ${lookup as string}(ctx.db, argument))];`];
+            return [`    const tenants = new Set(await ${lookup as string}(ctx.db, argument));`];
     }
 }
 
 /** Render one guard module: the check itself, calling the entity's lookup where a stored row names the tenant. */
-export function renderGuardModule(entity: RestEntity, operation: RestOperation): string {
+export function renderGuardModule(
+    entity: RestEntity,
+    operation: RestOperation,
+    tenantType?: TenantFieldType,
+): string {
     const name = guardName(operation);
     const scope = JSON.stringify(entity.module);
     const action = JSON.stringify(operation.kind);
@@ -146,10 +183,10 @@ export function renderGuardModule(entity: RestEntity, operation: RestOperation):
 
     // A delete names the tenant only through its lookup, so it reads no field from the argument.
     const field = operation.kind !== "delete" ? entity.tenantOwned : undefined;
-    const argument = argumentType(entity, operation.kind, field ?? entity.tenantOwned);
+    const argument = argumentType(entity, operation.kind, field ?? entity.tenantOwned, tenantType);
     const lookup = LOOKUP_KINDS.has(operation.kind) ? `get${entity.entity}Tenants` : undefined;
-    if (argument.entity === true) {
-        lines.push(`import type { ${entity.entity} } from "${entity.importSpecifier}";`);
+    if (argument.importSpecifier !== undefined) {
+        lines.push(`import type { ${tenantType?.name ?? entity.entity} } from "${argument.importSpecifier}";`);
     }
     if (argument.payload !== undefined) {
         lines.push(`import type { ${argument.payload} } from "${SCHEMAS_IMPORT}";`);
@@ -176,13 +213,14 @@ export function renderGuardModule(entity: RestEntity, operation: RestOperation):
 }
 
 /** Render every generated guard module, keyed by file name (the barrel included). */
-export function generateGuards(model: RestModel): Map<string, string> {
+export function generateGuards(model: RestModel, spec: SpecModel): Map<string, string> {
     const files = new Map<string, string>();
+    const tenantTypes = tenantFieldTypes(spec, model);
     const names: string[] = [];
     for (const entity of model.entities) {
         for (const operation of entity.operations) {
             const name = guardName(operation);
-            files.set(`${name}.ts`, renderGuardModule(entity, operation));
+            files.set(`${name}.ts`, renderGuardModule(entity, operation, tenantTypes.get(entity.entity)));
             names.push(name);
         }
     }
@@ -227,7 +265,7 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
         return 1;
     }
 
-    const files = generateGuards(model);
+    const files = generateGuards(model, spec);
     mkdirSync(outDir, { recursive: true });
     for (const [name, content] of files) {
         writeFileSync(join(outDir, name), content);

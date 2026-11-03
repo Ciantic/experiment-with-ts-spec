@@ -11,13 +11,19 @@ import {
     type SpecModel,
 } from "../spec/spec-model.ts";
 import { buildRestModel, type RestKind } from "../sdk/rest-model.ts";
-import { generateGuards, guardName, renderGuardModule, run } from "./generate-guards.ts";
+import { generateGuards, guardName, renderGuardModule, run, tenantFieldTypes } from "./generate-guards.ts";
 
 /** The generator's two channels with nothing behind them, so an assertion reads the exit code. */
 const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
 const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+
+/** The tenant key type the owned fixture's field is declared with. */
+const TENANT_ID = `
+/** The unique identifier for a tenant. */
+export type TenantId = string;
+`.trim();
 
 /** A global entity: every call needs its global permission. */
 const WIDGET = `
@@ -52,9 +58,12 @@ export interface Owned {
     /** @primaryKey */
     id: string;
 
-    tenantId: string;
+    tenantId: TenantId;
 }
 `.trim();
+
+/** The tenant-owned fixture with the key type it references. */
+const OWNED_DOMAIN = { Owned: OWNED, Tenant: TENANT_ID };
 
 /** Parse in-memory domain files, so no test reads the real spec. */
 function specOf(domain: Record<string, string>): SpecModel {
@@ -67,7 +76,9 @@ function specOf(domain: Record<string, string>): SpecModel {
 
 /** The guard module a fixture's call renders to. */
 function moduleOf(domain: Record<string, string>, entityName: string, kind: RestKind): string {
-    const entity = buildRestModel(specOf(domain)).entities.find((candidate) => candidate.entity === entityName);
+    const spec = specOf(domain);
+    const model = buildRestModel(spec);
+    const entity = model.entities.find((candidate) => candidate.entity === entityName);
     if (!entity) {
         throw new Error(`the fixture declares no entity named ${entityName}`);
     }
@@ -75,7 +86,7 @@ function moduleOf(domain: Record<string, string>, entityName: string, kind: Rest
     if (!operation) {
         throw new Error(`the fixture exposes no ${kind} call for ${entityName}`);
     }
-    return renderGuardModule(entity, operation);
+    return renderGuardModule(entity, operation, tenantFieldTypes(spec, model).get(entityName));
 }
 
 /** `getOwnedTenants` as the runtime test drives it, standing in for the generated lookup. */
@@ -134,7 +145,7 @@ function loadGuard(code: string, lookup: Lookup = async () => []): Record<string
 
 describe("guardName", () => {
     it("names the check can<Call>", () => {
-        const operation = buildRestModel(specOf({ Owned: OWNED })).entities[0]?.operations[0];
+        const operation = buildRestModel(specOf(OWNED_DOMAIN)).entities[0]?.operations[0];
         if (!operation) {
             throw new Error("the fixture exposes no call");
         }
@@ -155,24 +166,25 @@ describe("renderGuardModule", () => {
     });
 
     it("reads a tenant-owned read's filter field and checks each tenant", () => {
-        const code = moduleOf({ Owned: OWNED }, "Owned", "query");
+        const code = moduleOf(OWNED_DOMAIN, "Owned", "query");
 
-        expect(code).toContain('import type { Owned } from "spec/fixtures/Owned.ts";');
-        expect(code).toContain("const tenants = [...new Set(argument.filter?.tenantId ?? [])];");
+        expect(code).toContain('import type { TenantId } from "spec/fixtures/Tenant.ts";');
+        expect(code).toContain("const tenants = new Set(argument.filter?.tenantId);");
+        expect(code).toContain("if (tenants.size === 0) {");
         expect(code).toContain('if (!(await ctx.hasPermission("owned", "query", tenant))) {');
         expect(code).toContain(
-            'export const canQueryOwned: RouteGuard<{ filter?: { tenantId?: readonly Owned["tenantId"][] | undefined } | undefined }>',
+            "export const canQueryOwned: RouteGuard<{ filter?: { tenantId?: readonly TenantId[] | undefined } | undefined }>",
         );
         expect(code).not.toContain("getOwnedTenants");
         expect(code).not.toContain("tenantIds");
     });
 
     it("calls the generated lookup for the keys a delete names", () => {
-        const code = moduleOf({ Owned: OWNED }, "Owned", "delete");
+        const code = moduleOf(OWNED_DOMAIN, "Owned", "delete");
 
         expect(code).toContain('import type { OwnedPrimaryKey } from "sdk/schemas.ts";');
         expect(code).toContain('import { getOwnedTenants } from "../../db/queries/index.ts";');
-        expect(code).toContain("const tenants = [...new Set(await getOwnedTenants(ctx.db, argument))];");
+        expect(code).toContain("const tenants = new Set(await getOwnedTenants(ctx.db, argument));");
         expect(code).toContain(
             "export const canDeleteOwned: RouteGuard<readonly OwnedPrimaryKey[]> = async (ctx, argument) => {",
         );
@@ -180,21 +192,20 @@ describe("renderGuardModule", () => {
     });
 
     it("checks the lookup's tenant and the tenant an upsert moves the row to", () => {
-        const code = moduleOf({ Owned: OWNED }, "Owned", "upsert");
+        const code = moduleOf(OWNED_DOMAIN, "Owned", "upsert");
 
+        expect(code).toContain("const tenants = new Set([");
         expect(code).toContain("...(await getOwnedTenants(ctx.db, argument)),");
-        expect(code).toContain(
-            "...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),",
-        );
+        expect(code).toContain("...argument.flatMap((row) => row.tenantId ?? []),");
         expect(code).toContain("export const canUpsertOwned: RouteGuard<readonly OwnedUpsert[]>");
     });
 
     it("prefers a watch filter's tenant and falls back to the keys", () => {
-        const code = moduleOf({ Owned: OWNED }, "Owned", "watch");
+        const code = moduleOf(OWNED_DOMAIN, "Owned", "watch");
 
         expect(code).toContain("const filtered = argument?.filter?.tenantId;");
         expect(code).toContain(
-            "const tenants = [...new Set(filtered !== undefined ? [filtered] : await getOwnedTenants(ctx.db, argument?.pks ?? []))];",
+            "const tenants = new Set(filtered !== undefined ? [filtered] : await getOwnedTenants(ctx.db, argument?.pks ?? []));",
         );
     });
 });
@@ -202,7 +213,7 @@ describe("renderGuardModule", () => {
 describe("generated guards at runtime", () => {
     it("allows a read on a global permission without checking a tenant", async () => {
         const { calls, context } = runtime(() => true);
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "query")).canQueryOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "query")).canQueryOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -214,7 +225,7 @@ describe("generated guards at runtime", () => {
 
     it("refuses a read that names no tenant", async () => {
         const { context } = runtime(() => false);
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "query")).canQueryOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "query")).canQueryOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -229,7 +240,7 @@ describe("generated guards at runtime", () => {
             lookedUp.push(pks);
             return ["tenant-a", "tenant-b"];
         };
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "delete"), lookup).canDeleteOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "delete"), lookup).canDeleteOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -246,7 +257,7 @@ describe("generated guards at runtime", () => {
             lookedUp.push(pks);
             return ["tenant-a"];
         };
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "delete"), lookup).canDeleteOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "delete"), lookup).canDeleteOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -263,7 +274,7 @@ describe("generated guards at runtime", () => {
             lookedUp.push(pks);
             return ["tenant-b"];
         };
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "watch"), lookup).canWatchOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "watch"), lookup).canWatchOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -280,7 +291,7 @@ describe("generated guards at runtime", () => {
             lookedUp.push(pks);
             return ["tenant-a"];
         };
-        const guard = loadGuard(moduleOf({ Owned: OWNED }, "Owned", "watch"), lookup).canWatchOwned as (
+        const guard = loadGuard(moduleOf(OWNED_DOMAIN, "Owned", "watch"), lookup).canWatchOwned as (
             ctx: unknown,
             argument: unknown,
         ) => Promise<void>;
@@ -292,10 +303,11 @@ describe("generated guards at runtime", () => {
 });
 
 describe("generateGuards", () => {
-    const model = buildRestModel(specOf({ Widget: WIDGET, Owned: OWNED }));
+    const spec = specOf({ Widget: WIDGET, ...OWNED_DOMAIN });
+    const model = buildRestModel(spec);
 
     it("writes one module per exposed call plus a barrel", () => {
-        const files = generateGuards(model);
+        const files = generateGuards(model, spec);
 
         expect([...files.keys()].sort()).toEqual([
             "canCreateOwned.ts",
@@ -311,7 +323,7 @@ describe("generateGuards", () => {
     });
 
     it("re-exports every module from the barrel, sorted", () => {
-        const code = generateGuards(model).get("index.ts") ?? "";
+        const code = generateGuards(model, spec).get("index.ts") ?? "";
         const names = [...code.matchAll(/export \* from "\.\/(.+)\.ts";/g)].map((match) => match[1] ?? "");
 
         expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));

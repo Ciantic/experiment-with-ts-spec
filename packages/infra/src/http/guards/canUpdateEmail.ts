@@ -12,11 +12,11 @@ export const canUpdateEmail: RouteGuard<readonly EmailPatch[]> = async (ctx, arg
     if (argument.length === 0 || (await ctx.hasPermission("email", "update"))) {
         return;
     }
-    const tenants = [...new Set([
+    const tenants = new Set([
         ...(await getEmailTenants(ctx.db, argument)),
-        ...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),
-    ])];
-    if (tenants.length === 0) {
+        ...argument.flatMap((row) => row.tenantId ?? []),
+    ]);
+    if (tenants.size === 0) {
         throw new ForbiddenError("email:update names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {

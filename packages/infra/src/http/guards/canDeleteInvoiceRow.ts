@@ -12,8 +12,8 @@ export const canDeleteInvoiceRow: RouteGuard<readonly InvoiceRowPrimaryKey[]> = 
     if (argument.length === 0 || (await ctx.hasPermission("invoiceRow", "delete"))) {
         return;
     }
-    const tenants = [...new Set(await getInvoiceRowTenants(ctx.db, argument))];
-    if (tenants.length === 0) {
+    const tenants = new Set(await getInvoiceRowTenants(ctx.db, argument));
+    if (tenants.size === 0) {
         throw new ForbiddenError("invoiceRow:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {

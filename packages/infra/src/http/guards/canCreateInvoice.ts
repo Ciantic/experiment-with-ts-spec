@@ -11,8 +11,8 @@ export const canCreateInvoice: RouteGuard<readonly InvoiceInsert[]> = async (ctx
     if (argument.length === 0 || (await ctx.hasPermission("invoice", "create"))) {
         return;
     }
-    const tenants = [...new Set(argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])))];
-    if (tenants.length === 0) {
+    const tenants = new Set(argument.flatMap((row) => row.tenantId ?? []));
+    if (tenants.size === 0) {
         throw new ForbiddenError("invoice:create names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {

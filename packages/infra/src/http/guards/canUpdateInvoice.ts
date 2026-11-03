@@ -12,11 +12,11 @@ export const canUpdateInvoice: RouteGuard<readonly InvoicePatch[]> = async (ctx,
     if (argument.length === 0 || (await ctx.hasPermission("invoice", "update"))) {
         return;
     }
-    const tenants = [...new Set([
+    const tenants = new Set([
         ...(await getInvoiceTenants(ctx.db, argument)),
-        ...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),
-    ])];
-    if (tenants.length === 0) {
+        ...argument.flatMap((row) => row.tenantId ?? []),
+    ]);
+    if (tenants.size === 0) {
         throw new ForbiddenError("invoice:update names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
