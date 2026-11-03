@@ -4,7 +4,7 @@ import type { Quantity } from "./primitives/Quantity.ts";
 import type { TaxRate } from "./primitives/TaxRate.ts";
 import type { Unit } from "./primitives/Unit.ts";
 import type { InvoiceSentId } from "./InvoiceSent.ts";
-import type { TenantId } from "./Tenant.ts";
+import type { TenantId } from "../user-service/Tenant.ts";
 
 /** The unique identifier for a sent invoice row. */
 export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;

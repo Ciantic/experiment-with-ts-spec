@@ -5,7 +5,7 @@ import type { Customer } from "./Customer.ts";
 import type { InvoiceId } from "./Invoice.ts";
 import type { InvoiceSentRow } from "./InvoiceSentRow.ts";
 import type { Seller } from "./Seller.ts";
-import type { TenantId } from "./Tenant.ts";
+import type { TenantId } from "../user-service/Tenant.ts";
 
 /** The unique identifier for a sent invoice. */
 export type InvoiceSentId = BrandedId<"InvoiceSentId">;

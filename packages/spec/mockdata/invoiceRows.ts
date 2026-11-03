@@ -1,6 +1,6 @@
 import type { InvoiceId } from "../src/invoicing-service/Invoice.ts";
 import type { InvoiceRow, InvoiceRowId } from "../src/invoicing-service/InvoiceRow.ts";
-import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { TenantId } from "../src/user-service/Tenant.ts";
 import type { Money } from "../src/invoicing-service/primitives/Money.ts";
 import type { Quantity } from "../src/invoicing-service/primitives/Quantity.ts";
 import type { TaxRate } from "../src/invoicing-service/primitives/TaxRate.ts";

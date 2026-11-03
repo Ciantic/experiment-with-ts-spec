@@ -3,7 +3,7 @@ import type { EInvoiceAddress } from "./primitives/EInvoiceAddress.ts";
 import type { EInvoiceOperator } from "./primitives/EInvoiceOperator.ts";
 import type { Language } from "./primitives/Language.ts";
 import type { Version } from "../primitives/Version.ts";
-import type { TenantId } from "./Tenant.ts";
+import type { TenantId } from "../user-service/Tenant.ts";
 
 /** The unique identifier for a seller. */
 export type SellerId = BrandedId<"SellerId">;

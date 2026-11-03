@@ -5,7 +5,7 @@ import type { Version } from "../primitives/Version.ts";
 import type { Customer, CustomerId } from "./Customer.ts";
 import type { InvoiceRow } from "./InvoiceRow.ts";
 import type { Seller, SellerId } from "./Seller.ts";
-import type { TenantId } from "./Tenant.ts";
+import type { TenantId } from "../user-service/Tenant.ts";
 
 /** The unique identifier for an invoice. */
 export type InvoiceId = BrandedId<"InvoiceId">;

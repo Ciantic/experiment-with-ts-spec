@@ -1,5 +1,5 @@
 import type { Seller, SellerId } from "../src/invoicing-service/Seller.ts";
-import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { TenantId } from "../src/user-service/Tenant.ts";
 import type { EInvoiceAddress } from "../src/invoicing-service/primitives/EInvoiceAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 

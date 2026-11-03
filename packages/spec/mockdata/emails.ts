@@ -1,5 +1,5 @@
 import type { Email, EmailId } from "../src/emailing-service/Email.ts";
-import type { TenantId } from "../src/invoicing-service/Tenant.ts";
+import type { TenantId } from "../src/user-service/Tenant.ts";
 import type { EmailAddress } from "../src/primitives/EmailAddress.ts";
 import type { Version } from "../src/primitives/Version.ts";
 

@@ -5,7 +5,7 @@ import type { Customer, CustomerId } from "spec/invoicing-service/Customer.ts";
 import type { Invoice, InvoiceId } from "spec/invoicing-service/Invoice.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import type { Seller, SellerId } from "spec/invoicing-service/Seller.ts";
-import type { TenantId } from "spec/invoicing-service/Tenant.ts";
+import type { TenantId } from "spec/user-service/Tenant.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import { InvoiceDetailsError } from "sdk/errors.ts";
 import { applySchema, createAppContext, createInvoice, PgliteSqlDriver, createTenant, type SqlExecutor } from "infra";
