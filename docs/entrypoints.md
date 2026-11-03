@@ -1,17 +1,15 @@
 # Entry points
 
 A process picks its database once, in the module the command line launches.
-`packages/backend/src/serve.ts` holds what does not depend on that pick:
-`startServer(driver, options)` builds the app context over a `SqlDriver`, applies
-the generated schema and seeds the mock data when asked, and listens;
+`packages/backend/src/args.ts` holds what does not depend on that pick:
 `parseServerArgs` reads the command line with `node:util`'s `parseArgs`:
 `--port <n>`, `--seed` (alias `--mock`), `--log-sql`, `--database-url <url>`, and
-`--data-dir <path>`. Reading the command line returns a result rather than
+`--data-dir <path>`; `DEFAULT_PORT` is the port a run listens on when `--port` is
+absent. Reading the command line returns a result rather than
 throwing: a malformed one is a message the entry prints before setting exit
-status `1`. The entries export nothing: each parses, builds its driver, starts,
-and prints the port. A test that needs the same server imports `startServer` and
-builds its own driver, as `mockdata.test.ts` does, rather than importing an
-entry that would start one.
+status `1`. The entries export nothing: each parses, builds its driver, applies
+the generated schema and seeds the mock data when asked, starts the server, and
+prints the port.
 
 Two modules make the pick, and each imports one driver:
 

@@ -1,16 +1,8 @@
-/** Driver-agnostic startup: serve over whichever driver the entry built. See docs/entrypoints.md. */
+/** Driver-agnostic command line reading shared by the entries. See docs/entrypoints.md. */
 import { parseArgs, type ParseArgsOptionsConfig } from "node:util";
-import {
-    ApiServer,
-    applySchema,
-    createAppContext,
-    seedMockData,
-    type SqlDriver,
-} from "infra";
-import { routes } from "./http/routes/index.ts";
 
 /** The port used when `--port` is absent. */
-const DEFAULT_PORT = 3000;
+export const DEFAULT_PORT = 3000;
 
 /** The flags a server starts with. */
 export interface ServerOptions {
@@ -34,18 +26,6 @@ const CLI_FLAGS = {
     "database-url": { type: "string" },
     "data-dir": { type: "string" },
 } as const satisfies ParseArgsOptionsConfig;
-
-/** Build the app over the driver, optionally seed it, and start the API server over it. */
-export async function startServer(driver: SqlDriver, options: ServerOptions = {}) {
-    if (options.seed) {
-        await applySchema(driver);
-        await seedMockData(driver.createExecutor());
-    }
-    const app = createAppContext({ driver });
-    const server = new ApiServer(app, routes);
-    const port = await server.listen(options.port ?? DEFAULT_PORT);
-    return { server, app, port };
-}
 
 /** What reading the command line answered: the flags, or the message an entry prints before exiting. */
 export type ParseResult =

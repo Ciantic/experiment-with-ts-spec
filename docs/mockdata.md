@@ -56,8 +56,8 @@ pnpm --filter backend run example:server --port 4123 --seed
   memory, so a seeded run survives a restart. The `pg` entry ignores it.
 
 Without `--seed` the server runs against the empty generated schema. The PGlite
-entry builds an in-memory driver and hands it to `startServer`; the `pg` entry
-does the same over `DATABASE_URL` (`docs/entrypoints.md`).
+entry builds an in-memory driver and serves over it; the `pg` entry does the
+same over `DATABASE_URL` (`docs/entrypoints.md`).
 
 ## The mock data test
 

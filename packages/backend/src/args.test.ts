@@ -1,6 +1,6 @@
 /** Asserts the entry points' command line reading. See docs/entrypoints.md. */
 import { describe, expect, it } from "vitest";
-import { parseServerArgs } from "./serve.ts";
+import { parseServerArgs } from "./args.ts";
 
 describe("parseServerArgs", () => {
     it("reads every flag the entries share", () => {
