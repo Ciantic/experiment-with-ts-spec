@@ -10,7 +10,7 @@ import { getInvoiceTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canWatchInvoice: RouteGuard<{ filter?: { tenantId?: TenantId | undefined } | undefined; pks?: readonly InvoicePrimaryKey[] | undefined } | undefined> = async (ctx, argument) => {
-    if (await ctx.hasPermission("invoice", "watch")) {
+    if (await ctx.hasGlobalPermission("invoice", "watch")) {
         return;
     }
     const filtered = argument?.filter?.tenantId;
@@ -19,7 +19,7 @@ export const canWatchInvoice: RouteGuard<{ filter?: { tenantId?: TenantId | unde
         throw new ForbiddenError("invoice:watch names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("invoice", "watch", tenant))) {
+        if (!(await ctx.hasTenantPermission("invoice", "watch", tenant))) {
             throw new ForbiddenError(`missing permission invoice:watch in tenant ${tenant}`);
         }
     }

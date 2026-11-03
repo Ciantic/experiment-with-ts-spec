@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canDeleteTranslation: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("translation", "delete"))) {
+    if (!(await ctx.hasGlobalPermission("translation", "delete"))) {
         throw new ForbiddenError("missing permission translation:delete");
     }
 };

@@ -86,7 +86,7 @@ refuses without following a factory:
 ```ts
 // packages/infra/src/http/guards/canDeleteInvoice.ts
 export const canDeleteInvoice: RouteGuard<readonly InvoicePrimaryKey[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("invoice", "delete"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("invoice", "delete"))) {
         return;
     }
     const tenants = new Set(await getInvoiceTenants(ctx.db, argument));
@@ -94,7 +94,7 @@ export const canDeleteInvoice: RouteGuard<readonly InvoicePrimaryKey[]> = async 
         throw new ForbiddenError("invoice:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("invoice", "delete", tenant))) {
+        if (!(await ctx.hasTenantPermission("invoice", "delete", tenant))) {
             throw new ForbiddenError(`missing permission invoice:delete in tenant ${tenant}`);
         }
     }
@@ -107,7 +107,7 @@ else:
 ```ts
 // packages/infra/src/http/guards/canCreateTenant.ts
 export const canCreateTenant: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("tenant", "create"))) {
+    if (!(await ctx.hasGlobalPermission("tenant", "create"))) {
         throw new ForbiddenError("missing permission tenant:create");
     }
 };
@@ -144,10 +144,10 @@ none.
 
 ### The two-level check
 
-A guard asks for the global permission first: `hasPermission(scope, action)`.
+A guard asks for the global permission first: `hasGlobalPermission(scope, action)`.
 Holding it allows the call whatever tenants it names, and no row is read. Without
 it, the guard resolves the tenants the call addresses and requires
-`hasPermission(scope, action, tenant)` for each one, where `tenant` is the root's
+`hasTenantPermission(scope, action, tenant)` for each one, where `tenant` is the root's
 `TenantId` that `@tenantOwned` pins to the `@tenant` interface. A call that names
 several tenants is refused as a whole when the session lacks any one of them; a
 guard never narrows a read to the permitted subset.
@@ -198,8 +198,8 @@ the handler builds, so a resolver that ignored a filter would still read across
 tenants, and Postgres RLS with a per-request executor remains the database-level
 mechanism — see `docs/tenancy.md` and `docs/rest-api.md`.
 
-`RequestContext.hasPermission` is still the scaffold, so a guarded server answers
-`501` until the principal is resolved. An operation route carries no guard yet:
+`RequestContext.hasGlobalPermission` and `hasTenantPermission` are still the
+scaffold, so a guarded server answers `501` until the principal is resolved. An operation route carries no guard yet:
 the spec has no annotation naming the permission a call needs.
 
 ## Keys

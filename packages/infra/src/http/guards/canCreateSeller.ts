@@ -8,7 +8,7 @@ import type { SellerInsert } from "sdk/schemas.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canCreateSeller: RouteGuard<readonly SellerInsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("seller", "create"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("seller", "create"))) {
         return;
     }
     const tenants = new Set(argument.flatMap((row) => row.tenantId ?? []));
@@ -16,7 +16,7 @@ export const canCreateSeller: RouteGuard<readonly SellerInsert[]> = async (ctx, 
         throw new ForbiddenError("seller:create names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("seller", "create", tenant))) {
+        if (!(await ctx.hasTenantPermission("seller", "create", tenant))) {
             throw new ForbiddenError(`missing permission seller:create in tenant ${tenant}`);
         }
     }

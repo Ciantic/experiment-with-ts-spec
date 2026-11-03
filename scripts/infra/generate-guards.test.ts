@@ -132,7 +132,11 @@ interface GuardRuntime {
 function runtime(allow: (tenant: unknown) => boolean = () => true): GuardRuntime {
     const calls: PermissionCall[] = [];
     const context = {
-        hasPermission: async (scope: string, action: string, tenant?: unknown) => {
+        hasGlobalPermission: async (scope: string, action: string) => {
+            calls.push({ scope, action, tenant: undefined });
+            return allow(undefined);
+        },
+        hasTenantPermission: async (scope: string, action: string, tenant: unknown) => {
             calls.push({ scope, action, tenant });
             return allow(tenant);
         },
@@ -170,7 +174,7 @@ describe("renderGuardModule", () => {
 
         expect(code).toContain('import { ForbiddenError } from "sdk/errors.ts";');
         expect(code).toContain("export const canCreateWidget: RouteGuard = async (ctx) => {");
-        expect(code).toContain('if (!(await ctx.hasPermission("widget", "create"))) {');
+        expect(code).toContain('if (!(await ctx.hasGlobalPermission("widget", "create"))) {');
         expect(code).toContain('throw new ForbiddenError("missing permission widget:create");');
         expect(code).not.toContain("tenantIds");
     });
@@ -181,7 +185,7 @@ describe("renderGuardModule", () => {
         expect(code).toContain('import type { TenantId } from "spec/fixtures/Tenant.ts";');
         expect(code).toContain("const tenants = new Set(argument.filter?.tenantId);");
         expect(code).toContain("if (tenants.size === 0) {");
-        expect(code).toContain('if (!(await ctx.hasPermission("owned", "query", tenant))) {');
+        expect(code).toContain('if (!(await ctx.hasTenantPermission("owned", "query", tenant))) {');
         expect(code).toContain(
             "export const canQueryOwned: RouteGuard<{ filter?: { tenantId?: readonly TenantId[] | undefined } | undefined }>",
         );

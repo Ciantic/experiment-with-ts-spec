@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canUpsertTranslation: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("translation", "upsert"))) {
+    if (!(await ctx.hasGlobalPermission("translation", "upsert"))) {
         throw new ForbiddenError("missing permission translation:upsert");
     }
 };

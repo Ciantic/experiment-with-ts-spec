@@ -9,7 +9,7 @@ import { getInvoiceTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canUpdateInvoice: RouteGuard<readonly InvoicePatch[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("invoice", "update"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("invoice", "update"))) {
         return;
     }
     const tenants = new Set([
@@ -20,7 +20,7 @@ export const canUpdateInvoice: RouteGuard<readonly InvoicePatch[]> = async (ctx,
         throw new ForbiddenError("invoice:update names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("invoice", "update", tenant))) {
+        if (!(await ctx.hasTenantPermission("invoice", "update", tenant))) {
             throw new ForbiddenError(`missing permission invoice:update in tenant ${tenant}`);
         }
     }

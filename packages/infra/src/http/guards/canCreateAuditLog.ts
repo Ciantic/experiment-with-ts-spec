@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canCreateAuditLog: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("auditLog", "create"))) {
+    if (!(await ctx.hasGlobalPermission("auditLog", "create"))) {
         throw new ForbiddenError("missing permission auditLog:create");
     }
 };

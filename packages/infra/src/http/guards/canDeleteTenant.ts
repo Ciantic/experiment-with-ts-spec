@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canDeleteTenant: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("tenant", "delete"))) {
+    if (!(await ctx.hasGlobalPermission("tenant", "delete"))) {
         throw new ForbiddenError("missing permission tenant:delete");
     }
 };

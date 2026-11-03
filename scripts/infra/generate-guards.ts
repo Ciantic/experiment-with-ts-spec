@@ -89,7 +89,7 @@ function checkLines(scope: string, action: string): string[] {
         `        throw new ForbiddenError("${permission} names no tenant the session can be checked against");`,
         "    }",
         "    for (const tenant of tenants) {",
-        `        if (!(await ctx.hasPermission(${JSON.stringify(scope)}, ${JSON.stringify(action)}, tenant))) {`,
+        `        if (!(await ctx.hasTenantPermission(${JSON.stringify(scope)}, ${JSON.stringify(action)}, tenant))) {`,
         `            throw new ForbiddenError(\`missing permission ${permission} in tenant \${tenant}\`);`,
         "        }",
         "    }",
@@ -142,7 +142,7 @@ export function renderGuardModule(
         lines.push(" * @throws {ForbiddenError} when the session lacks it");
         lines.push(" */");
         lines.push(`export const ${name}: RouteGuard = async (ctx) => {`);
-        lines.push(`    if (!(await ctx.hasPermission(${scope}, ${action}))) {`);
+        lines.push(`    if (!(await ctx.hasGlobalPermission(${scope}, ${action}))) {`);
         lines.push(`        throw new ForbiddenError("missing permission ${entity.module}:${operation.kind}");`);
         lines.push("    }");
         lines.push("};");
@@ -170,7 +170,7 @@ export function renderGuardModule(
     lines.push(" */");
     lines.push(`export const ${name}: RouteGuard<${argument.type}> = async (ctx, argument) => {`);
     const returnsEarly = operation.kind === "query" || operation.kind === "watch";
-    const early = returnsEarly ? `await ctx.hasPermission(${scope}, ${action})` : `argument.length === 0 || (await ctx.hasPermission(${scope}, ${action}))`;
+    const early = returnsEarly ? `await ctx.hasGlobalPermission(${scope}, ${action})` : `argument.length === 0 || (await ctx.hasGlobalPermission(${scope}, ${action}))`;
     lines.push(`    if (${early}) {`);
     lines.push("        return;");
     lines.push("    }");

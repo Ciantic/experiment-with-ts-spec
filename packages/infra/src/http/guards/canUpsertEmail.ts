@@ -9,7 +9,7 @@ import { getEmailTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canUpsertEmail: RouteGuard<readonly EmailUpsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("email", "upsert"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("email", "upsert"))) {
         return;
     }
     const tenants = new Set([
@@ -20,7 +20,7 @@ export const canUpsertEmail: RouteGuard<readonly EmailUpsert[]> = async (ctx, ar
         throw new ForbiddenError("email:upsert names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("email", "upsert", tenant))) {
+        if (!(await ctx.hasTenantPermission("email", "upsert", tenant))) {
             throw new ForbiddenError(`missing permission email:upsert in tenant ${tenant}`);
         }
     }

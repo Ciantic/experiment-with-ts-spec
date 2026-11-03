@@ -8,7 +8,7 @@ import type { CustomerInsert } from "sdk/schemas.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canCreateCustomer: RouteGuard<readonly CustomerInsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("customer", "create"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("customer", "create"))) {
         return;
     }
     const tenants = new Set(argument.flatMap((row) => row.tenantId ?? []));
@@ -16,7 +16,7 @@ export const canCreateCustomer: RouteGuard<readonly CustomerInsert[]> = async (c
         throw new ForbiddenError("customer:create names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("customer", "create", tenant))) {
+        if (!(await ctx.hasTenantPermission("customer", "create", tenant))) {
             throw new ForbiddenError(`missing permission customer:create in tenant ${tenant}`);
         }
     }

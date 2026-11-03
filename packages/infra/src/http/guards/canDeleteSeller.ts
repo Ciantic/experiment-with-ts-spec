@@ -9,7 +9,7 @@ import { getSellerTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canDeleteSeller: RouteGuard<readonly SellerPrimaryKey[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("seller", "delete"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("seller", "delete"))) {
         return;
     }
     const tenants = new Set(await getSellerTenants(ctx.db, argument));
@@ -17,7 +17,7 @@ export const canDeleteSeller: RouteGuard<readonly SellerPrimaryKey[]> = async (c
         throw new ForbiddenError("seller:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("seller", "delete", tenant))) {
+        if (!(await ctx.hasTenantPermission("seller", "delete", tenant))) {
             throw new ForbiddenError(`missing permission seller:delete in tenant ${tenant}`);
         }
     }

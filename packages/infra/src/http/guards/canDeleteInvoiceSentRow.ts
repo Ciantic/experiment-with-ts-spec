@@ -9,7 +9,7 @@ import { getInvoiceSentRowTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canDeleteInvoiceSentRow: RouteGuard<readonly InvoiceSentRowPrimaryKey[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("invoiceSentRow", "delete"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("invoiceSentRow", "delete"))) {
         return;
     }
     const tenants = new Set(await getInvoiceSentRowTenants(ctx.db, argument));
@@ -17,7 +17,7 @@ export const canDeleteInvoiceSentRow: RouteGuard<readonly InvoiceSentRowPrimaryK
         throw new ForbiddenError("invoiceSentRow:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("invoiceSentRow", "delete", tenant))) {
+        if (!(await ctx.hasTenantPermission("invoiceSentRow", "delete", tenant))) {
             throw new ForbiddenError(`missing permission invoiceSentRow:delete in tenant ${tenant}`);
         }
     }

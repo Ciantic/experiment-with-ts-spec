@@ -8,7 +8,7 @@ import type { InvoiceRowInsert } from "sdk/schemas.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canCreateInvoiceRow: RouteGuard<readonly InvoiceRowInsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("invoiceRow", "create"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("invoiceRow", "create"))) {
         return;
     }
     const tenants = new Set(argument.flatMap((row) => row.tenantId ?? []));
@@ -16,7 +16,7 @@ export const canCreateInvoiceRow: RouteGuard<readonly InvoiceRowInsert[]> = asyn
         throw new ForbiddenError("invoiceRow:create names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("invoiceRow", "create", tenant))) {
+        if (!(await ctx.hasTenantPermission("invoiceRow", "create", tenant))) {
             throw new ForbiddenError(`missing permission invoiceRow:create in tenant ${tenant}`);
         }
     }

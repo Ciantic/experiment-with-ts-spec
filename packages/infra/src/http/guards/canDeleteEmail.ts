@@ -9,7 +9,7 @@ import { getEmailTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canDeleteEmail: RouteGuard<readonly EmailPrimaryKey[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("email", "delete"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("email", "delete"))) {
         return;
     }
     const tenants = new Set(await getEmailTenants(ctx.db, argument));
@@ -17,7 +17,7 @@ export const canDeleteEmail: RouteGuard<readonly EmailPrimaryKey[]> = async (ctx
         throw new ForbiddenError("email:delete names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("email", "delete", tenant))) {
+        if (!(await ctx.hasTenantPermission("email", "delete", tenant))) {
             throw new ForbiddenError(`missing permission email:delete in tenant ${tenant}`);
         }
     }

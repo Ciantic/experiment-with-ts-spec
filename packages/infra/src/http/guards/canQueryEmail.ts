@@ -8,7 +8,7 @@ import type { TenantId } from "spec/user-service/Tenant.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canQueryEmail: RouteGuard<{ filter?: { tenantId?: readonly TenantId[] | undefined } | undefined }> = async (ctx, argument) => {
-    if (await ctx.hasPermission("email", "query")) {
+    if (await ctx.hasGlobalPermission("email", "query")) {
         return;
     }
     const tenants = new Set(argument.filter?.tenantId);
@@ -16,7 +16,7 @@ export const canQueryEmail: RouteGuard<{ filter?: { tenantId?: readonly TenantId
         throw new ForbiddenError("email:query names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("email", "query", tenant))) {
+        if (!(await ctx.hasTenantPermission("email", "query", tenant))) {
             throw new ForbiddenError(`missing permission email:query in tenant ${tenant}`);
         }
     }

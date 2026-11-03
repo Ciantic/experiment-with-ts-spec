@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canQueryAuditLog: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("auditLog", "query"))) {
+    if (!(await ctx.hasGlobalPermission("auditLog", "query"))) {
         throw new ForbiddenError("missing permission auditLog:query");
     }
 };

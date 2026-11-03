@@ -9,7 +9,7 @@ import { getCustomerTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canUpsertCustomer: RouteGuard<readonly CustomerUpsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("customer", "upsert"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("customer", "upsert"))) {
         return;
     }
     const tenants = new Set([
@@ -20,7 +20,7 @@ export const canUpsertCustomer: RouteGuard<readonly CustomerUpsert[]> = async (c
         throw new ForbiddenError("customer:upsert names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("customer", "upsert", tenant))) {
+        if (!(await ctx.hasTenantPermission("customer", "upsert", tenant))) {
             throw new ForbiddenError(`missing permission customer:upsert in tenant ${tenant}`);
         }
     }

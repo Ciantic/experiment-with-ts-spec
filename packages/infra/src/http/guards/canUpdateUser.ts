@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canUpdateUser: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("user", "update"))) {
+    if (!(await ctx.hasGlobalPermission("user", "update"))) {
         throw new ForbiddenError("missing permission user:update");
     }
 };

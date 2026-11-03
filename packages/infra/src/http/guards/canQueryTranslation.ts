@@ -7,7 +7,7 @@ import type { RouteGuard } from "../router.ts";
  * @throws {ForbiddenError} when the session lacks it
  */
 export const canQueryTranslation: RouteGuard = async (ctx) => {
-    if (!(await ctx.hasPermission("translation", "query"))) {
+    if (!(await ctx.hasGlobalPermission("translation", "query"))) {
         throw new ForbiddenError("missing permission translation:query");
     }
 };

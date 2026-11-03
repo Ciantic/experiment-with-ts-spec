@@ -8,7 +8,7 @@ import type { EmailInsert } from "sdk/schemas.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canCreateEmail: RouteGuard<readonly EmailInsert[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("email", "create"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("email", "create"))) {
         return;
     }
     const tenants = new Set(argument.flatMap((row) => row.tenantId ?? []));
@@ -16,7 +16,7 @@ export const canCreateEmail: RouteGuard<readonly EmailInsert[]> = async (ctx, ar
         throw new ForbiddenError("email:create names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("email", "create", tenant))) {
+        if (!(await ctx.hasTenantPermission("email", "create", tenant))) {
             throw new ForbiddenError(`missing permission email:create in tenant ${tenant}`);
         }
     }

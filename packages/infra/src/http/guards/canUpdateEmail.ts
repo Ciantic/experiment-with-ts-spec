@@ -9,7 +9,7 @@ import { getEmailTenants } from "../../db/queries/index.ts";
  * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
  */
 export const canUpdateEmail: RouteGuard<readonly EmailPatch[]> = async (ctx, argument) => {
-    if (argument.length === 0 || (await ctx.hasPermission("email", "update"))) {
+    if (argument.length === 0 || (await ctx.hasGlobalPermission("email", "update"))) {
         return;
     }
     const tenants = new Set([
@@ -20,7 +20,7 @@ export const canUpdateEmail: RouteGuard<readonly EmailPatch[]> = async (ctx, arg
         throw new ForbiddenError("email:update names no tenant the session can be checked against");
     }
     for (const tenant of tenants) {
-        if (!(await ctx.hasPermission("email", "update", tenant))) {
+        if (!(await ctx.hasTenantPermission("email", "update", tenant))) {
             throw new ForbiddenError(`missing permission email:update in tenant ${tenant}`);
         }
     }

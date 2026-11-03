@@ -386,8 +386,9 @@ No mode reaches the statement unvalidated.
   global permission or a permission in every tenant it names, and a key-addressed
   write is checked against the stored tenant (`docs/permissions.md`). A global
   entity requires its global permission, as in `tenant:create`.
-  `RequestContext.hasPermission` is still the scaffold, so no principal is
-  resolved and a guarded server answers `501` until it is implemented. Postgres
+  `RequestContext.hasGlobalPermission` and `hasTenantPermission` are still the
+  scaffold, so no principal is resolved and a guarded server answers `501` until
+  they are implemented. Postgres
   RLS with a per-request executor is the database-level mechanism, and it is not
   implemented either. What the schema does enforce is that a row cannot be
   *linked* across tenants; the guard refuses a tenant-owned call that names no

@@ -52,11 +52,20 @@ export class RequestContext {
     }
 
     /**
-     * Whether the session holds `scope:action`, globally or within `tenant`; the guards ask globally first.
+     * Whether the session holds `scope:action` globally; the guards ask this first.
      *
      * @throws {NotImplemented} until permissions are checked against the authenticated session
      */
-    async hasPermission(_scope: string, _action: string, _tenant?: TenantId): Promise<boolean> {
-        throw new NotImplemented("hasPermission not implemented");
+    async hasGlobalPermission(_scope: string, _action: string): Promise<boolean> {
+        throw new NotImplemented("hasGlobalPermission not implemented");
+    }
+
+    /**
+     * Whether the session holds `scope:action` within `tenant`.
+     *
+     * @throws {NotImplemented} until permissions are checked against the authenticated session
+     */
+    async hasTenantPermission(_scope: string, _action: string, _tenant: TenantId): Promise<boolean> {
+        throw new NotImplemented("hasTenantPermission not implemented");
     }
 }
