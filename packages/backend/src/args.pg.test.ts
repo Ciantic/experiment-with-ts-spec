@@ -1,6 +1,6 @@
-/** Asserts the entry points' command line reading. See docs/entrypoints.md. */
+/** Asserts the `pg` entry's command line reading. See docs/entrypoints.md. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HELP, parseServerArgs } from "./args.ts";
+import { HELP, parseServerArgs } from "./args.pg.ts";
 
 /** A stand-in for the exit, thrown so a test observes it rather than ending the run. */
 class ProcessExit extends Error {
@@ -24,46 +24,43 @@ function mockWrite(stream: "log" | "error") {
     return vi.spyOn(console, stream).mockImplementation(() => {});
 }
 
-describe("parseServerArgs", () => {
+describe("parseServerArgs (pg)", () => {
     afterEach(() => {
         vi.restoreAllMocks();
     });
 
-    it("reads every flag the entries share", () => {
+    it("reads every flag the pg entry takes", () => {
         expect(
             parseServerArgs([
                 "--port",
                 "4123",
+                "--schema",
                 "--seed",
-                "--log-sql",
                 "--database-url",
                 "postgres://localhost/db",
-                "--data-dir",
-                "./.pglite",
             ]),
-        ).toEqual({
-            port: 4123,
-            seed: true,
-            logSql: true,
-            databaseUrl: "postgres://localhost/db",
-            dataDir: "./.pglite",
-        });
+        ).toEqual({ port: 4123, schema: true, seed: true, databaseUrl: "postgres://localhost/db" });
     });
 
-    it("answers an empty set when there is no flag", () => {
-        expect(parseServerArgs([])).toEqual({});
+    it("answers the default port when there is no flag", () => {
+        expect(parseServerArgs([])).toEqual({ port: 3000 });
     });
 
-    it("keeps a seed default when the command line does not override it", () => {
-        expect(parseServerArgs([], { seed: true })).toEqual({ seed: true });
+    it("reads the schema and seed flags", () => {
+        expect(parseServerArgs(["--schema", "--seed"])).toEqual({ port: 3000, schema: true, seed: true });
     });
 
-    it("reads the other flags over a seed default", () => {
-        expect(parseServerArgs(["--port", "4123"], { seed: true })).toEqual({ port: 4123, seed: true });
+    it("applies the schema and the seed independently", () => {
+        expect(parseServerArgs(["--schema"])).toEqual({ port: 3000, schema: true });
+        expect(parseServerArgs(["--seed"])).toEqual({ port: 3000, seed: true });
     });
 
-    it("treats --mock as the --seed alias", () => {
-        expect(parseServerArgs(["--mock"])).toEqual({ seed: true });
+    it("refuses --mock, which is gone in favour of --seed", () => {
+        const exit = mockExit();
+        const error = mockWrite("error");
+        expect(() => parseServerArgs(["--mock"])).toThrow(ProcessExit);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("--mock"));
+        expect(exit).toHaveBeenCalledWith(1);
     });
 
     it("reads a port joined to its flag", () => {
@@ -86,11 +83,11 @@ describe("parseServerArgs", () => {
         expect(exit).toHaveBeenCalledWith(1);
     });
 
-    it("refuses a flag it does not know", () => {
+    it("refuses a flag it does not know, such as a PGlite-only one", () => {
         const exit = mockExit();
         const error = mockWrite("error");
-        expect(() => parseServerArgs(["--unknown"])).toThrow(ProcessExit);
-        expect(error).toHaveBeenCalledWith(expect.stringContaining("--unknown"));
+        expect(() => parseServerArgs(["--data-dir", "./.pglite"])).toThrow(ProcessExit);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("--data-dir"));
         expect(exit).toHaveBeenCalledWith(1);
     });
 
@@ -110,7 +107,7 @@ describe("parseServerArgs", () => {
     });
 
     it("lists every flag in the help text", () => {
-        for (const flag of ["--port", "--seed", "--mock", "--log-sql", "--database-url", "--data-dir", "--help"]) {
+        for (const flag of ["--port", "--schema", "--seed", "--database-url", "--help"]) {
             expect(HELP).toContain(flag);
         }
     });
