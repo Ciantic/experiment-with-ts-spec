@@ -351,9 +351,10 @@ function lintRestPermissions(spec: SpecModel, findings: Diagnostic[]): void {
     }
 }
 
-/** `@todo` with no text defers a declaration silently, so every occurrence must say what is left to do. */
+/** `@todo` with no text says nothing, so every occurrence must say what is left to do. A field's is a note, not a deferral. */
 function lintTodo(spec: SpecModel, findings: Diagnostic[]): void {
-    const deferred: { name: string; location: SpecLocation; tags: WrittenTags }[] = [
+    const interfaces = [...spec.interfaces.values(), ...spec.nonEntityInterfaces, ...spec.todoInterfaces];
+    const entries: { name: string; location: SpecLocation; tags: WrittenTags }[] = [
         ...spec.todoInterfaces.map((entity) => ({ name: entity.name, location: entity.location, tags: entity.tags.written })),
         ...spec.nonEntityInterfaces
             .filter((contract) => contract.todo !== undefined)
@@ -363,8 +364,15 @@ function lintTodo(spec: SpecModel, findings: Diagnostic[]): void {
             location: operation.location,
             tags: operation.tags,
         })),
+        ...interfaces.flatMap((entity) =>
+            entity.properties.map((property) => ({
+                name: property.name,
+                location: property.location,
+                tags: property.tags.written,
+            })),
+        ),
     ];
-    for (const entry of deferred) {
+    for (const entry of entries) {
         for (const tag of entry.tags.byName.get(TODO_TAG) ?? []) {
             if (!(tag.value ?? "").trim()) {
                 findings.push({

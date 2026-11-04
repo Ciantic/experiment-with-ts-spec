@@ -1132,6 +1132,24 @@ export interface InvoiceOperations<T> {
         });
     });
 
+    it("keeps a field's @todo as a note, which does not defer its entity", () => {
+        const spec = parse({
+            "Thing.ts": `/**
+ * @entity
+ */
+export interface Thing {
+    /**
+     * @todo rename this once the supplier model lands
+     */
+    label: string;
+}`,
+        });
+
+        expect([...spec.interfaces.keys()]).toEqual(["Thing"]);
+        expect(spec.todoInterfaces).toEqual([]);
+        expect(spec.interfaces.get("Thing")?.properties[0]?.tags.todo).toBe("rename this once the supplier model lands");
+    });
+
     it("defers an entity carrying @todo from the generated set", () => {
         const spec = parse({
             "Draft.ts": "/**\n * @entity\n * @todo decide the fields\n */\nexport interface Draft { id: string; }",

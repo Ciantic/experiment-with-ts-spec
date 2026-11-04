@@ -135,6 +135,10 @@ Field tags:
   payload also carries, so a subscriber can filter on it. Requires `@watch` on
   the interface; a branch, computed, or array field may not carry it. See
   `docs/notifications.md`.
+- `@todo <text>` — a note on the column: it says what is left to do and changes
+  nothing about the field, which generates exactly as it does without the tag.
+  The text is required. Use it where the field is a placeholder, not to defer a
+  column. See "Deferring a declaration" below.
 
 Interface tags:
 
@@ -384,6 +388,11 @@ deferred once rather than method by method.
 The tag defers on presence, so a bare `@todo` still defers even though the
 linter reports it: the text is what a reader needs, and an empty one is a
 finding rather than a different meaning.
+
+A field is the exception: `@todo` there is a note that changes nothing. The
+column generates as it would without the tag, so the tag never defers part of a
+table — a deferred column would leave the entity and its SQL disagreeing. The
+text is still required, since a note that says nothing is no note at all.
 
 Deferral is not deletion. The declaration stays in the spec for the linter to
 read and for a writer to finish, and removing the tag is what puts it back into
@@ -860,10 +869,11 @@ Enforced:
 - `@queryWhere` requires at least one operator, each one of `eq`, `ne`, `gt`, `gte`,
   `lt`, `lte`, `isNull`, `isNotNull`; a branch field may not carry it, and a null
   test needs an optional field. See `docs/queries.md`.
-- `@todo` may sit on an interface or a method, and must carry the text saying
-  what is left to do. A field, a type alias, and a contract's own tags report it
-  as unrecognised, like any other tag in the wrong place. See "Deferring a
-  declaration".
+- `@todo` may sit on an interface, a method, or a field, and must carry the text
+  saying what is left to do. On an interface or a method it defers generation;
+  on a field it is a note and nothing else. A type alias and a contract's own
+  tags report it as unrecognised, like any other tag in the wrong place. See
+  "Deferring a declaration".
 - `@repository`, `@restRepository`, `@queries`, `@restQueries`, `@watch`, and
   `@restWatch` name their values: the write tags one or more of `create`,
   `upsert`, `update`, `delete`, the read tag `query`, and the watch tags one or

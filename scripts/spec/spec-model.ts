@@ -42,6 +42,7 @@ export const FIELD_TAGS = [
     "queryOrderBy",
     "queryWhere",
     "watchFilter",
+    "todo",
 ] as const;
 
 /** Tags an interface may carry. */
@@ -415,7 +416,7 @@ export interface Tags {
     queryOrderBy?: { default?: OrderDirection };
     /** The comparison operators the field may be compared with, as written. See docs/queries.md. */
     queryWhere?: string[];
-    /** The `@todo` text that defers an interface or operation from generation. See docs/spec-annotations.md. */
+    /** The `@todo` text: it defers an interface or operation, and is a note on a field that changes nothing. See docs/spec-annotations.md. */
     todo?: string;
 }
 

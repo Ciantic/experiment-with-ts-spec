@@ -2341,6 +2341,48 @@ export interface Invoice {
         ]);
     });
 
+    it("accepts a field-level @todo, which is a note and defers nothing", () => {
+        const findings = lintSpec(
+            parse({
+                "/src/domain/Thing.ts": `/**
+ * @entity
+ * @repository create
+ */
+export interface Thing {
+    /**
+     * @fieldName Label
+     * @widget text
+     * @todo rename this once the supplier model lands
+     */
+    label: string;
+}`,
+            }),
+        ).findings;
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a field-level @todo that says nothing", () => {
+        const findings = lintSpec(
+            parse({
+                "/src/domain/Thing.ts": `/**
+ * @entity
+ * @repository create
+ */
+export interface Thing {
+    /**
+     * @fieldName Label
+     * @widget text
+     * @todo
+     */
+    label: string;
+}`,
+            }),
+        ).findings;
+
+        expect(messages(findings)).toEqual(["`label`: @todo needs the text saying what is left to do"]);
+    });
+
     it("accepts an entity deferred with @todo, which needs no other tag", () => {
         const findings = lintSpec(
             parse({
