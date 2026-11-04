@@ -283,9 +283,9 @@ export function renderWatchModule(entity: string, table: Table): string {
     if (filters.length > 0) {
         lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     }
-    const watchTypes = all ? ["AllWatchEvent"] : [];
+    const watchTypes = all ? ["WatchAllEvent"] : [];
     if (rows) {
-        watchTypes.push("WatchEvent");
+        watchTypes.push("WatchRowsEvent");
     }
     watchTypes.push("WatchOperation");
     if (filters.length > 0) {
@@ -306,7 +306,7 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`export function watch${entity}(`);
         lines.push("    db: SqlExecutor,");
         lines.push(`    opts?: ${watchOptsType(keyType, false, entity, filters)},`);
-        lines.push("): AsyncIterable<AllWatchEvent> {");
+        lines.push("): AsyncIterable<WatchAllEvent> {");
         lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal${optionalFilterArg});`);
         lines.push("}");
     }
@@ -319,7 +319,7 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`export function watch${entity}Rows(`);
         lines.push("    db: SqlExecutor,");
         lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters)},`);
-        lines.push(`): AsyncIterable<WatchEvent<${keyType}>> {`);
+        lines.push(`): AsyncIterable<WatchRowsEvent<${keyType}>> {`);
         lines.push(
             `    return watchRows(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg});`,
         );

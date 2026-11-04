@@ -425,24 +425,24 @@ describe("watch helpers", () => {
     it("generates one helper per scope", () => {
         expect(module()).toContain('import type { HttpClient } from "../http.ts";');
         expect(module()).toContain(
-            'import { watch, type AllWatchEvent, type WatchEvent, type WatchOperation } from "../watch.ts";',
+            'import { watch, type WatchAllEvent, type WatchOperation, type WatchRowsEvent } from "../watch.ts";',
         );
         expect(module()).toContain("export function watchNotified(");
         expect(module()).toContain("export function watchNotifiedRows(");
-        expect(module()).toContain("onChange: (event: AllWatchEvent) => void,");
-        expect(module()).toContain("onChange: (event: WatchEvent<NotifiedPrimaryKey>) => void,");
+        expect(module()).toContain("onChange: (event: WatchAllEvent) => void,");
+        expect(module()).toContain("onChange: (event: WatchRowsEvent<NotifiedPrimaryKey>) => void,");
         expect(module()).toContain(
             "opts: { pks: NotifiedPrimaryKey[]; ops?: readonly WatchOperation[] },",
         );
-        expect(module()).not.toContain(" | AllWatchEvent>");
+        expect(module()).not.toContain(" | WatchAllEvent>");
     });
 
     it("encodes the selected keys and operations into `q`", () => {
         expect(module()).toContain(
-            'return watch<AllWatchEvent>(http.url("/notified/watch", ops === undefined ? undefined : { ops }), onChange);',
+            'return watch<WatchAllEvent>(http.url("/notified/watch", ops === undefined ? undefined : { ops }), onChange);',
         );
         expect(module()).toContain(
-            'return watch<WatchEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", ops === undefined ? { pks } : { pks, ops }), onChange);',
+            'return watch<WatchRowsEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", ops === undefined ? { pks } : { pks, ops }), onChange);',
         );
     });
 

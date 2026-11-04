@@ -1,6 +1,6 @@
 /** The hand-written subscription behind every generated `watch<Entity>`. See docs/notifications.md. */
 import type { SqlExecutor, SqlSubscription } from "./sql-executor.ts";
-import type { AllWatchEvent, WatchEvent, WatchOperation } from "sdk/watch.ts";
+import type { WatchAllEvent, WatchRowsEvent, WatchOperation } from "sdk/watch.ts";
 import { NotificationsUnsupportedError } from "../errors.ts";
 
 /** The trigger's primary-key payload, as JSON text; the plain notify stream drops it. */
@@ -67,7 +67,7 @@ export async function* watchAll(
     ops?: readonly WatchOperation[],
     signal?: AbortSignal,
     filter?: Record<string, unknown>,
-): AsyncIterable<AllWatchEvent> {
+): AsyncIterable<WatchAllEvent> {
     for await (const payload of onlyOperations(subscribe(db, channel, signal), ops)) {
         const event = readEvent(payload);
         const op = event?.op ?? operationOf(payload);
@@ -161,7 +161,7 @@ export async function* watchRows<T extends Record<string, unknown>>(
     ops?: readonly WatchOperation[],
     signal?: AbortSignal,
     filter?: Record<string, unknown>,
-): AsyncIterable<WatchEvent<T>> {
+): AsyncIterable<WatchRowsEvent<T>> {
     if (keys.length === 0) {
         return;
     }

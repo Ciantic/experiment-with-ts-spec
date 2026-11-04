@@ -5,7 +5,7 @@ import { parse as decode } from "devalue";
 export type WatchOperation = "INSERT" | "UPDATE" | "DELETE";
 
 /** One watched change: the requested key, and what happened to it. */
-export interface WatchEvent<Key> {
+export interface WatchRowsEvent<Key> {
     pks: Key;
     op: WatchOperation;
 }
@@ -14,7 +14,7 @@ export interface WatchEvent<Key> {
 export type WatchFilter<E, K extends keyof E = keyof E> = Partial<Pick<E, K>>;
 
 /** An all-rows change: the operation, without a key. */
-export interface AllWatchEvent {
+export interface WatchAllEvent {
     op: WatchOperation;
 }
 
