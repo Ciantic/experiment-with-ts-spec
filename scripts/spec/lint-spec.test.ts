@@ -2967,11 +2967,171 @@ export interface Ops<T> {
      * @throws {InvoiceDetailsError} because details are missing
      * @operation
      * @restOperation POST /invoice/send
+     * @restPublic
      */
     sendInvoice(ctx: T, opts: { invoice: string }): Promise<string>;
 }`);
 
         expect(messages(findings)).toEqual([]);
+    });
+
+    it("accepts a REST operation with a permission and a derived guard", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ * @queries query
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}
+
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice:send
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("reports a permission that names no entity", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ * @queries query
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}
+
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoce:send
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @restPermission scope `invoce` names no entity; use the entity's camel-cased name",
+        ]);
+    });
+
+    it("reports a malformed permission", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice-send
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @restPermission names an entity and an action, as `@restPermission invoice:send`",
+        ]);
+    });
+
+    it("requires a permission or @restPublic on a REST operation", () => {
+        const findings = lintSourceText(`
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @restOperation needs @restPermission, or @restPublic to leave it unguarded",
+        ]);
+    });
+
+    it("reports @restPublic combined with a permission", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ * @queries query
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}
+
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice:send
+     * @restPublic
+     */
+    sendInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`sendInvoice`: @restPublic and @restPermission are mutually exclusive",
+        ]);
+    });
+
+    it("reports a shared guard whose operations require different permissions", () => {
+        const findings = lintSourceText(`
+/**
+ * @entity
+ * @repository create
+ * @queries query
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}
+
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice:create
+     * @restPermissionGuard canMutateInvoice
+     */
+    sendInvoice(ctx: T): Promise<void>;
+
+    /**
+     * @operation
+     * @restOperation POST /invoice/update
+     * @restPermission invoice:update
+     * @restPermissionGuard canMutateInvoice
+     */
+    updateInvoice(ctx: T): Promise<void>;
+}`);
+
+        expect(messages(findings)).toEqual([
+            "`updateInvoice`: guard `canMutateInvoice` is also used by `sendInvoice`, which requires `invoice:create`; a shared guard checks one permission",
+        ]);
     });
 
     it("reports @restOperation without @operation", () => {
@@ -3025,6 +3185,7 @@ export interface Ops<T> {
     /**
      * @operation
      * @restOperation
+     * @restPublic
      */
     send(ctx: T): Promise<void>;
 }`);
@@ -3041,6 +3202,7 @@ export interface Ops<T> {
     /**
      * @operation
      * @restOperation POST /op
+     * @restPublic
      */
     send(ctx: T, first: string, second: string): Promise<void>;
 }`);

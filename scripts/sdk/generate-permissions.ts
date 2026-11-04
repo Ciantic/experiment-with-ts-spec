@@ -1,4 +1,4 @@
-/** Generate the permission table: the infra-level actions each entity permits, with display text and tenancy. See docs/permissions.md. */
+/** Generate the permission table: the actions each entity permits, with display text and tenancy. See docs/permissions.md. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SDK_PACKAGE_ROOT } from "../paths.ts";
@@ -44,9 +44,40 @@ function permissionEntry(entity: SpecInterface): PermissionEntry {
     };
 }
 
-/** One entry per entity, in the model's name order; the REST declarations expose these actions and add none. */
+/** The actions `@restPermission` tags add, keyed by entity and sorted so the generated file is stable. */
+export function operationActions(spec: SpecModel): Map<string, string[]> {
+    const actions = new Map<string, Set<string>>();
+    for (const operation of spec.operations) {
+        const permission = operation.restPermission;
+        if (!operation.operation || !operation.rest || permission === undefined) {
+            continue;
+        }
+        const declared = actions.get(permission.scope) ?? new Set<string>();
+        declared.add(permission.action);
+        actions.set(permission.scope, declared);
+    }
+    return new Map([...actions].map(([scope, declared]) => [scope, [...declared].sort()]));
+}
+
+/** One entry per entity, in the model's name order, with the actions its REST operations add. */
 export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
-    return [...spec.interfaces.values()].map(permissionEntry);
+    const entries = [...spec.interfaces.values()].map(permissionEntry);
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+    for (const [scope, added] of operationActions(spec)) {
+        const entry = byKey.get(scope);
+        if (entry === undefined) {
+            // The linter reports an unknown scope; a standalone generator run leaves it alone.
+            continue;
+        }
+        const existing = new Set(entry.actions);
+        for (const action of added) {
+            if (!existing.has(action)) {
+                entry.actions.push(action);
+                existing.add(action);
+            }
+        }
+    }
+    return entries;
 }
 
 /** The label an action reads, over the plural noun the entity declares. */
@@ -80,7 +111,7 @@ function renderEntry(lines: string[], entry: PermissionEntry): void {
 /** Render the module: one `as const` table keyed by entity, then the types that name it. */
 export function renderPermissionsModule(entries: PermissionEntry[]): string {
     const lines: string[] = [HEADER];
-    lines.push("/** The infra-level actions each entity permits, keyed by its camel-cased name. */");
+    lines.push("/** The actions each entity permits, keyed by its camel-cased name. */");
     if (entries.length === 0) {
         lines.push("export const PERMISSIONS = {} as const;");
     } else {

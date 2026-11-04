@@ -1,9 +1,9 @@
 # Permissions
 
 `packages/sdk/src/permissions.ts` declares the `PERMISSIONS` const: for each
-entity, whether a tenant scopes it and the infra-level actions it permits, each
-with display text. `scripts/sdk/generate-permissions.ts` writes it, so the file
-is never edited by hand.
+entity, whether a tenant scopes it and the actions it permits, each with display
+text. `scripts/sdk/generate-permissions.ts` writes it, so the file is never
+edited by hand.
 
 ```ts
 export const PERMISSIONS = {
@@ -73,9 +73,12 @@ A `@restRepository`, `@restQueries`, or `@restWatch` adds nothing. It exposes
 over REST an action the infra already has, so the permissions name the infra
 action once.
 
-Operations (`@operation`) are application logic rather than infra actions, so
-they are not listed. An entity deferred with `@todo` generates no infra, so the
-generator leaves it out.
+A REST operation adds the action its `@restPermission <scope>:<action>` names,
+after the entity's infra actions and in a stable sorted order. The scope must be
+an entity key; the action may be new, and an action the entity already declares
+is not added twice. An operation that is `@restPublic` declares no permission.
+An entity deferred with `@todo` generates no infra, so the generator leaves it
+out.
 
 ## Tenant-owned entities
 
@@ -242,8 +245,37 @@ mechanism — see `docs/tenancy.md` and `docs/rest-api.md`.
 `RequestContext.hasGlobalPermission` and `hasTenantPermission` are still the
 scaffold, so a guarded server answers `501` until the principal is resolved. Their
 parameters are typed against `PERMISSIONS`, which checks every generated guard at
-compile time. An operation route carries no guard yet: the spec has no annotation
-naming the permission a call needs.
+compile time.
+
+### Operation guards
+
+An operation route carries the guard its operation id or `@restPermissionGuard`
+names. The guard is hand-written because its argument is the operation's own
+input, not an entity filter or a row batch:
+
+```ts
+// packages/operations/src/guards/canSendInvoice.ts
+export const canSendInvoice: RouteGuard<SendInvoiceInput> = async (ctx, argument) => {
+    if (await ctx.hasGlobalPermission("invoice", "send")) {
+        return;
+    }
+    const tenant = argument.invoice.tenantId;
+    if (!(await ctx.hasTenantPermission("invoice", "send", tenant))) {
+        throw new ForbiddenError(`missing permission invoice:send in tenant ${tenant}`);
+    }
+};
+```
+
+`scripts/operations/generate-operation-guards.ts` scaffolds one guard per
+permission, named `can<OperationId>` or the name `@restPermissionGuard` gives.
+The scaffold fails closed with `NotImplemented`; replacing the body is the
+author's work, and the guard file is never overwritten.
+`pnpm lint:operation-guards` runs the generator with `--check`, which reports a
+missing guard, a guard that no longer exports its name, and a guard whose body no
+longer names the `scope:action` the spec declares, either joined or as the two
+arguments of a permission check. The operation route generator imports the guard
+from `./guards/<name>.ts` and attaches it under `guard:`. See
+`docs/operations.md`.
 
 ## Keys
 
@@ -256,12 +288,15 @@ other generated list does.
 ## Running it
 
 `pnpm run generate:permissions` writes the permissions file. The pipeline runs it
-right after the linter, since it reads only the entity declarations.
-`pnpm run generate:queries` writes the `get<Entity>Tenants` lookups with the
-other read modules, and `pnpm run generate:guards` writes the `can<Call>`
-modules before the route generator runs. `--out <file>` writes elsewhere, as the error generator does. Like
-the other generated files, a stale copy is caught by running the generator, not
-by a check.
+right after the linter, since it reads the entity declarations and the
+`@restPermission` tags. `pnpm run generate:queries` writes the
+`get<Entity>Tenants` lookups with the other read modules,
+`pnpm run generate:guards` writes the entity `can<Call>` modules, and
+`pnpm run generate:operation-guards` scaffolds the operation guards before the
+operation routes are written. `--out <file>` and `--out <dir>` write elsewhere,
+as the error generator does. Like the other generated files, a stale permissions
+copy is caught by running the generator, not by a check; the guard generator has
+the `--check` mode described above.
 
 ## Gotchas
 
@@ -274,5 +309,11 @@ by a check.
 - **The guard reads the argument's tenant field.** A field that disagrees with
   the row's tenant is the database's problem, not the guard's — the composite
   foreign keys in `docs/tenancy.md` are what stop it.
-- **Nothing lints the actions.** The const has no tags for the linter to check,
-  so a change to a declaration reaches the file only when the generator runs.
+- **The guard body is the enforcement.** An operation guard is hand-written, so
+  the `@restPermission` tag and the permission string in the body can drift.
+  `pnpm lint:operation-guards` catches a body that no longer names the declared
+  `scope:action`; it cannot judge a check that names it but tests the wrong
+  thing.
+- **A shared guard checks one permission.** Two operations may name the same
+  guard only when their `@restPermission` is identical; the linter reports a
+  shared guard that requires two permissions.

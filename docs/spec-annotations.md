@@ -218,6 +218,18 @@ Method tags:
 - `@restOperation <verb> <path>` — exposes the operation on the HTTP surface,
   e.g. `@restOperation POST /widget/freeze`. It requires `@operation`, and the
   operation takes the context and at most one input. See `docs/operations.md`.
+- `@restPermission <scope>:<action>` — the permission the route requires, e.g.
+  `@restPermission widget:freeze`. The scope is an entity's camel-cased name, and
+  the action is added to that entity's actions in `PERMISSIONS` when it is not
+  already declared. A `@restOperation` needs this tag, or `@restPublic`. See
+  `docs/permissions.md`.
+- `@restPermissionGuard <name>` — names the hand-written guard that enforces the
+  permission, e.g. `@restPermissionGuard canFreezeWidget`; the default is
+  `can<OperationId>`. Several operations may share a guard only when they require
+  the same permission. See `docs/permissions.md`.
+- `@restPublic` — a bare marker that leaves a REST operation unguarded, for an
+  operation such as a login request. It is mutually exclusive with
+  `@restPermission` and `@restPermissionGuard`.
 - `@throws {Class} [status=<code>] reason` — an error the operation raises, and
   why. The generator writes the class to `packages/sdk/src/specErrors.ts`, with
   the wire kind derived from the name and the status defaulting to `400`; the

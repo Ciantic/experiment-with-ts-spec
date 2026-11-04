@@ -8,6 +8,7 @@ import { run as runQueries } from "./infra/generate-queries.ts";
 import { run as runGuards } from "./infra/generate-guards.ts";
 import { run as runEntityRoutes } from "./infra/generate-entity-routes.ts";
 import { run as runOperations } from "./operations/generate-operations.ts";
+import { run as runOperationGuards } from "./operations/generate-operation-guards.ts";
 import { run as runSpecTests } from "./operations/generate-spec-tests.ts";
 import { run as runOperationRoutes } from "./operations/generate-operation-routes.ts";
 import { run as runRestClient } from "./sdk/generate-rest-client.ts";
@@ -26,6 +27,7 @@ const steps: Step[] = [
     runPermissions,
     runErrors,
     runOperations,
+    runOperationGuards,
     runSpecTests,
     runPostgresSchema,
     runRepositories,

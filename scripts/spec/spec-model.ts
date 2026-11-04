@@ -68,6 +68,9 @@ export const TYPE_TAGS = ["primitive", "zod", "pgType", "pgDefault"] as const;
 export const METHOD_TAGS = [
     "operation",
     "restOperation",
+    "restPermission",
+    "restPermissionGuard",
+    "restPublic",
     "throws",
     "todo",
     "testDescribe",
@@ -209,6 +212,48 @@ export type RestMethod = (typeof REST_METHODS)[number];
 /** Whether a token is a verb a route table can match. */
 export function isRestMethod(value: string): value is RestMethod {
     return (REST_METHODS as readonly string[]).includes(value);
+}
+
+/** The permission a REST operation requires, from `@restPermission invoice:send`. See docs/permissions.md. */
+export interface RestPermission {
+    /** The entity key the permission scopes, e.g. `invoice`. */
+    scope: string;
+    /** The action the permission grants, e.g. `send`. */
+    action: string;
+}
+
+/** The pattern a `@restPermission` value takes: an entity key, a colon, and an action. */
+const REST_PERMISSION_PATTERN = /^([A-Za-z_$][\w$]*):([A-Za-z_$][\w$]*)$/u;
+
+/** The pattern a guard function name takes, so the route listing and the file agree. */
+const GUARD_NAME_PATTERN = /^can[A-Z][A-Za-z0-9]*$/u;
+
+/** Read `@restPermission invoice:send`; undefined when the value is malformed, for the linter to report. */
+export function parseRestPermission(value: string | undefined): RestPermission | undefined {
+    const match = REST_PERMISSION_PATTERN.exec((value ?? "").trim());
+    if (match?.[1] === undefined || match[2] === undefined) {
+        return undefined;
+    }
+    return { scope: match[1], action: match[2] };
+}
+
+/** Why a `@restPermission` value is refused. */
+export const REST_PERMISSION_FORMAT = "names an entity and an action, as `@restPermission invoice:send`";
+
+/** Whether a token is the guard function name a `@restPermissionGuard` may carry. */
+export function isGuardName(value: string | undefined): value is string {
+    return GUARD_NAME_PATTERN.test((value ?? "").trim());
+}
+
+/** Read `@restPermissionGuard canSendInvoice`; undefined when the value is malformed, for the linter to report. */
+export function parseRestPermissionGuard(value: string | undefined): string | undefined {
+    const name = (value ?? "").trim();
+    return isGuardName(name) ? name : undefined;
+}
+
+/** The guard function a route's permission uses: `sendInvoice` -> `canSendInvoice`. */
+export function guardNameFor(operation: string): string {
+    return `can${operation.charAt(0).toUpperCase()}${operation.slice(1)}`;
 }
 
 /** The read operations `@queries` and `@restQueries` may name, in canonical order. */
@@ -505,6 +550,12 @@ export interface SpecOperation {
     restMethod?: RestMethod;
     /** The path `@restOperation` names, e.g. `/invoice/send`; absent when the tag is malformed. */
     restPath?: string;
+    /** The permission a REST operation requires, from `@restPermission invoice:send`. See docs/permissions.md. */
+    restPermission?: RestPermission;
+    /** The guard that enforces it, from `@restPermissionGuard canSendInvoice`; derived when absent. */
+    restPermissionGuard?: string;
+    /** True when `@restPublic` leaves a REST operation unguarded. */
+    restPublic: boolean;
     /** The `@todo` text when the operation is deferred from generation; absent when it is generated. */
     todo?: string;
     /** The method's tags as written, which the linter alone reads. */
@@ -1214,6 +1265,11 @@ function readOperation(
     // The verb and the path are the tag's value; a malformed one stays absent so the linter reports it.
     const restTokens = (tags.written.byName.get("restOperation")?.[0]?.value ?? "").split(/\s+/u).filter(Boolean);
     const restMethod = restTokens[0];
+    // A malformed permission or guard stays absent, so the linter reports it rather than a generator wiring it.
+    const restPermission = parseRestPermission(tags.written.byName.get("restPermission")?.[0]?.value);
+    const restPermissionGuard = parseRestPermissionGuard(
+        tags.written.byName.get("restPermissionGuard")?.[0]?.value,
+    );
     return {
         interfaceName: contract.name,
         importSpecifier: contract.importSpecifier,
@@ -1239,6 +1295,9 @@ function readOperation(
         rest,
         ...(restMethod !== undefined && isRestMethod(restMethod) ? { restMethod } : {}),
         ...(restTokens[1] !== undefined && restTokens[1].startsWith("/") ? { restPath: restTokens[1] } : {}),
+        ...(restPermission === undefined ? {} : { restPermission }),
+        ...(restPermissionGuard === undefined ? {} : { restPermissionGuard }),
+        restPublic: tags.written.byName.has("restPublic"),
         ...(todo === undefined ? {} : { todo }),
         tags: tags.written,
         location: locationOf(method),

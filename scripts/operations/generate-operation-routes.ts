@@ -36,6 +36,19 @@ function operationImport(id: string): string {
     return `./${id}.ts`;
 }
 
+/** A hand-written permission guard, beside the operation modules in the same package. */
+function guardImport(name: string): string {
+    return `./guards/${name}.ts`;
+}
+
+/** The distinct guard names the routes use, sorted so the imports are stable. */
+function guardNames(operations: readonly RestOperationCall[]): string[] {
+    const names = operations.flatMap((operation) =>
+        operation.guardName === undefined ? [] : [operation.guardName],
+    );
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+}
+
 /** Render the calls the spec's `@restOperation` tags declare, one route each. */
 export function renderOperationRoutes(operations: RestOperationCall[]): string {
     const lines: string[] = [HEADER];
@@ -43,6 +56,9 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
     if (operations.length > 0) {
         for (const operation of operations) {
             lines.push(`import { ${operation.id} } from "${operationImport(operation.id)}";`);
+        }
+        for (const name of guardNames(operations)) {
+            lines.push(`import { ${name} } from "${guardImport(name)}";`);
         }
         const schemas = operations
             .flatMap((operation) => (operation.inputSchemaName === undefined ? [] : [operation.inputSchemaName]))
@@ -70,6 +86,9 @@ export function renderOperationRoutes(operations: RestOperationCall[]): string {
         lines.push(`        path: "${operation.path}",`);
         lines.push(`        source: "${operation.source}",`);
         lines.push(`        input: ${operation.inputSchemaName ?? "z.undefined()"},`);
+        if (operation.guardName !== undefined) {
+            lines.push(`        guard: ${operation.guardName},`);
+        }
         // The context is the one every route receives; an operation that wanted another fails to compile here.
         lines.push(
             operation.inputTypeName === undefined

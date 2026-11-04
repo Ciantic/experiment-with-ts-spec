@@ -9,6 +9,8 @@ the transport.
   operation ids, filters, the operations each entity exposes, and the calls a
   `@restOperation` declares. Hand-written.
 - `scripts/infra/generate-entity-routes.ts` — the entity route generator.
+- `scripts/operations/generate-operation-guards.ts` — scaffolds the
+  hand-written guards a `@restPermission` names, and checks them with `--check`.
 - `scripts/operations/generate-operation-routes.ts` — the operation route
   generator, writing the `operationRoutes` module the operations package
   exposes.
@@ -42,6 +44,8 @@ the transport.
   Hand-written; see `docs/transactions.md`.
 
 - `pnpm generate:entity-routes` — writes infra's entity route modules.
+- `pnpm generate:operation-guards` — scaffolds the permission guards the
+  operation routes use.
 - `pnpm generate:operation-routes` — writes the operation routes and the
   combined table.
 - `pnpm generate:rest-client` — writes the client.
@@ -385,7 +389,9 @@ No mode reaches the statement unvalidated.
 - **Authorization.** The generated routes carry guards: a call needs either the
   global permission or a permission in every tenant it names, and a key-addressed
   write is checked against the stored tenant (`docs/permissions.md`). A global
-  entity requires its global permission, as in `tenant:create`.
+  entity requires its global permission, as in `tenant:create`. An operation
+  route uses the hand-written guard its `@restPermission` names, or none when it
+  is `@restPublic`.
   `RequestContext.hasGlobalPermission` and `hasTenantPermission` are still the
   scaffold, so no principal is resolved and a guarded server answers `501` until
   they are implemented. Postgres

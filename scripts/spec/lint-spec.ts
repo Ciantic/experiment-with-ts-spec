@@ -12,17 +12,21 @@ import {
     TYPE_TAGS,
     WIDGETS,
     WRITE_OPERATIONS,
+    guardNameFor,
     isCompareOperator,
     isForeignKeyOption,
+    isGuardName,
     isNullOperator,
     isOrderDirection,
     isReferentialAction,
     isTestTag,
     loadSpec,
+    lowerFirst,
     parseForeignKey,
     parseQueryFilter,
     parseInMemorySpec,
     parseParameters,
+    parseRestPermission,
     resolveType,
     assignsColumn,
     hasTriggerHeader,
@@ -32,10 +36,13 @@ import {
     triggerHeaderText,
     TRIGGER_EVENTS,
     triggerLevel,
+    REST_PERMISSION_FORMAT,
     type ComputedKind,
     type Diagnostic,
+    type RestPermission,
     type SpecInterface,
     type SpecModel,
+    type SpecOperation,
     type SpecProperty,
     type SpecLocation,
     type SpecTag,
@@ -254,6 +261,90 @@ function lintOperations(spec: SpecModel, findings: Diagnostic[]): void {
                 if (row.text === "") {
                     report("@testIt needs the text naming its test", row.location.line);
                 }
+            }
+        }
+    }
+    lintRestPermissions(spec, findings);
+}
+
+/** Check the permission, guard, and public tags that wire a REST operation's guard. See docs/permissions.md. */
+function lintRestPermissions(spec: SpecModel, findings: Diagnostic[]): void {
+    const scopes = new Set([...spec.interfaces.values()].map((entity) => lowerFirst(entity.name)));
+    const guards = new Map<string, { operation: SpecOperation; permission: RestPermission }>();
+    for (const operation of spec.operations) {
+        const report = (message: string, line = operation.location.line) => {
+            findings.push({ filePath: operation.location.filePath, line, message: `\`${operation.name}\`: ${message}` });
+        };
+        const permissionTags = operation.tags.byName.get("restPermission") ?? [];
+        const guardTags = operation.tags.byName.get("restPermissionGuard") ?? [];
+        const publicTags = operation.tags.byName.get("restPublic") ?? [];
+
+        if (permissionTags.length > 1) {
+            report("@restPermission appears twice; declare one permission", permissionTags[1]?.line);
+        }
+        if (guardTags.length > 1) {
+            report("@restPermissionGuard appears twice; name one guard", guardTags[1]?.line);
+        }
+        if (publicTags.length > 1) {
+            report("@restPublic appears twice; one bare marker is enough", publicTags[1]?.line);
+        }
+        if (publicTags.length > 0) {
+            if (!operation.rest) {
+                report("@restPublic requires @restOperation", publicTags[0]?.line);
+            }
+            if (permissionTags.length > 0 || guardTags.length > 0) {
+                report("@restPublic and @restPermission are mutually exclusive", publicTags[0]?.line);
+            }
+        }
+        if (guardTags.length > 0 && permissionTags.length === 0) {
+            report("@restPermissionGuard requires @restPermission", guardTags[0]?.line);
+        }
+
+        const permissionTag = permissionTags[0];
+        if (permissionTag) {
+            if (!operation.rest) {
+                report("@restPermission requires @restOperation", permissionTag.line);
+            }
+            const permission = parseRestPermission(permissionTag.value);
+            if (permission === undefined) {
+                report(`@restPermission ${REST_PERMISSION_FORMAT}`, permissionTag.line);
+            } else if (!scopes.has(permission.scope)) {
+                report(
+                    `@restPermission scope \`${permission.scope}\` names no entity; use the entity's camel-cased name`,
+                    permissionTag.line,
+                );
+            }
+        }
+
+        const guardTag = guardTags[0];
+        if (guardTag) {
+            if (!operation.rest) {
+                report("@restPermissionGuard requires @restOperation", guardTag.line);
+            }
+            if (!isGuardName(guardTag.value)) {
+                report("@restPermissionGuard names a guard function, as `canSendInvoice`", guardTag.line);
+            }
+        }
+
+        if (operation.rest && operation.operation && permissionTags.length === 0 && publicTags.length === 0) {
+            report("@restOperation needs @restPermission, or @restPublic to leave it unguarded");
+        }
+
+        const permission = operation.restPermission;
+        if (permission !== undefined) {
+            const name = operation.restPermissionGuard ?? guardNameFor(operation.name);
+            const existing = guards.get(name);
+            if (existing === undefined) {
+                guards.set(name, { operation, permission });
+            } else if (
+                existing.permission.scope !== permission.scope ||
+                existing.permission.action !== permission.action
+            ) {
+                const line = operation.restPermissionGuard === undefined ? operation.location.line : guardTag?.line;
+                report(
+                    `guard \`${name}\` is also used by \`${existing.operation.name}\`, which requires \`${existing.permission.scope}:${existing.permission.action}\`; a shared guard checks one permission`,
+                    line,
+                );
             }
         }
     }

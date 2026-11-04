@@ -231,6 +231,72 @@ export interface PartLine {
 
         expect(buildPermissionsModel(spec).find((entry) => entry.key === "tenant")?.tenantOwned).toBe(false);
     });
+
+    it("adds the actions @restPermission declares, after the infra actions", () => {
+        const spec = build(
+            WIDGET,
+            `
+export interface WidgetOperations<T> {
+    /**
+     * @operation
+     * @restOperation POST /widget/send
+     * @restPermission widget:send
+     */
+    sendWidget(ctx: T): Promise<void>;
+}`,
+        );
+
+        expect(buildPermissionsModel(spec).find((entry) => entry.key === "widget")?.actions).toEqual([
+            "create",
+            "upsert",
+            "update",
+            "delete",
+            "query",
+            "watch",
+            "send",
+        ]);
+    });
+
+    it("deduplicates an operation action the entity already declares", () => {
+        const spec = build(
+            WIDGET,
+            `
+export interface WidgetOperations<T> {
+    /**
+     * @operation
+     * @restOperation POST /widget/refresh
+     * @restPermission widget:query
+     */
+    refreshWidget(ctx: T): Promise<void>;
+}`,
+        );
+
+        expect(buildPermissionsModel(spec).find((entry) => entry.key === "widget")?.actions).toEqual([
+            "create",
+            "upsert",
+            "update",
+            "delete",
+            "query",
+            "watch",
+        ]);
+    });
+
+    it("leaves an unknown scope alone, which the linter reports", () => {
+        const spec = build(
+            WIDGET,
+            `
+export interface WidgetOperations<T> {
+    /**
+     * @operation
+     * @restOperation POST /widget/send
+     * @restPermission gadget:send
+     */
+    sendWidget(ctx: T): Promise<void>;
+}`,
+        );
+
+        expect(buildPermissionsModel(spec).map((entry) => entry.key)).toEqual(["widget"]);
+    });
 });
 
 describe("actionName", () => {

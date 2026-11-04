@@ -56,6 +56,7 @@ export interface WidgetOperations<T> {
      *
      * @operation
      * @restOperation POST /widget/send
+     * @restPermission widget:send
      */
     sendWidget(ctx: T, opts: { widget: Widget }): Promise<Widget>;
 
@@ -64,8 +65,18 @@ export interface WidgetOperations<T> {
      *
      * @operation
      * @restOperation POST /widget/reset
+     * @restPermission widget:reset
      */
     resetWidgets(ctx: T): Promise<void>;
+
+    /**
+     * Read the widget status.
+     *
+     * @operation
+     * @restOperation GET /widget/status
+     * @restPublic
+     */
+    statusWidgets(ctx: T): Promise<void>;
 }
 `.trim();
 
@@ -106,6 +117,16 @@ describe("renderOperationRoutes", () => {
         expect(code).toContain('import { z } from "zod";');
         expect(code).toContain("input: z.undefined()");
         expect(code).toContain("handler: (ctx) => resetWidgets(ctx)");
+    });
+
+    it("imports the guard each permission declares and attaches it to the route", () => {
+        const code = renderOperationRoutes(withOperations.operations);
+
+        expect(code).toContain('import { canSendWidget } from "./guards/canSendWidget.ts";');
+        expect(code).toContain('import { canResetWidgets } from "./guards/canResetWidgets.ts";');
+        expect(code).toContain("        guard: canSendWidget,");
+        expect(code).toContain("        guard: canResetWidgets,");
+        expect(code).not.toContain("canStatusWidgets");
     });
 
     it("types the table against infra's router", () => {

@@ -2,9 +2,11 @@
 import {
     READ_OPERATIONS,
     WRITE_OPERATIONS,
+    guardNameFor,
     isCompareOperator,
     lowerFirst,
     type Diagnostic,
+    type RestPermission,
     type WatchScope,
     type ReadOperation,
     type SpecInterface,
@@ -87,6 +89,12 @@ export interface RestOperationCall {
     description: string[];
     /** Whether the operation declares an input parameter, which is the argument the wire carries. */
     hasInput: boolean;
+    /** The permission the route requires, from `@restPermission`; absent when the route is public. */
+    permission?: RestPermission;
+    /** The guard that enforces it: from `@restPermissionGuard`, or derived from the id. */
+    guardName?: string;
+    /** Where the operation is declared, so a generator reports against the tag. */
+    location: SpecLocation;
 }
 
 /** The parsed spec mapped to a REST surface, with the problems found while mapping it. */
@@ -233,6 +241,13 @@ function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (lo
             outputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Output`,
             description: operation.description,
             hasInput: operation.parameters.length > 1,
+            location: operation.location,
+            ...(operation.restPermission === undefined
+                ? {}
+                : {
+                      permission: operation.restPermission,
+                      guardName: operation.restPermissionGuard ?? guardNameFor(operation.name),
+                  }),
         });
     }
     calls.sort((a, b) => a.id.localeCompare(b.id));

@@ -1213,6 +1213,56 @@ export interface Ops<T> {
         expect(spec.operations.find((operation) => operation.name === "other")?.restPath).toBeUndefined();
     });
 
+    it("reads a permission, its guard, and the public marker", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice:send
+     * @restPermissionGuard canDeliverInvoice
+     */
+    send(ctx: T): Promise<void>;
+
+    /**
+     * @operation
+     * @restOperation GET /invoice/status
+     * @restPublic
+     */
+    status(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations.find((operation) => operation.name === "send")).toMatchObject({
+            restPermission: { scope: "invoice", action: "send" },
+            restPermissionGuard: "canDeliverInvoice",
+            restPublic: false,
+        });
+        expect(spec.operations.find((operation) => operation.name === "status")).toMatchObject({
+            restPublic: true,
+        });
+        expect(spec.operations.find((operation) => operation.name === "status")?.restPermission).toBeUndefined();
+    });
+
+    it("keeps a malformed permission absent, so lint can report it", () => {
+        const spec = parse({
+            "Ops.ts": `
+export interface Ops<T> {
+    /**
+     * @operation
+     * @restOperation POST /invoice/send
+     * @restPermission invoice-send
+     * @restPermissionGuard CanSend
+     */
+    send(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(spec.operations[0]?.restPermission).toBeUndefined();
+        expect(spec.operations[0]?.restPermissionGuard).toBeUndefined();
+    });
+
     it("keeps @restOperation without @operation, so lint can report it", () => {
         const spec = parse({
             "Ops.ts": `

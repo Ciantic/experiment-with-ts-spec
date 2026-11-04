@@ -24,6 +24,7 @@ export interface WidgetOperations<T> {
      *
      * @operation
      * @restOperation POST /widget/send
+     * @restPermission widget:send
      */
     sendWidget(ctx: T, opts: {
         widget: Widget;
@@ -37,6 +38,12 @@ after it, so two contracts may not declare the same method name. `@restOperation
 written out rather than derived from the name; `@operation` is what makes it an
 operation. A REST operation takes the context and at most one input, since the
 wire carries one argument.
+
+`@restPermission <scope>:<action>` names the permission the route requires; the
+scope is an entity key, and the action is added to `PERMISSIONS` when it is new.
+`@restPermissionGuard <name>` optionally names a different hand-written guard,
+and `@restPublic` leaves a route unguarded. An operation route without either a
+permission or `@restPublic` is a lint finding. See `docs/permissions.md`.
 
 A method carrying `@todo` is deferred: it gets no scaffold, no route, no client
 call, and no error class, so an operation can be declared before it is designed.
@@ -78,6 +85,14 @@ than a null the client has to interpret. The doc comment carries the tag the
 lint rule requires for that throw; remove the tag together with the throw. The
 `scaffold/no-not-implemented` Oxlint rule warns on a `throw new NotImplemented`,
 so a call left as its scaffold is visible in `pnpm lint`. See `docs/errors.md`.
+
+A REST operation also gets a guard scaffold under
+`packages/operations/src/guards/`, named `can<OperationId>` or the name
+`@restPermissionGuard` gives. `scripts/operations/generate-operation-guards.ts`
+writes it once and never overwrites it; the scaffold fails closed with
+`NotImplemented`, and the author replaces the body with the permission check.
+The guard file is pruned only while it is still an untouched scaffold. See
+`docs/permissions.md`.
 
 The scaffold fills the contract's type parameter with `unknown`, and that is the
 implementer's first edit. The generator has no opinion on what an operation
@@ -127,14 +142,15 @@ does that, because the annotation is what connects the module to the spec.
 `pnpm lint:operations` is `generate:operations --check`: it writes nothing, so
 it reports a missing module, a module whose annotation drifted, or a scaffold the
 spec no longer declares without repairing any of them. `pnpm lint` runs it
-beside the spec linter and `lint:spec-tests`.
+beside the spec linter, `lint:operation-guards`, and `lint:spec-tests`.
 
 The generator refuses the whole run when the spec itself cannot be scaffolded:
 
 - an operation that takes more than one type parameter, since the backend
   supplies one context;
 - two contracts declaring the same method name, since the name is the file name;
-- `@restOperation` without `@operation`, and a tag without a verb and a path.
+- `@restOperation` without `@operation`, without `@restPermission` or
+  `@restPublic`, and a tag without a verb and a path.
 
 `@throws` findings belong to `generate:errors`, which runs first; an operation
 route that would collide with an entity route is reported by the REST model.
@@ -211,9 +227,15 @@ same model as the entity routes:
     path: "/widget/send",
     source: "body",
     input: sendWidgetSchema,
+    guard: canSendWidget,
     handler: (ctx, body) => sendWidget(ctx, body as SendWidgetInput),
 }
 ```
+
+The route imports `canSendWidget` from `./guards/canSendWidget.ts`. The guard is
+hand-written because its argument is the operation input; the generator scaffolds
+it under `packages/operations/src/guards/` and `pnpm lint:operation-guards`
+checks that the body still names the declared permission.
 
 `operationRoutes` is spread into the table the router matches on, so a group can
 name the operation by its id. The handler passes the route's context straight to

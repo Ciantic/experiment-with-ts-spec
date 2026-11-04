@@ -27,7 +27,7 @@ export type { ChangeNotification } from "./db/notifications.ts";
 // Router exports
 export { entityRoutes } from "./http/routes/index.ts";
 export { ApiRouter, defineRoute } from "./http/router.ts";
-export type { HttpRouter, Route } from "./http/router.ts";
+export type { HttpRouter, Route, RouteGuard } from "./http/router.ts";
 export { ApiServer } from "./http/server.ts";
 export type { HttpServer } from "./http/server.ts";
 export { ApiHttpResponse, WritableResponse } from "./http/api-http-response.ts";
