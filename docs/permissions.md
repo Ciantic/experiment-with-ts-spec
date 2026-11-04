@@ -1,8 +1,8 @@
 # Permissions
 
 `packages/sdk/src/permissions.ts` declares the `PERMISSIONS` const: for each
-entity, whether a tenant scopes it and the actions it permits, each with display
-text. `scripts/sdk/generate-permissions.ts` writes it, so the file is never
+entity that has a permission to check, whether a tenant scopes it and the
+actions it permits, each with display text. `scripts/sdk/generate-permissions.ts` writes it, so the file is never
 edited by hand.
 
 ```ts
@@ -57,28 +57,29 @@ irregular plurals, such as `@plural sent invoices` on `InvoiceSent`.
 
 ## Where the actions come from
 
-An entity's actions are the ones its infra declarations generate. The generator
-reads them from the parsed `SpecModel` in `scripts/spec/spec-model.ts`:
+An entity's actions are the calls its REST endpoints expose. A permission is
+only worth checking on a call a session can make, so an infra declaration that
+no REST tag exposes adds nothing. The generator reads the exposure from the
+parsed `SpecModel` in `scripts/spec/spec-model.ts`:
 
-| Declaration   | Actions                                                   |
-| ------------- | --------------------------------------------------------- |
-| `@repository` | the write operations it names: `create`, `upsert`, `update`, `delete` |
-| `@queries`    | `query`                                                   |
-| `@watch`      | `watch`, whatever scopes it names                         |
+| Declaration       | Actions                                                   |
+| ----------------- | --------------------------------------------------------- |
+| `@restRepository` | the write operations it names: `create`, `upsert`, `update`, `delete` |
+| `@restQueries`    | `query`                                                   |
+| `@restWatch`      | `watch`, whatever scopes it names                         |
 
 The writes come first in their canonical order, then the query, then the watch.
-An entity without a `@watch` has no `watch` action.
-
-A `@restRepository`, `@restQueries`, or `@restWatch` adds nothing. It exposes
-over REST an action the infra already has, so the permissions name the infra
-action once.
+An entity without a `@restWatch` has no `watch` action, and an entity that
+exposes no call has no entry at all, whatever `@repository` and `@queries` it
+declares for backend callers.
 
 A REST operation adds the action its `@restPermission <scope>:<action>` names,
-after the entity's infra actions and in a stable sorted order. The scope must be
-an entity key; the action may be new, and an action the entity already declares
-is not added twice. An operation that is `@restPublic` declares no permission.
-An entity deferred with `@todo` generates no infra, so the generator leaves it
-out.
+after the entity's exposed actions and in a stable sorted order. The scope must
+be an entity key; the action may be new, and an action the entity already
+declares is not added twice. An operation is the one way an entity with no
+endpoints of its own appears in the table: its scope keeps the entry. An
+operation that is `@restPublic` declares no permission. An entity deferred with
+`@todo` generates no infra, so the generator leaves it out.
 
 ## Tenant-owned entities
 

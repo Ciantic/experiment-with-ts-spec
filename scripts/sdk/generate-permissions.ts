@@ -24,10 +24,10 @@ export interface PermissionEntry {
     actions: string[];
 }
 
-/** The infra actions an entity permits: its repository writes, then its query, then its watch. */
+/** The actions an entity exposes over REST: its repository writes, then its query, then its watch. */
 export function entityActions(entity: SpecInterface): string[] {
-    const actions: string[] = [...entity.repositoryOperations, ...entity.queries];
-    if (entity.watch.length > 0) {
+    const actions: string[] = [...entity.restRepositoryOperations, ...entity.restQueries];
+    if (entity.restWatch.length > 0) {
         actions.push("watch");
     }
     return actions;
@@ -59,7 +59,7 @@ export function operationActions(spec: SpecModel): Map<string, string[]> {
     return new Map([...actions].map(([scope, declared]) => [scope, [...declared].sort()]));
 }
 
-/** One entry per entity, in the model's name order, with the actions its REST operations add. */
+/** One entry per entity that exposes or is named by an action, in the model's name order. */
 export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
     const entries = [...spec.interfaces.values()].map(permissionEntry);
     const byKey = new Map(entries.map((entry) => [entry.key, entry]));
@@ -77,7 +77,8 @@ export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
             }
         }
     }
-    return entries;
+    // An entity without a REST endpoint or a named operation action has no permission to check.
+    return entries.filter((entry) => entry.actions.length > 0);
 }
 
 /** The label an action reads, over the plural noun the entity declares. */

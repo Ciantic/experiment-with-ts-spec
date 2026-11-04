@@ -29,7 +29,7 @@ flowchart TD
     subgraph scripts["scripts/"]
         direction TB
         lint["<b>Spec linter</b><br/>scripts/spec/lint-spec.ts<br/>Gates every generator"]
-        permissions["<b>Permissions generator</b><br/>scripts/sdk/generate-permissions.ts<br/>Infra actions each entity permits"]
+        permissions["<b>Permissions generator</b><br/>scripts/sdk/generate-permissions.ts<br/>REST actions each entity permits"]
 
         pgModel["<b>Postgres model</b><br/>scripts/infra/postgres-model.ts"]
         zodModel["<b>Zod model</b><br/>scripts/sdk/zod-model.ts"]

@@ -49,7 +49,9 @@ const MARKER = `
 /**
  * @pgTable marker
  * @repository create update
+ * @restRepository create update
  * @queries query
+ * @restQueries query
  * @entity
  */
 export interface Marker {
@@ -64,7 +66,9 @@ const OWNED = `
  * @pgTable item
  * @tenantOwned tenantId
  * @repository create update delete
+ * @restRepository create update delete
  * @queries query
+ * @restQueries query
  * @entity
  */
 export interface Item {
@@ -81,6 +85,7 @@ const TENANT_ROOT = `
  * @pgTable tenant
  * @tenant
  * @repository create update
+ * @restRepository create update
  * @entity
  */
 export interface Tenant {
@@ -135,7 +140,7 @@ function tempDir(): string {
 }
 
 describe("entityActions", () => {
-    it("lists the repository writes, then the query, then the watch", () => {
+    it("lists the REST-exposed writes, then the query, then the watch", () => {
         const spec = build(WIDGET);
 
         expect(entityActions(entityNamed(spec, "Widget"))).toEqual([
@@ -148,13 +153,13 @@ describe("entityActions", () => {
         ]);
     });
 
-    it("omits the watch when the entity declares none", () => {
+    it("omits the watch when the entity exposes none", () => {
         const spec = build(MARKER);
 
         expect(entityActions(entityNamed(spec, "Marker"))).toEqual(["create", "update", "query"]);
     });
 
-    it("reads the repository declaration, not its REST exposure", () => {
+    it("reads the REST exposure, not the repository declaration", () => {
         const spec = build(`
 /**
  * @pgTable gadget
@@ -167,7 +172,23 @@ export interface Gadget {
     id: string;
 }`);
 
-        expect(entityActions(entityNamed(spec, "Gadget"))).toEqual(["create", "update"]);
+        expect(entityActions(entityNamed(spec, "Gadget"))).toEqual(["create"]);
+    });
+
+    it("is empty when the entity exposes nothing", () => {
+        const spec = build(`
+/**
+ * @pgTable gadget
+ * @repository create update
+ * @queries query
+ * @entity
+ */
+export interface Gadget {
+    /** @primaryKey */
+    id: string;
+}`);
+
+        expect(entityActions(entityNamed(spec, "Gadget"))).toEqual([]);
     });
 });
 
@@ -184,11 +205,59 @@ describe("buildPermissionsModel", () => {
         expect(buildPermissionsModel(spec).map((entry) => entry.key)).toEqual(["widget"]);
     });
 
+    it("leaves out an entity that exposes no REST action", () => {
+        const spec = build(
+            WIDGET,
+            `
+/**
+ * @pgTable gadget
+ * @repository create update
+ * @queries query
+ * @entity
+ */
+export interface Gadget {
+    /** @primaryKey */
+    id: string;
+}`,
+        );
+
+        expect(buildPermissionsModel(spec).map((entry) => entry.key)).toEqual(["widget"]);
+    });
+
+    it("keeps an entity whose only action an operation declares", () => {
+        const spec = build(
+            `
+/**
+ * @pgTable gadget
+ * @repository create update
+ * @entity
+ */
+export interface Gadget {
+    /** @primaryKey */
+    id: string;
+}`,
+            `
+export interface GadgetOperations<T> {
+    /**
+     * @operation
+     * @restOperation POST /gadget/send
+     * @restPermission gadget:send
+     */
+    sendGadget(ctx: T): Promise<void>;
+}`,
+        );
+
+        expect(buildPermissionsModel(spec)).toEqual([
+            { key: "gadget", name: "Gadget", plural: "gadgets", tenantOwned: false, actions: ["send"] },
+        ]);
+    });
+
     it("reads @plural instead of deriving the plural", () => {
         const spec = build(`
 /**
  * @pgTable sent_invoice
  * @repository create
+ * @restRepository create
  * @plural sent invoices
  * @entity
  */
@@ -205,6 +274,7 @@ export interface SentInvoice {
 /**
  * @pgTable part_line
  * @repository create
+ * @restRepository create
  * @entity
  */
 export interface PartLine {
@@ -232,7 +302,7 @@ export interface PartLine {
         expect(buildPermissionsModel(spec).find((entry) => entry.key === "tenant")?.tenantOwned).toBe(false);
     });
 
-    it("adds the actions @restPermission declares, after the infra actions", () => {
+    it("adds the actions @restPermission declares, after the exposed actions", () => {
         const spec = build(
             WIDGET,
             `

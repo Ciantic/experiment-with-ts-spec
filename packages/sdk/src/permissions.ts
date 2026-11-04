@@ -77,16 +77,6 @@ export const PERMISSIONS = {
             "query": { name: "Query invoice sent rows" },
         },
     },
-    "loginLink": {
-        name: "Login Link",
-        tenantOwned: false,
-        actions: {
-            "create": { name: "Create login links" },
-            "update": { name: "Update login links" },
-            "delete": { name: "Delete login links" },
-            "query": { name: "Query login links" },
-        },
-    },
     "seller": {
         name: "Seller",
         tenantOwned: true,
@@ -109,17 +99,6 @@ export const PERMISSIONS = {
             "query": { name: "Query tenants" },
         },
     },
-    "tenantSharedPermission": {
-        name: "Tenant Shared Permission",
-        tenantOwned: true,
-        actions: {
-            "create": { name: "Create tenant shared permissions" },
-            "upsert": { name: "Upsert tenant shared permissions" },
-            "update": { name: "Update tenant shared permissions" },
-            "delete": { name: "Delete tenant shared permissions" },
-            "query": { name: "Query tenant shared permissions" },
-        },
-    },
     "translation": {
         name: "Translation",
         tenantOwned: false,
@@ -139,16 +118,6 @@ export const PERMISSIONS = {
             "update": { name: "Update users" },
             "delete": { name: "Delete users" },
             "query": { name: "Query users" },
-        },
-    },
-    "userSession": {
-        name: "User Session",
-        tenantOwned: false,
-        actions: {
-            "create": { name: "Create user sessions" },
-            "update": { name: "Update user sessions" },
-            "delete": { name: "Delete user sessions" },
-            "query": { name: "Query user sessions" },
         },
     },
 } as const;
