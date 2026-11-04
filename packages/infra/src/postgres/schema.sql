@@ -97,6 +97,17 @@ create table "seller" (
     constraint "seller_tenantId_id_key" unique ("tenantId", "id")
 );
 
+create table "tenant_shared_permission" (
+    "id" uuid not null default uuidv7(),
+    "ownerTenantId" uuid not null references "tenant"("id"),
+    "sharedTenantId" uuid not null references "tenant"("id"),
+    "permissions" text not null,
+    "createdAt" timestamptz not null default now(),
+    "updatedAt" timestamptz not null default now(),
+    "version" int8 not null default 0,
+    constraint "tenant_shared_permission_pkey" primary key ("id")
+);
+
 create table "user_session" (
     "id" uuid not null default uuidv7(),
     "userId" uuid not null references "user"("id"),

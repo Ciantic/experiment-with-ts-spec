@@ -109,6 +109,17 @@ export const PERMISSIONS = {
             "query": { name: "Query tenants" },
         },
     },
+    "tenantSharedPermission": {
+        name: "Tenant Shared Permission",
+        tenantOwned: true,
+        actions: {
+            "create": { name: "Create tenant shared permissions" },
+            "upsert": { name: "Upsert tenant shared permissions" },
+            "update": { name: "Update tenant shared permissions" },
+            "delete": { name: "Delete tenant shared permissions" },
+            "query": { name: "Query tenant shared permissions" },
+        },
+    },
     "translation": {
         name: "Translation",
         tenantOwned: false,

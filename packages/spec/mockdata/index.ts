@@ -8,6 +8,7 @@ import { invoicesSent } from "./invoicesSent.ts";
 import { invoiceSentRows } from "./invoiceSentRows.ts";
 import { sellers } from "./sellers.ts";
 import { tenants } from "./tenants.ts";
+import { tenantSharedPermissions } from "./tenantSharedPermissions.ts";
 import { translations } from "./translations.ts";
 
 export * from "./customers.ts";
@@ -18,6 +19,7 @@ export * from "./invoicesSent.ts";
 export * from "./invoiceSentRows.ts";
 export * from "./emails.ts";
 export * from "./tenants.ts";
+export * from "./tenantSharedPermissions.ts";
 export * from "./translations.ts";
 export * from "./auditLogs.ts";
 
@@ -30,6 +32,7 @@ export interface MockTable {
 /** Every mock table, ordered so foreign keys resolve when inserted in sequence. */
 export const mockTables: MockTable[] = [
     { entity: "Tenant", rows: tenants },
+    { entity: "TenantSharedPermission", rows: tenantSharedPermissions },
     { entity: "Customer", rows: customers },
     { entity: "Seller", rows: sellers },
     { entity: "Invoice", rows: invoices },

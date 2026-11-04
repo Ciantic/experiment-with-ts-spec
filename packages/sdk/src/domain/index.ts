@@ -9,6 +9,7 @@ export * from "./invoiceSentRowSchema.ts";
 export * from "./loginLinkSchema.ts";
 export * from "./sellerSchema.ts";
 export * from "./tenantSchema.ts";
+export * from "./tenantSharedPermissionSchema.ts";
 export * from "./translationSchema.ts";
 export * from "./userSchema.ts";
 export * from "./userSessionSchema.ts";

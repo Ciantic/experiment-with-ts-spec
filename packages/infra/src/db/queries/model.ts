@@ -269,6 +269,20 @@ export const queryModel: QueryModel = {
             },
             "relations": {}
         },
+        "tenant_shared_permission": {
+            "name": "tenant_shared_permission",
+            "key": "id",
+            "fields": {
+                "id": "id",
+                "ownerTenantId": "ownerTenantId",
+                "sharedTenantId": "sharedTenantId",
+                "permissions": "permissions",
+                "createdAt": "createdAt",
+                "updatedAt": "updatedAt",
+                "version": "version"
+            },
+            "relations": {}
+        },
         "translation": {
             "name": "translation",
             "key": "lang",
