@@ -13,7 +13,7 @@ Two rules decide every tag name, and both are checkable by eye.
 `@deletedAt`, `@primaryKey`, `@foreignKey`, `@tenantOwned`, `@queryFilter`, `@queryOrderBy`,
 `@queryWhere`, `@restRepository`, `@restQueries`. A one-word tag is lowercase:
 `@widget`, `@computed`, `@unique`, `@version`, `@relation`, `@children`,
-`@inlined`, `@primitive`, `@tenant`, `@repository`, `@queries`, `@zod`.
+`@inlined`, `@primitive`, `@tenant`, `@repository`, `@queries`, `@plural`, `@zod`.
 
 **An option inside a tag's value is camelCase, and written `key=value`.** The
 first token stays whatever the tag's value is — for `@foreignKey`, the interface
@@ -169,6 +169,10 @@ Interface tags:
 - `@restWatch <scope>…` — the subset of `@watch` that the route table and the
   generated SDK expose. Optional, like `@watch`, and it may name only a scope
   `@watch` declares. See `docs/rest-api.md` and `docs/notifications.md`.
+- `@plural <noun>` — the plural noun the permission descriptions use,
+  such as `invoices` for `Invoice` or `sent invoices` for `InvoiceSent`. Optional:
+  an entity without it falls back to a mechanical plural of its camel-cased key.
+  Presentation only. See `docs/permissions.md`.
 - `@todo <text>` — the entity is not generated: no table, repository, query,
   schema, route, or client module, and none of the entity rules apply to it. The
   text says what is left to do, and the linter reports an empty one. See

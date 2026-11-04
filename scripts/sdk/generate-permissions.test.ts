@@ -12,9 +12,11 @@ import {
     type SpecModel,
 } from "../spec/spec-model.ts";
 import {
+    actionName,
     buildPermissionsModel,
-    buildTenantOwnedPermissionsModel,
+    displayName,
     entityActions,
+    pluralOf,
     renderPermissionsModule,
     run,
     type PermissionEntry,
@@ -184,6 +186,22 @@ describe("buildPermissionsModel", () => {
         expect(buildPermissionsModel(spec).map((entry) => entry.key)).toEqual(["widget"]);
     });
 
+    it("reads @plural instead of deriving the plural", () => {
+        const spec = build(`
+/**
+ * @pgTable sent_invoice
+ * @repository create
+ * @plural sent invoices
+ * @entity
+ */
+export interface SentInvoice {
+    /** @primaryKey */
+    id: string;
+}`);
+
+        expect(buildPermissionsModel(spec)[0]?.plural).toBe("sent invoices");
+    });
+
     it("camel-cases a multi-word entity name", () => {
         const spec = build(`
 /**
@@ -196,76 +214,133 @@ export interface PartLine {
     id: string;
 }`);
 
-        expect(buildPermissionsModel(spec)).toEqual([{ key: "partLine", actions: ["create"] }]);
+        expect(buildPermissionsModel(spec)).toEqual([
+            { key: "partLine", name: "Part Line", plural: "part lines", tenantOwned: false, actions: ["create"] },
+        ]);
     });
-});
 
-describe("buildTenantOwnedPermissionsModel", () => {
-    it("lists only the @tenantOwned entities, with the actions they permit", () => {
+    it("marks @tenantOwned entities and leaves the others unmarked", () => {
         const spec = build(WIDGET, OWNED);
 
-        expect(buildTenantOwnedPermissionsModel(spec)).toEqual([
-            { key: "item", actions: ["create", "update", "delete", "query"] },
+        expect(buildPermissionsModel(spec).map((entry) => [entry.key, entry.tenantOwned])).toEqual([
+            ["item", true],
+            ["widget", false],
         ]);
     });
 
     it("leaves out the @tenant root, which is not owned", () => {
         const spec = build(TENANT_ROOT, OWNED);
 
-        expect(buildTenantOwnedPermissionsModel(spec).map((entry) => entry.key)).toEqual(["item"]);
+        expect(buildPermissionsModel(spec).find((entry) => entry.key === "tenant")?.tenantOwned).toBe(false);
+    });
+});
+
+describe("displayName", () => {
+    it("splits a camel-cased key into capitalized words", () => {
+        expect(displayName("invoiceSentRow")).toBe("Invoice Sent Row");
     });
 
-    it("is empty when no entity declares @tenantOwned", () => {
-        expect(buildTenantOwnedPermissionsModel(build(WIDGET))).toEqual([]);
+    it("capitalizes a single word", () => {
+        expect(displayName("invoice")).toBe("Invoice");
+    });
+});
+
+describe("pluralOf", () => {
+    it("appends s to a regular noun", () => {
+        expect(pluralOf("invoice")).toBe("invoices");
+    });
+
+    it("pluralizes the last word of a camel-cased key", () => {
+        expect(pluralOf("invoiceSentRow")).toBe("invoice sent rows");
+    });
+
+    it("adds es after a sibilant", () => {
+        expect(pluralOf("box")).toBe("boxes");
+    });
+
+    it("turns a consonant and y into ies", () => {
+        expect(pluralOf("category")).toBe("categories");
+    });
+});
+
+describe("actionName", () => {
+    it("capitalizes the verb and names the plural", () => {
+        expect(actionName("create", "sent invoices")).toBe("Create sent invoices");
+        expect(actionName("query", "invoices")).toBe("Query invoices");
     });
 });
 
 describe("renderPermissionsModule", () => {
-    it("renders one quoted key and action tuple per entity, inside a const", () => {
-        const module = renderPermissionsModule(
-            [
-                { key: "marker", actions: ["create", "update", "query"] },
-                { key: "widget", actions: ["query", "watch"] },
-            ],
-            [],
-        );
+    it("renders one nested entry per entity, inside a const", () => {
+        const module = renderPermissionsModule([
+            { key: "marker", name: "Marker", plural: "markers", tenantOwned: false, actions: ["create", "update", "query"] },
+            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watch"] },
+        ]);
 
         expect(module).toContain("export const PERMISSIONS = {");
-        expect(module).toContain('    "marker": ["create", "update", "query"],');
-        expect(module).toContain('    "widget": ["query", "watch"],');
+        expect(module).toContain('    "marker": {');
+        expect(module).toContain('        name: "Marker",');
+        expect(module).toContain("        tenantOwned: false,");
+        expect(module).toContain('            "create": { name: "Create markers" },');
+        expect(module).toContain("        tenantOwned: true,");
+        expect(module).toContain('            "watch": { name: "Watch widgets" },');
         expect(module).toContain("} as const;");
     });
 
-    it("renders the tenant-owned subset as its own const with a type", () => {
-        const module = renderPermissionsModule([], [{ key: "item", actions: ["create", "query"] }]);
+    it("nests the actions under the entity so tenancy is stated once", () => {
+        const module = renderPermissionsModule([
+            { key: "item", name: "Item", plural: "items", tenantOwned: true, actions: ["create", "query"] },
+        ]);
 
-        expect(module).toContain("export const TENANT_OWNED_PERMISSIONS = {");
-        expect(module).toContain('    "item": ["create", "query"],');
-        expect(module).toContain("export type TenantOwnedPermissions = typeof TENANT_OWNED_PERMISSIONS;");
+        expect(module).toContain("        actions: {");
+        expect(module).toContain('            "query": { name: "Query items" },');
+        expect(module.match(/tenantOwned:/gu)).toHaveLength(1);
     });
 
     it("renders an empty const when there are no entities", () => {
-        expect(renderPermissionsModule([], [])).toContain("export const PERMISSIONS = {} as const;");
+        expect(renderPermissionsModule([])).toContain("export const PERMISSIONS = {} as const;");
     });
 
-    it("renders an empty tenant-owned const when no entity is @tenantOwned", () => {
-        expect(renderPermissionsModule([], [])).toContain("export const TENANT_OWNED_PERMISSIONS = {} as const;");
+    it("exports the types that name an entity and its actions", () => {
+        const module = renderPermissionsModule([]);
+
+        expect(module).toContain("export type Permissions = typeof PERMISSIONS;");
+        expect(module).toContain("export type PermissionEntity = keyof Permissions;");
+        expect(module).toContain(
+            'export type PermissionAction<E extends PermissionEntity> = keyof Permissions[E]["actions"];',
+        );
     });
 
-    it("exports the Permissions type as the type of PERMISSIONS", () => {
-        expect(renderPermissionsModule([], [])).toContain("export type Permissions = typeof PERMISSIONS;");
+    it("exports the types that name a tenant-scoped entity and its actions", () => {
+        const module = renderPermissionsModule([]);
+
+        expect(module).toContain("export type TenantPermissionEntity = {");
+        expect(module).toContain('    [E in PermissionEntity]: Permissions[E]["tenantOwned"] extends true ? E : never;');
+        expect(module).toContain(
+            'export type TenantPermissionAction<E extends TenantPermissionEntity> = keyof Permissions[E]["actions"];',
+        );
     });
 
-    it("loads to the PERMISSIONS value the SDK reads at runtime", () => {
-        const entries: PermissionEntry[] = [{ key: "widget", actions: ["query", "watch"] }];
+    it("loads to the nested PERMISSIONS value the SDK reads at runtime", () => {
+        const entries: PermissionEntry[] = [
+            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watch"] },
+        ];
         const loaded = tsLoadGeneratedModule<Record<string, unknown>>(
-            renderPermissionsModule(entries, [{ key: "item", actions: ["create"] }]),
+            renderPermissionsModule(entries),
             tsStubImports({}),
         );
 
-        expect(loaded.PERMISSIONS).toEqual({ widget: ["query", "watch"] });
-        expect(loaded.TENANT_OWNED_PERMISSIONS).toEqual({ item: ["create"] });
-        expect(Object.keys(loaded)).toEqual(["PERMISSIONS", "TENANT_OWNED_PERMISSIONS"]);
+        expect(loaded.PERMISSIONS).toEqual({
+            widget: {
+                name: "Widget",
+                tenantOwned: true,
+                actions: {
+                    query: { name: "Query widgets" },
+                    watch: { name: "Watch widgets" },
+                },
+            },
+        });
+        expect(Object.keys(loaded)).toEqual(["PERMISSIONS"]);
     });
 });
 
@@ -275,9 +350,7 @@ describe("run", () => {
         const file = join(tempDir(), "nested", "permissions.ts");
 
         expect(run(spec, ["--out", file], SILENT)).toBe(0);
-        expect(readFileSync(file, "utf8")).toBe(
-            renderPermissionsModule(buildPermissionsModel(spec), buildTenantOwnedPermissionsModel(spec)),
-        );
+        expect(readFileSync(file, "utf8")).toBe(renderPermissionsModule(buildPermissionsModel(spec)));
     });
 
     it("returns 1 when --out names no file", () => {

@@ -3209,6 +3209,63 @@ export interface Ops<T, U> {
     });
 });
 
+describe("@plural", () => {
+    /** Every spec source, so an entity is found wherever it sits. */
+    const sourceGlob = "/src/**/*.ts";
+
+    /** Parse an in-memory spec laid out under /src, so no test reads the real domain. */
+    function parse(files: Record<string, string>) {
+        const spec = Object.entries(files).map(([filePath, sourceFileText]) => ({ filePath, sourceFileText }));
+        return parseInMemorySpec(spec, { sourceGlob });
+    }
+
+    it("accepts a plural noun", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Invoice.ts": `/**
+ * @entity
+ * @repository create
+ * @plural invoices
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}`,
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a bare tag, which names no plural", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Invoice.ts": `/**
+ * @entity
+ * @repository create
+ * @plural
+ */
+export interface Invoice {
+    /**
+     * @fieldName ID
+     * @widget text
+     * @primaryKey
+     */
+    id: string;
+}`,
+            }),
+        );
+
+        expect(messages(findings)).toContain(
+            "`Invoice`: @plural names the plural noun, such as `@plural invoices`",
+        );
+    });
+});
+
 describe("the committed spec", () => {
     it("passes lint", () => {
         const { findings, interfaces, properties } = lintSpec(loadSpec());

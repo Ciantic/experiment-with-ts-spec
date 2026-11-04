@@ -45,8 +45,8 @@ The order is load-bearing:
 - **Build last.** It is the only step that consumes the generated output as
   input.
 
-`pnpm run generate` lints first, then writes the `PERMISSIONS` consts, which read
-only the entity declarations, so they need nothing from another generator. It
+`pnpm run generate` lints first, then writes the `PERMISSIONS` const, which reads
+only the entity declarations, so it needs nothing from another generator. It
 then writes the operation errors and scaffolds
 the operation modules, then runs the schema generator before the repository
 generator, then the query generator, the validation generator, the guard

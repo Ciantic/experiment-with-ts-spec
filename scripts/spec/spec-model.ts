@@ -57,6 +57,7 @@ export const INTERFACE_TAGS = [
     "restQueries",
     "watch",
     "restWatch",
+    "plural",
     "todo",
 ] as const;
 
@@ -339,6 +340,8 @@ export interface Tags {
     watch?: WatchScope[];
     /** The notification scopes `@restWatch` exposes, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
     restWatch?: WatchScope[];
+    /** The plural noun for the entity, from `@plural invoices`. See docs/permissions.md. */
+    plural?: string;
     /** The field's value is carried in a change payload, so a subscription can filter on it. See docs/notifications.md. */
     watchFilter: boolean;
     primitive: boolean;
@@ -1027,6 +1030,9 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     break;
                 case "restWatch":
                     if (tags.restWatch === undefined) tags.restWatch = parseWatchScopes(value);
+                    break;
+                case "plural":
+                    if (value !== undefined) tags.plural ??= value.trim();
                     break;
                 case "watchFilter":
                     tags.watchFilter = true;

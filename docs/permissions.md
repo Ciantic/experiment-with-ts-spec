@@ -1,29 +1,58 @@
 # Permissions
 
 `packages/sdk/src/permissions.ts` declares the `PERMISSIONS` const: for each
-entity, the infra-level actions it permits, and `TENANT_OWNED_PERMISSIONS`,
-which holds the subset that a tenant scopes. `scripts/sdk/generate-permissions.ts`
-writes it, so the file is never edited by hand.
+entity, whether a tenant scopes it and the infra-level actions it permits, each
+with display text. `scripts/sdk/generate-permissions.ts` writes it, so the file
+is never edited by hand.
 
 ```ts
 export const PERMISSIONS = {
-    "account": ["create", "upsert", "update", "delete", "query"],
-    "widget": ["create", "update", "query", "watch"],
+    "account": {
+        name: "Account",
+        tenantOwned: false,
+        actions: {
+            "create": { name: "Create accounts" },
+            "query": { name: "Query accounts" },
+        },
+    },
+    "widget": {
+        name: "Widget",
+        tenantOwned: true,
+        actions: {
+            "create": { name: "Create widgets" },
+            "query": { name: "Query widgets" },
+            "watch": { name: "Watch widgets" },
+        },
+    },
 } as const;
 
 export type Permissions = typeof PERMISSIONS;
+export type PermissionEntity = keyof Permissions;
+export type PermissionAction<E extends PermissionEntity> = keyof Permissions[E]["actions"];
 
-export const TENANT_OWNED_PERMISSIONS = {
-    "widget": ["create", "update", "query", "watch"],
-} as const;
-
-export type TenantOwnedPermissions = typeof TENANT_OWNED_PERMISSIONS;
+export type TenantPermissionEntity = {
+    [E in PermissionEntity]: Permissions[E]["tenantOwned"] extends true ? E : never;
+}[PermissionEntity];
+export type TenantPermissionAction<E extends TenantPermissionEntity> = keyof Permissions[E]["actions"];
 ```
 
-The SDK reads both consts at runtime, and a consumer imports them from
-`sdk/permissions.ts`, as it imports `sdk/specErrors.ts`. The tuples are
-`as const`, so each action is a literal type, and `Permissions` names the keys
-and actions without needing a value.
+A consumer imports the const and its types from `sdk/permissions.ts`, as it
+imports `sdk/specErrors.ts`. The value is `as const`, so each entity key and
+action key is a literal type, and the exported types name an entity or an action
+without needing a value. `TenantPermissionEntity` is the entity keys whose
+`tenantOwned` is `true`, so an entity without `@tenantOwned` cannot be passed to
+a tenant-scoped check.
+
+`name` is the entity's camel-cased key split into capitalized words:
+`invoiceSentRow` becomes `"Invoice Sent Row"`. An action's `name` is its verb
+capitalized plus the entity's plural, so `create` on `Invoice` becomes
+`"Create invoices"`, matching the batch the call takes. Both are for
+presentation; the keys are what a permission check uses.
+
+The plural comes from `@plural <noun>` when the entity declares it.
+Otherwise the generator pluralizes the last word of the display name:
+`invoiceSentRow` becomes `"invoice sent rows"`. The override is for irregular
+plurals, such as `@plural sent invoices` on `InvoiceSent`.
 
 ## Where the actions come from
 
@@ -49,12 +78,19 @@ generator leaves it out.
 
 ## Tenant-owned entities
 
-`TENANT_OWNED_PERMISSIONS` holds the rows of `PERMISSIONS` for the entities that
-declare `@tenantOwned <column>`, and `TenantOwnedPermissions` is its type. An
-entity without that tag is not in the subset, so the `@tenant` root is absent:
-it owns the other entities but is not scoped to itself. A tenant-owned entity
-permits the same actions in both tables, since the two read the same
-declarations.
+An entity that declares `@tenantOwned <column>` carries `tenantOwned: true`; every
+other entity carries `false`. The flag is stated once per entity rather than
+per action, since tenancy scopes the whole entity. The `@tenant` root is `false`:
+it owns the other entities but is not scoped to itself.
+
+A consumer that needs the tenant-owned subset filters the table:
+
+```ts
+const tenantOwned = Object.entries(PERMISSIONS).filter(([, entity]) => entity.tenantOwned);
+```
+
+The `TenantPermissionEntity` type derives the same subset at compile time. There
+is no second const, so an entity's actions cannot drift between two tables.
 
 ## Route guards
 
@@ -148,9 +184,13 @@ A guard asks for the global permission first: `hasGlobalPermission(scope, action
 Holding it allows the call whatever tenants it names, and no row is read. Without
 it, the guard resolves the tenants the call addresses and requires
 `hasTenantPermission(scope, action, tenant)` for each one, where `tenant` is the root's
-`TenantId` that `@tenantOwned` pins to the `@tenant` interface. A call that names
-several tenants is refused as a whole when the session lacks any one of them; a
-guard never narrows a read to the permitted subset.
+`TenantId` that `@tenantOwned` pins to the `@tenant` interface. The global check
+types `scope` as a `PermissionEntity` type parameter `E` and `action` as
+`PermissionAction<E>`; the tenant check uses `TenantPermissionEntity` and
+`TenantPermissionAction<E>`. A misspelled entity, an action the entity does not
+permit, or a tenant check on an entity without `@tenantOwned` is a compile error.
+A call that names several tenants is refused as a whole when the session lacks
+any one of them; a guard never narrows a read to the permitted subset.
 
 An upsert and a patch check both sides of a move: the tenant the row is stored in
 and the tenant it is written into. A create checks only the row's tenant, since no
@@ -199,8 +239,10 @@ tenants, and Postgres RLS with a per-request executor remains the database-level
 mechanism — see `docs/tenancy.md` and `docs/rest-api.md`.
 
 `RequestContext.hasGlobalPermission` and `hasTenantPermission` are still the
-scaffold, so a guarded server answers `501` until the principal is resolved. An operation route carries no guard yet:
-the spec has no annotation naming the permission a call needs.
+scaffold, so a guarded server answers `501` until the principal is resolved. Their
+parameters are typed against `PERMISSIONS`, which checks every generated guard at
+compile time. An operation route carries no guard yet: the spec has no annotation
+naming the permission a call needs.
 
 ## Keys
 

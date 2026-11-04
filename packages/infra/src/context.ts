@@ -5,6 +5,12 @@ import type { SqlDriver } from "./db/sql-driver.ts";
 import type { AuthSession } from "spec/user-service/AuthSession.ts";
 import type { TenantId } from "spec/user-service/Tenant.ts";
 import { NotImplemented } from "sdk/errors.ts";
+import type {
+    PermissionAction,
+    PermissionEntity,
+    TenantPermissionAction,
+    TenantPermissionEntity,
+} from "sdk/permissions.ts";
 
 /** How to build the app context. */
 export interface AppOptions {
@@ -43,7 +49,6 @@ export class RequestContext {
         return new RequestContext(executor, this.#request);
     }
 
-    
     /**
      * @throws {NotImplemented} until the request's session is resolved from its credentials
      */
@@ -56,7 +61,7 @@ export class RequestContext {
      *
      * @throws {NotImplemented} until permissions are checked against the authenticated session
      */
-    async hasGlobalPermission(_scope: string, _action: string): Promise<boolean> {
+    async hasGlobalPermission<E extends PermissionEntity>(_scope: E, _action: PermissionAction<E>): Promise<boolean> {
         throw new NotImplemented("hasGlobalPermission not implemented");
     }
 
@@ -65,7 +70,11 @@ export class RequestContext {
      *
      * @throws {NotImplemented} until permissions are checked against the authenticated session
      */
-    async hasTenantPermission(_scope: string, _action: string, _tenant: TenantId): Promise<boolean> {
+    async hasTenantPermission<E extends TenantPermissionEntity>(
+        _scope: E,
+        _action: TenantPermissionAction<E>,
+        _tenant: TenantId,
+    ): Promise<boolean> {
         throw new NotImplemented("hasTenantPermission not implemented");
     }
 }

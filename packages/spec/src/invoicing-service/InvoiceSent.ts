@@ -12,7 +12,9 @@ export type InvoiceSentId = BrandedId<"InvoiceSentId">;
 
 /**
  * An invoice as issued, frozen at the moment it was sent. See packages/spec/docs/invoice-snapshotting.md.
+ * 
  * @entity
+ * @plural sent invoices
  * @tenantOwned tenantId
  * @pgTable invoice_sent
  * @repository create upsert update delete

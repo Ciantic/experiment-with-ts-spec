@@ -307,6 +307,15 @@ function lintTenancyTags(spec: SpecInterface, report: Report): void {
     }
 }
 
+/** `@plural <noun>` names the plural used in generated permission descriptions. */
+function lintPlural(spec: SpecInterface, report: Report): void {
+    for (const tag of spec.tags.written.byName.get("plural") ?? []) {
+        if (!(tag.value ?? "").trim()) {
+            report("@plural names the plural noun, such as `@plural invoices`", tag);
+        }
+    }
+}
+
 /** `@watchFilter` marks a stored scalar column whose value the change payload carries. See docs/notifications.md. */
 function lintWatchFilterRequiresWatch(spec: SpecInterface, report: Report): void {
     const tags = spec.properties.flatMap((property) => property.tags.written.byName.get("watchFilter") ?? []);
@@ -352,6 +361,7 @@ function lintEntity(
     };
     lintEntityTrigger(spec.tags.written, interfaceReport);
     lintTenancyTags(spec, interfaceReport);
+    lintPlural(spec, interfaceReport);
     lintWatchFilterRequiresWatch(spec, interfaceReport);
 
     // An entity records one creation moment and one last-write moment.

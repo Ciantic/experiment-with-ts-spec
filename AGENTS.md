@@ -3,8 +3,8 @@
 - `packages/spec/` — TypeScript interfaces that form the definition of the
   application.
 - `packages/sdk/` — generated type-safe REST client, the generated Zod schemas
-  and shared Patch/Insert/read types, the generated `PERMISSIONS` and
-  `TENANT_OWNED_PERMISSIONS` consts, the
+  and shared Patch/Insert/read types, the generated `PERMISSIONS` const with
+  each entity's display text and tenancy, the
   shared API error classes, and the hand-written transport and package entry.
   Consumed by the backend and, eventually, the frontend. Owns the generators that
   write the schemas and the permissions.
