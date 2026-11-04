@@ -221,8 +221,8 @@ all.close();
 one.close();
 ```
 
-The helper uses the platform's `EventSource` by default; pass `options.source`
-to supply another implementation, such as a test double. A stream never
+The helper uses the global `EventSource`; a host without one must install a
+polyfill, and a test substitutes the global with a double. A stream never
 finishes, so the group handler refuses a streaming call rather than waiting for
 its result, just as it refuses any route that answers with a writable instead of
 a value.

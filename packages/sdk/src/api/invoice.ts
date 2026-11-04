@@ -7,7 +7,7 @@ import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 import type { ForbiddenError, HttpClient, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
-import { watch, type AllWatchEvent, type NotificationOptions, type NotificationSubscription, type WatchEvent, type WatchFilter } from "../watch.ts";
+import { watch, type AllWatchEvent, type WatchEvent, type WatchFilter, type WatchOperation } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
@@ -42,26 +42,26 @@ export function queryInvoice<S extends Selection<Invoice>>(
 export function watchInvoice(
     http: HttpClient,
     onChange: (event: AllWatchEvent) => void,
-    opts?: ({ filter?: WatchFilter<Invoice, "tenantId"> | undefined } & NotificationOptions) | undefined,
-): NotificationSubscription {
+    opts?: { filter?: WatchFilter<Invoice, "tenantId">; ops?: readonly WatchOperation[] },
+): EventSource {
     const ops = opts?.ops;
     const selected = opts?.filter;
     const argument = ops === undefined && selected === undefined
         ? undefined
         : { ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
-    return watch<AllWatchEvent>(http.url("/invoice/watch", argument), onChange, opts);
+    return watch<AllWatchEvent>(http.url("/invoice/watch", argument), onChange);
 }
 
 /** The change stream of the selected `Invoice` rows, optionally scoped to operations and filter values. See docs/notifications.md. */
 export function watchInvoiceRows(
     http: HttpClient,
     onChange: (event: WatchEvent<InvoicePrimaryKey>) => void,
-    opts: { pks: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId"> | undefined } & NotificationOptions,
-): NotificationSubscription {
+    opts: { pks: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId">; ops?: readonly WatchOperation[] },
+): EventSource {
     const { pks, ops } = opts;
     const selected = opts.filter;
     const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
-    return watch<WatchEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange, opts);
+    return watch<WatchEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange);
 }
 
 /** The errors `exec` can reject `createInvoice` with. */

@@ -1,7 +1,7 @@
 /** Unit tests for the typed server-sent event helper. See docs/notifications.md. */
 import { stringify } from "devalue";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { EventSourceUnavailableError, watch } from "./watch.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { watch } from "./watch.ts";
 
 /** A stand-in for the browser's `EventSource`, recording what the helper did. */
 class FakeSource {
@@ -21,6 +21,10 @@ class FakeSource {
     }
 }
 
+beforeEach(() => {
+    vi.stubGlobal("EventSource", FakeSource);
+});
+
 afterEach(() => {
     FakeSource.instances = [];
     vi.unstubAllGlobals();
@@ -32,7 +36,6 @@ describe("watch", () => {
         const subscription = watch<{ id: string }>(
             "http://api.example/widget/watch",
             (key) => changes.push(key.id),
-            { source: FakeSource },
         );
         const source = FakeSource.instances[0];
 
@@ -47,27 +50,9 @@ describe("watch", () => {
 
     it("passes undefined for an empty event, matching a plain notify stream", () => {
         const seen: unknown[] = [];
-        watch("http://api.example/widget/notify", (value) => seen.push(value), {
-            source: FakeSource,
-        });
+        watch("http://api.example/widget/notify", (value) => seen.push(value));
         FakeSource.instances[0]?.onmessage?.({ data: "" });
 
         expect(seen).toEqual([undefined]);
-    });
-
-    it("uses the platform's EventSource when none is supplied", () => {
-        vi.stubGlobal("EventSource", FakeSource);
-
-        watch("http://api.example/widget/notify", () => {});
-
-        expect(FakeSource.instances[0]?.url).toBe("http://api.example/widget/notify");
-    });
-
-    it("refuses a platform with no EventSource", () => {
-        vi.stubGlobal("EventSource", undefined);
-
-        expect(() => watch("http://api.example/widget/notify", () => {})).toThrow(
-            EventSourceUnavailableError,
-        );
     });
 });
