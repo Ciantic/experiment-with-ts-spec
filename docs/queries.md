@@ -445,13 +445,16 @@ export type Selection<E> = {
     [K in keyof E]?: Scalar<E[K]> extends true ? true : true | QueryArgs<ElementOf<E[K]>>;
 };
 
-/** The result of `E` under selection `S`: only the selected keys, each optional. */
+/** The value one selected key carries: the entity's field, or the selected shape of a branch. */
+type SelectedValue<E, S, K extends keyof E & keyof S> = NonNullable<S[K]> extends true
+    ? E[K]
+    : IsArray<E[K]> extends true
+        ? Selected<ElementOf<E[K]>, BranchSelect<S[K]>>[]
+        : Selected<ElementOf<E[K]>, BranchSelect<S[K]>>;
+
+/** The result of `E` under selection `S`: only the selected keys, each keeping the entity's optionality. */
 export type Selected<E, S> = {
-    [K in keyof S & keyof E]?: NonNullable<S[K]> extends true
-        ? E[K]
-        : IsArray<E[K]> extends true
-            ? Selected<ElementOf<E[K]>, BranchSelect<S[K]>>[]
-            : Selected<ElementOf<E[K]>, BranchSelect<S[K]>>;
+    [K in keyof E as K extends keyof S ? K : never]: SelectedValue<E, S, K & keyof S>;
 };
 ```
 
@@ -636,11 +639,11 @@ because the ranked window orders each parent's rows before they are grouped.
 
 ## Gotchas
 
-- **Every selected key is optional.** `Selected` marks each selected key `?`, so
-  `Selected<Widget, { code: true }>` is `{ code?: string }`. A `null` column
-  is omitted rather than carried as `null`, so a value is present only when the
-  column has one: selection narrows the type, and the runtime object lacks a key
-  it did not select or that was `null`.
+- **A selected key keeps the optionality it has on the entity.** A required
+  scalar selected with `true` stays required; an optional field stays optional
+  because its column is nullable and the resolver omits a `null` rather than
+  carrying it. Selection never adds `?` to a required field. See
+  `docs/queries.md`.
 - **`true` on a branch selects scalars only.** It does not recurse into nested
   branches, so a default selection cannot fan out into unbounded joins.
 - **A branch is `true` or a read's arguments.** An object branch requires a

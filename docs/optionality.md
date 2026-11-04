@@ -81,11 +81,10 @@ nullable column passes.
 
 ## Gotchas
 
-- **A selected key is still `?`, even when the field is required.** `Selected`
-  marks every key it projects optional, because selection omits what the caller
-  did not ask for. It is the selected *key that is optional*, not the value: a
-  required field's column is `not null`, so the value is always present when it
-  is selected. See `docs/queries.md`.
+- **A selected key keeps the optionality it has on the entity.** A required
+  scalar selected with `true` is required in the result; an optional field stays
+  optional because its column is nullable and the resolver omits a `null`. See
+  `docs/queries.md`.
 - **A `null` column and an absent key look the same on the wire.** The resolver
   drops a `null` scalar, so an optional field's value is missing rather than
   `null`; a required field's never is.

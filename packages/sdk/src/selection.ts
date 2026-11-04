@@ -71,11 +71,14 @@ export type Selection<E> = {
 /** The nested `select` a branch value carries, whether it was written as `true` or as read arguments. See docs/queries.md. */
 type BranchSelect<B> = B extends { select: infer S } ? NonNullable<S> : never;
 
-/** The result of `E` under selection `S`: only the selected keys, each optional. See docs/queries.md. */
+/** The value one selected key carries: the entity's field, or the selected shape of a branch. */
+type SelectedValue<E, S, K extends keyof E & keyof S> = NonNullable<S[K]> extends true
+    ? E[K]
+    : IsArray<E[K]> extends true
+        ? Selected<ElementOf<E[K]>, BranchSelect<S[K]>>[]
+        : Selected<ElementOf<E[K]>, BranchSelect<S[K]>>;
+
+/** The result of `E` under selection `S`: only the selected keys, each keeping the entity's optionality. See docs/queries.md. */
 export type Selected<E, S> = {
-    [K in keyof S & keyof E]?: NonNullable<S[K]> extends true
-        ? E[K]
-        : IsArray<E[K]> extends true
-            ? Selected<ElementOf<E[K]>, BranchSelect<S[K]>>[]
-            : Selected<ElementOf<E[K]>, BranchSelect<S[K]>>;
+    [K in keyof E as K extends keyof S ? K : never]: SelectedValue<E, S, K & keyof S>;
 };
