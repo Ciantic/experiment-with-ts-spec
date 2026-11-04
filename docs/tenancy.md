@@ -16,7 +16,7 @@ export interface Tenant { … }
 
 /**
  * @entity
- * @tenantOwned tenantId
+ * @tenantOwned
  * @pgTable widget
  */
 export interface Widget {
@@ -31,7 +31,7 @@ export interface Widget {
 
 /**
  * @entity
- * @tenantOwned tenantId optional
+ * @tenantOwned optional
  * @pgTable email
  */
 export interface Email {
@@ -64,13 +64,17 @@ each entity. The parser resolves it once into `SpecModel.tenantIdType`.
 
 `Tenant` is the only interface in the example that carries the tag.
 
-## Ownership: `@tenantOwned <column> [optional]`
+## Ownership: `@tenantOwned [column] [optional]`
 
-`@tenantOwned` names the column that scopes the interface. The linter requires
-that field to exist, to be a scalar column rather than a branch, and to link to
-the root with `@foreignKey Tenant`: the link is what makes the column a tenant
-column rather than a bare id. An interface that declares neither the tag nor a
-`tenantId` is global, which is what `Locale` and `LogEntry` are.
+`@tenantOwned` scopes the interface to the root. The column defaults to the
+interface's one link to the root, so the tag alone is enough: the linter takes
+the field carrying `@foreignKey Tenant` — the link is what makes it a tenant
+column rather than a bare id — and checks that it is a scalar column with the
+root key's type. Naming the column, `@tenantOwned tenantId`, is for an interface
+with more than one such link: a bare tag there is a finding, since the linter
+cannot tell which column scopes the interface. An interface that declares
+neither the tag nor a link to the root is global, which is what `Locale` and
+`LogEntry` are.
 
 The word `optional` says some rows have no tenant. It must agree with the field:
 an `optional` tag needs an optional field, and an optional field needs the tag,
@@ -154,15 +158,19 @@ optionally owned interface is therefore unscoped and checks existence only, and
 an optional owner cannot reference a required owner at all: a global row has no
 tenant to agree on.
 
-## The tags are the only source
+## What is written and what is checked
 
-Nothing fills a tag in. A reference that omits `scope=<column>` generates an
-unscoped constraint — the single-column link the annotation exists to prevent —
-so the omission is **checked rather than defaulted**: the linter reports it, and
-because it runs before the generators (`docs/tasks.md`), a spec that forgets one
-writes no artifact at all. `pnpm run generate` and `pnpm run check` both go
-through it; a standalone `pnpm generate:<artifact>` runs the generator alone, as
-it does for every other annotation.
+The column is the one thing `@tenantOwned` derives: it defaults to the
+interface's single link to the root, and a bare tag where that link is missing or
+repeated is a finding, so the derivation never guesses.
+
+Everything else is **written and checked rather than defaulted**. A reference
+that omits `scope=<column>` generates an unscoped constraint — the single-column
+link the annotation exists to prevent — so the omission is reported by the
+linter, and because it runs before the generators (`docs/tasks.md`), a spec that
+forgets one writes no artifact at all. `pnpm run generate` and `pnpm run check`
+both go through it; a standalone `pnpm generate:<artifact>` runs the generator
+alone, as it does for every other annotation.
 
 The `optional` word works the same way: it is checked against the field, not
 inferred from it. A nullable tenant column without the word is a finding, and so

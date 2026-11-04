@@ -377,7 +377,7 @@ function lintTodo(spec: SpecModel, findings: Diagnostic[]): void {
     }
 }
 
-/** `@tenant` marks the root; `@tenantOwned <field>` names the column scoping an interface. See docs/tenancy.md. */
+/** `@tenant` marks the root; `@tenantOwned [field] [optional]` scopes an interface to it. See docs/tenancy.md. */
 function lintTenancyTags(spec: SpecInterface, report: Report): void {
     for (const tag of spec.tags.written.byName.get(TENANT_TAG) ?? []) {
         if (tag.value !== undefined) {
@@ -385,15 +385,12 @@ function lintTenancyTags(spec: SpecInterface, report: Report): void {
         }
     }
 
-    // The column is named rather than left to a convention, so a bare marker says nothing.
+    // The tag may name the column or leave it to the interface's one link to the root; any other shape is a mistake.
     const ownedTags = spec.tags.written.byName.get(TENANT_OWNED_TAG) ?? [];
     for (const tag of ownedTags) {
-        const value = (tag.value ?? "").trim();
-        if (!value) {
-            report(`@${TENANT_OWNED_TAG} names the column that scopes the interface, such as \`@${TENANT_OWNED_TAG} tenantId\``, tag);
-        } else if (parseTenantOwned(value) === undefined) {
+        if (parseTenantOwned(tag.value ?? "") === undefined) {
             report(
-                `@${TENANT_OWNED_TAG} takes a column and, when some rows have no tenant, the word \`optional\`, such as \`@${TENANT_OWNED_TAG} tenantId optional\``,
+                `@${TENANT_OWNED_TAG} takes an optional column and, when some rows have no tenant, the word \`optional\`, such as \`@${TENANT_OWNED_TAG}\` or \`@${TENANT_OWNED_TAG} tenantId optional\``,
                 tag,
             );
         }
@@ -1304,7 +1301,7 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
 
     // An owned interface without a root has nothing to scope against, which is worth saying once.
     if (root === undefined) {
-        const first = [...spec.interfaces.values()].find((entity) => entity.tags.tenantOwned !== undefined);
+        const first = [...spec.interfaces.values()].find((entity) => entity.tags.written.byName.has(TENANT_OWNED_TAG));
         if (first) {
             reportEntity(
                 first,
@@ -1314,9 +1311,36 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
         }
     }
 
+    // A tag that names no column takes the interface's one link to the root, so none or several leaves it unnamed.
+    if (root !== undefined) {
+        for (const entity of spec.interfaces.values()) {
+            if (entity.tags.tenantOwned !== undefined) {
+                continue;
+            }
+            const written = entity.tags.written.byName.get(TENANT_OWNED_TAG)?.[0];
+            const tag = written === undefined ? undefined : parseTenantOwned(written.value ?? "");
+            if (tag === undefined || tag.field !== undefined) {
+                continue;
+            }
+            const links = entity.properties.filter((property) => property.tags.foreignKey?.entity === root.name);
+            const multiple = links.length > 1 ? links[0]?.name : undefined;
+            reportEntity(
+                entity,
+                multiple === undefined
+                    ? `@${TENANT_OWNED_TAG} names no column, and \`${entity.name}\` has no @foreignKey ${root.name} to take one from; add that link or name the column`
+                    : `@${TENANT_OWNED_TAG} names no column, and \`${entity.name}\` links to \`${root.name}\` ${links.length} times; name the column, such as \`@${TENANT_OWNED_TAG} ${multiple}\``,
+                ownedTagOf(entity),
+            );
+        }
+    }
+
     // A reference to an owned target states the scope; an optional owner never scopes, since a null scope skips the check. See docs/tenancy.md.
     for (const entity of spec.interfaces.values()) {
         const owner = entity.tags.tenantOwned;
+        if (owner === undefined && entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
+            // The tag names no column, which its own rule reports.
+            continue;
+        }
         for (const property of entity.properties) {
             const foreignKey = property.tags.foreignKey;
             if (foreignKey === undefined) {
@@ -1327,6 +1351,10 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
                 continue;
             }
             const owned = target.tags.tenantOwned;
+            if (owned === undefined && target.tags.written.byName.has(TENANT_OWNED_TAG)) {
+                // The target's tag names no column, which its own rule reports.
+                continue;
+            }
             const scope = scopeWrittenOn(property);
             if (scope !== undefined && owner?.optional) {
                 reportField(
@@ -1396,7 +1424,7 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
                     continue;
                 }
                 if (owner === undefined) {
-                    // A bare @tenantOwned is reported on the interface itself, so this rule need not repeat it.
+                    // A @tenantOwned that names no column is reported on the interface itself, so this rule need not repeat it.
                     if (entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
                         continue;
                     }

@@ -15,7 +15,7 @@ export type InvoiceSentId = BrandedId<"InvoiceSentId">;
  * 
  * @entity
  * @plural sent invoices
- * @tenantOwned tenantId
+ * @tenantOwned
  * @pgTable invoice_sent
  * @repository create upsert update delete
  * @restRepository create upsert update delete

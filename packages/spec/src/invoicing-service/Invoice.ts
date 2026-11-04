@@ -15,7 +15,7 @@ export type InvoiceId = BrandedId<"InvoiceId">;
  * 
  * @entity
  * @plural invoices
- * @tenantOwned tenantId
+ * @tenantOwned
  * @pgTable invoice
  * @repository create upsert update delete
  * @restRepository create upsert update delete

@@ -2793,7 +2793,7 @@ describe("tenancy tags", () => {
         );
 
         expect(messages(findings)).toEqual([
-            "`Thing`: @tenantOwned takes a column and, when some rows have no tenant, the word `optional`, such as `@tenantOwned tenantId optional`",
+            "`Thing`: @tenantOwned takes an optional column and, when some rows have no tenant, the word `optional`, such as `@tenantOwned` or `@tenantOwned tenantId optional`",
         ]);
     });
 
@@ -2875,7 +2875,7 @@ export interface Thing {
         expect(messages(findings)).toEqual([]);
     });
 
-    it("reports @tenantOwned without a column name", () => {
+    it("accepts a bare @tenantOwned, which takes the interface's one link to the root", () => {
         const { findings } = lintSpec(
             parse({
                 "/src/domain/Alpha.ts": root,
@@ -2883,8 +2883,51 @@ export interface Thing {
             }),
         );
 
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("accepts @tenantOwned optional, which takes the link and marks the row unowned", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned optional"],
+                    `${key}\n\n${optionalOwnedLink("Alpha")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([]);
+    });
+
+    it("reports a bare @tenantOwned when the interface has no link to the root", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned"], key),
+            }),
+        );
+
         expect(messages(findings)).toEqual([
-            "`Thing`: @tenantOwned names the column that scopes the interface, such as `@tenantOwned tenantId`",
+            "`Thing`: @tenantOwned names no column, and `Thing` has no @foreignKey Alpha to take one from; add that link or name the column",
+        ]);
+    });
+
+    it("reports a bare @tenantOwned when the interface links to the root twice", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned"],
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${reference("otherId", "Alpha")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned names no column, and `Thing` links to `Alpha` 2 times; name the column, such as `@tenantOwned ownerId`",
         ]);
     });
 

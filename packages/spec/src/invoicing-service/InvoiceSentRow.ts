@@ -13,7 +13,7 @@ export type InvoiceSentRowId = BrandedId<"InvoiceSentRowId">;
  * A single line item on a sent invoice.
  * 
  * @entity
- * @tenantOwned tenantId
+ * @tenantOwned
  * @pgTable invoice_sent_row
  * @repository create upsert update delete
  * @restRepository create upsert update delete

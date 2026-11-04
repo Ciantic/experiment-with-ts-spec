@@ -82,7 +82,7 @@ out.
 
 ## Tenant-owned entities
 
-An entity that declares `@tenantOwned <column>` carries `tenantOwned: true`; every
+An entity that declares `@tenantOwned` carries `tenantOwned: true`; every
 other entity carries `false`. The flag is stated once per entity rather than
 per action, since tenancy scopes the whole entity. The `@tenant` root is `false`:
 it owns the other entities but is not scoped to itself.
@@ -209,7 +209,7 @@ that moves a row is checked against both tenants.
 
 ### Optional ownership
 
-An entity that declares `@tenantOwned <column> optional` has rows that may belong
+An entity that declares `@tenantOwned optional` has rows that may belong
 to no tenant, and a null tenant is checked against the **global** permission. The
 guard asks for it first, so a session holding it reaches every row. Without it,
 the guard refuses any row whose tenant is null:

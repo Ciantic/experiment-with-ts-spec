@@ -144,13 +144,14 @@ Interface tags:
 - `@tenant` — a bare marker on the interface that owns the data graph, which the
   linter allows on one interface only. The root is never `@tenantOwned`, and a
   reference to it is never scoped. See `docs/tenancy.md`.
-- `@tenantOwned <column>` — the interface is owned by the root, and the value
-  names the scalar column that scopes it. The column links to the root and
+- `@tenantOwned [column] [optional]` — the interface is owned by the root. The
+  column defaults to the interface's one link to the root: that scalar column
   carries the root key's type, and every reference to the interface is scoped on
-  it. Writing `@tenantOwned <column> optional` instead declares that some rows
-  belong to no tenant: the column must then be optional, a null tenant is
-  governed by the global permission, and the interface takes no scoped
-  references. See `docs/tenancy.md`.
+  it. Name the column, `@tenantOwned tenantId`, when the interface links to the
+  root more than once. Adding `optional` declares that some rows belong to no
+  tenant: the column must then be optional, a null tenant is governed by the
+  global permission, and the interface takes no scoped references. See
+  `docs/tenancy.md`.
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
@@ -439,10 +440,10 @@ An option the model does not know is a lint finding, and an action left off
 emits no clause, so the constraint takes Postgres's default.
 
 `@foreignKey Widget scope=tenantId` makes the reference **composite**: `scope`
-names a column of the same interface, the target declares it too as the column its
-`@tenantOwned` names, and the constraint matches on the pair rather than on the
-key alone. That is how a link cannot cross tenants, and the generator adds the
-unique constraint the pair needs on the target. See `docs/tenancy.md`.
+names a column of the same interface, the target declares it too as the column
+its `@tenantOwned` scopes on, and the constraint matches on the pair rather than
+on the key alone. That is how a link cannot cross tenants, and the generator adds
+the unique constraint the pair needs on the target. See `docs/tenancy.md`.
 
 `@foreignKey Account` takes the column's storage type and referenced column
 from `Account`'s own `@primaryKey` field, so the field's declared type is
@@ -828,11 +829,12 @@ Enforced:
   target's half is checked when the tables are built. See `docs/tenancy.md`.
 - `@tenant` is a bare marker on one interface, which the linter enforces, and is
   mutually exclusive with `@tenantOwned`. The root carries one `@primaryKey`
-  field, whose type every owned column repeats. `@tenantOwned` requires a column
-  name: it must name a scalar field of the interface, that field must carry
-  `@foreignKey` at the `@tenant` interface and the root key's type, and it is the
-  only field of the interface linking to the root. The tag's `optional` word must
-  agree with the field's `?`, so a nullable tenant column is always intended.
+  field, whose type every owned column repeats. `@tenantOwned` takes an optional
+  column name — the interface's single link to the root otherwise supplies it —
+  which must name a scalar field of the interface carrying `@foreignKey` at the
+  `@tenant` interface and the root key's type. A bare tag on an interface with no
+  link, or several, is a finding. The tag's `optional` word must agree with the
+  field's `?`, so a nullable tenant column is always intended.
   Every reference to a required owner must state `scope=<that column>` and must
   come from an interface owned by the same column; a scope anywhere else is a
   finding. An optional owner may neither make nor be the target of a scope,

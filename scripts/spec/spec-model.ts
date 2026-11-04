@@ -180,11 +180,19 @@ export interface ForeignKey {
     scope?: string;
 }
 
-/** A `@tenantOwned <column> [optional]` value: the column that scopes the interface, and whether a row may have no tenant. See docs/tenancy.md. */
+/** A resolved `@tenantOwned [column] [optional]` value: the column that scopes the interface, and whether a row may have no tenant. See docs/tenancy.md. */
 export interface TenantOwned {
-    /** The field that scopes the interface. */
+    /** The field that scopes the interface, named by the tag or taken from its one link to the root. */
     field: string;
     /** True when the column is nullable, so some rows belong to no tenant. */
+    optional: boolean;
+}
+
+/** A decoded `@tenantOwned [column] [optional]` value: the column as written, absent when the tag leaves it to the root link. */
+export interface TenantOwnedTag {
+    /** The column the tag names, absent when the interface's one link to the root supplies it. */
+    field?: string;
+    /** True when the tag says some rows belong to no tenant. */
     optional: boolean;
 }
 
@@ -377,7 +385,7 @@ export interface Tags {
     entity: boolean;
     /** The interface is the tenancy root, which owns the entities that link to it. See docs/tenancy.md. */
     tenant: boolean;
-    /** The field that scopes this interface and whether some rows may have no tenant, from `@tenantOwned tenantId optional`. See docs/tenancy.md. */
+    /** The column that scopes the interface and whether some rows may have no tenant. See docs/tenancy.md. */
     tenantOwned?: TenantOwned;
     /** The Postgres table name for the interface. */
     pgTable?: string;
@@ -749,6 +757,29 @@ function declaredTypeIn(
     return importSpecifier === undefined ? undefined : { name: type.name, importSpecifier };
 }
 
+/** A `@tenantOwned` that names no column takes the interface's one link to the root, once every interface is known. See docs/tenancy.md. */
+function resolveTenantOwned(interfaces: Map<string, SpecInterface>): void {
+    const root = [...interfaces.values()].find((entity) => entity.tags.tenant);
+    if (root === undefined) {
+        return;
+    }
+    for (const entity of interfaces.values()) {
+        if (entity.tags.tenantOwned !== undefined) {
+            continue;
+        }
+        const written = entity.tags.written.byName.get("tenantOwned")?.[0];
+        const tag = written === undefined ? undefined : parseTenantOwned(written.value ?? "");
+        if (tag === undefined || tag.field !== undefined) {
+            continue;
+        }
+        const links = entity.properties.filter((property) => property.tags.foreignKey?.entity === root.name);
+        const only = links.length === 1 ? links[0] : undefined;
+        if (only !== undefined) {
+            entity.tags.tenantOwned = { field: only.name, optional: tag.optional };
+        }
+    }
+}
+
 /** The root's key type: the one primary key on the interface that carries `@tenant`. */
 function tenantIdTypeOf(
     interfaces: Map<string, SpecInterface>,
@@ -1020,17 +1051,23 @@ export function parseForeignKey(value: string): ForeignKey {
     return foreignKey;
 }
 
-/** Decode a `@tenantOwned <column> [optional]` value; an unrecognised shape is left for the linter to report. */
-export function parseTenantOwned(value: string): TenantOwned | undefined {
+/** Decode a `@tenantOwned [column] [optional]` value; an unrecognised shape is left for the linter to report. */
+export function parseTenantOwned(value: string): TenantOwnedTag | undefined {
     const tokens = value.trim().split(/\s+/u).filter((token) => token !== "");
-    const [field, modifier] = tokens;
-    if (field === undefined || tokens.length > 2) {
+    if (tokens.length === 0) {
+        return { optional: false };
+    }
+    const [first, modifier] = tokens;
+    if (first === undefined || tokens.length > 2) {
         return undefined;
     }
-    if (modifier !== undefined && modifier !== "optional") {
-        return undefined;
+    if (modifier !== undefined) {
+        return modifier === "optional" ? { field: first, optional: true } : undefined;
     }
-    return { field, optional: modifier === "optional" };
+    if (first === "optional") {
+        return { optional: true };
+    }
+    return { field: first, optional: false };
 }
 
 /** Decode the JSDoc tags on a declaration, keeping the tags as written for rules that need them. */
@@ -1105,8 +1142,8 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     tags.tenant = true;
                     break;
                 case "tenantOwned": {
-                    const owned = value === undefined ? undefined : parseTenantOwned(value);
-                    if (owned !== undefined) tags.tenantOwned ??= owned;
+                    const owned = parseTenantOwned(value ?? "");
+                    if (owned?.field !== undefined) tags.tenantOwned ??= { field: owned.field, optional: owned.optional };
                     break;
                 }
                 case "repository":
@@ -1634,6 +1671,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
     nonEntityInterfaces.sort((a, b) => a.name.localeCompare(b.name));
     todoInterfaces.sort((a, b) => a.name.localeCompare(b.name));
     operations.sort((a, b) => a.name.localeCompare(b.name) || a.interfaceName.localeCompare(b.interfaceName));
+    resolveTenantOwned(interfaces);
 
     // A deferred operation reaches no scaffold, route, client call, or error, so the generated set leaves it out.
     const generated = operations.filter((operation) => operation.todo === undefined);

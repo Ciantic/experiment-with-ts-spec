@@ -855,8 +855,27 @@ describe("tenancy tags", () => {
         expect(interfaces.get("Thing")?.properties[0]?.tags.queryFilter).toEqual({ required: true });
     });
 
-    it("ignores a bare @tenantOwned, which names nothing", () => {
+    it("fills a bare @tenantOwned from the interface's one link to the root", () => {
         const { interfaces } = parse({
+            "Root.ts": entity("Root", ["tenant"], "    id: RootId;"),
+            "Thing.ts": entity("Thing", ["tenantOwned"], link("Root")),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toEqual({ field: "ownerId", optional: false });
+    });
+
+    it("fills @tenantOwned optional from the link and keeps the word", () => {
+        const { interfaces } = parse({
+            "Root.ts": entity("Root", ["tenant"], "    id: RootId;"),
+            "Thing.ts": entity("Thing", ["tenantOwned optional"], link("Root")),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toEqual({ field: "ownerId", optional: true });
+    });
+
+    it("leaves a bare @tenantOwned unresolved without exactly one link to the root", () => {
+        const { interfaces } = parse({
+            "Root.ts": entity("Root", ["tenant"], "    id: RootId;"),
             "Thing.ts": entity("Thing", ["tenantOwned"], "    ownerId: OwnerId;"),
         });
 

@@ -12,7 +12,7 @@ export type CustomerId = BrandedId<"CustomerId">;
  * A customer that invoices can be issued to.
  * 
  * @entity
- * @tenantOwned tenantId
+ * @tenantOwned
  * @pgTable customer
  * @repository create upsert update delete
  * @restRepository create upsert update delete
