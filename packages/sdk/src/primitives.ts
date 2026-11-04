@@ -19,7 +19,13 @@ export const eInvoiceOperatorSchema = z.enum(["maventa", "apix", "op", "basware"
 
 export const emailAddressSchema = z.email().brand<"EmailAddress">();
 
+export const emailVerificationHmacSchema = z.string().regex(/^[a-f0-9]{64}$/).brand<"EmailVerificationHmac">();
+
+export const emailVerificationTokenSchema = z.string().regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/).brand<"EmailVerificationToken">();
+
 export const languageSchema = z.enum(["fi", "sv", "en"]).or(z.string());
+
+export const loginLinkTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/).brand<"LoginLinkToken">();
 
 export const loginLinkTokenHashSchema = z.string().regex(/^[a-f0-9]{64}$/).brand<"LoginLinkTokenHash">();
 
