@@ -49,10 +49,11 @@ capitalized plus the entity's plural, so `create` on `Invoice` becomes
 `"Create invoices"`, matching the batch the call takes. Both are for
 presentation; the keys are what a permission check uses.
 
-The plural comes from `@plural <noun>` when the entity declares it.
-Otherwise the generator pluralizes the last word of the display name:
-`invoiceSentRow` becomes `"invoice sent rows"`. The override is for irregular
-plurals, such as `@plural sent invoices` on `InvoiceSent`.
+`SpecInterface` carries both names, evaluated once while the model parses the
+declaration: `displayName` and `plural`. The plural comes from `@plural <noun>`
+when the entity declares it. Otherwise the model pluralizes the last word of the
+display name: `invoiceSentRow` becomes `"invoice sent rows"`. The override is for
+irregular plurals, such as `@plural sent invoices` on `InvoiceSent`.
 
 ## Where the actions come from
 

@@ -30,6 +30,24 @@ describe("parseSpec interfaces", () => {
         expect(interfaces.get("Person")?.pgTableName).toBe("people");
     });
 
+    it("splits the interface name into a display name and its plural", () => {
+        const { interfaces } = parse({
+            "LineItem.ts": "/** @entity */\nexport interface LineItem { id: string; }",
+        });
+
+        expect(interfaces.get("LineItem")?.displayName).toBe("Line Item");
+        expect(interfaces.get("LineItem")?.plural).toBe("line items");
+    });
+
+    it("lets @plural override the derived plural", () => {
+        const { interfaces } = parse({
+            "InvoiceSent.ts":
+                "/**\n * @entity\n * @plural sent invoices\n */\nexport interface InvoiceSent { id: string; }",
+        });
+
+        expect(interfaces.get("InvoiceSent")?.plural).toBe("sent invoices");
+    });
+
     it("maps a source file back to its package import specifier", () => {
         const { interfaces } = parse({ "Thing.ts": "/** @entity */\nexport interface Thing { id: string; }" });
 

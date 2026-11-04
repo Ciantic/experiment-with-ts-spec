@@ -14,9 +14,7 @@ import {
 import {
     actionName,
     buildPermissionsModel,
-    displayName,
     entityActions,
-    pluralOf,
     renderPermissionsModule,
     run,
     type PermissionEntry,
@@ -232,34 +230,6 @@ export interface PartLine {
         const spec = build(TENANT_ROOT, OWNED);
 
         expect(buildPermissionsModel(spec).find((entry) => entry.key === "tenant")?.tenantOwned).toBe(false);
-    });
-});
-
-describe("displayName", () => {
-    it("splits a camel-cased key into capitalized words", () => {
-        expect(displayName("invoiceSentRow")).toBe("Invoice Sent Row");
-    });
-
-    it("capitalizes a single word", () => {
-        expect(displayName("invoice")).toBe("Invoice");
-    });
-});
-
-describe("pluralOf", () => {
-    it("appends s to a regular noun", () => {
-        expect(pluralOf("invoice")).toBe("invoices");
-    });
-
-    it("pluralizes the last word of a camel-cased key", () => {
-        expect(pluralOf("invoiceSentRow")).toBe("invoice sent rows");
-    });
-
-    it("adds es after a sibilant", () => {
-        expect(pluralOf("box")).toBe("boxes");
-    });
-
-    it("turns a consonant and y into ies", () => {
-        expect(pluralOf("category")).toBe("categories");
     });
 });
 

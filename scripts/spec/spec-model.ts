@@ -395,6 +395,10 @@ export interface SpecProperty {
 /** An interface in the spec: an entity, or a reusable structure. */
 export interface SpecInterface {
     name: string;
+    /** The interface name split into capitalized words: `InvoiceSent` becomes `Invoice Sent`. */
+    displayName: string;
+    /** The plural noun from `@plural`, or a mechanical plural of the display name. See docs/permissions.md. */
+    plural: string;
     /** The Postgres table name: the `@pgTable` value, or the snake_cased interface name. */
     pgTableName: string;
     filePath: string;
@@ -620,6 +624,24 @@ export function primaryKeyProperties(spec: SpecInterface): SpecProperty[] {
 /** The `@pgAutoIncrement` fields: key columns the database assigns, which a create never carries. */
 export function autoIncrementProperties(spec: SpecInterface): SpecProperty[] {
     return spec.properties.filter((property) => property.tags.pgAutoIncrement);
+}
+
+/** auditLog -> Audit Log: split a camel-cased key into capitalized words. */
+export function displayName(key: string): string {
+    const words = key.replace(/([a-z0-9])([A-Z])/gu, "$1 $2").split(" ");
+    return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+}
+
+/** The plural noun of a camel-cased key: invoice -> invoices, invoiceSentRow -> invoice sent rows. */
+export function pluralOf(key: string): string {
+    const words = displayName(key).toLowerCase().split(" ");
+    const last = words.pop() ?? "";
+    const plural = /(s|x|z|ch|sh)$/u.test(last)
+        ? `${last}es`
+        : /[^aeiou]y$/u.test(last)
+          ? `${last.slice(0, -1)}ies`
+          : `${last}s`;
+    return [...words, plural].join(" ");
 }
 
 /** Invoice -> invoice, UUIDv7 -> uuidv7, EInvoiceAddress -> eInvoiceAddress. */
@@ -1480,8 +1502,11 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                     tags,
                 };
             });
+            const key = lowerFirst(name);
             const entity: SpecInterface = {
                 name,
+                displayName: displayName(key),
+                plural: declarationTags.plural ?? pluralOf(key),
                 pgTableName: declarationTags.pgTable ?? snakeCase(name),
                 filePath,
                 location: locationOf(declaration),

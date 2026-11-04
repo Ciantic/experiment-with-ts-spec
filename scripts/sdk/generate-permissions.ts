@@ -33,31 +33,12 @@ export function entityActions(entity: SpecInterface): string[] {
     return actions;
 }
 
-/** auditLog -> Audit Log: split a camel-cased key into capitalized words. */
-export function displayName(key: string): string {
-    const words = key.replace(/([a-z0-9])([A-Z])/gu, "$1 $2").split(" ");
-    return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}
-
-/** The plural noun of a camel-cased key, used when the entity declares no `@plural`. */
-export function pluralOf(key: string): string {
-    const words = displayName(key).toLowerCase().split(" ");
-    const last = words.pop() ?? "";
-    const plural = /(s|x|z|ch|sh)$/u.test(last)
-        ? `${last}es`
-        : /[^aeiou]y$/u.test(last)
-          ? `${last.slice(0, -1)}ies`
-          : `${last}s`;
-    return [...words, plural].join(" ");
-}
-
 /** One entry for an entity: its key, display names, tenancy, and the actions it permits. */
 function permissionEntry(entity: SpecInterface): PermissionEntry {
-    const key = lowerFirst(entity.name);
     return {
-        key,
-        name: displayName(key),
-        plural: entity.tags.plural ?? pluralOf(key),
+        key: lowerFirst(entity.name),
+        name: entity.displayName,
+        plural: entity.plural,
         tenantOwned: entity.tags.tenantOwned !== undefined,
         actions: entityActions(entity),
     };
