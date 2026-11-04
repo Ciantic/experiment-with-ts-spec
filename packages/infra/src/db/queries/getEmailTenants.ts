@@ -3,12 +3,12 @@ import type { TenantId } from "spec/user-service/Tenant.ts";
 import type { EmailPrimaryKey } from "sdk/repositories/emailPrimaryKeySchema.ts";
 import type { SqlExecutor } from "../sql-executor.ts";
 
-/** The distinct tenants the named `email` rows belong to, read on the caller's executor. */
-export async function getEmailTenants(db: SqlExecutor, pks: readonly EmailPrimaryKey[]): Promise<TenantId[]> {
+/** The distinct tenants the named `email` rows belong to, with `null` for a row that has none. */
+export async function getEmailTenants(db: SqlExecutor, pks: readonly EmailPrimaryKey[]): Promise<(TenantId | null)[]> {
     if (pks.length === 0) {
         return [];
     }
-    const result = await db.query<{ tenant: TenantId }>(
+    const result = await db.query<{ tenant: TenantId | null }>(
         'select distinct "tenantId" as "tenant" from "email" where "id" = any($1)',
         [pks.map((key) => key.id)],
     );

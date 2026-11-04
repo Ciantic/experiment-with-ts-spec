@@ -65,7 +65,7 @@ create table "customer" (
 
 create table "email" (
     "id" uuid not null default uuidv7(),
-    "tenantId" uuid not null references "tenant"("id"),
+    "tenantId" uuid references "tenant"("id"),
     "from" text not null,
     "to" text not null,
     "subject" text not null,

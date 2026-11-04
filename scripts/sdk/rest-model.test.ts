@@ -145,6 +145,25 @@ export interface Owned {
 }
 `.trim();
 
+/** An entity a tenant optionally scopes, so a row may belong to no tenant. */
+const OPTIONAL_OWNED = `
+/**
+ * @pgTable optional_owned
+ * @tenantOwned tenantId optional
+ * @repository create
+ * @restRepository create
+ * @queries query
+ * @restQueries query
+ * @entity
+ */
+export interface OptionalOwned {
+    /** @primaryKey */
+    id: string;
+
+    tenantId?: string;
+}
+`.trim();
+
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -177,8 +196,14 @@ describe("buildRestModel", () => {
     it("carries the @tenantOwned column, and leaves it off a global entity", () => {
         const entities = build({ Widget: WIDGET, Owned: OWNED }).entities;
 
-        expect(entities.find((entity) => entity.entity === "Owned")?.tenantOwned).toBe("tenantId");
+        expect(entities.find((entity) => entity.entity === "Owned")?.tenantOwned).toEqual({ field: "tenantId", optional: false });
         expect(entities.find((entity) => entity.entity === "Widget")?.tenantOwned).toBeUndefined();
+    });
+
+    it("carries whether the owned column may be absent", () => {
+        const entities = build({ OptionalOwned: OPTIONAL_OWNED }).entities;
+
+        expect(entities[0]?.tenantOwned).toEqual({ field: "tenantId", optional: true });
     });
 
     it("exposes a read, a write, and a delete for every entity", () => {

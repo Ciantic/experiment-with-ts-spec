@@ -100,8 +100,10 @@ Field tags:
   `onDelete=<action>` and `onUpdate=<action>` tokens append a referential clause
   to the constraint, and `scope=<column>` makes the reference composite over a
   second column, so the two must agree. A reference to an interface that declares
-  `@tenantOwned` must carry the scope, naming that interface's column. See
-  "`@primaryKey` and `@foreignKey`" below, and `docs/tenancy.md`.
+  `@tenantOwned` must carry the scope, naming that interface's column, unless the
+  owner is `optional`: its null tenant cannot match a composite pair, so the
+  reference stays unscoped. See "`@primaryKey` and `@foreignKey`" below, and
+  `docs/tenancy.md`.
 - `@relation` — the field holds a single related entity. A bare marker that adds no column: it navigates through the field carrying `@foreignKey <entity>`. The entity is the field type, which must be an interface. See `@relation` below.
 - `@children` — the field holds a child collection (`<Entity>[]`). Not a column; the child table carries the foreign key. A bare marker; the element type must be an interface.
 - `@inlined` — the field holds an entity whose scalar fields are flattened, prefixed with the field name, into snapshot columns on the same table. No foreign key. A bare marker; the field type must be an interface.
@@ -143,9 +145,12 @@ Interface tags:
   linter allows on one interface only. The root is never `@tenantOwned`, and a
   reference to it is never scoped. See `docs/tenancy.md`.
 - `@tenantOwned <column>` — the interface is owned by the root, and the value
-  names the required scalar column that scopes it. The linter requires that column
-  to link to the root and to carry `@queryFilter required`, and every reference to
-  the interface is scoped on it. See `docs/tenancy.md`.
+  names the scalar column that scopes it. The column links to the root and
+  carries the root key's type, and every reference to the interface is scoped on
+  it. Writing `@tenantOwned <column> optional` instead declares that some rows
+  belong to no tenant: the column must then be optional, a null tenant is
+  governed by the global permission, and the interface takes no scoped
+  references. See `docs/tenancy.md`.
 - `@pgTable <name>` — the Postgres table name. Defaults to the snake_cased interface name.
 - `@repository <operation>…` — the write operations whose repository modules the
   generator writes, one or more of `create`, `upsert`, `update`, `delete`. An
@@ -824,11 +829,15 @@ Enforced:
 - `@tenant` is a bare marker on one interface, which the linter enforces, and is
   mutually exclusive with `@tenantOwned`. The root carries one `@primaryKey`
   field, whose type every owned column repeats. `@tenantOwned` requires a column
-  name: it must name a required scalar field of the interface, that field must
-  carry `@foreignKey` at the `@tenant` interface and the root key's type, and it
-  is the only field of the interface linking to the root. Every reference to an
-  owned interface must state `scope=<that column>` and must come from an
-  interface owned by the same column; a scope anywhere else is a finding. See
+  name: it must name a scalar field of the interface, that field must carry
+  `@foreignKey` at the `@tenant` interface and the root key's type, and it is the
+  only field of the interface linking to the root. The tag's `optional` word must
+  agree with the field's `?`, so a nullable tenant column is always intended.
+  Every reference to a required owner must state `scope=<that column>` and must
+  come from an interface owned by the same column; a scope anywhere else is a
+  finding. An optional owner may neither make nor be the target of a scope,
+  because a nullable scope skips the composite check, and it may not link to a
+  required owner, because a global row has no tenant to agree on. See
   `docs/tenancy.md`.
 - `@queryFilter` is a bare marker on a scalar field, or `required`, or
   `default=<value>`: the keywords `isNull` and `isNotNull`, a boolean, a number,

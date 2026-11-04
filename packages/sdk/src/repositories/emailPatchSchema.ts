@@ -9,7 +9,7 @@ export const emailPatchSchema = emailSchema
         createdAt: true,
     })
     .extend({
-        tenantId: emailSchema.shape.tenantId.exactOptional(),
+        tenantId: emailSchema.shape.tenantId.nullable().exactOptional(),
         from: emailSchema.shape.from.exactOptional(),
         to: emailSchema.shape.to.exactOptional(),
         subject: emailSchema.shape.subject.exactOptional(),
@@ -28,4 +28,4 @@ export const emailPatchSchema = emailSchema
     .strict();
 
 /** A partial update: every field is optional except the key and the version. */
-export type EmailPatch = Patch<Email, "createdAt", "id" | "version", "lastError" | "sentAt">;
+export type EmailPatch = Patch<Email, "createdAt", "id" | "version", "tenantId" | "lastError" | "sentAt">;

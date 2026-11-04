@@ -49,4 +49,18 @@ export const emails: Email[] = [
         updatedAt: new Date("2026-01-15T10:00:00.000Z"),
         version: 0n as Version,
     },
+    {
+        id: "00000000-0000-7000-8000-000000000204" as EmailId,
+        from: "no-reply@acme.example" as EmailAddress,
+        to: "ops@acme.example" as EmailAddress,
+        subject: "Maintenance window",
+        body: "The service is read-only on Sunday.",
+        status: "sent",
+        attempts: 1n,
+        maxAttempts: 5n,
+        sentAt: new Date("2026-01-20T12:00:00.000Z"),
+        createdAt: new Date("2026-01-20T11:55:00.000Z"),
+        updatedAt: new Date("2026-01-20T12:00:00.000Z"),
+        version: 0n as Version,
+    },
 ];

@@ -13,7 +13,7 @@ export type EmailStatus = "pending" | "sending" | "sent" | "failed";
  * An outbound email waiting for a delivery service to pick it up.
  *
  * @entity
- * @tenantOwned tenantId
+ * @tenantOwned tenantId optional
  * @pgTable email
  * @repository create upsert update delete
  * @restRepository create upsert update delete
@@ -32,14 +32,14 @@ export interface Email {
     id: EmailId;
 
     /**
-     * The identifier of the tenant this email belongs to.
+     * The identifier of the tenant this email belongs to, absent for an email that belongs to no tenant.
      * 
      * @fieldName Tenant ID
      * @queryFilter
      * @foreignKey Tenant
      * @widget text
      */
-    tenantId: TenantId;
+    tenantId?: TenantId;
 
     /**
      * The address the email is sent from.

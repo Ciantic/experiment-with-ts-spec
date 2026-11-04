@@ -4,7 +4,7 @@ import * as primitives from "../primitives.ts";
 
 export const emailSchema = z.object({
     id: primitives.brandedIdSchema<"EmailId">(),
-    tenantId: primitives.brandedIdSchema<"TenantId">(),
+    tenantId: primitives.brandedIdSchema<"TenantId">().exactOptional(),
     from: primitives.emailAddressSchema,
     to: primitives.emailAddressSchema,
     subject: z.string(),

@@ -25,7 +25,7 @@ export const queryEmailSelectSchema = z.lazy(() =>
 export const queryEmailSchema = z.strictObject({
     filter: z.strictObject({
         id: z.array(primitives.brandedIdSchema<"EmailId">()).exactOptional(),
-        tenantId: z.array(primitives.brandedIdSchema<"TenantId">()).exactOptional(),
+        tenantId: z.union([z.array(primitives.brandedIdSchema<"TenantId">()), z.strictObject({ isNull: z.literal(true) }), z.strictObject({ isNotNull: z.literal(true) })]).exactOptional(),
         status: z.array(z.enum(["pending", "sending", "sent", "failed"])).exactOptional(),
     }).exactOptional(),
     order: z.array(

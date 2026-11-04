@@ -343,7 +343,7 @@ describe("renderTenantsModule", () => {
             column("id", { primaryKey: true, sqlType: "uuid" }),
             column("tenantId", { sqlType: "uuid" }),
         ]),
-        tenantOwned: "tenantId",
+        tenantOwned: { field: "tenantId", optional: false },
     };
 
     it("selects the distinct tenants of the named keys with one array parameter", () => {
@@ -368,7 +368,7 @@ describe("renderTenantsModule", () => {
                 column("partKey", { primaryKey: true }),
                 column("tenantId", { sqlType: "uuid" }),
             ]),
-            tenantOwned: "tenantId",
+            tenantOwned: { field: "tenantId", optional: false },
         };
         const code = renderTenantsModule(part, TENANT_ID);
 
@@ -385,6 +385,17 @@ describe("renderTenantsModule", () => {
         const code = renderTenantsModule(widget, TENANT_ID);
 
         expect(code).toContain("if (pks.length === 0) {");
+    });
+
+    it("returns null for an optional owner, so a stored row with no tenant is visible", () => {
+        const optional = { ...widget, tenantOwned: { field: "tenantId", optional: true } };
+        const code = renderTenantsModule(optional, TENANT_ID);
+
+        expect(code).toContain(
+            "export async function getWidgetTenants(db: SqlExecutor, pks: readonly WidgetPrimaryKey[]): Promise<(TenantId | null)[]> {",
+        );
+        expect(code).toContain("const result = await db.query<{ tenant: TenantId | null }>(");
+        expect(code).toContain("with `null` for a row that has none");
     });
 });
 
@@ -414,7 +425,7 @@ describe("generateQueries", () => {
     });
 
     it("writes a tenant lookup for a @tenantOwned entity and exports it", () => {
-        const owned = { ...invoice, tenantOwned: "tenantId" };
+        const owned = { ...invoice, tenantOwned: { field: "tenantId", optional: false } };
         const files = generateQueries(new Map([["Invoice", owned]]), TENANT_ID);
 
         expect([...files.keys()].sort()).toEqual([

@@ -16,6 +16,7 @@ import {
     type SpecProperty,
     type SpecType,
     type SpecTypeAlias,
+    type TenantOwned,
     type TriggerEvent,
     type TriggerLevel,
     type TriggerTiming,
@@ -118,8 +119,8 @@ export interface Table {
     watch: WatchScope[];
     /** The fields `@watchFilter` names, whose values the change payload carries. See docs/notifications.md. */
     watchFilters: string[];
-    /** The column `@tenantOwned` names, or absent on a global entity. See docs/tenancy.md. */
-    tenantOwned?: string;
+    /** The column `@tenantOwned` names and whether it is optional, or absent on a global entity. See docs/tenancy.md. */
+    tenantOwned?: TenantOwned;
 }
 
 interface TypeResolution {

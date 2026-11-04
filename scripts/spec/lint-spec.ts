@@ -27,6 +27,7 @@ import {
     parseInMemorySpec,
     parseParameters,
     parseRestPermission,
+    parseTenantOwned,
     resolveType,
     assignsColumn,
     hasTriggerHeader,
@@ -387,8 +388,14 @@ function lintTenancyTags(spec: SpecInterface, report: Report): void {
     // The column is named rather than left to a convention, so a bare marker says nothing.
     const ownedTags = spec.tags.written.byName.get(TENANT_OWNED_TAG) ?? [];
     for (const tag of ownedTags) {
-        if (!(tag.value ?? "").trim()) {
+        const value = (tag.value ?? "").trim();
+        if (!value) {
             report(`@${TENANT_OWNED_TAG} names the column that scopes the interface, such as \`@${TENANT_OWNED_TAG} tenantId\``, tag);
+        } else if (parseTenantOwned(value) === undefined) {
+            report(
+                `@${TENANT_OWNED_TAG} takes a column and, when some rows have no tenant, the word \`optional\`, such as \`@${TENANT_OWNED_TAG} tenantId optional\``,
+                tag,
+            );
         }
     }
 
@@ -1258,12 +1265,13 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
         );
     }
 
-    // An owned interface declares one required scalar column, links to the root, and requires the filter.
+    // An owned interface declares one scalar column, links to the root, and matches its optionality.
     for (const entity of spec.interfaces.values()) {
-        const column = entity.tags.tenantOwned;
-        if (column === undefined) {
+        const owned = entity.tags.tenantOwned;
+        if (owned === undefined) {
             continue;
         }
+        const column = owned.field;
         const tag = ownedTagOf(entity);
         const scoped = entity.properties.find((property) => property.name === column);
         if (scoped === undefined) {
@@ -1274,10 +1282,12 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
             reportEntity(entity, `@${TENANT_OWNED_TAG} names \`${column}\`, which must be a scalar field`, tag);
             continue;
         }
-        if (scoped.optional) {
+        if (scoped.optional !== owned.optional) {
             reportEntity(
                 entity,
-                `@${TENANT_OWNED_TAG} names \`${column}\`, which must be a required field, because a nullable scope skips the check`,
+                owned.optional
+                    ? `@${TENANT_OWNED_TAG} \`${column}\` is marked optional, so the field must be optional`
+                    : `@${TENANT_OWNED_TAG} names \`${column}\`, which is optional; write \`@${TENANT_OWNED_TAG} ${column} optional\` when some rows have no tenant`,
                 tag,
             );
         } else if (root !== undefined && scoped.tags.foreignKey?.entity !== root.name) {
@@ -1304,37 +1314,62 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
         }
     }
 
-    // A reference to an owned target says the scope, and the referencing interface is owned by it.
+    // A reference to an owned target states the scope; an optional owner never scopes, since a null scope skips the check. See docs/tenancy.md.
     for (const entity of spec.interfaces.values()) {
+        const owner = entity.tags.tenantOwned;
         for (const property of entity.properties) {
             const foreignKey = property.tags.foreignKey;
             if (foreignKey === undefined) {
                 continue;
             }
             const target = spec.interfaces.get(foreignKey.entity);
-            const column = target?.tags.tenantOwned;
-            const scope = scopeWrittenOn(property);
             if (target === undefined) {
                 continue;
             }
-            if (column !== undefined) {
+            const owned = target.tags.tenantOwned;
+            const scope = scopeWrittenOn(property);
+            if (scope !== undefined && owner?.optional) {
+                reportField(
+                    property,
+                    `@foreignKey ${target.name} takes no scope on \`${entity.name}\`, because its @${TENANT_OWNED_TAG} \`${owner.field}\` is optional and a nullable scope skips the check`,
+                    linkTagOf(property),
+                );
+                continue;
+            }
+            if (scope !== undefined && owned?.optional) {
+                reportField(
+                    property,
+                    `@foreignKey ${target.name} takes no scope, because \`${target.name}\` is optionally @${TENANT_OWNED_TAG} and a null tenant cannot match the pair`,
+                    linkTagOf(property),
+                );
+                continue;
+            }
+            if (owned !== undefined && !owned.optional && owner?.optional) {
+                reportField(
+                    property,
+                    `@foreignKey ${target.name} cannot link from \`${entity.name}\`, whose @${TENANT_OWNED_TAG} \`${owner.field}\` is optional, to an @${TENANT_OWNED_TAG} target: a global row has no tenant to agree on`,
+                    linkTagOf(property),
+                );
+                continue;
+            }
+            if (owned !== undefined && !owned.optional) {
                 if (scope === undefined) {
                     reportField(
                         property,
-                        `@foreignKey ${target.name} must carry \`scope=${column}\`, because \`${target.name}\` is @${TENANT_OWNED_TAG}`,
+                        `@foreignKey ${target.name} must carry \`scope=${owned.field}\`, because \`${target.name}\` is @${TENANT_OWNED_TAG}`,
                         linkTagOf(property),
                     );
-                } else if (scope !== column) {
+                } else if (scope !== owned.field) {
                     reportField(
                         property,
-                        `@foreignKey ${target.name} must carry \`scope=${column}\`, to agree with the scope \`${target.name}\` declares`,
+                        `@foreignKey ${target.name} must carry \`scope=${owned.field}\`, to agree with the scope \`${target.name}\` declares`,
                         linkTagOf(property),
                     );
                 }
-                if (entity.tags.tenantOwned !== column) {
+                if (owner?.field !== owned.field) {
                     reportField(
                         property,
-                        `@foreignKey ${target.name} is scoped on \`${column}\`, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${column}\``,
+                        `@foreignKey ${target.name} is scoped on \`${owned.field}\`, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${owned.field}\``,
                         linkTagOf(property),
                     );
                 }
@@ -1356,10 +1391,11 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
             }
             for (const property of entity.properties) {
                 const tenantLink = property.tags.foreignKey?.entity === root.name;
-                if (!tenantLink || entity.tags.tenantOwned === property.name) {
+                const owner = entity.tags.tenantOwned;
+                if (!tenantLink || owner?.field === property.name) {
                     continue;
                 }
-                if (entity.tags.tenantOwned === undefined) {
+                if (owner === undefined) {
                     // A bare @tenantOwned is reported on the interface itself, so this rule need not repeat it.
                     if (entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
                         continue;

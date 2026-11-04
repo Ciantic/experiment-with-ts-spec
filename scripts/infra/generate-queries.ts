@@ -331,10 +331,14 @@ export function renderWatchModule(entity: string, table: Table): string {
 /** Render one entity's tenant lookup: the distinct tenants the named rows belong to. See docs/permissions.md. */
 export function renderTenantsModule(table: Table, declared?: DeclaredType): string {
     const module = lowerFirst(table.interfaceName);
-    const tenant = table.tenantOwned as string;
+    const owned = table.tenantOwned;
+    const tenant = owned?.field as string;
+    const nullable = owned?.optional === true;
     const keys = primaryKeyColumns(table);
     // The spec's tenant key type names the column, so the lookup does not index the entity.
     const tenantType = declared?.name ?? `${table.interfaceName}[${JSON.stringify(tenant)}]`;
+    const returnedElement = nullable ? `${tenantType} | null` : tenantType;
+    const returnedType = nullable ? `(${tenantType} | null)[]` : `${tenantType}[]`;
     const keyType = `${table.interfaceName}PrimaryKey`;
     const lines: string[] = [HEADER];
     if (declared?.importSpecifier !== undefined) {
@@ -345,9 +349,13 @@ export function renderTenantsModule(table: Table, declared?: DeclaredType): stri
     lines.push(`import type { ${keyType} } from "sdk/repositories/${module}PrimaryKeySchema.ts";`);
     lines.push('import type { SqlExecutor } from "../sql-executor.ts";');
     lines.push("");
-    lines.push(`/** The distinct tenants the named \`${table.name}\` rows belong to, read on the caller's executor. */`);
     lines.push(
-        `export async function ${tenantsFunctionName(table.interfaceName)}(db: SqlExecutor, pks: readonly ${keyType}[]): Promise<${tenantType}[]> {`,
+        nullable
+            ? `/** The distinct tenants the named \`${table.name}\` rows belong to, with \`null\` for a row that has none. */`
+            : `/** The distinct tenants the named \`${table.name}\` rows belong to, read on the caller's executor. */`,
+    );
+    lines.push(
+        `export async function ${tenantsFunctionName(table.interfaceName)}(db: SqlExecutor, pks: readonly ${keyType}[]): Promise<${returnedType}> {`,
     );
     lines.push("    if (pks.length === 0) {");
     lines.push("        return [];");
@@ -360,7 +368,7 @@ export function renderTenantsModule(table: Table, declared?: DeclaredType): stri
         ? `"${keys[0]?.name as string}" = any($1)`
         : `(${keys.map((key) => `"${key.name}"`).join(", ")}) in (select * from unnest(${keys.map((key, index) => `$${index + 1}::${key.sqlType}[]`).join(", ")}))`;
     const sql = `'select distinct "${tenant}" as "tenant" from "${table.name}" where ${where}'`;
-    lines.push(`    const result = await db.query<{ tenant: ${tenantType} }>(`);
+    lines.push(`    const result = await db.query<{ tenant: ${returnedElement} }>(`);
     lines.push(`        ${sql},`);
     lines.push(`        ${parameters},`);
     lines.push("    );");

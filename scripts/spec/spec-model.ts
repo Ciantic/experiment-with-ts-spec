@@ -180,6 +180,14 @@ export interface ForeignKey {
     scope?: string;
 }
 
+/** A `@tenantOwned <column> [optional]` value: the column that scopes the interface, and whether a row may have no tenant. See docs/tenancy.md. */
+export interface TenantOwned {
+    /** The field that scopes the interface. */
+    field: string;
+    /** True when the column is nullable, so some rows belong to no tenant. */
+    optional: boolean;
+}
+
 /** The operators that test a column for null and take no value. See docs/queries.md. */
 export const NULL_OPERATORS = ["isNull", "isNotNull"] as const;
 export type NullOperator = (typeof NULL_OPERATORS)[number];
@@ -369,8 +377,8 @@ export interface Tags {
     entity: boolean;
     /** The interface is the tenancy root, which owns the entities that link to it. See docs/tenancy.md. */
     tenant: boolean;
-    /** The field that scopes this interface, from `@tenantOwned tenantId`. See docs/tenancy.md. */
-    tenantOwned?: string;
+    /** The field that scopes this interface and whether some rows may have no tenant, from `@tenantOwned tenantId optional`. See docs/tenancy.md. */
+    tenantOwned?: TenantOwned;
     /** The Postgres table name for the interface. */
     pgTable?: string;
     /** The write operations `@repository` declares, in {@link WRITE_OPERATIONS} order. See docs/repositories.md. */
@@ -1012,6 +1020,19 @@ export function parseForeignKey(value: string): ForeignKey {
     return foreignKey;
 }
 
+/** Decode a `@tenantOwned <column> [optional]` value; an unrecognised shape is left for the linter to report. */
+export function parseTenantOwned(value: string): TenantOwned | undefined {
+    const tokens = value.trim().split(/\s+/u).filter((token) => token !== "");
+    const [field, modifier] = tokens;
+    if (field === undefined || tokens.length > 2) {
+        return undefined;
+    }
+    if (modifier !== undefined && modifier !== "optional") {
+        return undefined;
+    }
+    return { field, optional: modifier === "optional" };
+}
+
 /** Decode the JSDoc tags on a declaration, keeping the tags as written for rules that need them. */
 export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
     const tags: Tags = {
@@ -1083,9 +1104,11 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "tenant":
                     tags.tenant = true;
                     break;
-                case "tenantOwned":
-                    if (value !== undefined) tags.tenantOwned ??= value.trim();
+                case "tenantOwned": {
+                    const owned = value === undefined ? undefined : parseTenantOwned(value);
+                    if (owned !== undefined) tags.tenantOwned ??= owned;
                     break;
+                }
                 case "repository":
                     if (tags.repository === undefined) tags.repository = parseWriteOperations(value);
                     break;

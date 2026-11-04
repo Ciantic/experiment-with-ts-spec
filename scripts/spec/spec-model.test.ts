@@ -785,7 +785,23 @@ describe("tenancy tags", () => {
             "Thing.ts": entity("Thing", ["tenantOwned ownerId"], "    ownerId: OwnerId;"),
         });
 
-        expect(interfaces.get("Thing")?.tags.tenantOwned).toBe("ownerId");
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toEqual({ field: "ownerId", optional: false });
+    });
+
+    it("decodes @tenantOwned optional as a nullable scope", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", ["tenantOwned ownerId optional"], "    ownerId?: OwnerId;"),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toEqual({ field: "ownerId", optional: true });
+    });
+
+    it("leaves a @tenantOwned modifier the linter rejects undecoded", () => {
+        const { interfaces } = parse({
+            "Thing.ts": entity("Thing", ["tenantOwned ownerId always"], "    ownerId?: OwnerId;"),
+        });
+
+        expect(interfaces.get("Thing")?.tags.tenantOwned).toBeUndefined();
     });
 
     it("decodes @foreignKey scope as written", () => {

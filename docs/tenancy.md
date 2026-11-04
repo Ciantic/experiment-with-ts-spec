@@ -28,7 +28,27 @@ export interface Widget {
      */
     tenantId: TenantId;
 }
+
+/**
+ * @entity
+ * @tenantOwned tenantId optional
+ * @pgTable email
+ */
+export interface Email {
+    /**
+     * @fieldName Tenant ID
+     * @queryFilter
+     * @foreignKey Tenant
+     * @widget text
+     */
+    tenantId?: TenantId;
+}
 ```
+
+The first interface is scoped to one tenant. The second is *optionally*
+scoped: a row with a tenant belongs to it, and a row with a null tenant belongs
+to no tenant at all. The `optional` word on the tag is what makes that intent
+explicit; a bare optional field does not.
 
 ## The root: `@tenant`
 
@@ -44,13 +64,25 @@ each entity. The parser resolves it once into `SpecModel.tenantIdType`.
 
 `Tenant` is the only interface in the example that carries the tag.
 
-## Ownership: `@tenantOwned <column>`
+## Ownership: `@tenantOwned <column> [optional]`
 
 `@tenantOwned` names the column that scopes the interface. The linter requires
-that field to exist, to be required, to be a scalar column rather than a branch,
-and to link to the root with `@foreignKey Tenant`: the link is what makes the
-column a tenant column rather than a bare id. An interface that declares neither
-the tag nor a `tenantId` is global, which is what `Locale` and `LogEntry` are.
+that field to exist, to be a scalar column rather than a branch, and to link to
+the root with `@foreignKey Tenant`: the link is what makes the column a tenant
+column rather than a bare id. An interface that declares neither the tag nor a
+`tenantId` is global, which is what `Locale` and `LogEntry` are.
+
+The word `optional` says some rows have no tenant. It must agree with the field:
+an `optional` tag needs an optional field, and an optional field needs the tag,
+so a nullable tenant column is never an accident. The tag is also the only place
+the distinction appears: the column is nullable, the read type carries
+`tenantId?: TenantId`, and every generated write accepts a null tenant.
+
+An unowned row is a **global** row. It is governed by the entity's global
+permission rather than by a tenant permission, which is what the guards check:
+without `hasGlobalPermission`, a call that addresses a null tenant is refused,
+and with it the call may address tenanted and unowned rows alike. See
+"Reads" below and `docs/permissions.md`.
 
 ## Reads: `@queryFilter required`
 
@@ -59,6 +91,12 @@ read cannot list another tenant's rows by omitting a filter. The requirement is
 enforced in four places, from the type down to the resolver — see
 `docs/queries.md`. `Tenant`, `Locale`, and `LogEntry` have no `tenantId` and so
 nothing to require; a read of them is unscoped.
+
+On an optional owner the filter value may also be a null test: a nullable column
+takes one, so `filter: { tenantId: { isNull: true } }` reads the rows that belong
+to no tenant and `{ isNotNull: true }` reads every tenanted row. A null test
+names no tenant, so the guard refuses it without the global permission; naming
+tenants instead checks `hasTenantPermission` for each.
 
 That alone is not enough: it scopes what is *read*, not what is *written*.
 
@@ -107,6 +145,15 @@ In the example, five relations carry a scope: `WidgetRow` → `Widget`,
 `Account`, and `Widget` → `Supplier`. The `tenantId` keys into `Tenant` are not
 scoped: `Tenant` is the root, so there is no second column to agree with.
 
+An optional owner takes no part in a composite reference. `MATCH SIMPLE` matches
+nothing when any column of the pair is null, so a scope column on an optional
+owner would silently switch the check off; the linter already requires every
+scope column to be required. For the same reason an optional owner cannot be the
+*target* of a scope: a global parent has no tenant to match. A reference to an
+optionally owned interface is therefore unscoped and checks existence only, and
+an optional owner cannot reference a required owner at all: a global row has no
+tenant to agree on.
+
 ## The tags are the only source
 
 Nothing fills a tag in. A reference that omits `scope=<column>` generates an
@@ -116,6 +163,11 @@ because it runs before the generators (`docs/tasks.md`), a spec that forgets one
 writes no artifact at all. `pnpm run generate` and `pnpm run check` both go
 through it; a standalone `pnpm generate:<artifact>` runs the generator alone, as
 it does for every other annotation.
+
+The `optional` word works the same way: it is checked against the field, not
+inferred from it. A nullable tenant column without the word is a finding, and so
+is the word on a required field, so a reader never has to guess whether a null
+tenant is intended.
 
 ## Rules
 
@@ -135,6 +187,10 @@ it does for every other annotation.
   succeed. A partial `set null (column)` list is not generated.
 - The referencing column may still be optional. A null `accountId` means "no
   account", and the pair is not matched — which is the intent, not a gap.
+- An optional owner **may not be a scope's source or target**. A nullable scope
+  matches nothing, and a global parent has no tenant to match, so either side
+  makes the constraint silently vacuous. A reference to an optional owner is
+  unscoped, and an optional owner cannot reference a required owner.
 
 ## What this does not cover
 
@@ -145,6 +201,10 @@ it does for every other annotation.
   `LogEntry` are global because they carry neither `@tenantOwned` nor a
   `tenantId`, and nothing tells that apart from an entity whose tenancy someone
   forgot. Intent is checkable once one of the two is written.
+- **A reference to an optional owner is one-directional.** The unscoped foreign
+  key proves the row exists, not that a tenanted child points at a parent in its
+  own tenant; there is no second column to compare while the parent may be
+  global.
 - **Authorization inside the SQL.** The generated routes guard every call: a
   global permission allows it, otherwise the guard resolves the tenants the
   argument names and requires a permission in each (`docs/permissions.md`).

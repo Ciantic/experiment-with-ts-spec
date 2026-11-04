@@ -75,6 +75,28 @@ export interface Owned {
 /** The tenant-owned fixture with the key type it references. */
 const OWNED_DOMAIN = { Owned: OWNED, Tenant: TENANT_ID };
 
+/** An optionally tenant-owned entity: a row may belong to no tenant at all. */
+const OPTIONAL = `
+/**
+ * @pgTable optional_entity
+ * @tenantOwned tenantId optional
+ * @repository create upsert update delete
+ * @restRepository create upsert update delete
+ * @queries query
+ * @restQueries query
+ * @entity
+ */
+export interface OptionalEntity {
+    /** @primaryKey */
+    id: string;
+
+    tenantId?: TenantId;
+}
+`.trim();
+
+/** The optionally owned fixture with the root it links to. */
+const OPTIONAL_DOMAIN = { OptionalEntity: OPTIONAL, Tenant: TENANT_ID };
+
 /** Parse in-memory domain files, so no test reads the real spec. */
 function specOf(domain: Record<string, string>): SpecModel {
     const sources = Object.entries(domain).map(([name, sourceFileText]) => ({
@@ -100,7 +122,7 @@ function moduleOf(domain: Record<string, string>, entityName: string, kind: Rest
 }
 
 /** `getOwnedTenants` as the runtime test drives it, standing in for the generated lookup. */
-type Lookup = (db: unknown, pks: readonly object[]) => Promise<string[]>;
+type Lookup = (db: unknown, pks: readonly object[]) => Promise<(string | null)[]>;
 
 const dirs: string[] = [];
 
@@ -152,7 +174,7 @@ function loadGuard(code: string, lookup: Lookup = async () => []): Record<string
         code,
         tsStubImports({
             "sdk/errors.ts": { ForbiddenError },
-            "../../db/queries/index.ts": { getOwnedTenants: lookup },
+            "../../db/queries/index.ts": { getOwnedTenants: lookup, getOptionalEntityTenants: lookup },
         }),
     );
 }
@@ -222,6 +244,41 @@ describe("renderGuardModule", () => {
             "const tenants = new Set(filtered !== undefined ? [filtered] : await getOwnedTenants(ctx.db, argument?.pks ?? []));",
         );
     });
+
+    it("accepts a null test on an optional tenant filter, which names no tenant", () => {
+        const code = moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "query");
+
+        expect(code).toContain(
+            "tenantId?: readonly TenantId[] | { readonly isNull: true } | { readonly isNotNull: true } | undefined",
+        );
+        expect(code).toContain("const filtered = argument.filter?.tenantId;");
+        expect(code).toContain("const tenants = new Set(Array.isArray(filtered) ? filtered : []);");
+        expect(code).toContain('"optionalEntity:query names no tenant, which needs the global permission"');
+    });
+
+    it("counts an absent tenant on a create as a global row", () => {
+        const code = moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "create");
+
+        expect(code).toContain("const tenants = new Set(argument.flatMap((row) => row.tenantId ?? [null]));");
+        expect(code).toContain('if (tenant === null) {');
+        expect(code).toContain(
+            '"optionalEntity:create addresses a row with no tenant, which needs the global permission"',
+        );
+    });
+
+    it("counts an omitted tenant on an upsert as the null it stores", () => {
+        const code = moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "upsert");
+
+        expect(code).toContain("...(await getOptionalEntityTenants(ctx.db, argument)),");
+        expect(code).toContain("...argument.flatMap((row) => row.tenantId ?? [null]),");
+    });
+
+    it("leaves an omitted tenant on a patch alone, since it keeps the stored value", () => {
+        const code = moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "update");
+
+        expect(code).toContain("...argument.flatMap((row) => (row.tenantId === undefined ? [] : [row.tenantId])),");
+        expect(code).toContain('if (tenant === null) {');
+    });
 });
 
 describe("generated guards at runtime", () => {
@@ -245,6 +302,62 @@ describe("generated guards at runtime", () => {
         ) => Promise<void>;
 
         await expect(guard(context, { filter: {} })).rejects.toThrow("names no tenant");
+    });
+
+    it("refuses an unowned read without the global permission", async () => {
+        const { context } = runtime((tenant) => tenant === "tenant-a");
+        const guard = loadGuard(moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "query")).canQueryOptionalEntity as (
+            ctx: unknown,
+            argument: unknown,
+        ) => Promise<void>;
+
+        await expect(guard(context, { filter: { tenantId: { isNull: true } } })).rejects.toThrow(
+            "needs the global permission",
+        );
+    });
+
+    it("refuses an unowned create without the global permission", async () => {
+        const { context } = runtime((tenant) => tenant === "tenant-a");
+        const guard = loadGuard(moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "create")).canCreateOptionalEntity as (
+            ctx: unknown,
+            argument: unknown,
+        ) => Promise<void>;
+
+        await expect(guard(context, [{ id: "1", tenantId: null }])).rejects.toThrow(
+            "addresses a row with no tenant, which needs the global permission",
+        );
+    });
+
+    it("checks only the tenants an optional create names", async () => {
+        const { calls, context } = runtime((tenant) => tenant === "tenant-a");
+        const guard = loadGuard(moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "create")).canCreateOptionalEntity as (
+            ctx: unknown,
+            argument: unknown,
+        ) => Promise<void>;
+
+        await guard(context, [{ id: "1", tenantId: "tenant-a" }]);
+
+        expect(calls.map((call) => call.tenant)).toEqual([undefined, "tenant-a"]);
+    });
+
+    it("refuses a delete when the stored row has no tenant", async () => {
+        const { context } = runtime((tenant) => tenant === "tenant-a");
+        const guard = loadGuard(moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "delete"), async () => [null])
+            .canDeleteOptionalEntity as (ctx: unknown, argument: unknown) => Promise<void>;
+
+        await expect(guard(context, [{ id: "1" }])).rejects.toThrow(
+            "addresses a row with no tenant, which needs the global permission",
+        );
+    });
+
+    it("refuses a patch that clears the tenant without the global permission", async () => {
+        const { context } = runtime((tenant) => tenant === "tenant-a");
+        const guard = loadGuard(moduleOf(OPTIONAL_DOMAIN, "OptionalEntity", "update"), async () => ["tenant-a"])
+            .canUpdateOptionalEntity as (ctx: unknown, argument: unknown) => Promise<void>;
+
+        await expect(guard(context, [{ id: "1", version: 0n, tenantId: null }])).rejects.toThrow(
+            "addresses a row with no tenant, which needs the global permission",
+        );
     });
 
     it("looks a delete's keys up and refuses the tenant the session lacks", async () => {

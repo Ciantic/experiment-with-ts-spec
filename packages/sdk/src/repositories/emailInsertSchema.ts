@@ -13,10 +13,11 @@ export const emailInsertSchema = emailSchema
         createdAt: emailSchema.shape.createdAt.exactOptional(),
         updatedAt: emailSchema.shape.updatedAt.exactOptional(),
         version: emailSchema.shape.version.exactOptional(),
+        tenantId: emailSchema.shape.tenantId.nullable(),
         lastError: emailSchema.shape.lastError.nullable(),
         sentAt: emailSchema.shape.sentAt.nullable(),
     })
     .strict();
 
 /** The fields a create writes: a defaulted column may be omitted, and the database fills it. */
-export type EmailInsert = Insert<Email, never, "lastError" | "sentAt", "id" | "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt" | "version">;
+export type EmailInsert = Insert<Email, never, "tenantId" | "lastError" | "sentAt", "id" | "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt" | "version">;

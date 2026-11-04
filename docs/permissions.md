@@ -207,6 +207,26 @@ cannot be checked against a tenant, so the guard refuses the call. An empty batc
 of writes names no row, so it is allowed and does nothing. An upsert or a patch
 that moves a row is checked against both tenants.
 
+### Optional ownership
+
+An entity that declares `@tenantOwned <column> optional` has rows that may belong
+to no tenant, and a null tenant is checked against the **global** permission. The
+guard asks for it first, so a session holding it reaches every row. Without it,
+the guard refuses any row whose tenant is null:
+
+- A create counts an omitted or null tenant as an unowned row, and an upsert does
+  the same, because both write the row whole. A patch counts only an explicit
+  null, since an omitted field keeps the stored tenant.
+- The lookup answers `(TenantId | null)[]`, so a stored row with no tenant is
+  visible to the guard rather than dropped.
+- A read filter may name `{ isNull: true }`. That names no tenant, so the guard
+  refuses it without the global permission, exactly as it refuses a read that
+  names no filter at all.
+
+A batch that mixes tenanted and unowned rows needs the global permission for the
+unowned one and `hasTenantPermission` in each named tenant; holding neither is
+refused as a whole.
+
 ### The generated lookup
 
 The stored-row lookup is generated per entity by `scripts/infra/generate-queries.ts`
@@ -235,7 +255,8 @@ The return type is the `@tenant` root's primary-key type, so every tenant lookup
 answers the same type; the parameter is the entity's own primary-key type, so a
 guard passes patch or upsert rows only because both carry that key. A composite key matches one
 `unnest($n::type[])` per key column. No generated function hardcodes a domain
-name, and neither does a guard.
+name, and neither does a guard. An optionally owned entity's lookup returns
+`(TenantId | null)[]`, so the null a global row stores reaches the guard.
 
 A guard does not scope the SQL itself. It checks who may run the call, not what
 the handler builds, so a resolver that ignored a filter would still read across

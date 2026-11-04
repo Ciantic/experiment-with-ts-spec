@@ -11,6 +11,7 @@ export const emailUpsertSchema = emailSchema
         maxAttempts: emailSchema.shape.maxAttempts.exactOptional(),
         createdAt: emailSchema.shape.createdAt.exactOptional(),
         updatedAt: emailSchema.shape.updatedAt.exactOptional(),
+        tenantId: emailSchema.shape.tenantId.nullable(),
         lastError: emailSchema.shape.lastError.nullable(),
         sentAt: emailSchema.shape.sentAt.nullable(),
     })
@@ -21,4 +22,4 @@ export const emailUpsertSchema = emailSchema
     .strict();
 
 /** The fields an upsert writes: what a create carries, plus the `@version` it claims. */
-export type EmailUpsert = Upsert<Email, never, "id" | "version", "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;
+export type EmailUpsert = Upsert<Email, never, "id" | "version", "tenantId" | "lastError" | "sentAt", "status" | "attempts" | "maxAttempts" | "createdAt" | "updatedAt">;

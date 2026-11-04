@@ -5,17 +5,21 @@ import type { TenantId } from "spec/user-service/Tenant.ts";
 
 /**
  * Guard `queryEmail`: the session may read the tenants the filter names.
- * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none
+ * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none, or when a row has no tenant and the session lacks the global permission
  */
-export const canQueryEmail: RouteGuard<{ filter?: { tenantId?: readonly TenantId[] | undefined } | undefined }> = async (ctx, argument) => {
+export const canQueryEmail: RouteGuard<{ filter?: { tenantId?: readonly TenantId[] | { readonly isNull: true } | { readonly isNotNull: true } | undefined } | undefined }> = async (ctx, argument) => {
     if (await ctx.hasGlobalPermission("email", "query")) {
         return;
     }
-    const tenants = new Set(argument.filter?.tenantId);
+    const filtered = argument.filter?.tenantId;
+    const tenants = new Set(Array.isArray(filtered) ? filtered : []);
     if (tenants.size === 0) {
-        throw new ForbiddenError("email:query names no tenant the session can be checked against");
+        throw new ForbiddenError("email:query names no tenant, which needs the global permission");
     }
     for (const tenant of tenants) {
+        if (tenant === null) {
+            throw new ForbiddenError("email:query addresses a row with no tenant, which needs the global permission");
+        }
         if (!(await ctx.hasTenantPermission("email", "query", tenant))) {
             throw new ForbiddenError(`missing permission email:query in tenant ${tenant}`);
         }

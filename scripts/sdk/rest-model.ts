@@ -12,6 +12,7 @@ import {
     type SpecInterface,
     type SpecLocation,
     type SpecModel,
+    type TenantOwned,
     type WriteOperation,
 } from "../spec/spec-model.ts";
 
@@ -46,8 +47,8 @@ export interface RestEntity {
     importSpecifier: string;
     /** The collection path, e.g. `/invoice`, taken from the `@pgTable` name. */
     path: string;
-    /** The column `@tenantOwned` names, or absent on a global entity. See docs/tenancy.md. */
-    tenantOwned?: string;
+    /** The column `@tenantOwned` names and whether it is optional, or absent on a global entity. See docs/tenancy.md. */
+    tenantOwned?: TenantOwned;
     /** The primary-key fields, which name the row a write targets; one for a single key. */
     keys: string[];
     /** The `@queryFilter` fields: `query` accepts them all. */

@@ -2647,6 +2647,13 @@ describe("tenancy tags", () => {
             "ownerId: string;",
         );
 
+    /** The optionally owned column: the same link, with the tenant null on a global row. */
+    const optionalOwnedLink = (target: string, options = ""): string =>
+        field(
+            ["@fieldName Owner ID", "@widget text", "@queryFilter required", `@foreignKey ${target}${options}`],
+            "ownerId?: string;",
+        );
+
     /** A field referencing `target`, with `name` as both the field and its label. */
     const reference = (name: string, target: string, options = ""): string =>
         field([`@fieldName ${name}`, "@widget text", `@foreignKey ${target}${options}`], `${name}: string;`);
@@ -2679,6 +2686,115 @@ describe("tenancy tags", () => {
         );
 
         expect(findings).toEqual([]);
+    });
+
+    it("accepts an optional owner, and a reference to it without a scope", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId optional"],
+                    `${key}\n\n${optionalOwnedLink("Alpha")}`,
+                ),
+                "/src/domain/Gadget.ts": entity("Gadget", [], `${key}\n\n${reference("thingId", "Thing")}`),
+            }),
+        );
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports an optional owner whose field is required", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId optional"],
+                    `${key}\n\n${ownedLink("Alpha")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned `ownerId` is marked optional, so the field must be optional",
+        ]);
+    });
+
+    it("reports a scope reference from an optional owner, which would skip the check", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId optional"],
+                    `${key}\n\n${optionalOwnedLink("Alpha")}\n\n${reference("thingId", "Thing", " scope=ownerId")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey scope=`ownerId` must be a required field, because a nullable scope skips the check",
+            "`thingId`: @foreignKey Thing takes no scope on `Gadget`, because its @tenantOwned `ownerId` is optional and a nullable scope skips the check",
+        ]);
+    });
+
+    it("reports a reference to a required owner from an optional one", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity("Thing", ["tenantOwned ownerId"], `${key}\n\n${ownedLink("Alpha")}`),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId optional"],
+                    `${key}\n\n${optionalOwnedLink("Alpha")}\n\n${reference("thingId", "Thing")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey Thing cannot link from `Gadget`, whose @tenantOwned `ownerId` is optional, to an @tenantOwned target: a global row has no tenant to agree on",
+        ]);
+    });
+
+    it("reports a scope on a reference to an optional owner", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId optional"],
+                    `${key}\n\n${optionalOwnedLink("Alpha")}`,
+                ),
+                "/src/domain/Gadget.ts": entity(
+                    "Gadget",
+                    ["tenantOwned ownerId"],
+                    `${key}\n\n${ownedLink("Alpha")}\n\n${reference("thingId", "Thing", " scope=ownerId")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`thingId`: @foreignKey Thing takes no scope, because `Thing` is optionally @tenantOwned and a null tenant cannot match the pair",
+        ]);
+    });
+
+    it("reports @tenantOwned with an unknown modifier", () => {
+        const { findings } = lintSpec(
+            parse({
+                "/src/domain/Alpha.ts": root,
+                "/src/domain/Thing.ts": entity(
+                    "Thing",
+                    ["tenantOwned ownerId sometimes"],
+                    `${key}\n\n${ownedLink("Alpha")}`,
+                ),
+            }),
+        );
+
+        expect(messages(findings)).toEqual([
+            "`Thing`: @tenantOwned takes a column and, when some rows have no tenant, the word `optional`, such as `@tenantOwned tenantId optional`",
+        ]);
     });
 
     it("reports a second @tenant", () => {
@@ -2785,7 +2901,7 @@ export interface Thing {
         ]);
     });
 
-    it("reports @tenantOwned naming an optional field, which would skip the check", () => {
+    it("reports @tenantOwned naming an optional field without the optional modifier", () => {
         const { findings } = lintSpec(
             parse({
                 "/src/domain/Alpha.ts": root,
@@ -2798,7 +2914,7 @@ export interface Thing {
         );
 
         expect(messages(findings)).toEqual([
-            "`Thing`: @tenantOwned names `ownerId`, which must be a required field, because a nullable scope skips the check",
+            "`Thing`: @tenantOwned names `ownerId`, which is optional; write `@tenantOwned ownerId optional` when some rows have no tenant",
         ]);
     });
 

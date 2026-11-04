@@ -53,15 +53,20 @@ export function argumentType(
     kind: RestKind,
     field: string,
     tenantType?: DeclaredType,
+    optional = false,
 ): { type: string; payload?: string; importSpecifier?: string } {
     const name = entity.entity;
     // A field typed by an alias is named as such; an unresolved shape still reads through the entity.
     const tenant = tenantType?.name ?? `${name}[${JSON.stringify(field)}]`;
     const importSpecifier = tenantType?.importSpecifier ?? (tenantType === undefined ? entity.importSpecifier : undefined);
+    // A nullable tenant filter also accepts the generated null tests, which name no tenant.
+    const filter = optional
+        ? `readonly ${tenant}[] | { readonly isNull: true } | { readonly isNotNull: true }`
+        : `readonly ${tenant}[]`;
     switch (kind) {
         case "query":
             return {
-                type: `{ filter?: { ${field}?: readonly ${tenant}[] | undefined } | undefined }`,
+                type: `{ filter?: { ${field}?: ${filter} | undefined } | undefined }`,
                 ...(importSpecifier === undefined ? {} : { importSpecifier }),
             };
         case "watch":
@@ -82,38 +87,74 @@ export function argumentType(
 }
 
 /** The lines that refuse a call whose tenants the session does not hold the permission in. */
-function checkLines(scope: string, action: string): string[] {
+function checkLines(scope: string, action: string, optional: boolean, emptyMessage?: string): string[] {
     const permission = `${scope}:${action}`;
-    return [
+    const lines: string[] = [
         "    if (tenants.size === 0) {",
-        `        throw new ForbiddenError("${permission} names no tenant the session can be checked against");`,
+        `        throw new ForbiddenError(${JSON.stringify(emptyMessage ?? `${permission} names no tenant the session can be checked against`)});`,
         "    }",
         "    for (const tenant of tenants) {",
+    ];
+    // A null tenant is a global row: it is only reachable through the permission checked before this helper.
+    if (optional) {
+        lines.push(
+            "        if (tenant === null) {",
+            `            throw new ForbiddenError("${permission} addresses a row with no tenant, which needs the global permission");`,
+            "        }",
+        );
+    }
+    lines.push(
         `        if (!(await ctx.hasTenantPermission(${JSON.stringify(scope)}, ${JSON.stringify(action)}, tenant))) {`,
         `            throw new ForbiddenError(\`missing permission ${permission} in tenant \${tenant}\`);`,
         "        }",
         "    }",
-    ];
+    );
+    return lines;
 }
 
 /** The lines that gather the tenants a call addresses, before {@link checkLines} refuses it. */
-function tenantLines(entity: RestEntity, kind: RestKind, lookup: string | undefined, field: string): string[] {
+function tenantLines(
+    entity: RestEntity,
+    kind: RestKind,
+    lookup: string | undefined,
+    field: string,
+    optional: boolean,
+): string[] {
     switch (kind) {
         case "query":
-            return [`    const tenants = new Set(argument.filter?.${field});`];
+            // A null test names no tenant, so it reaches the global permission the guard asks for first.
+            return optional
+                ? [
+                      `    const filtered = argument.filter?.${field};`,
+                      "    const tenants = new Set(Array.isArray(filtered) ? filtered : []);",
+                  ]
+                : [`    const tenants = new Set(argument.filter?.${field});`];
         case "watch":
             return [
                 `    const filtered = argument?.filter?.${field};`,
                 `    const tenants = new Set(filtered !== undefined ? [filtered] : await ${lookup as string}(ctx.db, argument?.pks ?? []));`,
             ];
         case "create":
-            return [`    const tenants = new Set(argument.flatMap((row) => row.${field} ?? []));`];
+            // A create writes an absent tenant as null, so an unowned row must reach the null check.
+            return [
+                `    const tenants = new Set(argument.flatMap((row) => row.${field} ?? ${optional ? "[null]" : "[]"}));`,
+            ];
         case "upsert":
-        case "update":
+            // An upsert writes the row whole, so an omitted tenant is the null it stores; a patch leaves it alone.
             return [
                 "    const tenants = new Set([",
                 `        ...(await ${lookup as string}(ctx.db, argument)),`,
-                `        ...argument.flatMap((row) => row.${field} ?? []),`,
+                `        ...argument.flatMap((row) => row.${field} ?? ${optional ? "[null]" : "[]"}),`,
+                "    ]);",
+            ];
+        case "update":
+            // A patch that leaves the field out keeps the stored tenant; an explicit null moves an optional owner to no tenant.
+            return [
+                "    const tenants = new Set([",
+                `        ...(await ${lookup as string}(ctx.db, argument)),`,
+                optional
+                    ? `        ...argument.flatMap((row) => (row.${field} === undefined ? [] : [row.${field}])),`
+                    : `        ...argument.flatMap((row) => row.${field} ?? []),`,
                 "    ]);",
             ];
         case "delete":
@@ -150,8 +191,9 @@ export function renderGuardModule(
     }
 
     // A delete names the tenant only through its lookup, so it reads no field from the argument.
-    const field = operation.kind !== "delete" ? entity.tenantOwned : undefined;
-    const argument = argumentType(entity, operation.kind, field ?? entity.tenantOwned, tenantType);
+    const owned = entity.tenantOwned;
+    const field = operation.kind !== "delete" ? owned.field : undefined;
+    const argument = argumentType(entity, operation.kind, field ?? owned.field, tenantType, owned.optional);
     const lookup = LOOKUP_KINDS.has(operation.kind) ? `get${entity.entity}Tenants` : undefined;
     if (argument.importSpecifier !== undefined) {
         lines.push(`import type { ${tenantType?.name ?? entity.entity} } from "${argument.importSpecifier}";`);
@@ -166,7 +208,9 @@ export function renderGuardModule(
 
     lines.push("/**");
     lines.push(` * Guard \`${operation.id}\`: ${CHECKS[operation.kind]}.`);
-    lines.push(" * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none");
+    lines.push(
+        ` * @throws {ForbiddenError} when a tenant the call names is not permitted, or it names none${owned.optional ? ", or when a row has no tenant and the session lacks the global permission" : ""}`,
+    );
     lines.push(" */");
     lines.push(`export const ${name}: RouteGuard<${argument.type}> = async (ctx, argument) => {`);
     const returnsEarly = operation.kind === "query" || operation.kind === "watch";
@@ -174,8 +218,12 @@ export function renderGuardModule(
     lines.push(`    if (${early}) {`);
     lines.push("        return;");
     lines.push("    }");
-    lines.push(...tenantLines(entity, operation.kind, lookup, field as string));
-    lines.push(...checkLines(entity.module, operation.kind));
+    lines.push(...tenantLines(entity, operation.kind, lookup, field as string, owned.optional));
+    const emptyMessage =
+        owned.optional && operation.kind === "query"
+            ? `${entity.module}:${operation.kind} names no tenant, which needs the global permission`
+            : undefined;
+    lines.push(...checkLines(entity.module, operation.kind, owned.optional, emptyMessage));
     lines.push("};");
     return lines.join("\n") + "\n";
 }
