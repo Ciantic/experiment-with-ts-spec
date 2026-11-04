@@ -8,10 +8,13 @@ import {
     call,
     exec,
     GROUP_PATH,
+    safeExec,
     transaction,
     transactionWith,
     type Attempted,
     type Call,
+    type ErrorsOf,
+    type SafeResult,
 } from "./client.ts";
 import { ApiClient, HttpError, VersionConflictError, type HttpClient } from "./http.ts";
 
@@ -114,6 +117,43 @@ describe("exec", () => {
         const rows = await exec(http, call<(typeof payload)[]>("queryWidget", "GET", "/widget/query", {}));
 
         expect(rows).toEqual([payload]);
+    });
+});
+
+describe("safeExec", () => {
+    it("resolves the value instead of throwing", async () => {
+        const { http } = client(stringify({ id: "a" }));
+
+        const outcome = await safeExec(http, call<{ id: string }, never>("createWidget", "POST", "/widget", {}));
+
+        expect(outcome).toEqual({ ok: true, value: { id: "a" } });
+    });
+
+    it("returns the class the response names", async () => {
+        const { http } = client(JSON.stringify({ error: "stale", kind: "version-conflict" }), 409);
+
+        const outcome = await safeExec(
+            http,
+            call<void, VersionConflictError>("updateWidget", "PATCH", "/widget", []),
+        );
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+            expect(outcome.error).toBeInstanceOf(VersionConflictError);
+        }
+    });
+
+    it("returns a transport failure, which no call declares", async () => {
+        const http = new ApiClient("http://api.example", (async () => {
+            throw new TypeError("offline");
+        }) as typeof fetch);
+
+        const outcome = await safeExec(http, call<void, never>("createWidget", "POST", "/widget", []));
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+            expect(outcome.error).toBeInstanceOf(TypeError);
+        }
     });
 });
 
@@ -364,7 +404,15 @@ describe("the result type", () => {
             transaction(write, selectWidget({ select: { id: true } })),
         );
 
-        void [single, allVoid, mixed, nested, tolerated, toleratedRows, selected, withModes, toleratedWithModes];
+        const typed = call<void, VersionConflictError>("updateWidget", "PATCH", "/widget", []);
+        const other = call<void, HttpError>("deleteWidget", "DELETE", "/widget", []);
+        const group = transaction(typed, other);
+        const safe: Promise<SafeResult<void, VersionConflictError>> = safeExec(http, typed);
+        const safeGroup: Promise<SafeResult<void, VersionConflictError | HttpError>> = safeExec(http, group);
+        const declared: VersionConflictError = undefined as unknown as ErrorsOf<typeof typed>;
+        const declaredGroup: VersionConflictError | HttpError = undefined as unknown as ErrorsOf<typeof group>;
+
+        void [single, allVoid, mixed, nested, tolerated, toleratedRows, selected, withModes, toleratedWithModes, safe, safeGroup, declared, declaredGroup];
     }
 
     it("keeps each call's result, positionally, and collapses an all-void group", () => {

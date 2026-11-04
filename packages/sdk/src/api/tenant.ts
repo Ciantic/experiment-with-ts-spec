@@ -6,32 +6,129 @@ import type { TenantPatch } from "../repositories/tenantPatchSchema.ts";
 import type { TenantPrimaryKey } from "../repositories/tenantPrimaryKeySchema.ts";
 import type { TenantUpsert } from "../repositories/tenantUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 
 export type { TenantInsert, TenantPatch, TenantPrimaryKey, TenantUpsert };
 
-/** Query `Tenant` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryTenant` with. */
+export type QueryTenantErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Tenant` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryTenant<S extends Selection<Tenant>>(
     opts: { filter?: Filters<Tenant, "id">; limit?: number; offset?: number; select: S },
-): Call<Selected<Tenant, S>[]> {
-    return call<Selected<Tenant, S>[]>("queryTenant", "GET", "/tenant/query", opts);
+): Call<Selected<Tenant, S>[], QueryTenantErrors> {
+    return call<Selected<Tenant, S>[], QueryTenantErrors>("queryTenant", "GET", "/tenant/query", opts);
 }
 
-/** Create `Tenant` rows. */
-export function createTenant(rows: TenantInsert[]): Call<TenantPrimaryKey[]> {
-    return call<TenantPrimaryKey[]>("createTenant", "POST", "/tenant", rows);
+/** The errors `exec` can reject `createTenant` with. */
+export type CreateTenantErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Tenant` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createTenant(rows: TenantInsert[]): Call<TenantPrimaryKey[], CreateTenantErrors> {
+    return call<TenantPrimaryKey[], CreateTenantErrors>("createTenant", "POST", "/tenant", rows);
 }
 
-/** Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertTenant(rows: TenantUpsert[]): Call<TenantPrimaryKey[]> {
-    return call<TenantPrimaryKey[]>("upsertTenant", "PUT", "/tenant", rows);
+/** The errors `exec` can reject `upsertTenant` with. */
+export type UpsertTenantErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Tenant` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertTenant(rows: TenantUpsert[]): Call<TenantPrimaryKey[], UpsertTenantErrors> {
+    return call<TenantPrimaryKey[], UpsertTenantErrors>("upsertTenant", "PUT", "/tenant", rows);
 }
 
-/** Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateTenant(rows: TenantPatch[]): Call<void> {
-    return call<void>("updateTenant", "PATCH", "/tenant", rows);
+/** The errors `exec` can reject `updateTenant` with. */
+export type UpdateTenantErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Tenant` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateTenant(rows: TenantPatch[]): Call<void, UpdateTenantErrors> {
+    return call<void, UpdateTenantErrors>("updateTenant", "PATCH", "/tenant", rows);
 }
 
-/** Delete `Tenant` rows, keyed on `id`. */
-export function deleteTenant(rows: TenantPrimaryKey[]): Call<void> {
-    return call<void>("deleteTenant", "DELETE", "/tenant", rows);
+/** The errors `exec` can reject `deleteTenant` with. */
+export type DeleteTenantErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Tenant` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteTenant(rows: TenantPrimaryKey[]): Call<void, DeleteTenantErrors> {
+    return call<void, DeleteTenantErrors>("deleteTenant", "DELETE", "/tenant", rows);
 }

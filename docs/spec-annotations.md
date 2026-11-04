@@ -243,8 +243,9 @@ Method tags:
 - `@throws {Class} [status=<code>] reason` — an error the operation raises, and
   why. The generator writes the class to `packages/sdk/src/specErrors.ts`, with
   the wire kind derived from the name and the status defaulting to `400`; the
-  operations scaffold copies the tag into its module's doc comment. See
-  `docs/errors.md`.
+  operations scaffold copies the tag into its module's doc comment, and the
+  generated client builder repeats it as an error `exec` can reject the call
+  with, exported as `<Operation>Errors`. See `docs/errors.md`.
 - `@todo <text>` — the operation is not generated: no scaffold, route, client
   call, or declared error. The text says what is left to do, and the linter
   reports an empty one. See "Deferring a declaration" below.

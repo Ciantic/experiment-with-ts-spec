@@ -223,8 +223,8 @@ export function queryWidget<S extends Selection<Widget>>(
         offset?: number;
         select: S;
     },
-): Call<Selected<Widget, S>[]> {
-    return call<Selected<Widget, S>[]>("GET", "/widget/query", opts);
+): Call<Selected<Widget, S>[], QueryWidgetErrors> {
+    return call<Selected<Widget, S>[], QueryWidgetErrors>("queryWidget", "GET", "/widget/query", opts);
 }
 ```
 
@@ -240,6 +240,17 @@ const [widget] = await exec(http, queryWidget({
 Nothing about the narrowing changes: the selection is fixed where the builder is
 called, so `Selected<E, S>` is the same conditional type it is on the server.
 
+A builder's JSDoc names the errors `exec` can reject the call with, and the
+module exports them as `<Call>Errors`. An entity builder lists its route's and
+guard's errors and the one its handler can raise; an operation builder lists the
+spec's `@throws` classes and then its route's and guard's. The built-ins that
+only a handler's implementation can raise are left to `exec` rather than guessed
+per call (`docs/errors.md`).
+
+`safeExec` sends the same call without throwing: it resolves with
+`{ ok: true, value }` or `{ ok: false, error }`, and `error` is the builder's
+`<Call>Errors` union plus `Error` (`docs/transactions.md`).
+
 This is why the client is generated from the spec rather than derived from an
 OpenAPI document: `Selected<E, S>` is a conditional type, and conditional types
 do not survive a round trip through a document format.
@@ -253,8 +264,8 @@ import type { WidgetInsert } from "../repositories/widgetInsertSchema.ts";
 import type { WidgetPatch } from "../repositories/widgetPatchSchema.ts";
 import type { WidgetPrimaryKey } from "../repositories/widgetPrimaryKeySchema.ts";
 
-export function updateWidget(rows: WidgetPatch[]): Call<void>
-export function deleteWidget(rows: WidgetPrimaryKey[]): Call<void>
+export function updateWidget(rows: WidgetPatch[]): Call<void, UpdateWidgetErrors>
+export function deleteWidget(rows: WidgetPrimaryKey[]): Call<void, DeleteWidgetErrors>
 ```
 
 A create narrows the same way, to `<Entity>Insert`, so the type a caller sends

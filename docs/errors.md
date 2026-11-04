@@ -111,6 +111,31 @@ try {
 re-exports the shared module, so a client imports `AppError`,
 `VersionConflictError`, and `HttpError` from `sdk/index.ts`.
 
+A generated builder is lazy: it returns a `Call`, and `exec` is what sends it.
+The builder's doc comment therefore names the errors `exec` can reject the call
+with, and the module exports them as `<Call>Errors` so a caller can name the
+union. The classes are imported type-only so the tags resolve. An entity builder
+names the errors its route adds — the guard's `ForbiddenError`, the schema's
+`ValidationError`, `PayloadTooLargeError` for a body, `RequestError`,
+`NotFoundError`, and `HttpError` — and the one its handler can raise:
+`QueryError`, `ShortWriteError`, `VersionConflictError`, or
+`NoMatchingRowError`. An operation builder names the spec's `@throws` classes
+first, then the route's. A built-in that only a handler's implementation can
+raise, and that the spec does not declare, is left to `exec` rather than guessed
+per call.
+
+`safeExec` sends the same call without throwing. It resolves with
+`{ ok: true, value }`, or with `{ ok: false, error }` where `error` is the
+builder's declared union plus `Error` for a transport, group, or undeclared
+handler failure:
+
+```ts
+const outcome = await safeExec(http, sendInvoice({ invoice }));
+if (!outcome.ok && outcome.error instanceof InvoiceDetailsError) {
+    // the call named this failure; the other members are typed too
+}
+```
+
 An `attempt` group does not throw its inner failure; it reports it as a value.
 That value carries the same `kind` as the class the failure would have become,
 so a caller can tell a tolerated version conflict from any other failure

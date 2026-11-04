@@ -1,4 +1,4 @@
-/** The hand-written half of the client's call model: builders, combinators, and `exec`. See docs/transactions.md. */
+/** The hand-written half of the client's call model: builders, combinators, `exec`, and `safeExec`. See docs/transactions.md. */
 import type { HttpClient } from "./http.ts";
 
 /** The verbs a call may name. Declared here so the client imports no backend type. */
@@ -15,9 +15,10 @@ export interface TransactionOptions {
 }
 
 declare const Result: unique symbol;
+declare const Failure: unique symbol;
 
-/** One call, built by a generated function and not yet sent. */
-export interface Call<R> {
+/** One call, built by a generated function and not yet sent. `E` is what it declares it can reject with. */
+export interface Call<R, E = unknown> {
     readonly kind: "call";
     /** The operation the server calls it by, e.g. `queryInvoice`: a group entry names this. */
     readonly operation: string;
@@ -25,15 +26,17 @@ export interface Call<R> {
     readonly path: string;
     readonly argument: unknown;
     readonly [Result]?: R;
+    readonly [Failure]?: E;
 }
 
 /** Several calls in one request; `kind` decides the boundary. See docs/transactions.md. */
-export interface Group<R> {
+export interface Group<R, E = unknown> {
     readonly kind: GroupKind;
     /** The modes the group opens its boundary with; a `batch` opens none. */
     readonly options?: TransactionOptions;
     readonly calls: readonly Executable[];
     readonly [Result]?: R;
+    readonly [Failure]?: E;
 }
 
 /** A tolerated group's outcome: what it produced, or the failure that rolled it back. */
@@ -45,7 +48,7 @@ export type Attempted<R> =
       };
 
 /** What `exec` accepts: a call, or a group of them. */
-export type Executable<R = unknown> = Call<R> | Group<R>;
+export type Executable<R = unknown, E = unknown> = Call<R, E> | Group<R, E>;
 
 /** One call of a group body, as it travels on the wire. A group names the operation, not its route. */
 type WireCall = { call: { operation: string; argument: unknown } };
@@ -62,6 +65,12 @@ export const GROUP_PATH = "/$group";
 /** The result `E` describes. */
 type ResultOf<E> = E extends { readonly [Result]?: infer R } ? R : never;
 
+/** The errors `T` declares it can reject with; `unknown` when it names none. */
+export type ErrorsOf<T> = T extends { readonly [Failure]?: infer E } ? E : never;
+
+/** The errors of `T`, combined. */
+type GroupErrors<T extends readonly Executable[]> = { -readonly [K in keyof T]: ErrorsOf<T[K]> }[number];
+
 /** The results of `T`, in order. */
 type Results<T extends readonly Executable[]> = { -readonly [K in keyof T]: ResultOf<T[K]> };
 
@@ -71,12 +80,14 @@ type GroupResult<T extends readonly Executable[]> = Results<T> extends readonly 
     : Results<T>;
 
 /** Build one call. Generated modules are the only callers. */
-export function call<R>(operation: string, method: Method, path: string, argument: unknown): Call<R> {
+export function call<R, E = unknown>(operation: string, method: Method, path: string, argument: unknown): Call<R, E> {
     return { kind: "call", operation, method, path, argument };
 }
 
 /** Group calls into one request, all-or-nothing: a boundary that fails loudly, opened with no modes. */
-export function transaction<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>> {
+export function transaction<const T extends readonly Executable[]>(
+    ...calls: T
+): Group<GroupResult<T>, GroupErrors<T>> {
     return { kind: "transaction", calls };
 }
 
@@ -84,7 +95,7 @@ export function transaction<const T extends readonly Executable[]>(...calls: T):
 export function transactionWith<const T extends readonly Executable[]>(
     options: TransactionOptions,
     ...calls: T
-): Group<GroupResult<T>> {
+): Group<GroupResult<T>, GroupErrors<T>> {
     return { kind: "transaction", options, calls };
 }
 
@@ -102,7 +113,9 @@ export function attemptWith<const T extends readonly Executable[]>(
 }
 
 /** Group calls into one request, each committing on its own. */
-export function batch<const T extends readonly Executable[]>(...calls: T): Group<GroupResult<T>> {
+export function batch<const T extends readonly Executable[]>(
+    ...calls: T
+): Group<GroupResult<T>, GroupErrors<T>> {
     return { kind: "batch", calls };
 }
 
@@ -120,9 +133,32 @@ function toWire(executable: Executable): Wire {
     };
 }
 
-/** Send one executable and resolve with its result. */
-export async function exec<R>(http: HttpClient, executable: Executable<R>): Promise<R> {
+/**
+ * Send one executable and resolve with its result; see `docs/errors.md` for the failures it rejects with.
+ *
+ * @throws {import("./errorBase.ts").AppError} the class the response names, or `HttpError` when it names none
+ */
+export async function exec<R, E = unknown>(http: HttpClient, executable: Executable<R, E>): Promise<R> {
     return (await run(http, executable)) as R;
+}
+
+/** What `safeExec` resolves: the value, or the failure it caught. */
+export type SafeResult<R, E> =
+    | { readonly ok: true; readonly value: R }
+    | { readonly ok: false; readonly error: E | Error };
+
+/**
+ * {@link exec}, with the failure returned instead of thrown; `E` is the call's declared error union.
+ */
+export async function safeExec<R, E = unknown>(
+    http: HttpClient,
+    executable: Executable<R, E>,
+): Promise<SafeResult<R, E>> {
+    try {
+        return { ok: true, value: await exec(http, executable) };
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
+    }
 }
 
 /** {@link exec}, before the result is asserted to `R`. */

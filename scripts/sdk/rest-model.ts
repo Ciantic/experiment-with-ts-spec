@@ -12,6 +12,7 @@ import {
     type SpecInterface,
     type SpecLocation,
     type SpecModel,
+    type SpecOperation,
     type TenantOwned,
     type WriteOperation,
 } from "../spec/spec-model.ts";
@@ -70,6 +71,16 @@ export interface RestEntity {
     operations: RestOperation[];
 }
 
+/** One error a call declares with `@throws`, as the client's doc comment repeats it. */
+export interface RestOperationError {
+    /** The class name, e.g. `InvoiceDetailsError`. */
+    name: string;
+    /** Why the call reports it, from the tag's text. */
+    reason: string;
+    /** The status the tag names; the error generator's default applies when absent. */
+    status?: number;
+}
+
 /** One `@restOperation` call: an operation the spec exposes on the HTTP surface. */
 export interface RestOperationCall {
     /** The operation's name, which is also the call id a group entry names, e.g. `sendInvoice`. */
@@ -88,6 +99,8 @@ export interface RestOperationCall {
     outputTypeName: string;
     /** The prose from the spec, copied into the generated doc comments. */
     description: string[];
+    /** The errors the spec's `@throws` declares, which the client doc comment names. */
+    errors: RestOperationError[];
     /** Whether the operation declares an input parameter, which is the argument the wire carries. */
     hasInput: boolean;
     /** The permission the route requires, from `@restPermission`; absent when the route is public. */
@@ -196,6 +209,19 @@ function restEntityFor(spec: SpecInterface): RestEntity {
     };
 }
 
+/** The distinct errors an operation declares, in source order, without the tag's own bookkeeping. */
+function operationErrors(operation: SpecOperation): RestOperationError[] {
+    const byName = new Map<string, RestOperationError>();
+    for (const error of operation.throws) {
+        byName.set(error.name, {
+            name: error.name,
+            reason: error.reason,
+            ...(error.status === undefined ? {} : { status: error.status }),
+        });
+    }
+    return [...byName.values()];
+}
+
 /** The `@restOperation` calls, in name order, checked against the ids and paths the entities already claim. */
 function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (location: SpecLocation, message: string) => void): RestOperationCall[] {
     const claims = new Map<string, string>();
@@ -241,6 +267,7 @@ function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (lo
                 : {}),
             outputTypeName: `${operation.name.charAt(0).toUpperCase()}${operation.name.slice(1)}Output`,
             description: operation.description,
+            errors: operationErrors(operation),
             hasInput: operation.parameters.length > 1,
             location: operation.location,
             ...(operation.restPermission === undefined

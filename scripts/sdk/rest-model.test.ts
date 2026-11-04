@@ -517,6 +517,8 @@ export interface InvoiceOperations<T> {
      *
      * @operation
      * @restOperation POST /invoice/send
+     * @throws {InvoiceDetailsError} status=422 when the invoice is missing details
+     * @throws {InvoiceConflictError} when the invoice was already sent
      */
     sendInvoice(ctx: T, opts: { invoice: Widget }): Promise<void>;
 
@@ -562,6 +564,15 @@ describe("@restOperation", () => {
             hasInput: true,
         });
         expect(send).not.toHaveProperty("outputSchemaName");
+    });
+
+    it("carries the errors the spec declares, for the client doc comment", () => {
+        const send = withOperations.operations.find((operation) => operation.id === "sendInvoice");
+
+        expect(send?.errors).toEqual([
+            { name: "InvoiceDetailsError", reason: "when the invoice is missing details", status: 422 },
+            { name: "InvoiceConflictError", reason: "when the invoice was already sent" },
+        ]);
     });
 
     it("lets a GET carry its input in the query string and a POST in the body", () => {

@@ -9,7 +9,9 @@ import {
     type RestEntity,
     type RestKind,
     type RestModel,
+    type RestOperation,
     type RestOperationCall,
+    type RestSource,
 } from "./rest-model.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
@@ -36,6 +38,13 @@ const WRITE_TYPES_DIR = "..";
 
 /** The barrel the operation types (`<Operation>Input`, `<Operation>Output`) are imported from. */
 const OPERATION_TYPES_IMPORT = "../schemas.ts";
+
+/** The module holding the classes a builder's `@throws` names, imported type-only so the tags resolve. */
+const ERRORS_IMPORT = "../http.ts";
+
+/** The one-line note that keeps a builder's `@throws` from reading as an error the builder raises. */
+const BUILDER_NOTE =
+    "// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.";
 
 /** `"id" | "customerId"`. */
 function filterKeys(filters: string[]): string {
@@ -77,26 +86,130 @@ function operation(entity: RestEntity, kind: RestKind) {
     return entity.operations.find((candidate) => candidate.kind === kind);
 }
 
-/** The doc comment above a generated function, mirroring the generated reads. */
-function comment(entity: RestEntity, kind: RestKind): string {
+/** One error a generated call documents and names in its exported error union. */
+interface CallError {
+    name: string;
+    reason: string;
+    /** The status a spec's `@throws` tag names; absent for the route's built-ins. */
+    status?: number;
+}
+
+/** A tag's reason as one doc line, with a terminator that would close the comment escaped. */
+function throwReason(reason: string): string {
+    return reason.replace(/\*\//gu, "*\\/").trim();
+}
+
+/** The errors the route adds around its handler, including the guard's. */
+function routeErrors(source: RestSource, guarded: boolean): CallError[] {
+    const errors: CallError[] = [];
+    if (guarded) {
+        errors.push({ name: "ForbiddenError", reason: "when the session lacks the permission the guard requires" });
+    }
+    errors.push({ name: "ValidationError", reason: "when the route's schema refuses the argument" });
+    if (source === "body") {
+        errors.push({ name: "PayloadTooLargeError", reason: "when the body is past the transport's cap" });
+    }
+    errors.push(
+        { name: "RequestError", reason: "when the server refuses the request before the route" },
+        { name: "NotFoundError", reason: "when no route serves the call" },
+        { name: "HttpError", reason: "when the body names no error kind the SDK knows" },
+    );
+    return errors;
+}
+
+/** The errors an entity call adds to {@link routeErrors}: its handler's, then the guard's. */
+function entityCallErrors(entity: RestEntity, operation: RestOperation): CallError[] {
+    const errors: CallError[] = [];
+    switch (operation.kind) {
+        case "query":
+            errors.push({ name: "QueryError", reason: "when the query model refuses a field, filter, order, or page" });
+            break;
+        case "create":
+            errors.push({ name: "ShortWriteError", reason: "when the insert writes fewer rows than the call supplied" });
+            break;
+        case "upsert":
+            errors.push(
+                entity.versionFields.length > 0
+                    ? { name: "VersionConflictError", reason: "when a row is not at the version the upsert claimed" }
+                    : { name: "ShortWriteError", reason: "when the upsert writes fewer rows than the call supplied" },
+            );
+            break;
+        case "update":
+            errors.push(
+                entity.versionFields.length > 0
+                    ? { name: "VersionConflictError", reason: "when a row is not at the version the patch supplied" }
+                    : { name: "NoMatchingRowError", reason: "when a key the patch addresses is not there" },
+            );
+            break;
+        case "delete":
+        case "watch":
+            break;
+    }
+    // Every generated entity route is guarded, so the session can always be refused.
+    return [...errors, ...routeErrors(operation.source, true)];
+}
+
+/** The exported error union name for one call. */
+function errorAliasName(id: string): string {
+    return `${id.charAt(0).toUpperCase()}${id.slice(1)}Errors`;
+}
+
+/** The exported union naming one call's errors. */
+function errorAlias(id: string, errors: readonly CallError[]): string[] {
+    const alias = errorAliasName(id);
+    const lines = [`/** The errors \`exec\` can reject \`${id}\` with. */`];
+    if (errors.length === 1) {
+        lines.push(`export type ${alias} = ${errors[0]!.name};`);
+        return lines;
+    }
+    lines.push(`export type ${alias} =`);
+    for (const error of errors.slice(0, -1)) {
+        lines.push(`    | ${error.name}`);
+    }
+    lines.push(`    | ${errors[errors.length - 1]!.name};`);
+    return lines;
+}
+
+/** The JSDoc above one generated call: its summary and every error `exec` can reject it with. */
+function docComment(summary: readonly string[], errors: readonly CallError[]): string[] {
+    if (errors.length === 0) {
+        return [`/** ${summary.join(" ")} */`];
+    }
+    const lines = ["/**", ...summary.map((line) => ` * ${line}`), " *"];
+    for (const error of errors) {
+        const status = error.status === undefined ? "" : ` (${error.status})`;
+        const reason = throwReason(error.reason);
+        lines.push(` * @throws {${error.name}}${status}${reason === "" ? "" : ` ${reason}`}`);
+    }
+    lines.push(" */");
+    return lines;
+}
+
+/** The error union and doc comment above one builder. */
+function callPreamble(id: string, summary: readonly string[], errors: readonly CallError[]): string[] {
+    return [...errorAlias(id, errors), "", ...docComment(summary, errors)];
+}
+
+/** The one-line summary above an entity call's doc comment. */
+function entitySummary(entity: RestEntity, kind: RestKind): string {
     const name = entity.entity;
     switch (kind) {
         case "query":
-            return `/** Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and. */`;
+            return `Query \`${name}\` rows, filtered by the \`@queryFilter\` fields, combined with and.`;
         case "watch":
-            return `/** The change stream of \`${name}\`, optionally scoped to rows and operations. See docs/notifications.md. */`;
+            return `The change stream of \`${name}\`, optionally scoped to rows and operations. See docs/notifications.md.`;
         case "create":
-            return `/** Create \`${name}\` rows. */`;
+            return `Create \`${name}\` rows.`;
         case "upsert":
             return entity.versionFields.length > 0
-                ? `/** Upsert \`${name}\` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */`
-                : `/** Upsert \`${name}\` rows: each row is created, or replaces the row it keys on. */`;
+                ? `Upsert \`${name}\` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.`
+                : `Upsert \`${name}\` rows: each row is created, or replaces the row it keys on.`;
         case "update":
             return entity.versionFields.length > 0
-                ? `/** Patch \`${name}\` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */`
-                : `/** Patch \`${name}\` rows; a row that is not there rejects the call. See docs/versioning.md. */`;
+                ? `Patch \`${name}\` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.`
+                : `Patch \`${name}\` rows; a row that is not there rejects the call. See docs/versioning.md.`;
         case "delete":
-            return `/** Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}. */`;
+            return `Delete \`${name}\` rows, keyed on ${entity.keys.map((key) => `\`${key}\``).join(", ")}.`;
     }
 }
 
@@ -116,6 +229,16 @@ export function renderClientModule(entity: RestEntity): string {
     const remove = operation(entity, "delete");
     const watchAll = watchOperation !== undefined && entity.restWatch.includes("all");
     const watchRows = watchOperation !== undefined && entity.restWatch.includes("rows");
+    const calls = [query, create, upsert, update, remove].filter(
+        (call): call is RestOperation => call !== undefined,
+    );
+    const callErrors = calls.flatMap((call) => entityCallErrors(entity, call));
+    const httpTypes = [
+        ...new Set([
+            ...(watchOperation === undefined ? [] : ["HttpClient"]),
+            ...callErrors.map((error) => error.name),
+        ]),
+    ].sort((a, b) => a.localeCompare(b));
 
     const selectionTypes = ["Selection", "Selected"];
     if (entity.filters.length > 0) {
@@ -170,6 +293,9 @@ export function renderClientModule(entity: RestEntity): string {
     if (callable !== undefined) {
         lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
     }
+    if (httpTypes.length > 0) {
+        lines.push(`import type { ${httpTypes.join(", ")} } from "${ERRORS_IMPORT}";`);
+    }
     if (watchOperation) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
         const watchTypes = ["NotificationSubscription", "NotificationOptions"];
@@ -183,7 +309,6 @@ export function renderClientModule(entity: RestEntity): string {
             watchTypes.push("WatchFilter");
         }
         watchTypes.sort((a, b) => a.localeCompare(b));
-        lines.push('import type { HttpClient } from "../http.ts";');
         lines.push(
             `import { watch, ${watchTypes.map((type) => `type ${type}`).join(", ")} } from "../watch.ts";`,
         );
@@ -192,15 +317,19 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("");
         lines.push(`export type { ${types.join(", ")} };`);
     }
+    if (calls.length > 0) {
+        lines.push("");
+        lines.push(BUILDER_NOTE);
+    }
 
     if (query) {
         lines.push("");
-        lines.push(comment(entity, "query"));
+        lines.push(...callPreamble(query.id, [entitySummary(entity, "query")], entityCallErrors(entity, query)));
         lines.push(`export function ${query.id}<S extends Selection<${name}>>(`);
         lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields)},`);
-        lines.push(`): Call<Selected<${name}, S>[]> {`);
+        lines.push(`): Call<Selected<${name}, S>[], ${errorAliasName(query.id)}> {`);
         lines.push(
-            `    return call<Selected<${name}, S>[]>("${query.id}", "${query.method}", "${query.path}", opts);`,
+            `    return call<Selected<${name}, S>[], ${errorAliasName(query.id)}>("${query.id}", "${query.method}", "${query.path}", opts);`,
         );
         lines.push("}");
     }
@@ -264,32 +393,32 @@ export function renderClientModule(entity: RestEntity): string {
 
     if (create) {
         lines.push("");
-        lines.push(comment(entity, "create"));
-        lines.push(`export function ${create.id}(rows: ${name}Insert[]): Call<${keyType(entity)}[]> {`);
-        lines.push(`    return call<${keyType(entity)}[]>("${create.id}", "${create.method}", "${create.path}", rows);`);
+        lines.push(...callPreamble(create.id, [entitySummary(entity, "create")], entityCallErrors(entity, create)));
+        lines.push(`export function ${create.id}(rows: ${name}Insert[]): Call<${keyType(entity)}[], ${errorAliasName(create.id)}> {`);
+        lines.push(`    return call<${keyType(entity)}[], ${errorAliasName(create.id)}>("${create.id}", "${create.method}", "${create.path}", rows);`);
         lines.push("}");
     }
 
     if (upsert) {
         lines.push("");
-        lines.push(comment(entity, "upsert"));
-        lines.push(`export function ${upsert.id}(rows: ${name}Upsert[]): Call<${keyType(entity)}[]> {`);
-        lines.push(`    return call<${keyType(entity)}[]>("${upsert.id}", "${upsert.method}", "${upsert.path}", rows);`);
+        lines.push(...callPreamble(upsert.id, [entitySummary(entity, "upsert")], entityCallErrors(entity, upsert)));
+        lines.push(`export function ${upsert.id}(rows: ${name}Upsert[]): Call<${keyType(entity)}[], ${errorAliasName(upsert.id)}> {`);
+        lines.push(`    return call<${keyType(entity)}[], ${errorAliasName(upsert.id)}>("${upsert.id}", "${upsert.method}", "${upsert.path}", rows);`);
         lines.push("}");
     }
 
     if (update) {
         lines.push("");
-        lines.push(comment(entity, "update"));
-        lines.push(`export function ${update.id}(rows: ${name}Patch[]): Call<void> {`);
-        lines.push(`    return call<void>("${update.id}", "${update.method}", "${update.path}", rows);`);
+        lines.push(...callPreamble(update.id, [entitySummary(entity, "update")], entityCallErrors(entity, update)));
+        lines.push(`export function ${update.id}(rows: ${name}Patch[]): Call<void, ${errorAliasName(update.id)}> {`);
+        lines.push(`    return call<void, ${errorAliasName(update.id)}>("${update.id}", "${update.method}", "${update.path}", rows);`);
         lines.push("}");
     }
     if (remove) {
         lines.push("");
-        lines.push(comment(entity, "delete"));
-        lines.push(`export function ${remove.id}(rows: ${keyType(entity)}[]): Call<void> {`);
-        lines.push(`    return call<void>("${remove.id}", "${remove.method}", "${remove.path}", rows);`);
+        lines.push(...callPreamble(remove.id, [entitySummary(entity, "delete")], entityCallErrors(entity, remove)));
+        lines.push(`export function ${remove.id}(rows: ${keyType(entity)}[]): Call<void, ${errorAliasName(remove.id)}> {`);
+        lines.push(`    return call<void, ${errorAliasName(remove.id)}>("${remove.id}", "${remove.method}", "${remove.path}", rows);`);
         lines.push("}");
     }
 
@@ -299,6 +428,18 @@ export function renderClientModule(entity: RestEntity): string {
 /** InvoiceOperations -> invoiceOperations.ts, the module holding that contract's operation builders. */
 export function operationModuleName(contract: string): string {
     return `${contract.charAt(0).toLowerCase()}${contract.slice(1)}.ts`;
+}
+
+/** The errors an operation call reports: the spec's declared ones, then the route's and guard's. */
+function operationCallErrors(operation: RestOperationCall): CallError[] {
+    return [
+        ...operation.errors.map((error) => ({
+            name: error.name,
+            reason: error.reason,
+            ...(error.status === undefined ? {} : { status: error.status }),
+        })),
+        ...routeErrors(operation.source, operation.permission !== undefined),
+    ];
 }
 
 /** Render one contract's operation builders: one function per `@restOperation`. */
@@ -317,29 +458,39 @@ export function renderOperationClientModule(contract: string, operations: RestOp
             ),
         ),
     ].sort((a, b) => a.localeCompare(b));
+    const callErrors = operations.map((operation) => operationCallErrors(operation));
+    const errorNames = [
+        ...new Set(callErrors.flatMap((errors) => errors.map((error) => error.name))),
+    ].sort((a, b) => a.localeCompare(b));
     lines.push(`import type { ${types.join(", ")} } from "${OPERATION_TYPES_IMPORT}";`);
+    lines.push(`import type { ${errorNames.join(", ")} } from "${ERRORS_IMPORT}";`);
     lines.push(`import { call, type Call } from "../${CLIENT_MODULE}";`);
+    lines.push("");
+    lines.push(BUILDER_NOTE);
 
-    for (const operation of operations) {
+    for (const [index, operation] of operations.entries()) {
+        const errors = callErrors[index]!;
+        const description =
+            operation.description.length > 0
+                ? operation.description
+                : ["`exec` rejects the call with the errors below."];
         lines.push("");
-        if (operation.description.length > 0) {
-            lines.push("/**");
-            for (const line of operation.description) {
-                lines.push(` * ${line}`);
-            }
-            lines.push(" */");
-        }
+        lines.push(...callPreamble(operation.id, description, errors));
         if (operation.inputTypeName === undefined) {
-            lines.push(`export function ${operation.id}(): Call<${operation.outputTypeName}> {`);
             lines.push(
-                `    return call<${operation.outputTypeName}>("${operation.id}", "${operation.method}", "${operation.path}", undefined);`,
+                `export function ${operation.id}(): Call<${operation.outputTypeName}, ${errorAliasName(operation.id)}> {`,
+            );
+            lines.push(
+                `    return call<${operation.outputTypeName}, ${errorAliasName(operation.id)}>("${operation.id}", "${operation.method}", "${operation.path}", undefined);`,
             );
             lines.push("}");
             continue;
         }
-        lines.push(`export function ${operation.id}(opts: ${operation.inputTypeName}): Call<${operation.outputTypeName}> {`);
         lines.push(
-            `    return call<${operation.outputTypeName}>("${operation.id}", "${operation.method}", "${operation.path}", opts);`,
+            `export function ${operation.id}(opts: ${operation.inputTypeName}): Call<${operation.outputTypeName}, ${errorAliasName(operation.id)}> {`,
+        );
+        lines.push(
+            `    return call<${operation.outputTypeName}, ${errorAliasName(operation.id)}>("${operation.id}", "${operation.method}", "${operation.path}", opts);`,
         );
         lines.push("}");
     }

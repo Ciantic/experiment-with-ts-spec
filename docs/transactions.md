@@ -350,7 +350,10 @@ The generated client builds calls; it does not make them. A builder is plain
 data, and `exec` is the only thing that reaches the network:
 
 ```ts
-export interface Call<R> {
+declare const Result: unique symbol;
+declare const Failure: unique symbol;
+
+export interface Call<R, E = unknown> {
     readonly kind: "call";
     /** The operation the server calls it by; a group entry names this. */
     readonly operation: string;
@@ -358,14 +361,17 @@ export interface Call<R> {
     readonly path: string;
     readonly argument: unknown;
     readonly [Result]?: R;
+    /** The errors the builder declares; `unknown` when it names none. */
+    readonly [Failure]?: E;
 }
 
-export interface Group<R> {
+export interface Group<R, E = unknown> {
     readonly kind: "batch" | "transaction" | "attempt";
     /** The modes the group opens its boundary with; a `batch` opens none. */
     readonly options?: TransactionOptions;
     readonly calls: readonly Executable[];
     readonly [Result]?: R;
+    readonly [Failure]?: E;
 }
 
 /** The modes a group opens its boundary with; infra declares the same literals for its port. */
@@ -382,8 +388,17 @@ export type Attempted<R> =
           readonly error: { readonly message: string; readonly path: number[]; readonly kind?: string };
       };
 
-export type Executable<R = unknown> = Call<R> | Group<R>;
+export type Executable<R = unknown, E = unknown> = Call<R, E> | Group<R, E>;
+
+/** The errors `T` declares; a call that names none answers `unknown`. */
+export type ErrorsOf<T> = T extends { readonly [Failure]?: infer E } ? E : never;
 ```
+
+`E` is a phantom like `R`: it never reaches the wire. A generated builder returns
+`Call<Output, <Call>Errors>`, and `transaction` or `batch` combines the errors of
+its entries. `attempt` leaves `E` unknown, because it reports its inner failure as
+a value rather than rejecting with it. `ErrorsOf` reads a call's or a group's
+union from its type.
 
 The generator emits the builders, one per exposed call. Everything above, plus
 `exec`, `transaction`, `transactionWith`, `attempt`, `attemptWith`, and `batch`,
@@ -397,8 +412,8 @@ Every generated function takes its domain argument and returns a `Call`, never
 a `Promise`, and never an `HttpClient`:
 
 ```ts
-export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[]>
-export function queryWidget<S extends Selection<Widget>>(opts: { …; select: S }): Call<Selected<Widget, S>[]>
+export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[], CreateWidgetErrors>
+export function queryWidget<S extends Selection<Widget>>(opts: { …; select: S }): Call<Selected<Widget, S>[], QueryWidgetErrors>
 ```
 
 ```ts
@@ -438,6 +453,24 @@ A group's result is a tuple aligned with its arguments, and nesting composes:
 
 An all-void group collapses to `void`, which is why the rejected branch of an
 `attempt` over writes is `Attempted<void>` rather than a tuple of nothings.
+
+`safeExec` is `exec` with the failure returned rather than thrown:
+
+```ts
+export type SafeResult<R, E> =
+    | { readonly ok: true; readonly value: R }
+    | { readonly ok: false; readonly error: E | Error };
+
+const outcome = await safeExec(http, queryWidget({ filter: { tenantId: [tenantId] }, select: { id: true } }));
+if (!outcome.ok && outcome.error instanceof VersionConflictError) {
+    // re-read, then retry
+}
+```
+
+`E` is the call's declared union, so narrowing by `instanceof` is typed. `Error`
+joins it because the transport, a malformed group, or an undeclared handler
+error can fail outside that union. `attempt` is separate: it reports its own
+failure as a value rather than leaving `safeExec` to catch it.
 
 A builder is immutable data, so one may be passed to two groups. It is not
 thenable, so `await createWidget(rows)` compiles and does nothing; `exec` is the

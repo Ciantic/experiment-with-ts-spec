@@ -6,32 +6,129 @@ import type { EmailPatch } from "../repositories/emailPatchSchema.ts";
 import type { EmailPrimaryKey } from "../repositories/emailPrimaryKeySchema.ts";
 import type { EmailUpsert } from "../repositories/emailUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 
 export type { EmailInsert, EmailPatch, EmailPrimaryKey, EmailUpsert };
 
-/** Query `Email` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryEmail` with. */
+export type QueryEmailErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Email` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryEmail<S extends Selection<Email>>(
     opts: { filter?: Filters<Email, "id" | "tenantId" | "status">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S },
-): Call<Selected<Email, S>[]> {
-    return call<Selected<Email, S>[]>("queryEmail", "GET", "/email/query", opts);
+): Call<Selected<Email, S>[], QueryEmailErrors> {
+    return call<Selected<Email, S>[], QueryEmailErrors>("queryEmail", "GET", "/email/query", opts);
 }
 
-/** Create `Email` rows. */
-export function createEmail(rows: EmailInsert[]): Call<EmailPrimaryKey[]> {
-    return call<EmailPrimaryKey[]>("createEmail", "POST", "/email", rows);
+/** The errors `exec` can reject `createEmail` with. */
+export type CreateEmailErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Email` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createEmail(rows: EmailInsert[]): Call<EmailPrimaryKey[], CreateEmailErrors> {
+    return call<EmailPrimaryKey[], CreateEmailErrors>("createEmail", "POST", "/email", rows);
 }
 
-/** Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertEmail(rows: EmailUpsert[]): Call<EmailPrimaryKey[]> {
-    return call<EmailPrimaryKey[]>("upsertEmail", "PUT", "/email", rows);
+/** The errors `exec` can reject `upsertEmail` with. */
+export type UpsertEmailErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Email` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertEmail(rows: EmailUpsert[]): Call<EmailPrimaryKey[], UpsertEmailErrors> {
+    return call<EmailPrimaryKey[], UpsertEmailErrors>("upsertEmail", "PUT", "/email", rows);
 }
 
-/** Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateEmail(rows: EmailPatch[]): Call<void> {
-    return call<void>("updateEmail", "PATCH", "/email", rows);
+/** The errors `exec` can reject `updateEmail` with. */
+export type UpdateEmailErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Email` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateEmail(rows: EmailPatch[]): Call<void, UpdateEmailErrors> {
+    return call<void, UpdateEmailErrors>("updateEmail", "PATCH", "/email", rows);
 }
 
-/** Delete `Email` rows, keyed on `id`. */
-export function deleteEmail(rows: EmailPrimaryKey[]): Call<void> {
-    return call<void>("deleteEmail", "DELETE", "/email", rows);
+/** The errors `exec` can reject `deleteEmail` with. */
+export type DeleteEmailErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Email` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteEmail(rows: EmailPrimaryKey[]): Call<void, DeleteEmailErrors> {
+    return call<void, DeleteEmailErrors>("deleteEmail", "DELETE", "/email", rows);
 }

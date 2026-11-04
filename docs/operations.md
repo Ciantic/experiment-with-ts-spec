@@ -284,8 +284,8 @@ The module is re-exported from `sdk/schemas.ts`, so a caller imports
 The client gets one builder per operation, in a module named after its contract:
 
 ```ts
-export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput> {
-    return call<SendWidgetOutput>("sendWidget", "POST", "/widget/send", opts);
+export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput, SendWidgetErrors> {
+    return call<SendWidgetOutput, SendWidgetErrors>("sendWidget", "POST", "/widget/send", opts);
 }
 ```
 
@@ -311,7 +311,9 @@ client catches it after `apiErrorFromBody` rebuilds it. `status=` defaults to
 A `@throws` tag is documentation and does not narrow the method's type; it names
 a class the implementation is expected to throw. The operations generator copies
 it into the scaffold's doc comment, and nothing checks that the implementation
-actually throws it.
+actually throws it. The generated client repeats it on the builder's doc comment
+and exports it with the route's and guard's errors as `<Operation>Errors`; see
+`docs/errors.md`.
 
 ## Deliberately not implemented
 

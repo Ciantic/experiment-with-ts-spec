@@ -150,8 +150,10 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain("export function queryWidget<S extends Selection<Widget>>(");
-        expect(code).toContain("): Call<Selected<Widget, S>[]> {");
-        expect(code).toContain('return call<Selected<Widget, S>[]>("queryWidget", "GET", "/widget/query", opts);');
+        expect(code).toContain("): Call<Selected<Widget, S>[], QueryWidgetErrors> {");
+        expect(code).toContain(
+            'return call<Selected<Widget, S>[], QueryWidgetErrors>("queryWidget", "GET", "/widget/query", opts);',
+        );
         expect(code).toContain('import type { Widget } from "spec/fixtures/Widget.ts";');
         expect(code).toContain('import { call, type Call } from "../client.ts";');
         expect(code).not.toContain("HttpClient");
@@ -160,10 +162,42 @@ describe("renderClientModule", () => {
     it("names the operation and the verb and path of each call, leaving the carrier to exec", () => {
         const code = widgetModule();
 
-        expect(code).toContain('call<WidgetPrimaryKey[]>("createWidget", "POST", "/widget", rows)');
-        expect(code).toContain('call<WidgetPrimaryKey[]>("upsertWidget", "PUT", "/widget", rows)');
-        expect(code).toContain('call<void>("updateWidget", "PATCH", "/widget", rows)');
-        expect(code).toContain('call<void>("deleteWidget", "DELETE", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[], CreateWidgetErrors>("createWidget", "POST", "/widget", rows)');
+        expect(code).toContain('call<WidgetPrimaryKey[], UpsertWidgetErrors>("upsertWidget", "PUT", "/widget", rows)');
+        expect(code).toContain('call<void, UpdateWidgetErrors>("updateWidget", "PATCH", "/widget", rows)');
+        expect(code).toContain('call<void, DeleteWidgetErrors>("deleteWidget", "DELETE", "/widget", rows)');
+    });
+
+    it("documents every error a call can report, including the guard's", () => {
+        const code = widgetModule();
+
+        expect(code).toContain(
+            'import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";',
+        );
+        expect(code).toContain("export type QueryWidgetErrors =");
+        expect(code).toContain("    | QueryError");
+        expect(code).toContain("@throws {QueryError} when the query model refuses a field, filter, order, or page");
+        expect(code).toContain("@throws {ForbiddenError} when the session lacks the permission the guard requires");
+        expect(code).toContain("@throws {ShortWriteError} when the insert writes fewer rows than the call supplied");
+        expect(code).toContain("@throws {PayloadTooLargeError} when the body is past the transport's cap");
+        expect(code).toContain("@throws {ValidationError} when the route's schema refuses the argument");
+        expect(code).toContain("@throws {RequestError} when the server refuses the request before the route");
+        expect(code).toContain("@throws {NotFoundError} when no route serves the call");
+        expect(code).toContain("@throws {HttpError} when the body names no error kind the SDK knows");
+    });
+
+    it("names the conflict error the write's version declares", () => {
+        const versioned = widgetModule();
+        const marker = model.entities.find((entity) => entity.entity === "Marker");
+
+        expect(versioned).toContain(
+            "@throws {VersionConflictError} when a row is not at the version the patch supplied",
+        );
+        const versionless = renderClientModule(marker!);
+        expect(versionless).toContain(
+            "@throws {NoMatchingRowError} when a key the patch addresses is not there",
+        );
+        expect(versionless).not.toContain("VersionConflictError");
     });
 
     it("narrows the filters to the filterable fields, requiring the required ones", () => {
@@ -214,7 +248,9 @@ describe("renderClientModule", () => {
     it("upserts with the schema upsert type, which carries the version a create omits", () => {
         const code = widgetModule();
 
-        expect(code).toContain("export function upsertWidget(rows: WidgetUpsert[]): Call<WidgetPrimaryKey[]> {");
+        expect(code).toContain(
+            "export function upsertWidget(rows: WidgetUpsert[]): Call<WidgetPrimaryKey[], UpsertWidgetErrors> {",
+        );
         expect(code).toContain("replaces the row at the version it claims");
     });
 
@@ -236,7 +272,7 @@ describe("renderClientModule", () => {
         const code = widgetModule();
 
         expect(code).toContain("rows: WidgetPrimaryKey[]");
-        expect(code).toContain('call<void>("deleteWidget", "DELETE", "/widget", rows)');
+        expect(code).toContain('call<void, DeleteWidgetErrors>("deleteWidget", "DELETE", "/widget", rows)');
     });
 
     it("deletes by every field of a composite key", () => {
@@ -261,7 +297,7 @@ describe("renderClientModule", () => {
             '\n' +
             'import type { WidgetPatch } from "../repositories/widgetPatchSchema.ts";');
         expect(code).toContain(
-            "export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[]> {",
+            "export function createWidget(rows: WidgetInsert[]): Call<WidgetPrimaryKey[], CreateWidgetErrors> {",
         );
         expect(code).not.toContain("export type WidgetInsert =");
     });
@@ -476,6 +512,8 @@ export interface WidgetOperations<T> {
      *
      * @operation
      * @restOperation POST /widget/send
+     * @throws {WidgetDetailsError} status=422 when the widget is missing
+     * @throws {WidgetConflictError} when the widget was already sent
      */
     sendWidget(ctx: T, opts: { widget: Widget }): Promise<Widget>;
 
@@ -486,6 +524,47 @@ export interface WidgetOperations<T> {
      * @restOperation POST /widget/reset
      */
     resetWidgets(ctx: T): Promise<void>;
+}
+`.trim();
+
+/** A contract whose one operation declares no error. */
+const PLAIN_OPERATIONS = `
+export interface PlainOperations<T> {
+    /**
+     * Reset.
+     *
+     * @operation
+     * @restOperation POST /plain/reset
+     */
+    reset(ctx: T): Promise<void>;
+}
+`.trim();
+
+/** A contract whose one operation declares a single error. */
+const SINGLE_ERROR_OPERATIONS = `
+export interface SingleErrorOperations<T> {
+    /**
+     * Reset.
+     *
+     * @operation
+     * @restOperation POST /single/reset
+     * @throws {ResetError} when the reset is refused
+     */
+    reset(ctx: T): Promise<void>;
+}
+`.trim();
+
+/** A contract whose one operation requires a permission, so its route has a guard. */
+const GUARDED_OPERATIONS = `
+export interface GuardedOperations<T> {
+    /**
+     * Send.
+     *
+     * @operation
+     * @restOperation POST /guarded/send
+     * @restPermission guarded:send
+     */
+    send(ctx: T): Promise<void>;
 }
 `.trim();
 
@@ -506,13 +585,62 @@ describe("operation builders", () => {
     });
 
     it("types the input and the result with the names the schema module exports", () => {
-        expect(module()).toContain("export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput> {");
+        expect(module()).toContain(
+            "export function sendWidget(opts: SendWidgetInput): Call<SendWidgetOutput, SendWidgetErrors> {",
+        );
         expect(module()).toContain('"sendWidget", "POST", "/widget/send", opts);');
     });
 
+    it("documents the errors exec rejects the call with", () => {
+        expect(module()).toContain(
+            "import type { HttpError, NotFoundError, PayloadTooLargeError, RequestError, ValidationError, WidgetConflictError, WidgetDetailsError } from \"../http.ts\";",
+        );
+        expect(module()).toContain('The errors `exec` can reject `sendWidget` with.');
+        expect(module()).toContain("export type SendWidgetErrors =");
+        expect(module()).toContain("    | WidgetDetailsError");
+        expect(module()).toContain("    | WidgetConflictError");
+        expect(module()).toContain("    | HttpError;");
+        expect(module()).toContain("@throws {WidgetDetailsError} (422) when the widget is missing");
+        expect(module()).toContain("@throws {WidgetConflictError} when the widget was already sent");
+        expect(module()).toContain("@throws {ValidationError} when the route's schema refuses the argument");
+        expect(module()).toContain("@throws {PayloadTooLargeError} when the body is past the transport's cap");
+        expect(module()).toContain("@throws {RequestError} when the server refuses the request before the route");
+        expect(module()).toContain("@throws {NotFoundError} when no route serves the call");
+        expect(module()).toContain("@throws {HttpError} when the body names no error kind the SDK knows");
+    });
+
     it("takes no argument when the operation declares none", () => {
-        expect(module()).toContain("export function resetWidgets(): Call<ResetWidgetsOutput> {");
+        expect(module()).toContain(
+            "export function resetWidgets(): Call<ResetWidgetsOutput, ResetWidgetsErrors> {",
+        );
         expect(module()).toContain('"resetWidgets", "POST", "/widget/reset", undefined);');
+    });
+
+    it("names a declared error before the errors the route adds", () => {
+        const single = build({ SingleErrorOperations: SINGLE_ERROR_OPERATIONS });
+
+        expect(generateRestClient(single).get("singleErrorOperations.ts")).toContain(
+            "export type ResetErrors =\n    | ResetError\n    | ValidationError",
+        );
+    });
+
+    it("names the guard's error for a guarded operation, and no guard error for a public one", () => {
+        const guarded = build({ GuardedOperations: GUARDED_OPERATIONS });
+        const guardedCode = generateRestClient(guarded).get("guardedOperations.ts") ?? "";
+        expect(guardedCode).toContain(
+            "@throws {ForbiddenError} when the session lacks the permission the guard requires",
+        );
+        expect(guardedCode).toContain("    | ForbiddenError");
+
+        const plain = build({ PlainOperations: PLAIN_OPERATIONS });
+        const plainCode = generateRestClient(plain).get("plainOperations.ts") ?? "";
+        expect(plainCode).not.toContain("ForbiddenError");
+    });
+
+    it("imports no declared error class when no operation declares one", () => {
+        const plain = build({ PlainOperations: PLAIN_OPERATIONS });
+
+        expect(generateRestClient(plain).get("plainOperations.ts")).not.toContain("specErrors.ts");
     });
 
     it("re-exports the module from the barrel", () => {

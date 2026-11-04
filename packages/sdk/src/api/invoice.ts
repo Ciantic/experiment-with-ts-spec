@@ -6,16 +6,36 @@ import type { InvoicePatch } from "../repositories/invoicePatchSchema.ts";
 import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.ts";
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
-import type { HttpClient } from "../http.ts";
+import type { ForbiddenError, HttpClient, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 import { watch, type AllWatchEvent, type NotificationOptions, type NotificationSubscription, type WatchEvent, type WatchFilter } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
-/** Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryInvoice` with. */
+export type QueryInvoiceErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Invoice` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryInvoice<S extends Selection<Invoice>>(
     opts: { filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
-): Call<Selected<Invoice, S>[]> {
-    return call<Selected<Invoice, S>[]>("queryInvoice", "GET", "/invoice/query", opts);
+): Call<Selected<Invoice, S>[], QueryInvoiceErrors> {
+    return call<Selected<Invoice, S>[], QueryInvoiceErrors>("queryInvoice", "GET", "/invoice/query", opts);
 }
 
 /** The change stream of all `Invoice` rows, optionally scoped to operations and filter values. See docs/notifications.md. */
@@ -44,22 +64,98 @@ export function watchInvoiceRows(
     return watch<WatchEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange, opts);
 }
 
-/** Create `Invoice` rows. */
-export function createInvoice(rows: InvoiceInsert[]): Call<InvoicePrimaryKey[]> {
-    return call<InvoicePrimaryKey[]>("createInvoice", "POST", "/invoice", rows);
+/** The errors `exec` can reject `createInvoice` with. */
+export type CreateInvoiceErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Invoice` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createInvoice(rows: InvoiceInsert[]): Call<InvoicePrimaryKey[], CreateInvoiceErrors> {
+    return call<InvoicePrimaryKey[], CreateInvoiceErrors>("createInvoice", "POST", "/invoice", rows);
 }
 
-/** Upsert `Invoice` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertInvoice(rows: InvoiceUpsert[]): Call<InvoicePrimaryKey[]> {
-    return call<InvoicePrimaryKey[]>("upsertInvoice", "PUT", "/invoice", rows);
+/** The errors `exec` can reject `upsertInvoice` with. */
+export type UpsertInvoiceErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Invoice` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertInvoice(rows: InvoiceUpsert[]): Call<InvoicePrimaryKey[], UpsertInvoiceErrors> {
+    return call<InvoicePrimaryKey[], UpsertInvoiceErrors>("upsertInvoice", "PUT", "/invoice", rows);
 }
 
-/** Patch `Invoice` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateInvoice(rows: InvoicePatch[]): Call<void> {
-    return call<void>("updateInvoice", "PATCH", "/invoice", rows);
+/** The errors `exec` can reject `updateInvoice` with. */
+export type UpdateInvoiceErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Invoice` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateInvoice(rows: InvoicePatch[]): Call<void, UpdateInvoiceErrors> {
+    return call<void, UpdateInvoiceErrors>("updateInvoice", "PATCH", "/invoice", rows);
 }
 
-/** Delete `Invoice` rows, keyed on `id`. */
-export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void> {
-    return call<void>("deleteInvoice", "DELETE", "/invoice", rows);
+/** The errors `exec` can reject `deleteInvoice` with. */
+export type DeleteInvoiceErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Invoice` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteInvoice(rows: InvoicePrimaryKey[]): Call<void, DeleteInvoiceErrors> {
+    return call<void, DeleteInvoiceErrors>("deleteInvoice", "DELETE", "/invoice", rows);
 }

@@ -4,17 +4,58 @@ import type { Filters, Selected, Selection } from "../selection.ts";
 import type { AuditLogInsert } from "../repositories/auditLogInsertSchema.ts";
 import type { AuditLogPrimaryKey } from "../repositories/auditLogPrimaryKeySchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError } from "../http.ts";
 
 export type { AuditLogInsert, AuditLogPrimaryKey };
 
-/** Query `AuditLog` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryAuditLog` with. */
+export type QueryAuditLogErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `AuditLog` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryAuditLog<S extends Selection<AuditLog>>(
     opts: { filter?: Filters<AuditLog, "id">; limit?: number; offset?: number; select: S },
-): Call<Selected<AuditLog, S>[]> {
-    return call<Selected<AuditLog, S>[]>("queryAuditLog", "GET", "/audit_log/query", opts);
+): Call<Selected<AuditLog, S>[], QueryAuditLogErrors> {
+    return call<Selected<AuditLog, S>[], QueryAuditLogErrors>("queryAuditLog", "GET", "/audit_log/query", opts);
 }
 
-/** Create `AuditLog` rows. */
-export function createAuditLog(rows: AuditLogInsert[]): Call<AuditLogPrimaryKey[]> {
-    return call<AuditLogPrimaryKey[]>("createAuditLog", "POST", "/audit_log", rows);
+/** The errors `exec` can reject `createAuditLog` with. */
+export type CreateAuditLogErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `AuditLog` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createAuditLog(rows: AuditLogInsert[]): Call<AuditLogPrimaryKey[], CreateAuditLogErrors> {
+    return call<AuditLogPrimaryKey[], CreateAuditLogErrors>("createAuditLog", "POST", "/audit_log", rows);
 }

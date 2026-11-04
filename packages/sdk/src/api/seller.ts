@@ -6,32 +6,129 @@ import type { SellerPatch } from "../repositories/sellerPatchSchema.ts";
 import type { SellerPrimaryKey } from "../repositories/sellerPrimaryKeySchema.ts";
 import type { SellerUpsert } from "../repositories/sellerUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 
 export type { SellerInsert, SellerPatch, SellerPrimaryKey, SellerUpsert };
 
-/** Query `Seller` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `querySeller` with. */
+export type QuerySellerErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Seller` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function querySeller<S extends Selection<Seller>>(
     opts: { filter?: Filters<Seller, "id" | "tenantId">; limit?: number; offset?: number; select: S },
-): Call<Selected<Seller, S>[]> {
-    return call<Selected<Seller, S>[]>("querySeller", "GET", "/seller/query", opts);
+): Call<Selected<Seller, S>[], QuerySellerErrors> {
+    return call<Selected<Seller, S>[], QuerySellerErrors>("querySeller", "GET", "/seller/query", opts);
 }
 
-/** Create `Seller` rows. */
-export function createSeller(rows: SellerInsert[]): Call<SellerPrimaryKey[]> {
-    return call<SellerPrimaryKey[]>("createSeller", "POST", "/seller", rows);
+/** The errors `exec` can reject `createSeller` with. */
+export type CreateSellerErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Seller` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createSeller(rows: SellerInsert[]): Call<SellerPrimaryKey[], CreateSellerErrors> {
+    return call<SellerPrimaryKey[], CreateSellerErrors>("createSeller", "POST", "/seller", rows);
 }
 
-/** Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertSeller(rows: SellerUpsert[]): Call<SellerPrimaryKey[]> {
-    return call<SellerPrimaryKey[]>("upsertSeller", "PUT", "/seller", rows);
+/** The errors `exec` can reject `upsertSeller` with. */
+export type UpsertSellerErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Seller` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertSeller(rows: SellerUpsert[]): Call<SellerPrimaryKey[], UpsertSellerErrors> {
+    return call<SellerPrimaryKey[], UpsertSellerErrors>("upsertSeller", "PUT", "/seller", rows);
 }
 
-/** Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateSeller(rows: SellerPatch[]): Call<void> {
-    return call<void>("updateSeller", "PATCH", "/seller", rows);
+/** The errors `exec` can reject `updateSeller` with. */
+export type UpdateSellerErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Seller` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateSeller(rows: SellerPatch[]): Call<void, UpdateSellerErrors> {
+    return call<void, UpdateSellerErrors>("updateSeller", "PATCH", "/seller", rows);
 }
 
-/** Delete `Seller` rows, keyed on `id`. */
-export function deleteSeller(rows: SellerPrimaryKey[]): Call<void> {
-    return call<void>("deleteSeller", "DELETE", "/seller", rows);
+/** The errors `exec` can reject `deleteSeller` with. */
+export type DeleteSellerErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Seller` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteSeller(rows: SellerPrimaryKey[]): Call<void, DeleteSellerErrors> {
+    return call<void, DeleteSellerErrors>("deleteSeller", "DELETE", "/seller", rows);
 }

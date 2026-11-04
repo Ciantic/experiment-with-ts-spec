@@ -5,27 +5,104 @@ import type { UserInsert } from "../repositories/userInsertSchema.ts";
 import type { UserPatch } from "../repositories/userPatchSchema.ts";
 import type { UserPrimaryKey } from "../repositories/userPrimaryKeySchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 
 export type { UserInsert, UserPatch, UserPrimaryKey };
 
-/** Query `User` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryUser` with. */
+export type QueryUserErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `User` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryUser<S extends Selection<User>>(
     opts: { filter?: Filters<User, "id" | "email" | "deletedAt">; where?: Where<User, { emailVerifiedAt: "isNull" | "isNotNull" }>; limit?: number; offset?: number; select: S },
-): Call<Selected<User, S>[]> {
-    return call<Selected<User, S>[]>("queryUser", "GET", "/user/query", opts);
+): Call<Selected<User, S>[], QueryUserErrors> {
+    return call<Selected<User, S>[], QueryUserErrors>("queryUser", "GET", "/user/query", opts);
 }
 
-/** Create `User` rows. */
-export function createUser(rows: UserInsert[]): Call<UserPrimaryKey[]> {
-    return call<UserPrimaryKey[]>("createUser", "POST", "/user", rows);
+/** The errors `exec` can reject `createUser` with. */
+export type CreateUserErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `User` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createUser(rows: UserInsert[]): Call<UserPrimaryKey[], CreateUserErrors> {
+    return call<UserPrimaryKey[], CreateUserErrors>("createUser", "POST", "/user", rows);
 }
 
-/** Patch `User` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateUser(rows: UserPatch[]): Call<void> {
-    return call<void>("updateUser", "PATCH", "/user", rows);
+/** The errors `exec` can reject `updateUser` with. */
+export type UpdateUserErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `User` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateUser(rows: UserPatch[]): Call<void, UpdateUserErrors> {
+    return call<void, UpdateUserErrors>("updateUser", "PATCH", "/user", rows);
 }
 
-/** Delete `User` rows, keyed on `id`. */
-export function deleteUser(rows: UserPrimaryKey[]): Call<void> {
-    return call<void>("deleteUser", "DELETE", "/user", rows);
+/** The errors `exec` can reject `deleteUser` with. */
+export type DeleteUserErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `User` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteUser(rows: UserPrimaryKey[]): Call<void, DeleteUserErrors> {
+    return call<void, DeleteUserErrors>("deleteUser", "DELETE", "/user", rows);
 }

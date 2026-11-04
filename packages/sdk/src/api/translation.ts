@@ -6,32 +6,129 @@ import type { TranslationPatch } from "../repositories/translationPatchSchema.ts
 import type { TranslationPrimaryKey } from "../repositories/translationPrimaryKeySchema.ts";
 import type { TranslationUpsert } from "../repositories/translationUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NoMatchingRowError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError } from "../http.ts";
 
 export type { TranslationInsert, TranslationPatch, TranslationPrimaryKey, TranslationUpsert };
 
-/** Query `Translation` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryTranslation` with. */
+export type QueryTranslationErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Translation` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryTranslation<S extends Selection<Translation>>(
     opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
-): Call<Selected<Translation, S>[]> {
-    return call<Selected<Translation, S>[]>("queryTranslation", "GET", "/translation/query", opts);
+): Call<Selected<Translation, S>[], QueryTranslationErrors> {
+    return call<Selected<Translation, S>[], QueryTranslationErrors>("queryTranslation", "GET", "/translation/query", opts);
 }
 
-/** Create `Translation` rows. */
-export function createTranslation(rows: TranslationInsert[]): Call<TranslationPrimaryKey[]> {
-    return call<TranslationPrimaryKey[]>("createTranslation", "POST", "/translation", rows);
+/** The errors `exec` can reject `createTranslation` with. */
+export type CreateTranslationErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Translation` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createTranslation(rows: TranslationInsert[]): Call<TranslationPrimaryKey[], CreateTranslationErrors> {
+    return call<TranslationPrimaryKey[], CreateTranslationErrors>("createTranslation", "POST", "/translation", rows);
 }
 
-/** Upsert `Translation` rows: each row is created, or replaces the row it keys on. */
-export function upsertTranslation(rows: TranslationUpsert[]): Call<TranslationPrimaryKey[]> {
-    return call<TranslationPrimaryKey[]>("upsertTranslation", "PUT", "/translation", rows);
+/** The errors `exec` can reject `upsertTranslation` with. */
+export type UpsertTranslationErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Translation` rows: each row is created, or replaces the row it keys on.
+ *
+ * @throws {ShortWriteError} when the upsert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertTranslation(rows: TranslationUpsert[]): Call<TranslationPrimaryKey[], UpsertTranslationErrors> {
+    return call<TranslationPrimaryKey[], UpsertTranslationErrors>("upsertTranslation", "PUT", "/translation", rows);
 }
 
-/** Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md. */
-export function updateTranslation(rows: TranslationPatch[]): Call<void> {
-    return call<void>("updateTranslation", "PATCH", "/translation", rows);
+/** The errors `exec` can reject `updateTranslation` with. */
+export type UpdateTranslationErrors =
+    | NoMatchingRowError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Translation` rows; a row that is not there rejects the call. See docs/versioning.md.
+ *
+ * @throws {NoMatchingRowError} when a key the patch addresses is not there
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateTranslation(rows: TranslationPatch[]): Call<void, UpdateTranslationErrors> {
+    return call<void, UpdateTranslationErrors>("updateTranslation", "PATCH", "/translation", rows);
 }
 
-/** Delete `Translation` rows, keyed on `lang`, `key`. */
-export function deleteTranslation(rows: TranslationPrimaryKey[]): Call<void> {
-    return call<void>("deleteTranslation", "DELETE", "/translation", rows);
+/** The errors `exec` can reject `deleteTranslation` with. */
+export type DeleteTranslationErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Translation` rows, keyed on `lang`, `key`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteTranslation(rows: TranslationPrimaryKey[]): Call<void, DeleteTranslationErrors> {
+    return call<void, DeleteTranslationErrors>("deleteTranslation", "DELETE", "/translation", rows);
 }

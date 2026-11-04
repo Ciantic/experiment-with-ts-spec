@@ -6,32 +6,129 @@ import type { CustomerPatch } from "../repositories/customerPatchSchema.ts";
 import type { CustomerPrimaryKey } from "../repositories/customerPrimaryKeySchema.ts";
 import type { CustomerUpsert } from "../repositories/customerUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
+import type { ForbiddenError, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
 
 export type { CustomerInsert, CustomerPatch, CustomerPrimaryKey, CustomerUpsert };
 
-/** Query `Customer` rows, filtered by the `@queryFilter` fields, combined with and. */
+// A builder returns a call; `exec` sends it and rejects with the errors its `@throws` names.
+
+/** The errors `exec` can reject `queryCustomer` with. */
+export type QueryCustomerErrors =
+    | QueryError
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Query `Customer` rows, filtered by the `@queryFilter` fields, combined with and.
+ *
+ * @throws {QueryError} when the query model refuses a field, filter, order, or page
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
 export function queryCustomer<S extends Selection<Customer>>(
     opts: { filter?: Filters<Customer, "id" | "tenantId">; limit?: number; offset?: number; select: S },
-): Call<Selected<Customer, S>[]> {
-    return call<Selected<Customer, S>[]>("queryCustomer", "GET", "/customer/query", opts);
+): Call<Selected<Customer, S>[], QueryCustomerErrors> {
+    return call<Selected<Customer, S>[], QueryCustomerErrors>("queryCustomer", "GET", "/customer/query", opts);
 }
 
-/** Create `Customer` rows. */
-export function createCustomer(rows: CustomerInsert[]): Call<CustomerPrimaryKey[]> {
-    return call<CustomerPrimaryKey[]>("createCustomer", "POST", "/customer", rows);
+/** The errors `exec` can reject `createCustomer` with. */
+export type CreateCustomerErrors =
+    | ShortWriteError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Create `Customer` rows.
+ *
+ * @throws {ShortWriteError} when the insert writes fewer rows than the call supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function createCustomer(rows: CustomerInsert[]): Call<CustomerPrimaryKey[], CreateCustomerErrors> {
+    return call<CustomerPrimaryKey[], CreateCustomerErrors>("createCustomer", "POST", "/customer", rows);
 }
 
-/** Upsert `Customer` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md. */
-export function upsertCustomer(rows: CustomerUpsert[]): Call<CustomerPrimaryKey[]> {
-    return call<CustomerPrimaryKey[]>("upsertCustomer", "PUT", "/customer", rows);
+/** The errors `exec` can reject `upsertCustomer` with. */
+export type UpsertCustomerErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Upsert `Customer` rows: each row is created, or replaces the row at the version it claims. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the upsert claimed
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function upsertCustomer(rows: CustomerUpsert[]): Call<CustomerPrimaryKey[], UpsertCustomerErrors> {
+    return call<CustomerPrimaryKey[], UpsertCustomerErrors>("upsertCustomer", "PUT", "/customer", rows);
 }
 
-/** Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md. */
-export function updateCustomer(rows: CustomerPatch[]): Call<void> {
-    return call<void>("updateCustomer", "PATCH", "/customer", rows);
+/** The errors `exec` can reject `updateCustomer` with. */
+export type UpdateCustomerErrors =
+    | VersionConflictError
+    | ForbiddenError
+    | ValidationError
+    | PayloadTooLargeError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Patch `Customer` rows; a stale version, or a row that is not there, rejects the call. See docs/versioning.md.
+ *
+ * @throws {VersionConflictError} when a row is not at the version the patch supplied
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {PayloadTooLargeError} when the body is past the transport's cap
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function updateCustomer(rows: CustomerPatch[]): Call<void, UpdateCustomerErrors> {
+    return call<void, UpdateCustomerErrors>("updateCustomer", "PATCH", "/customer", rows);
 }
 
-/** Delete `Customer` rows, keyed on `id`. */
-export function deleteCustomer(rows: CustomerPrimaryKey[]): Call<void> {
-    return call<void>("deleteCustomer", "DELETE", "/customer", rows);
+/** The errors `exec` can reject `deleteCustomer` with. */
+export type DeleteCustomerErrors =
+    | ForbiddenError
+    | ValidationError
+    | RequestError
+    | NotFoundError
+    | HttpError;
+
+/**
+ * Delete `Customer` rows, keyed on `id`.
+ *
+ * @throws {ForbiddenError} when the session lacks the permission the guard requires
+ * @throws {ValidationError} when the route's schema refuses the argument
+ * @throws {RequestError} when the server refuses the request before the route
+ * @throws {NotFoundError} when no route serves the call
+ * @throws {HttpError} when the body names no error kind the SDK knows
+ */
+export function deleteCustomer(rows: CustomerPrimaryKey[]): Call<void, DeleteCustomerErrors> {
+    return call<void, DeleteCustomerErrors>("deleteCustomer", "DELETE", "/customer", rows);
 }
