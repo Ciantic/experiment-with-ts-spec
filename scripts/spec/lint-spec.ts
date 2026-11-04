@@ -1411,35 +1411,25 @@ function lintTenancy(spec: SpecModel, findings: Diagnostic[]): void {
         }
     }
 
-    // A link to the root is the tenant link, so the interface it sits on is tenant-owned.
+    // A link to the root is how a global interface becomes owned; an owned one may link again to reference a second tenant.
     if (root !== undefined) {
         for (const entity of spec.interfaces.values()) {
             if (entity.tags.tenant) {
                 continue;
             }
+            // A @tenantOwned that names no column is checked against its links on the interface itself.
+            if (entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
+                continue;
+            }
             for (const property of entity.properties) {
-                const tenantLink = property.tags.foreignKey?.entity === root.name;
-                const owner = entity.tags.tenantOwned;
-                if (!tenantLink || owner?.field === property.name) {
+                if (property.tags.foreignKey?.entity !== root.name) {
                     continue;
                 }
-                if (owner === undefined) {
-                    // A @tenantOwned that names no column is reported on the interface itself, so this rule need not repeat it.
-                    if (entity.tags.written.byName.has(TENANT_OWNED_TAG)) {
-                        continue;
-                    }
-                    reportField(
-                        property,
-                        `@foreignKey ${root.name} is the tenant link, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${property.name}\``,
-                        linkTagOf(property),
-                    );
-                } else {
-                    reportField(
-                        property,
-                        `@foreignKey ${root.name} is a second link to the root; a @${TENANT_OWNED_TAG} interface links to it once`,
-                        linkTagOf(property),
-                    );
-                }
+                reportField(
+                    property,
+                    `@foreignKey ${root.name} is the tenant link, so \`${entity.name}\` must declare @${TENANT_OWNED_TAG} \`${property.name}\``,
+                    linkTagOf(property),
+                );
             }
         }
     }

@@ -833,8 +833,9 @@ Enforced:
   column name — the interface's single link to the root otherwise supplies it —
   which must name a scalar field of the interface carrying `@foreignKey` at the
   `@tenant` interface and the root key's type. A bare tag on an interface with no
-  link, or several, is a finding. The tag's `optional` word must agree with the
-  field's `?`, so a nullable tenant column is always intended.
+  link, or several, is a finding; a named column leaves any other link to the
+  root as an ordinary reference to a second tenant. The tag's `optional` word
+  must agree with the field's `?`, so a nullable tenant column is always intended.
   Every reference to a required owner must state `scope=<that column>` and must
   come from an interface owned by the same column; a scope anywhere else is a
   finding. An optional owner may neither make nor be the target of a scope,

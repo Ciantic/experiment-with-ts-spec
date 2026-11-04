@@ -3098,7 +3098,7 @@ export interface Thing {
         ]);
     });
 
-    it("reports a second link to the root on an owned interface", () => {
+    it("accepts a second link to the root when @tenantOwned names its column", () => {
         const { findings } = lintSpec(
             parse({
                 "/src/domain/Alpha.ts": root,
@@ -3110,9 +3110,7 @@ export interface Thing {
             }),
         );
 
-        expect(messages(findings)).toEqual([
-            "`billingId`: @foreignKey Alpha is a second link to the root; a @tenantOwned interface links to it once",
-        ]);
+        expect(findings).toEqual([]);
     });
 });
 

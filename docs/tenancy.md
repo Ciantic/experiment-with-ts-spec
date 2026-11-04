@@ -71,10 +71,11 @@ interface's one link to the root, so the tag alone is enough: the linter takes
 the field carrying `@foreignKey Tenant` — the link is what makes it a tenant
 column rather than a bare id — and checks that it is a scalar column with the
 root key's type. Naming the column, `@tenantOwned tenantId`, is for an interface
-with more than one such link: a bare tag there is a finding, since the linter
-cannot tell which column scopes the interface. An interface that declares
-neither the tag nor a link to the root is global, which is what `Locale` and
-`LogEntry` are.
+with several foreign keys to the tenant: a bare tag there is a finding, since the
+linter cannot tell which column scopes the interface. Every other link to the
+root is an ordinary reference to a second tenant and is stated as one. An
+interface that declares neither the tag nor a link to the root is global, which
+is what `Locale` and `LogEntry` are.
 
 The word `optional` says some rows have no tenant. It must agree with the field:
 an `optional` tag needs an optional field, and an optional field needs the tag,
