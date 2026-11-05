@@ -65,8 +65,9 @@ SDK, and an entity that carries no `@restQueries query` has no read route.
 `@restWatch` adds one server-sent event stream at `/<table>/watch` taking
 `{ pks?, filter?, ops? }` in `q`. `pks` is required when only `rows` is
 exposed, named nowhere when only `all` is exposed, and optional when both are.
-`filter` is present when a field of the entity carries `@watchFilter`, and its
-fields are the ones that tag marks. The stream has no `Call` builder, since it
+`filter` is present when a field of the entity carries the selected scope's
+filter tag (`@watchAllFilter` or `@watchRowsFilter`), and its fields are the
+ones that tag marks. The stream has no `Call` builder, since it
 opens a connection rather than sending one request; the SDK generates
 `watch<Entity>(http, { onChange, filter?, ops? })` for `all` and
 `watch<Entity>Rows(http, { onChange, pks, filter?, ops? })` for `rows`, each

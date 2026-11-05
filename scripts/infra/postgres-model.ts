@@ -115,12 +115,16 @@ export interface Table {
     repositoryOperations: WriteOperation[];
     /** The read operations `@queries` declares, which the query generator renders. */
     queries: ReadOperation[];
-    /** The notification scopes `@watch` declares, which the schema and watch generators read. See docs/notifications.md. */
+    /** The notification scopes the scope tags declare, which the schema and watch generators read. See docs/notifications.md. */
     watch: WatchScope[];
-    /** The operations `@watch ops=` publishes; all when the tag names none. See docs/notifications.md. */
-    watchOps: TriggerEvent[];
-    /** The fields `@watchFilter` names, whose values the change payload carries. See docs/notifications.md. */
-    watchFilters: string[];
+    /** The operations `@watchAll ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
+    watchAllOps?: TriggerEvent[];
+    /** The operations `@watchRows ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
+    watchRowsOps?: TriggerEvent[];
+    /** The fields `@watchAllFilter` names, whose values the `all` change payload carries. See docs/notifications.md. */
+    watchAllFilters: string[];
+    /** The fields `@watchRowsFilter` names, whose values the `rows` change payload carries. See docs/notifications.md. */
+    watchRowsFilters: string[];
     /** The column `@tenantOwned` names and whether it is optional, or absent on a global entity. See docs/tenancy.md. */
     tenantOwned?: TenantOwned;
 }
@@ -130,6 +134,11 @@ interface TypeResolution {
     checkValues?: string[];
     entity?: string;
     isArray?: boolean;
+}
+
+/** The LISTEN/NOTIFY channel a table's scope publishes on. */
+export function watchChannel(tableName: string, scope: WatchScope): string {
+    return `${tableName}_${scope}_topic`;
 }
 
 /** The table's primary key columns, in declaration order. A missing `@primaryKey` is a diagnostic. */
@@ -209,8 +218,10 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
         watch: spec.watch,
-        watchOps: spec.watchOps,
-        watchFilters: spec.watchFilters,
+        ...(spec.watchAll === undefined ? {} : { watchAllOps: spec.watchAll }),
+        ...(spec.watchRows === undefined ? {} : { watchRowsOps: spec.watchRows }),
+        watchAllFilters: spec.watchAllFilters,
+        watchRowsFilters: spec.watchRowsFilters,
         ...(spec.tags.tenantOwned === undefined ? {} : { tenantOwned: spec.tags.tenantOwned }),
     };
 
@@ -219,9 +230,14 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
     }
 
     // A filter names a stored column, so a branch or an unknown field has nothing to publish.
-    for (const field of spec.watchFilters) {
-        if (!table.columns.some((column) => column.name === field)) {
-            context.report(spec.location, `\`${spec.name}\`: @watchFilter \`${field}\` is not a scalar column`);
+    for (const [tag, fields] of [
+        ["@watchAllFilter", spec.watchAllFilters],
+        ["@watchRowsFilter", spec.watchRowsFilters],
+    ] as const) {
+        for (const field of fields) {
+            if (!table.columns.some((column) => column.name === field)) {
+                context.report(spec.location, `\`${spec.name}\`: ${tag} \`${field}\` is not a scalar column`);
+            }
         }
     }
 

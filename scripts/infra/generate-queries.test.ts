@@ -32,8 +32,8 @@ function table(
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
         watch: [],
-        watchOps: ["insert", "update", "delete"],
-        watchFilters: [],
+        watchAllFilters: [],
+        watchRowsFilters: [],
     };
 }
 
@@ -292,7 +292,7 @@ describe("renderWatchModule", () => {
         expect(code).toContain(
             "export function watchInvoice(\n    db: SqlExecutor,\n    opts?: { ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchAllEvent> {",
         );
-        expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal);');
+        expect(code).toContain('return watchAll(db, "invoice_all_topic", opts?.ops, opts?.signal);');
         expect(code).not.toContain("watchInvoiceRows");
     });
 
@@ -304,7 +304,7 @@ describe("renderWatchModule", () => {
         expect(code).toContain(
             "export function watchInvoiceRows(\n    db: SqlExecutor,\n    opts: { pks: InvoicePrimaryKey[]; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },\n): AsyncIterable<WatchRowsEvent<InvoicePrimaryKey>> {",
         );
-        expect(code).toContain('return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal);');
+        expect(code).toContain('return watchRows(db, "invoice_rows_topic", opts.pks, ["id"], opts.ops, opts.signal);');
         expect(code).not.toContain("export function watchInvoice(");
     });
 
@@ -317,7 +317,12 @@ describe("renderWatchModule", () => {
     });
 
     it("narrows ops and events to the operations the table publishes", () => {
-        const code = renderWatchModule("Invoice", { ...invoice, watch: ["all", "rows"], watchOps: ["insert"] });
+        const code = renderWatchModule("Invoice", {
+            ...invoice,
+            watch: ["all", "rows"],
+            watchAllOps: ["insert"],
+            watchRowsOps: ["insert"],
+        });
 
         expect(code).toContain('import type { WatchAllEvent, WatchRowsEvent } from "sdk/watch.ts";');
         expect(code).toContain(
@@ -329,18 +334,19 @@ describe("renderWatchModule", () => {
         );
         expect(code).toContain('): AsyncIterable<WatchRowsEvent<InvoicePrimaryKey, "INSERT">> {');
         expect(code).toContain(
-            'return watchAll(db, "invoice", opts?.ops, opts?.signal) as AsyncIterable<WatchAllEvent<"INSERT">>;',
+            'return watchAll(db, "invoice_all_topic", opts?.ops, opts?.signal) as AsyncIterable<WatchAllEvent<"INSERT">>;',
         );
         expect(code).toContain(
-            'return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal) as AsyncIterable<WatchRowsEvent<InvoicePrimaryKey, "INSERT">>;',
+            'return watchRows(db, "invoice_rows_topic", opts.pks, ["id"], opts.ops, opts.signal) as AsyncIterable<WatchRowsEvent<InvoicePrimaryKey, "INSERT">>;',
         );
     });
 
-    it("accepts a typed filter when @watchFilter names a field", () => {
+    it("accepts a typed filter when a scope filter tag names a field", () => {
         const code = renderWatchModule("Invoice", {
             ...invoice,
             watch: ["all", "rows"],
-            watchFilters: ["customerId"],
+            watchAllFilters: ["customerId"],
+            watchRowsFilters: ["customerId"],
         });
 
         expect(code).toContain('import type { Invoice } from "spec/fixtures/Invoice.ts";');
@@ -348,9 +354,9 @@ describe("renderWatchModule", () => {
             'import type { WatchAllEvent, WatchFilter, WatchOperation, WatchRowsEvent } from "sdk/watch.ts";',
         );
         expect(code).toContain('filter?: WatchFilter<Invoice, "customerId"> | undefined;');
-        expect(code).toContain('return watchAll(db, "invoice", opts?.ops, opts?.signal, opts?.filter);');
+        expect(code).toContain('return watchAll(db, "invoice_all_topic", opts?.ops, opts?.signal, opts?.filter);');
         expect(code).toContain(
-            'return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);',
+            'return watchRows(db, "invoice_rows_topic", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);',
         );
     });
 });

@@ -6,6 +6,7 @@ import { TRIGGER_EVENTS, loadSpec, lowerFirst, type DeclaredType, type FilterDef
 import {
     buildSpecTables,
     primaryKeyColumns,
+    watchChannel,
     type Table,
 } from "./postgres-model.ts";
 
@@ -247,16 +248,16 @@ function queryArgs(filters: string[]): string {
     return filters.length > 0 ? "opts.filter ?? {}" : "{}";
 }
 
-/** The filter object a generated watch takes: the fields `@watchFilter` declares. */
+/** The filter object a generated watch takes: the fields its scope tag declares. */
 function watchFilterType(entity: string, filters: string[]): string | undefined {
     return filters.length === 0
         ? undefined
         : `WatchFilter<${entity}, ${filters.map((field) => JSON.stringify(field)).join(" | ")}>`;
 }
 
-/** The uppercase union of the operations a table publishes; undefined when it publishes all three. */
+/** The uppercase union of the operations a scope publishes; undefined when it publishes all three. */
 function operationUnion(ops: readonly TriggerEvent[]): string | undefined {
-    return ops.length === TRIGGER_EVENTS.length
+    return ops.length === 0 || ops.length === TRIGGER_EVENTS.length
         ? undefined
         : ops.map((op) => JSON.stringify(op.toUpperCase())).join(" | ");
 }
@@ -266,7 +267,7 @@ function readonlyOperations(union: string): string {
     return union.includes(" | ") ? `readonly (${union})[]` : `readonly ${union}[]`;
 }
 
-/** The options a generated watch takes: `pks` only on the rows helper, `filter` only when declared. */
+/** The options a generated watch takes: `pks` only on the rows helper, `filter` only when its scope declares one. */
 function watchOptsType(keyType: string, pks: boolean, entity: string, filters: string[], union: string | undefined): string {
     const parts: string[] = [];
     if (pks) {
@@ -285,27 +286,28 @@ export function renderWatchModule(entity: string, table: Table): string {
     const keyType = `${entity}PrimaryKey`;
     const all = table.watch.includes("all");
     const rows = table.watch.includes("rows");
-    const filters = table.watchFilters;
-    const union = operationUnion(table.watchOps);
-    const allEvent = union === undefined ? "WatchAllEvent" : `WatchAllEvent<${union}>`;
-    const rowsEvent = union === undefined ? `WatchRowsEvent<${keyType}>` : `WatchRowsEvent<${keyType}, ${union}>`;
+    const allUnion = all ? operationUnion(table.watchAllOps ?? []) : undefined;
+    const rowsUnion = rows ? operationUnion(table.watchRowsOps ?? []) : undefined;
+    const allEvent = allUnion === undefined ? "WatchAllEvent" : `WatchAllEvent<${allUnion}>`;
+    const rowsEvent = rowsUnion === undefined ? `WatchRowsEvent<${keyType}>` : `WatchRowsEvent<${keyType}, ${rowsUnion}>`;
     const fields = rows ? primaryKeyColumns(table).map((column) => column.name) : [];
-    const channel = JSON.stringify(table.name);
     const lines: string[] = [HEADER];
     if (rows) {
         lines.push(`import type { ${keyType} } from "sdk/schemas.ts";`);
     }
-    if (filters.length > 0) {
+    if (table.watchAllFilters.length > 0 || table.watchRowsFilters.length > 0) {
         lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     }
     const watchTypes = all ? ["WatchAllEvent"] : [];
     if (rows) {
         watchTypes.push("WatchRowsEvent");
     }
-    if (union === undefined) {
-        watchTypes.push("WatchOperation");
+    if (allUnion === undefined || rowsUnion === undefined) {
+        if ((all && allUnion === undefined) || (rows && rowsUnion === undefined)) {
+            watchTypes.push("WatchOperation");
+        }
     }
-    if (filters.length > 0) {
+    if (table.watchAllFilters.length > 0 || table.watchRowsFilters.length > 0) {
         watchTypes.push("WatchFilter");
     }
     watchTypes.sort((a, b) => a.localeCompare(b));
@@ -315,30 +317,31 @@ export function renderWatchModule(entity: string, table: Table): string {
     lines.push(`import { ${functions.join(", ")} } from "../notifications.ts";`);
     lines.push("");
 
-    const filterArg = filters.length > 0 ? ", opts.filter" : "";
-    const optionalFilterArg = filters.length > 0 ? ", opts?.filter" : "";
-
     if (all) {
-        lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
+        const allFilters = table.watchAllFilters;
+        const optionalFilterArg = allFilters.length > 0 ? ", opts?.filter" : "";
+        lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to operations${allFilters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
         lines.push(`export function watch${entity}(`);
         lines.push("    db: SqlExecutor,");
-        lines.push(`    opts?: ${watchOptsType(keyType, false, entity, filters, union)},`);
+        lines.push(`    opts?: ${watchOptsType(keyType, false, entity, allFilters, allUnion)},`);
         lines.push(`): AsyncIterable<${allEvent}> {`);
-        lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal${optionalFilterArg})${union === undefined ? "" : ` as AsyncIterable<${allEvent}>`};`);
+        lines.push(`    return watchAll(db, ${JSON.stringify(watchChannel(table.name, "all"))}, opts?.ops, opts?.signal${optionalFilterArg})${allUnion === undefined ? "" : ` as AsyncIterable<${allEvent}>`};`);
         lines.push("}");
     }
 
     if (rows) {
+        const rowFilters = table.watchRowsFilters;
+        const filterArg = rowFilters.length > 0 ? ", opts.filter" : "";
         if (all) {
             lines.push("");
         }
-        lines.push(`/** Subscribe to changes of the selected \`${entity}\` rows, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
+        lines.push(`/** Subscribe to changes of the selected \`${entity}\` rows, optionally scoped to operations${rowFilters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
         lines.push(`export function watch${entity}Rows(`);
         lines.push("    db: SqlExecutor,");
-        lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters, union)},`);
+        lines.push(`    opts: ${watchOptsType(keyType, true, entity, rowFilters, rowsUnion)},`);
         lines.push(`): AsyncIterable<${rowsEvent}> {`);
         lines.push(
-            `    return watchRows(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg})${union === undefined ? "" : ` as AsyncIterable<${rowsEvent}>`};`,
+            `    return watchRows(db, ${JSON.stringify(watchChannel(table.name, "rows"))}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg})${rowsUnion === undefined ? "" : ` as AsyncIterable<${rowsEvent}>`};`,
         );
         lines.push("}");
     }

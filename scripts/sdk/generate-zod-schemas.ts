@@ -106,7 +106,7 @@ export function generateWatchFile(watch: ZodWatch): string {
     const rows = watch.scopes.includes("rows");
     const all = watch.scopes.includes("all");
     const imports: string[] = [];
-    if (watch.filterFields.length > 0) {
+    if (watch.allFilters.length > 0 || watch.rowsFilters.length > 0) {
         imports.push(`import { ${module}Schema } from "../domain/${module}Schema.ts";`);
     }
     if (rows) {
@@ -114,19 +114,14 @@ export function generateWatchFile(watch: ZodWatch): string {
     }
     lines.push(...imports.sort((a, b) => a.localeCompare(b)));
     lines.push("");
-    const members: string[] = [];
-    if (rows) {
-        members.push(`pks: z.array(${module}PrimaryKeySchema)${all ? ".exactOptional()" : ""}`);
-    }
-    if (watch.filterFields.length > 0) {
-        const fields = watch.filterFields
-            .map((field) => `${field}: ${module}Schema.shape.${field}.exactOptional()`)
-            .join(", ");
-        members.push(`filter: z.strictObject({ ${fields} }).exactOptional()`);
-    }
-    members.push(`ops: z.array(z.enum([${watch.operations.map((op) => JSON.stringify(op)).join(", ")}])).exactOptional()`);
-    const object = `z.strictObject({ ${members.join(", ")} })`;
-    lines.push(`export const ${watch.schemaName} = ${all ? `${object}.optional()` : object};`);
+    const filter = (fields: string[]): string =>
+        `filter: z.strictObject({ ${fields.map((field) => `${field}: ${module}Schema.shape.${field}.exactOptional()`).join(", ")} }).exactOptional()`;
+    const ops = (operations: string[]): string =>
+        `ops: z.array(z.enum([${operations.map((op) => JSON.stringify(op)).join(", ")}])).exactOptional()`;
+    const allObject = `z.strictObject({ ${[...(watch.allFilters.length > 0 ? [filter(watch.allFilters)] : []), ops(watch.allOperations)].join(", ")} })`;
+    const rowsObject = `z.strictObject({ pks: z.array(${module}PrimaryKeySchema), ${[...(watch.rowsFilters.length > 0 ? [filter(watch.rowsFilters)] : []), ops(watch.rowsOperations)].join(", ")} })`;
+    const schema = all && rows ? `z.union([${rowsObject}, ${allObject}]).optional()` : all ? `${allObject}.optional()` : rowsObject;
+    lines.push(`export const ${watch.schemaName} = ${schema};`);
     lines.push("");
     return lines.join("\n");
 }

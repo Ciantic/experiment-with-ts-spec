@@ -63,14 +63,18 @@ export interface RestEntity {
     whereFields: { name: string; operators: string[] }[];
     /** The `@version` fields, which a patch requires as the optimistic-lock precondition. */
     versionFields: string[];
-    /** The `@watch` scopes the entity declares. See docs/notifications.md. */
+    /** The watch scopes the entity declares. See docs/notifications.md. */
     watch: WatchScope[];
-    /** The operations `@watch ops=` publishes, in trigger order. See docs/notifications.md. */
-    watchOps: TriggerEvent[];
+    /** The operations `@watchAll ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
+    watchAllOps?: TriggerEvent[];
+    /** The operations `@watchRows ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
+    watchRowsOps?: TriggerEvent[];
     /** The `@restWatch` scopes the route exposes; a subset of {@link watch}. */
     restWatch: WatchScope[];
-    /** The `@watchFilter` fields, whose values the change payload carries. See docs/notifications.md. */
-    watchFilters: string[];
+    /** The `@watchAllFilter` fields, whose values the `all` payload carries. See docs/notifications.md. */
+    watchAllFilters: string[];
+    /** The `@watchRowsFilter` fields, whose values the `rows` payload carries. See docs/notifications.md. */
+    watchRowsFilters: string[];
     operations: RestOperation[];
 }
 
@@ -206,9 +210,11 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
         watch: spec.watch,
-        watchOps: spec.watchOps,
+        ...(spec.watchAll === undefined ? {} : { watchAllOps: spec.watchAll }),
+        ...(spec.watchRows === undefined ? {} : { watchRowsOps: spec.watchRows }),
         restWatch: spec.restWatch,
-        watchFilters: spec.watchFilters,
+        watchAllFilters: spec.watchAllFilters,
+        watchRowsFilters: spec.watchRowsFilters,
         operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restWatch),
     };
 }
@@ -321,7 +327,7 @@ export function buildRestModel(spec: SpecModel): RestModel {
             if (!entitySpec.watch.includes(scope)) {
                 report(
                     entitySpec.location,
-                    `\`${entitySpec.name}\`: @restWatch \`${scope}\` is not in @watch`,
+                    `\`${entitySpec.name}\`: @restWatch \`${scope}\` is not in @watchAll or @watchRows`,
                 );
             }
         }

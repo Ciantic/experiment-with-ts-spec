@@ -60,7 +60,8 @@ const OWNED = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */

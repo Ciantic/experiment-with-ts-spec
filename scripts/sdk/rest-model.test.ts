@@ -98,7 +98,8 @@ const NOTIFIED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -116,7 +117,7 @@ const WATCHED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch rows
+ * @watchRows
  * @restWatch rows
  * @entity
  */
@@ -274,25 +275,27 @@ describe("buildRestModel", () => {
         ]);
         expect(entity?.watch).toEqual(["all", "rows"]);
         expect(entity?.restWatch).toEqual(["all", "rows"]);
-        expect(entity?.watchFilters).toEqual([]);
+        expect(entity?.watchAllFilters).toEqual([]);
+        expect(entity?.watchRowsFilters).toEqual([]);
     });
 
-    it("records the fields @watchFilter marks", () => {
+    it("records the fields the scope filter tags mark", () => {
         const filtered = NOTIFIED.replace(
             "/** @primaryKey */",
-            "/**\n     * @primaryKey\n     * @watchFilter\n     */",
+            "/**\n     * @primaryKey\n     * @watchAllFilter\n     * @watchRowsFilter\n     */",
         );
         const entity = build({ Notified: filtered }).entities[0];
 
-        expect(entity?.watchFilters).toEqual(["id"]);
+        expect(entity?.watchAllFilters).toEqual(["id"]);
+        expect(entity?.watchRowsFilters).toEqual(["id"]);
     });
 
     it("reports a notification scope the entity does not declare", () => {
-        const bad = NOTIFIED.replace("@watch all rows", "@watch all");
+        const bad = NOTIFIED.replace(" * @watchRows\n", "");
         const diagnostics = build({ Notified: bad }).diagnostics;
 
         expect(messages(diagnostics)).toEqual([
-            "`Notified`: @restWatch `rows` is not in @watch",
+            "`Notified`: @restWatch `rows` is not in @watchAll or @watchRows",
         ]);
     });
 

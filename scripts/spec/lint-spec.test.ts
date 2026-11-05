@@ -2539,75 +2539,80 @@ export interface Draft { }`,
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch every
+ * @watchAll
  * @restWatch every
  */`);
 
-        expect(findings).toEqual([
-            "`Invoice`: @watch `every` is not one of: all, rows",
-            "`Invoice`: @restWatch `every` is not one of: all, rows",
-        ]);
+        expect(findings).toEqual(["`Invoice`: @restWatch `every` is not one of: all, rows"]);
     });
 
-    it("requires at least one scope in each notification list", () => {
+    it("requires at least one scope in @restWatch", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch
+ * @watchAll
  * @restWatch
  */`);
 
-        expect(findings).toEqual([
-            "`Invoice`: @watch requires at least one of: all, rows",
-            "`Invoice`: @restWatch requires at least one of: all, rows",
-        ]);
+        expect(findings).toEqual(["`Invoice`: @restWatch requires at least one of: all, rows"]);
     });
 
-    it("accepts ops= on @watch, in any order", () => {
+    it("accepts ops= on a scope tag, in any order", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all ops=update,insert
+ * @watchAll ops=update,insert
+ * @watchRows ops=delete
  */`);
 
         expect(findings).toEqual([]);
     });
 
-    it("reports an operation @watch ops= does not know", () => {
+    it("rejects a bare value on a scope tag", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all ops=insert,merge
+ * @watchAll all
  */`);
 
-        expect(findings).toEqual(["`Invoice`: @watch ops= `merge` is not one of: insert, update, delete"]);
+        expect(findings).toEqual(["`Invoice`: @watchAll takes no value `all`; use `ops=…`"]);
     });
 
-    it("reports an operation @watch ops= names twice", () => {
+    it("reports an operation a scope tag does not know", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all ops=insert,insert
+ * @watchAll ops=insert,merge
  */`);
 
-        expect(findings).toEqual(["`Invoice`: @watch ops= names `insert` twice"]);
+        expect(findings).toEqual(["`Invoice`: @watchAll ops= `merge` is not one of: insert, update, delete"]);
     });
 
-    it("requires at least one operation from @watch ops=", () => {
+    it("reports an operation a scope tag names twice", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all ops=
+ * @watchRows ops=insert,insert
  */`);
 
-        expect(findings).toEqual(["`Invoice`: @watch ops= requires at least one of: insert, update, delete"]);
+        expect(findings).toEqual(["`Invoice`: @watchRows ops= names `insert` twice"]);
+    });
+
+    it("requires at least one operation from ops=", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watchAll ops=
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @watchAll ops= requires at least one of: insert, update, delete"]);
     });
 
     it("rejects ops= on @restWatch", () => {
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all
+ * @watchAll
  * @restWatch all ops=insert
  */`);
 
@@ -2618,25 +2623,27 @@ export interface Draft { }`,
         const findings = lintEntity(`/**
  * @entity
  * @repository create
- * @watch all
+ * @watchAll
  * @restWatch rows
  */`);
 
-        expect(findings).toEqual(["`Invoice`: @restWatch `rows` is not in @watch"]);
+        expect(findings).toEqual(["`Invoice`: @restWatch `rows` is not in @watchAll or @watchRows"]);
     });
 });
 
-describe("@watchFilter", () => {
-    it("accepts a stored scalar field on an entity that declares @watch", () => {
+describe("scope filters", () => {
+    it("accepts a stored scalar field on an entity that declares its scope", () => {
         const findings = lintSourceText(`/**
  * @entity
- * @watch all
+ * @watchAll
+ * @watchRows
  */
 export interface Filtered {
     /**
      * @fieldName Tenant ID
      * @widget text
-     * @watchFilter
+     * @watchAllFilter
+     * @watchRowsFilter
      */
     tenantId: string;
 }`);
@@ -2644,68 +2651,80 @@ export interface Filtered {
         expect(messages(findings)).toEqual([]);
     });
 
-    it("requires @watch", () => {
-        const findings = lintSourceText(`/**
+    it("requires the scope tag it filters", () => {
+        const all = lintSourceText(`/**
  * @entity
  */
 export interface Filtered {
     /**
      * @fieldName Tenant ID
      * @widget text
-     * @watchFilter
+     * @watchAllFilter
+     */
+    tenantId: string;
+}`);
+        const rows = lintSourceText(`/**
+ * @entity
+ */
+export interface Filtered {
+    /**
+     * @fieldName Tenant ID
+     * @widget text
+     * @watchRowsFilter
      */
     tenantId: string;
 }`);
 
-        expect(messages(findings)).toEqual(["`Filtered`: @watchFilter requires @watch"]);
+        expect(messages(all)).toEqual(["`Filtered`: @watchAllFilter requires @watchAll"]);
+        expect(messages(rows)).toEqual(["`Filtered`: @watchRowsFilter requires @watchRows"]);
     });
 
     it("takes no value", () => {
         const findings = lintSourceText(`/**
  * @entity
- * @watch all
+ * @watchAll
  */
 export interface Filtered {
     /**
      * @fieldName Tenant ID
      * @widget text
-     * @watchFilter tenantId
+     * @watchAllFilter tenantId
      */
     tenantId: string;
 }`);
 
-        expect(messages(findings)).toEqual(["`tenantId`: @watchFilter takes no value"]);
+        expect(messages(findings)).toEqual(["`tenantId`: @watchAllFilter takes no value"]);
     });
 
     it("rejects a branch field and an array field", () => {
         const branch = lintSourceText(`/**
  * @entity
- * @watch all
+ * @watchRows
  */
 export interface Filtered {
     /**
      * @fieldName Customer
      * @widget select
      * @relation
-     * @watchFilter
+     * @watchRowsFilter
      */
     customer?: Customer;
 }`);
         const array = lintSourceText(`/**
  * @entity
- * @watch all
+ * @watchRows
  */
 export interface Filtered {
     /**
      * @fieldName Tags
      * @widget text
-     * @watchFilter
+     * @watchRowsFilter
      */
     tags: string[];
 }`);
 
-        expect(messages(branch)).toEqual(["`customer`: @watchFilter must be on a scalar field, not a @relation field"]);
-        expect(messages(array)).toEqual(["`tags`: @watchFilter must be on a scalar field, not an array"]);
+        expect(messages(branch)).toEqual(["`customer`: @watchRowsFilter must be on a scalar field, not a @relation field"]);
+        expect(messages(array)).toEqual(["`tags`: @watchRowsFilter must be on a scalar field, not an array"]);
     });
 });
 

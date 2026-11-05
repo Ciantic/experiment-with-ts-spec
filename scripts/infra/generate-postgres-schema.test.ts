@@ -88,7 +88,7 @@ function settle(): Promise<void> {
 const ALL_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @watch all
+ * @watchAll
  */
 export interface Widget {
     /** @primaryKey */
@@ -99,7 +99,7 @@ export interface Widget {
 const ROWS_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @watch rows
+ * @watchRows
  */
 export interface Widget {
     /** @primaryKey */
@@ -110,12 +110,12 @@ export interface Widget {
 const FILTERED_WIDGET = `/**
  * @entity
  * @pgTable widget
- * @watch all
+ * @watchAll
  */
 export interface Widget {
     /** @primaryKey */
     id: GUID;
-    /** @watchFilter */
+    /** @watchAllFilter */
     tenantId: GUID;
     name: string;
 }`;
@@ -945,7 +945,7 @@ describe("generateSchema triggers", () => {
             entities: {
                 Thing: `/**
                  * @entity
-                 * @watch all
+                 * @watchAll
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -954,20 +954,20 @@ describe("generateSchema triggers", () => {
             },
         });
 
-        expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
-        expect(sql).toContain("    perform pg_notify('thing', TG_OP);");
+        expect(sql).toContain('create function "thing_all_notify"() returns trigger as $$');
+        expect(sql).toContain("    perform pg_notify('thing_all_topic', TG_OP);");
         expect(sql).toContain(
-            'create trigger "thing_notify" after insert or update or delete on "thing"',
+            'create trigger "thing_all_notify" after insert or update or delete on "thing"',
         );
-        expect(sql).toContain("    for each statement execute function \"thing_notify\"();");
+        expect(sql).toContain("    for each statement execute function \"thing_all_notify\"();");
     });
 
-    it("fires the statement trigger only on the operations @watch ops= names", () => {
+    it("fires the statement trigger only on the operations @watchAll ops= names", () => {
         const { sql } = generate({
             entities: {
                 Thing: `/**
                  * @entity
-                 * @watch all ops=insert
+                 * @watchAll ops=insert
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -976,16 +976,16 @@ describe("generateSchema triggers", () => {
             },
         });
 
-        expect(sql).toContain('create trigger "thing_notify" after insert on "thing"');
+        expect(sql).toContain('create trigger "thing_all_notify" after insert on "thing"');
         expect(sql).not.toContain("update or delete");
     });
 
-    it("omits the old-identity notification when @watch ops= excludes update", () => {
+    it("omits the old-identity notification when @watchRows ops= excludes update", () => {
         const { sql } = generate({
             entities: {
                 Thing: `/**
                  * @entity
-                 * @watch rows ops=insert,delete
+                 * @watchRows ops=insert,delete
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -994,7 +994,7 @@ describe("generateSchema triggers", () => {
             },
         });
 
-        expect(sql).toContain('create trigger "thing_notify" after insert or delete on "thing"');
+        expect(sql).toContain('create trigger "thing_rows_notify" after insert or delete on "thing"');
         expect(sql).not.toContain("if TG_OP = 'UPDATE'");
     });
 
@@ -1003,7 +1003,7 @@ describe("generateSchema triggers", () => {
             entities: {
                 Thing: `/**
                  * @entity
-                 * @watch rows
+                 * @watchRows
                  */
                 export interface Thing {
                     /** @primaryKey */
@@ -1012,18 +1012,18 @@ describe("generateSchema triggers", () => {
             },
         });
 
-        expect(sql).toContain('create function "thing_notify"() returns trigger as $$');
+        expect(sql).toContain('create function "thing_rows_notify"() returns trigger as $$');
         expect(sql).toContain(
-            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);`,
+            `perform pg_notify('thing_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);`,
         );
         expect(sql).toContain(`if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then`);
         expect(sql).toContain(
-            `perform pg_notify('thing', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);`,
+            `perform pg_notify('thing_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);`,
         );
         expect(sql).toContain(
-            'create trigger "thing_notify" after insert or update or delete on "thing"',
+            'create trigger "thing_rows_notify" after insert or update or delete on "thing"',
         );
-        expect(sql).toContain("    for each row execute function \"thing_notify\"();");
+        expect(sql).toContain("    for each row execute function \"thing_rows_notify\"();");
     });
 
     it("publishes the filter value per row, promoting the statement trigger", () => {
@@ -1033,10 +1033,10 @@ describe("generateSchema triggers", () => {
             `if TG_OP = 'UPDATE' and (OLD."tenantId") is distinct from (NEW."tenantId") then`,
         );
         expect(sql).toContain(
-            `perform pg_notify('widget', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);`,
+            `perform pg_notify('widget_all_topic', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);`,
         );
-        expect(sql).toContain('for each row execute function "widget_notify"();');
-        expect(sql).not.toContain("perform pg_notify('widget', TG_OP);");
+        expect(sql).toContain('for each row execute function "widget_all_notify"();');
+        expect(sql).not.toContain("perform pg_notify('widget_all_topic', TG_OP);");
     });
 
     it("fires the statement trigger for each write and publishes TG_OP", async () => {
@@ -1046,7 +1046,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchAll(db, "widget")[Symbol.asyncIterator]();
+            const iterator = watchAll(db, "widget_all_topic")[Symbol.asyncIterator]();
 
             const inserted = iterator.next();
             await settle();
@@ -1074,7 +1074,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchAll(db, "widget", undefined, undefined, { tenantId: PARENT })[
+            const iterator = watchAll(db, "widget_all_topic", undefined, undefined, { tenantId: PARENT })[
                 Symbol.asyncIterator
             ]();
 
@@ -1110,7 +1110,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchRows(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget_rows_topic", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
 
@@ -1145,7 +1145,7 @@ describe("generateSchema triggers", () => {
             const db = driver.createExecutor();
             await db.query(`insert into "widget" ("id", "name") values ($1, $2)`, [PARENT, "a"]);
 
-            const iterator = watchRows(db, "widget", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget_rows_topic", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
             const first = iterator.next();

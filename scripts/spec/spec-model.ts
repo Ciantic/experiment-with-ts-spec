@@ -41,7 +41,8 @@ export const FIELD_TAGS = [
     "queryFilter",
     "queryOrderBy",
     "queryWhere",
-    "watchFilter",
+    "watchAllFilter",
+    "watchRowsFilter",
     "todo",
 ] as const;
 
@@ -56,7 +57,8 @@ export const INTERFACE_TAGS = [
     "restRepository",
     "queries",
     "restQueries",
-    "watch",
+    "watchAll",
+    "watchRows",
     "restWatch",
     "plural",
     "todo",
@@ -115,6 +117,8 @@ export const RETIRED_TAGS = new Map<string, string>([
     ["type", "the TypeScript type already carries this; drop it"],
     ["values", "the TypeScript type already carries this; drop it"],
     ["formula", "put the expression on the field with @pgVirtual or @pgTrigger"],
+    ["watch", "use @watchAll and/or @watchRows instead"],
+    ["watchFilter", "use @watchAllFilter and/or @watchRowsFilter instead"],
 ]);
 
 /** Widget hints a field may carry. */
@@ -398,16 +402,18 @@ export interface Tags {
     queries?: ReadOperation[];
     /** The read operations `@restQueries` exposes, in {@link READ_OPERATIONS} order. See docs/rest-api.md. */
     restQueries?: ReadOperation[];
-    /** The notification scopes `@watch` declares, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
-    watch?: WatchScope[];
-    /** The operations `@watch ops=` publishes, in {@link TRIGGER_EVENTS} order; all when absent. See docs/notifications.md. */
-    watchOps?: TriggerEvent[];
+    /** The operations `@watchAll ops=` publishes, in {@link TRIGGER_EVENTS} order; absent when the scope is not declared. See docs/notifications.md. */
+    watchAll?: TriggerEvent[];
+    /** The operations `@watchRows ops=` publishes, in {@link TRIGGER_EVENTS} order; absent when the scope is not declared. See docs/notifications.md. */
+    watchRows?: TriggerEvent[];
     /** The notification scopes `@restWatch` exposes, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
     restWatch?: WatchScope[];
     /** The plural noun for the entity, from `@plural invoices`. See docs/permissions.md. */
     plural?: string;
-    /** The field's value is carried in a change payload, so a subscription can filter on it. See docs/notifications.md. */
-    watchFilter: boolean;
+    /** The field's value is carried in an `all` change payload, so a subscription can filter on it. See docs/notifications.md. */
+    watchAllFilter: boolean;
+    /** The field's value is carried in a `rows` change payload, so a subscription can filter on it. See docs/notifications.md. */
+    watchRowsFilter: boolean;
     primitive: boolean;
     zod?: string;
     /** A storage-layer type for the alias, e.g. `uuid`: what it declares, else what it inherits through its own type. */
@@ -484,14 +490,18 @@ export interface SpecInterface {
     queries: ReadOperation[];
     /** The read operations `@restQueries` exposes; empty when the tag is absent. See docs/rest-api.md. */
     restQueries: ReadOperation[];
-    /** The notification scopes `@watch` declares; empty when the tag is absent. See docs/notifications.md. */
+    /** The operations `@watchAll ops=` publishes, in {@link TRIGGER_EVENTS} order; absent when the scope is not declared. See docs/notifications.md. */
+    watchAll?: TriggerEvent[];
+    /** The operations `@watchRows ops=` publishes, in {@link TRIGGER_EVENTS} order; absent when the scope is not declared. See docs/notifications.md. */
+    watchRows?: TriggerEvent[];
+    /** The notification scopes the scope tags declare, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
     watch: WatchScope[];
-    /** The operations `@watch ops=` publishes, in {@link TRIGGER_EVENTS} order; all when absent. See docs/notifications.md. */
-    watchOps: TriggerEvent[];
     /** The notification scopes `@restWatch` exposes; empty when the tag is absent. See docs/notifications.md. */
     restWatch: WatchScope[];
-    /** The fields a `@watchFilter` marker marks; empty when no field carries it. See docs/notifications.md. */
-    watchFilters: string[];
+    /** The fields a `@watchAllFilter` marker marks; empty when no field carries it. See docs/notifications.md. */
+    watchAllFilters: string[];
+    /** The fields a `@watchRowsFilter` marker marks; empty when no field carries it. See docs/notifications.md. */
+    watchRowsFilters: string[];
     /** The `@todo` text when the interface is deferred from generation; absent when it is generated. */
     todo?: string;
 }
@@ -932,7 +942,7 @@ function parseWatchScopes(value: string | undefined): WatchScope[] {
     return WATCH_SCOPES.filter((scope) => tokens.includes(scope));
 }
 
-/** The operations a `@watch ops=` names, de-duplicated and in {@link TRIGGER_EVENTS} order; all when absent. */
+/** The operations a scope tag's `ops=` names, de-duplicated and in {@link TRIGGER_EVENTS} order; all when absent. */
 function parseWatchOps(value: string | undefined): TriggerEvent[] {
     const parameter = parseParameters({ name: "watch", value, text: "", line: 0 }).get("ops");
     if (parameter === undefined) {
@@ -1103,7 +1113,8 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
         primitive: false,
         entity: false,
         tenant: false,
-        watchFilter: false,
+        watchAllFilter: false,
+        watchRowsFilter: false,
     };
 
     for (const doc of holder.getJsDocs()) {
@@ -1173,11 +1184,11 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "restQueries":
                     if (tags.restQueries === undefined) tags.restQueries = parseReadOperations(value);
                     break;
-                case "watch":
-                    if (tags.watch === undefined) {
-                        tags.watch = parseWatchScopes(value);
-                        tags.watchOps = parseWatchOps(value);
-                    }
+                case "watchAll":
+                    if (tags.watchAll === undefined) tags.watchAll = parseWatchOps(value);
+                    break;
+                case "watchRows":
+                    if (tags.watchRows === undefined) tags.watchRows = parseWatchOps(value);
                     break;
                 case "restWatch":
                     if (tags.restWatch === undefined) tags.restWatch = parseWatchScopes(value);
@@ -1185,8 +1196,11 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                 case "plural":
                     if (value !== undefined) tags.plural ??= value.trim();
                     break;
-                case "watchFilter":
-                    tags.watchFilter = true;
+                case "watchAllFilter":
+                    tags.watchAllFilter = true;
+                    break;
+                case "watchRowsFilter":
+                    tags.watchRowsFilter = true;
                     break;
                 case "todo":
                     tags.todo ??= (value ?? "").trim();
@@ -1655,11 +1669,18 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 restRepositoryOperations: declarationTags.restRepository ?? [],
                 queries: declarationTags.queries ?? [],
                 restQueries: declarationTags.restQueries ?? [],
-                watch: declarationTags.watch ?? [],
-                watchOps: declarationTags.watchOps ?? [],
+                watch: [
+                    ...(declarationTags.watchAll === undefined ? [] : (["all"] as const)),
+                    ...(declarationTags.watchRows === undefined ? [] : (["rows"] as const)),
+                ],
+                ...(declarationTags.watchAll === undefined ? {} : { watchAll: declarationTags.watchAll }),
+                ...(declarationTags.watchRows === undefined ? {} : { watchRows: declarationTags.watchRows }),
                 restWatch: declarationTags.restWatch ?? [],
-                watchFilters: properties
-                    .filter((property) => property.tags.watchFilter)
+                watchAllFilters: properties
+                    .filter((property) => property.tags.watchAllFilter)
+                    .map((property) => property.name),
+                watchRowsFilters: properties
+                    .filter((property) => property.tags.watchRowsFilter)
                     .map((property) => property.name),
                 ...(declarationTags.written.byName.has("todo") ? { todo: declarationTags.todo ?? "" } : {}),
             };

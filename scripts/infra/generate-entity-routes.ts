@@ -159,17 +159,18 @@ export function renderEntityRoutes(entity: RestEntity): string {
         if (operation.kind === "watch") {
             const all = entity.restWatch.includes("all");
             const rows = entity.restWatch.includes("rows");
-            const filter = entity.watchFilters.length > 0;
+            const allFilter = entity.watchAllFilters.length > 0;
+            const rowsFilter = entity.watchRowsFilters.length > 0;
             if (all && rows) {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
                 lines.push("                const opts = body;");
-                lines.push("                return opts?.pks === undefined");
+                lines.push("                return opts === undefined || !(\"pks\" in opts)");
                 lines.push(
-                    `                    ? ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal })`,
+                    `                    ? ${operation.id}(ctx.db, {${allFilter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal })`,
                 );
                 lines.push(
-                    `                    : ${operation.id}Rows(ctx.db, { pks: opts.pks,${filter ? " filter: opts.filter," : ""} ops: opts.ops, signal });`,
+                    `                    : ${operation.id}Rows(ctx.db, { pks: opts.pks,${rowsFilter ? " filter: opts.filter," : ""} ops: opts.ops, signal });`,
                 );
                 lines.push("            }),");
             } else if (rows) {
@@ -182,7 +183,7 @@ export function renderEntityRoutes(entity: RestEntity): string {
                 lines.push("        handler: async (ctx, body) =>");
                 lines.push("            new SseStream((signal) => {");
                 lines.push("                const opts = body;");
-                lines.push(`                return ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`);
+                lines.push(`                return ${operation.id}(ctx.db, {${allFilter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`);
                 lines.push("            }),");
             }
         } else {

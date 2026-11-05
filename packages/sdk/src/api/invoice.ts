@@ -7,7 +7,7 @@ import type { InvoicePrimaryKey } from "../repositories/invoicePrimaryKeySchema.
 import type { InvoiceUpsert } from "../repositories/invoiceUpsertSchema.ts";
 import { call, type Call } from "../client.ts";
 import type { ForbiddenError, HttpClient, HttpError, NotFoundError, PayloadTooLargeError, QueryError, RequestError, ShortWriteError, ValidationError, VersionConflictError } from "../http.ts";
-import { watch, type WatchAllEvent, type WatchFilter, type WatchRowsEvent } from "../watch.ts";
+import { watch, type WatchAllEvent, type WatchFilter, type WatchOperation, type WatchRowsEvent } from "../watch.ts";
 
 export type { InvoiceInsert, InvoicePatch, InvoicePrimaryKey, InvoiceUpsert };
 
@@ -66,16 +66,16 @@ export function watchInvoice(
 export function watchInvoiceRows(
     http: HttpClient,
     opts: {
-        onChange: (event: WatchRowsEvent<InvoicePrimaryKey, "INSERT">) => void;
+        onChange: (event: WatchRowsEvent<InvoicePrimaryKey>) => void;
         pks: InvoicePrimaryKey[];
         filter?: WatchFilter<Invoice, "tenantId">;
-        ops?: readonly "INSERT"[];
+        ops?: readonly WatchOperation[];
     },
 ): EventSource {
     const { onChange, pks, ops } = opts;
     const selected = opts.filter;
     const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
-    return watch<WatchRowsEvent<InvoicePrimaryKey, "INSERT">>(http.url("/invoice/watch", argument), onChange);
+    return watch<WatchRowsEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange);
 }
 
 /** The errors `exec` can reject `createInvoice` with. */

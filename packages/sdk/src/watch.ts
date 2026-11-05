@@ -10,7 +10,7 @@ export interface WatchRowsEvent<Key, Op extends WatchOperation = WatchOperation>
     op: Op;
 }
 
-/** The values a change stream matches: the fields an entity declares with `@watchFilter`, compared for equality. See docs/notifications.md. */
+/** The values a change stream matches: the fields a scope filter tag marks, compared for equality. See docs/notifications.md. */
 export type WatchFilter<E, K extends keyof E = keyof E> = Partial<Pick<E, K>>;
 
 /** An all-rows change: the operation, without a key. */

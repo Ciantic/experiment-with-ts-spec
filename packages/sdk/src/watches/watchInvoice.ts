@@ -3,4 +3,4 @@ import { z } from "zod";
 import { invoicePrimaryKeySchema } from "../repositories/invoicePrimaryKeySchema.ts";
 import { invoiceSchema } from "../domain/invoiceSchema.ts";
 
-export const watchInvoiceSchema = z.strictObject({ pks: z.array(invoicePrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() }).optional();
+export const watchInvoiceSchema = z.union([z.strictObject({ pks: z.array(invoicePrimaryKeySchema), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }), z.strictObject({ filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() })]).optional();

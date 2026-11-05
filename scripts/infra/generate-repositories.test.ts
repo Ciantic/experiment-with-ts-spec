@@ -46,8 +46,8 @@ function table(name: string, interfaceName: string, columns: Column[]): Table {
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
         watch: [],
-        watchOps: ["insert", "update", "delete"],
-        watchFilters: [],
+        watchAllFilters: [],
+        watchRowsFilters: [],
     };
 }
 

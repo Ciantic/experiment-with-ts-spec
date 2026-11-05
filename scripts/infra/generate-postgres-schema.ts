@@ -6,6 +6,7 @@ import { SPEC_GLOB, loadSpec, type ReferentialAction, type SpecModel } from "../
 import {
     buildSpecTables,
     quote,
+    watchChannel,
     type Column,
     type Diagnostic,
     type Table,
@@ -227,24 +228,27 @@ function changedCondition(columns: Column[]): string {
     return `(${old}) is distinct from (${current})`;
 }
 
-/** Notify the entity's channel per changed row, publishing `TG_OP`, the key, and the `@watchFilter` values. See docs/notifications.md. */
-function renderNotifyTriggers(table: Table): string[] {
-    const keys = table.columns.filter((column) => column.primaryKey);
-    const filters = table.columns.filter((column) => table.watchFilters.includes(column.name));
-    const rows = table.watch.includes("rows");
+/** Notify one scope's channel, publishing `TG_OP` and the keys or filter values that scope carries. See docs/notifications.md. */
+function renderScopeTrigger(table: Table, scope: "all" | "rows"): string[] {
+    const rows = scope === "rows";
+    const ops = (rows ? table.watchRowsOps : table.watchAllOps) ?? [];
+    const keys = rows ? table.columns.filter((column) => column.primaryKey) : [];
+    const reserved = rows ? table.watchRowsFilters : table.watchAllFilters;
+    const filters = table.columns.filter((column) => reserved.includes(column.name));
     // A keyless table cannot publish a row identity; the table model already reports it.
     if (rows && keys.length === 0) {
         return [];
     }
-    const name = quote(`${table.name}_notify`);
-    const events = table.watchOps.join(" or ");
+    const name = quote(`${table.name}_${scope}_notify`);
+    const channel = quoteLiteral(watchChannel(table.name, scope));
+    const events = ops.join(" or ");
 
     // A statement trigger cannot read a changed row's filter values, so a filter forces the row level.
-    if (!rows && filters.length === 0) {
+    if (filters.length === 0 && !rows) {
         return [
             `create function ${name}() returns trigger as $$`,
             "begin",
-            `    perform pg_notify(${quoteLiteral(table.name)}, TG_OP);`,
+            `    perform pg_notify(${channel}, TG_OP);`,
             "    return null;",
             "end;",
             "$$ language plpgsql;",
@@ -257,8 +261,8 @@ function renderNotifyTriggers(table: Table): string[] {
 
     const payload = (row: "new" | "old" | "either"): string => {
         const entries = ["'op', TG_OP"];
-        // The all scope publishes no identity; the rows scope publishes the key.
-        if (rows) {
+        // Only the rows scope publishes an identity; both scopes publish the filters they declare.
+        if (keys.length > 0) {
             entries.push(`'key', json_build_object(${rowEntries(keys, row)})`);
         }
         if (filters.length > 0) {
@@ -268,20 +272,20 @@ function renderNotifyTriggers(table: Table): string[] {
     };
 
     // A changed key or filter notifies the row's old identity and old filter value as well as the new one.
-    const conditions = [...(rows ? [changedCondition(keys)] : []), ...(filters.length > 0 ? [changedCondition(filters)] : [])];
+    const conditions = [...(keys.length > 0 ? [changedCondition(keys)] : []), ...(filters.length > 0 ? [changedCondition(filters)] : [])];
     const changed = conditions.length === 1 ? conditions[0] : `(${conditions.join(" or ")})`;
 
     return [
         `create function ${name}() returns trigger as $$`,
         "begin",
-        ...(table.watchOps.includes("update")
+        ...(ops.includes("update")
             ? [
                 `    if TG_OP = 'UPDATE' and ${changed} then`,
-                `        perform pg_notify(${quoteLiteral(table.name)}, ${payload("old")});`,
+                `        perform pg_notify(${channel}, ${payload("old")});`,
                 "    end if;",
             ]
             : []),
-        `    perform pg_notify(${quoteLiteral(table.name)}, ${payload("either")});`,
+        `    perform pg_notify(${channel}, ${payload("either")});`,
         "    return null;",
         "end;",
         "$$ language plpgsql;",
@@ -290,6 +294,11 @@ function renderNotifyTriggers(table: Table): string[] {
         `    for each row execute function ${name}();`,
         "",
     ];
+}
+
+/** Notify each declared scope on its own channel. See docs/notifications.md. */
+function renderNotifyTriggers(table: Table): string[] {
+    return table.watch.flatMap((scope) => renderScopeTrigger(table, scope));
 }
 
 /** Render Postgres DDL from the spec. */

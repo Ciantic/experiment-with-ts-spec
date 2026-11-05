@@ -419,13 +419,18 @@ function lintPlural(spec: SpecInterface, report: Report): void {
     }
 }
 
-/** `@watchFilter` marks a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+/** A scope filter marker needs the tag that declares its scope. See docs/notifications.md. */
 function lintWatchFilterRequiresWatch(spec: SpecInterface, report: Report): void {
-    const tags = spec.properties.flatMap((property) => property.tags.written.byName.get("watchFilter") ?? []);
-    if (tags.length === 0 || spec.watch.length > 0) {
-        return;
+    const scopes: [string, boolean][] = [
+        ["watchAllFilter", spec.watchAll !== undefined],
+        ["watchRowsFilter", spec.watchRows !== undefined],
+    ];
+    for (const [name, declared] of scopes) {
+        const tags = spec.properties.flatMap((property) => property.tags.written.byName.get(name) ?? []);
+        if (tags.length > 0 && !declared) {
+            report(`@${name} requires ${name === "watchAllFilter" ? "@watchAll" : "@watchRows"}`, tags[0]);
+        }
     }
-    report("@watchFilter requires @watch", tags[0]);
 }
 
 /** Check the tags on the interface itself, and the per-entity uniqueness rules. */
@@ -532,7 +537,6 @@ const SURFACE_TAGS: OperationTag[] = [
     { name: "restRepository", vocabulary: WRITE_OPERATIONS, required: false },
     { name: "queries", vocabulary: READ_OPERATIONS, required: false },
     { name: "restQueries", vocabulary: READ_OPERATIONS, required: false },
-    { name: "watch", vocabulary: WATCH_SCOPES, required: false },
     { name: "restWatch", vocabulary: WATCH_SCOPES, required: false },
 ];
 
@@ -540,7 +544,6 @@ const SURFACE_TAGS: OperationTag[] = [
 const EXPOSED_BY: [string, string][] = [
     ["restRepository", "repository"],
     ["restQueries", "queries"],
-    ["restWatch", "watch"],
 ];
 
 /** An entity declares its surface: the operations it generates, and the subset it exposes. */
@@ -560,13 +563,11 @@ function lintSurfaceTags(spec: SpecInterface, report: Report): void {
             continue;
         }
         const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
-        const parameters = name === "watch" ? tokens.filter((token) => token.startsWith("ops=")) : [];
-        const scopes = tokens.filter((token) => !parameters.includes(token));
-        if (scopes.length === 0) {
+        if (tokens.length === 0) {
             report(`@${name} requires at least one of: ${vocabulary.join(", ")}`, tag);
         }
         const named = new Set<string>();
-        for (const token of scopes) {
+        for (const token of tokens) {
             if (!vocabulary.includes(token)) {
                 report(`@${name} \`${token}\` is not one of: ${vocabulary.join(", ")}`, tag);
             } else if (named.has(token)) {
@@ -575,48 +576,73 @@ function lintSurfaceTags(spec: SpecInterface, report: Report): void {
                 named.add(token);
             }
         }
-        if (name === "watch") {
-            lintWatchOps(tag, parameters, report);
-        }
         declared.set(name, named);
     }
 
+    // A scope tag carries no value beyond its optional `ops=`, and declares one scope for @restWatch.
+    const scopes = new Set<string>();
+    for (const [name, scope] of [["watchAll", "all"], ["watchRows", "rows"]] as const) {
+        const tags = byName.get(name) ?? [];
+        for (const duplicate of tags.slice(1)) {
+            report(`@${name} appears more than once`, duplicate);
+        }
+        const tag = tags[0];
+        if (!tag) {
+            continue;
+        }
+        scopes.add(scope);
+        const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
+        const parameters = tokens.filter((token) => token.startsWith("ops="));
+        for (const token of tokens.filter((candidate) => !parameters.includes(candidate))) {
+            report(`@${name} takes no value \`${token}\`; use \`ops=…\``, tag);
+        }
+        lintWatchOps(name, tag, parameters, report);
+    }
+
+    const exposed = declared.get("restWatch");
+    const tag = (byName.get("restWatch") ?? [])[0];
+    for (const scope of exposed ?? []) {
+        if (!scopes.has(scope)) {
+            report(`@restWatch \`${scope}\` is not in @watchAll or @watchRows`, tag);
+        }
+    }
+
     // The wire cannot serve an operation the entity does not generate, so the exposed set is a subset.
-    for (const [exposed, declaredBy] of EXPOSED_BY) {
-        const exposedSet = declared.get(exposed);
+    for (const [exposedTag, declaredBy] of EXPOSED_BY) {
+        const exposedSet = declared.get(exposedTag);
         const declaredSet = declared.get(declaredBy) ?? new Set<string>();
         if (!exposedSet) {
             continue;
         }
-        const tag = (byName.get(exposed) ?? [])[0];
+        const exposedName = (byName.get(exposedTag) ?? [])[0];
         for (const operation of exposedSet) {
             if (!declaredSet.has(operation)) {
-                report(`@${exposed} \`${operation}\` is not in @${declaredBy}`, tag);
+                report(`@${exposedTag} \`${operation}\` is not in @${declaredBy}`, exposedName);
             }
         }
     }
 }
 
-/** `@watch ops=` names the operations the trigger publishes; an absent parameter publishes every operation. */
-function lintWatchOps(tag: SpecTag, parameters: string[], report: Report): void {
+/** `ops=` names the operations a scope trigger publishes; an absent parameter publishes every operation. */
+function lintWatchOps(name: string, tag: SpecTag, parameters: string[], report: Report): void {
     if (parameters.length === 0) {
         return;
     }
     if (parameters.length > 1) {
-        report("@watch names ops= more than once", tag);
+        report(`@${name} names ops= more than once`, tag);
     }
     const value = parameters[0]?.slice("ops=".length) ?? "";
     const tokens = value.split(",").map((token) => token.trim()).filter((token) => token !== "");
     if (tokens.length === 0) {
-        report(`@watch ops= requires at least one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+        report(`@${name} ops= requires at least one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
         return;
     }
     const named = new Set<string>();
     for (const token of tokens) {
         if (!(TRIGGER_EVENTS as readonly string[]).includes(token)) {
-            report(`@watch ops= \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+            report(`@${name} ops= \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
         } else if (named.has(token)) {
-            report(`@watch ops= names \`${token}\` twice`, tag);
+            report(`@${name} ops= names \`${token}\` twice`, tag);
         } else {
             named.add(token);
         }
@@ -655,7 +681,8 @@ interface FieldTags {
     version: SpecTag | undefined;
     queryOrderBy: SpecTag | undefined;
     queryWhere: SpecTag | undefined;
-    watchFilter: SpecTag | undefined;
+    watchAllFilter: SpecTag | undefined;
+    watchRowsFilter: SpecTag | undefined;
     /** The field type as written, e.g. `Date` or `InvoiceRow[]`. */
     typeText: string | undefined;
     isArray: boolean;
@@ -697,7 +724,8 @@ function resolveFieldTags(
         version: first("version"),
         queryOrderBy: first("queryOrderBy"),
         queryWhere: first("queryWhere"),
-        watchFilter: first("watchFilter"),
+        watchAllFilter: first("watchAllFilter"),
+        watchRowsFilter: first("watchRowsFilter"),
         typeText: property.type.kind === "missing" ? undefined : property.typeText,
         isArray: property.type.kind === "array",
         optional: property.optional,
@@ -1097,21 +1125,23 @@ function lintQueryFilter(tags: FieldTags, report: Report): void {
     }
 }
 
-/** `@watchFilter` is a bare marker on a stored scalar column whose value the change payload carries. See docs/notifications.md. */
+/** A scope filter is a bare marker on a stored scalar column whose value that scope's payload carries. See docs/notifications.md. */
 function lintWatchFilter(tags: FieldTags, report: Report): void {
-    const tag = tags.watchFilter;
-    if (!tag) {
-        return;
-    }
-    if ((tag.value ?? "")) {
-        report("@watchFilter takes no value", tag);
-    }
-    reportIfBranch(tags, tag, report);
-    if (tags.computed) {
-        report("@watchFilter must be on a stored column, not a @computed field", tag);
-    }
-    if (tags.isArray) {
-        report("@watchFilter must be on a scalar field, not an array", tag);
+    for (const name of ["watchAllFilter", "watchRowsFilter"] as const) {
+        const tag = tags[name];
+        if (!tag) {
+            continue;
+        }
+        if ((tag.value ?? "")) {
+            report(`@${name} takes no value`, tag);
+        }
+        reportIfBranch(tags, tag, report);
+        if (tags.computed) {
+            report(`@${name} must be on a stored column, not a @computed field`, tag);
+        }
+        if (tags.isArray) {
+            report(`@${name} must be on a scalar field, not an array`, tag);
+        }
     }
 }
 

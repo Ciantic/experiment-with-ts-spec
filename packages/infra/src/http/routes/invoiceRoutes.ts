@@ -29,7 +29,7 @@ export const invoiceRoutes: Route[] = [
         handler: async (ctx, body) =>
             new SseStream((signal) => {
                 const opts = body;
-                return opts?.pks === undefined
+                return opts === undefined || !("pks" in opts)
                     ? watchInvoice(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })
                     : watchInvoiceRows(ctx.db, { pks: opts.pks, filter: opts.filter, ops: opts.ops, signal });
             }),

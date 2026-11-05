@@ -144,10 +144,14 @@ export interface ZodWatch {
     schemaName: string;
     /** The `@restWatch` scopes; `all` makes the whole argument optional and `rows` adds `pks`. */
     scopes: WatchScope[];
-    /** The `@watchFilter` fields the filter object validates. */
-    filterFields: string[];
-    /** The operations `@watch ops=` publishes, in wire form. */
-    operations: string[];
+    /** The `@watchAllFilter` fields the `all` filter object validates. */
+    allFilters: string[];
+    /** The `@watchRowsFilter` fields the `rows` filter object validates. */
+    rowsFilters: string[];
+    /** The operations `@watchAll ops=` publishes, in wire form. */
+    allOperations: string[];
+    /** The operations `@watchRows ops=` publishes, in wire form. */
+    rowsOperations: string[];
 }
 
 /** One comparable field: its name, its whitelisted operators, and the schema its values validate against. */
@@ -616,8 +620,10 @@ function buildWatches(interfaces: Map<string, SpecInterface>): ZodWatch[] {
             entity: spec.name,
             schemaName: `watch${spec.name}Schema`,
             scopes: [...spec.restWatch],
-            filterFields: [...spec.watchFilters],
-            operations: spec.watchOps.map((op) => op.toUpperCase()),
+            allFilters: [...spec.watchAllFilters],
+            rowsFilters: [...spec.watchRowsFilters],
+            allOperations: (spec.watchAll ?? []).map((op) => op.toUpperCase()),
+            rowsOperations: (spec.watchRows ?? []).map((op) => op.toUpperCase()),
         }));
 }
 

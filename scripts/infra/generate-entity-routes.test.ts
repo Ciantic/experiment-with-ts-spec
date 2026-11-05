@@ -55,7 +55,8 @@ const NOTIFIED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -73,7 +74,8 @@ const INSERTED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch all rows ops=insert
+ * @watchAll ops=insert
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -91,7 +93,7 @@ const WATCHED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch rows
+ * @watchRows
  * @restWatch rows
  * @entity
  */
@@ -109,7 +111,8 @@ const FILTERED = `
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -117,7 +120,8 @@ export interface Filtered {
     /** @primaryKey */
     id: string;
 
-    /** @watchFilter */
+    /** @watchAllFilter */
+    /** @watchRowsFilter */
     tenantId: string;
 }
 `.trim();
@@ -131,7 +135,8 @@ const OWNED = `
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -390,7 +395,7 @@ export interface Internal {
         expect(code).toContain(": watchNotifiedRows(ctx.db, { pks: opts.pks, ops: opts.ops, signal });");
     });
 
-    it("validates ops against the operations @watch ops= publishes", () => {
+    it("validates ops against the operations the scope tag publishes", () => {
         const entity = build({ Inserted: INSERTED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the inserted entity");
@@ -418,7 +423,7 @@ export interface Internal {
         expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
     });
 
-    it("accepts a typed filter when the entity declares @watchFilter", () => {
+    it("accepts a typed filter when the entity declares scope filters", () => {
         const entity = build({ Filtered: FILTERED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the filtered entity");

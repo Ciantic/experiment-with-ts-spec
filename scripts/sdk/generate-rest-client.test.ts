@@ -98,7 +98,8 @@ const NOTIFIED = `
 /**
  * @pgTable notified
  * @repository create
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -113,7 +114,8 @@ const INSERT_ONLY = `
 /**
  * @pgTable inserted
  * @repository create
- * @watch all rows ops=insert
+ * @watchAll ops=insert
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -128,7 +130,8 @@ const FILTERED = `
 /**
  * @pgTable filtered
  * @repository create
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  * @entity
  */
@@ -136,7 +139,8 @@ export interface Filtered {
     /** @primaryKey */
     id: string;
 
-    /** @watchFilter */
+    /** @watchAllFilter */
+    /** @watchRowsFilter */
     tenantId: string;
 }
 `.trim();
@@ -463,25 +467,26 @@ describe("watch helpers", () => {
         );
     });
 
-    it("narrows the helpers to the operations @watch ops= publishes", () => {
+    it("narrows the helpers to the operations a scope tag publishes", () => {
         const inserted = build({ Inserted: INSERT_ONLY });
         const narrowed = generateRestClient(inserted).get("inserted.ts") ?? "";
 
         expect(narrowed).toContain(
-            'import { watch, type WatchAllEvent, type WatchRowsEvent } from "../watch.ts";',
+            'import { watch, type WatchAllEvent, type WatchOperation, type WatchRowsEvent } from "../watch.ts";',
         );
         expect(narrowed).toContain('        onChange: (event: WatchAllEvent<"INSERT">) => void;');
         expect(narrowed).toContain(
-            '        onChange: (event: WatchRowsEvent<InsertedPrimaryKey, "INSERT">) => void;',
+            "        onChange: (event: WatchRowsEvent<InsertedPrimaryKey>) => void;",
         );
         expect(narrowed).toContain("        pks: InsertedPrimaryKey[];");
         expect(narrowed).toContain('        ops?: readonly "INSERT"[];');
+        expect(narrowed).toContain("        ops?: readonly WatchOperation[];");
         expect(narrowed).toContain(
             'return watch<WatchAllEvent<"INSERT">>(http.url("/inserted/watch", ops === undefined ? undefined : { ops }), onChange);',
         );
     });
 
-    it("adds a typed filter when the entity declares @watchFilter", () => {
+    it("adds a typed filter when the entity declares scope filters", () => {
         const filtered = generateRestClient(build({ Filtered: FILTERED })).get("filtered.ts") ?? "";
 
         expect(filtered).toContain('import type { Filtered } from "spec/fixtures/Filtered.ts";');

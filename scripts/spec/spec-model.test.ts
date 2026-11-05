@@ -97,21 +97,23 @@ describe("parseSpec interfaces", () => {
 
     it("reads the notification scopes", () => {
         const { interfaces } = parse({
-            "Thing.ts": "/**\n * @entity\n * @watch all rows\n * @restWatch all rows\n */\nexport interface Thing { id: string; }",
+            "Thing.ts": "/**\n * @entity\n * @watchAll\n * @watchRows\n * @restWatch all rows\n */\nexport interface Thing { id: string; }",
         });
 
         expect(interfaces.get("Thing")?.watch).toEqual(["all", "rows"]);
         expect(interfaces.get("Thing")?.restWatch).toEqual(["all", "rows"]);
     });
 
-    it("reads the operations @watch publishes, defaulting to all of them", () => {
+    it("reads the operations each scope publishes, defaulting to all of them", () => {
         const { interfaces } = parse({
-            "Thing.ts": "/**\n * @entity\n * @watch all\n */\nexport interface Thing { id: string; }",
-            "Other.ts": "/**\n * @entity\n * @watch all ops=update,insert\n */\nexport interface Other { id: string; }",
+            "Thing.ts": "/**\n * @entity\n * @watchAll\n */\nexport interface Thing { id: string; }",
+            "Other.ts": "/**\n * @entity\n * @watchAll ops=update,insert\n * @watchRows ops=delete\n */\nexport interface Other { id: string; }",
         });
 
-        expect(interfaces.get("Thing")?.watchOps).toEqual(["insert", "update", "delete"]);
-        expect(interfaces.get("Other")?.watchOps).toEqual(["insert", "update"]);
+        expect(interfaces.get("Thing")?.watchAll).toEqual(["insert", "update", "delete"]);
+        expect(interfaces.get("Thing")?.watchRows).toBeUndefined();
+        expect(interfaces.get("Other")?.watchAll).toEqual(["insert", "update"]);
+        expect(interfaces.get("Other")?.watchRows).toEqual(["delete"]);
     });
 });
 

@@ -1559,14 +1559,16 @@ describe("watch schemas", () => {
  * @entity
  * @pgTable invoice
  * @repository create
- * @watch all rows ops=insert
+ * @watchAll ops=insert
+ * @watchRows
  * @restWatch all rows
  */
 export interface Invoice {
     /** @primaryKey */
     id: string;
 
-    /** @watchFilter */
+    /** @watchAllFilter */
+    /** @watchRowsFilter */
     tenantId: string;
 }
 `.trim();
@@ -1579,8 +1581,10 @@ export interface Invoice {
                 entity: "Invoice",
                 schemaName: "watchInvoiceSchema",
                 scopes: ["all", "rows"],
-                filterFields: ["tenantId"],
-                operations: ["INSERT"],
+                allFilters: ["tenantId"],
+                rowsFilters: ["tenantId"],
+                allOperations: ["INSERT"],
+                rowsOperations: ["INSERT", "UPDATE", "DELETE"],
             },
         ]);
     });
@@ -1596,7 +1600,7 @@ export interface Invoice {
             'import { invoicePrimaryKeySchema } from "../repositories/invoicePrimaryKeySchema.ts";',
         );
         expect(code).toContain(
-            'export const watchInvoiceSchema = z.strictObject({ pks: z.array(invoicePrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() }).optional();',
+            'export const watchInvoiceSchema = z.union([z.strictObject({ pks: z.array(invoicePrimaryKeySchema), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }), z.strictObject({ filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() })]).optional();',
         );
     });
 

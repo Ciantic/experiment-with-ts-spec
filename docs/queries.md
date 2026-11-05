@@ -14,7 +14,7 @@ See "Why the resolver is hand-written".
 - `scripts/infra/generate-queries.ts` — the generator.
 - `packages/infra/src/db/queries/` — generated: `model.ts` (metadata),
   `query<Entity>.ts` (a `query<Entity>` per `@queries` entity),
-  `watch<Entity>.ts` (a change stream per `@watch` entity),
+  `watch<Entity>.ts` (a change stream per entity that declares a scope),
   `get<Entity>Tenants.ts` (the tenants the named rows belong to, for a
   `@tenantOwned` entity only), and `index.ts` (barrel). See
   `docs/notifications.md` and `docs/permissions.md`.
@@ -35,8 +35,9 @@ An entity declares its read with `@queries <operation>…`; `query` is the only
 read operation, so the tag is written `@queries query`. An entity that declares
 no read gets no `query<Entity>` and no read route — the generator writes a
 module only for the tables the tag names. Change streams are a separate
-declaration: `@watch` and `@restWatch` name the `all` and `rows` scopes, and
-`@watchFilter` marks the fields a subscriber may filter on. See
+declaration: `@watchAll` and `@watchRows` declare the `all` and `rows` scopes,
+`@restWatch` exposes a subset, and `@watchAllFilter` / `@watchRowsFilter` mark
+the fields each scope may filter on. See
 `docs/spec-annotations.md` and `docs/notifications.md`.
 
 There is no query alias to write. The generator walks the tables and emits

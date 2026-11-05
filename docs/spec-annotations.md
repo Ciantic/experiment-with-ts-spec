@@ -131,9 +131,10 @@ Field tags:
   tests take `true`, bind no parameter, and need an optional field, whose column
   can hold null. Scalar fields only; a branch field may not carry it. See
   `docs/queries.md`.
-- `@watchFilter` — a bare marker on a stored scalar column whose value a change
-  payload also carries, so a subscriber can filter on it. Requires `@watch` on
-  the interface; a branch, computed, or array field may not carry it. See
+- `@watchAllFilter` / `@watchRowsFilter` — bare markers on a stored scalar
+  column whose value that scope's change payload also carries, so a subscriber
+  can filter on it. They require `@watchAll` / `@watchRows` respectively; a
+  branch, computed, or array field may not carry either. See
   `docs/notifications.md`.
 - `@todo <text>` — a note on the column: it says what is left to do and changes
   nothing about the field, which generates exactly as it does without the tag.
@@ -171,16 +172,20 @@ Interface tags:
   no read gets none. See `docs/queries.md`.
 - `@restQueries <operation>…` — the subset of `@queries` that the route table and
   the generated SDK expose. Optional, like `@queries`. See `docs/rest-api.md`.
-- `@watch <scope>… [ops=<operation>,…]` — the change scopes whose
-  `watch<Entity>` module and triggers the generator writes, one or both of `all`
-  and `rows`. `all` is a statement-level table trigger; `rows` is a row-level
-  trigger that publishes the primary key, so it needs one. `ops=` restricts the
-  operations the trigger publishes, one or more of `insert`, `update`, and
-  `delete`; omitted means all of them. Optional: an entity that declares no
-  scope has no change stream. See `docs/notifications.md`.
-- `@restWatch <scope>…` — the subset of `@watch` that the route table and the
-  generated SDK expose. Optional, like `@watch`, and it may name only a scope
-  `@watch` declares. See `docs/rest-api.md` and `docs/notifications.md`.
+- `@watchAll [ops=<operation>,…]` — the table-level change stream, whose
+  `watch<Entity>` module and trigger the generator writes. Without a filter it
+  is a statement-level trigger that publishes only `TG_OP`. `ops=` restricts the
+  operations it publishes, one or more of `insert`, `update`, and `delete`;
+  omitted means all of them. Optional: an entity that declares neither scope has
+  no change stream. See `docs/notifications.md`.
+- `@watchRows [ops=<operation>,…]` — the per-row change stream: a row-level
+  trigger that publishes the primary key and `TG_OP`, so it needs one. `ops=`
+  works as on `@watchAll`. Independent of `@watchAll`; an entity may declare
+  either or both. See `docs/notifications.md`.
+- `@restWatch <scope>…` — the subset of `@watchAll` and `@watchRows` that the
+  route table and the generated SDK expose. Optional, like the scope tags, and
+  it may name only a scope the entity declares. See `docs/rest-api.md` and
+  `docs/notifications.md`.
 - `@plural <noun>` — the plural noun the permission descriptions use,
   such as `invoices` for `Invoice` or `sent invoices` for `InvoiceSent`. Optional:
   an entity without it falls back to a mechanical plural of its camel-cased key.
@@ -318,7 +323,8 @@ and the change scopes it emits and the subset it serves:
  * @restRepository create
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watchAll
+ * @watchRows
  * @restWatch all rows
  */
 export interface LogEntry {
@@ -335,15 +341,18 @@ function, and no barrel export. `@queries` lists the read operations whose
 modules `generate-queries.ts` writes; `query` is the only one. See
 `docs/queries.md`.
 
-`@watch` lists the change scopes whose `watch<Entity>` module the query
-generator writes and whose trigger the schema generator installs: `all` for a
-statement-level table trigger that publishes only `TG_OP`, and `rows` for a
-row-level trigger that publishes the key and `TG_OP`. `rows` needs a primary
-key. An optional `ops=insert,update` restricts the trigger to those operations,
+`@watchAll` and `@watchRows` list the change scopes whose `watch<Entity>`
+module the query generator writes and whose trigger the schema generator
+installs. `@watchAll` is statement-level and publishes only `TG_OP` unless a
+`@watchAllFilter` forces it to the row level; `@watchRows` is row-level and
+publishes the key and `TG_OP`. `@watchRows` needs a primary key. An optional
+`ops=insert,update` on either tag restricts that trigger to those operations,
 so an insert-only watch never fires on an update. The scopes are independent of
-`@queries`: an entity can stream changes without exposing a read. `@watchFilter` marks the fields whose values the
-payload also carries, so `watch<Entity>` and `watch<Entity>Rows` can narrow the
-stream. See `docs/notifications.md`.
+`@queries` and of each other: an entity can stream changes without exposing a
+read, and can declare one scope or both. `@watchAllFilter` and
+`@watchRowsFilter` mark the fields whose values each payload also carries, so
+`watch<Entity>` and `watch<Entity>Rows` can narrow their own streams. See
+`docs/notifications.md`.
 
 `@restRepository`, `@restQueries`, and `@restWatch` list the subset of those
 the REST surface serves; none may name an operation or scope its declaring tag
@@ -800,7 +809,7 @@ Enforced:
   interface tag without it is reported, since that is a forgotten marker rather
   than a contract.
 - Retired tags (`@generated`, `@default`, `@table`, `@readonly`, `@type`,
-  `@values`, `@formula`) report their replacement.
+  `@values`, `@formula`, `@watch`, `@watchFilter`) report their replacement.
 - `@fieldName` and `@widget` are required; `@widget` must be a known widget.
 - `@computed` takes no parameters; the expression sits in the mechanism tag
   beside it.
@@ -878,18 +887,19 @@ Enforced:
   on a field it is a note and nothing else. A type alias and a contract's own
   tags report it as unrecognised, like any other tag in the wrong place. See
   "Deferring a declaration".
-- `@repository`, `@restRepository`, `@queries`, `@restQueries`, `@watch`, and
-  `@restWatch` name their values: the write tags one or more of `create`,
-  `upsert`, `update`, `delete`, the read tag `query`, and the watch tags one or
-  more of `all`, `rows`. `@watch` also takes an optional `ops=` list of one or
-  more of `insert`, `update`, `delete`; `@restWatch` takes none. `@repository`
-  alone is required on each entity; the other five are optional. An unknown
-  value, a value named twice, an empty list, a tag that appears twice, and a
-  `@restRepository`, `@restQueries`, or `@restWatch` value its declaring tag does
-  not contain are each reported. See "Operations and notification scopes".
-- `@watchFilter` is a bare marker on a stored scalar field, and its interface
-  must declare `@watch`; a `@relation`, `@children`, `@computed`, or array field
-  is reported, as is a value. See `docs/notifications.md`.
+- `@repository`, `@restRepository`, `@queries`, and `@restQueries` name their
+  values: the write tags one or more of `create`, `upsert`, `update`, `delete`,
+  and the read tag `query`. `@restWatch` names one or more of `all`, `rows`.
+  `@watchAll` and `@watchRows` take no value beyond an optional `ops=` list of
+  one or more of `insert`, `update`, `delete`. `@repository` alone is required on
+  each entity; the others are optional. An unknown value, a value named twice, an
+  empty list, a tag that appears twice, and a `@restRepository`, `@restQueries`,
+  or `@restWatch` value its declaring tag does not contain are each reported. See
+  "Operations and notification scopes".
+- `@watchAllFilter` and `@watchRowsFilter` are bare markers on a stored scalar
+  field, and the interface must declare `@watchAll` / `@watchRows`; a
+  `@relation`, `@children`, `@computed`, or array field is reported, as is a
+  value. See `docs/notifications.md`.
 - Tags may not repeat on a field.
 
 Gotchas:
