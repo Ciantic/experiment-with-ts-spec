@@ -32,7 +32,13 @@ export type QueryEmailErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryEmail<S extends Selection<Email>>(
-    opts: { filter?: Filters<Email, "id" | "tenantId" | "status">; order?: Order<"createdAt" | "updatedAt">[]; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<Email, "id" | "tenantId" | "status">;
+        order?: Order<"createdAt" | "updatedAt">[];
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<Email, S>[], QueryEmailErrors> {
     return call<Selected<Email, S>[], QueryEmailErrors>("queryEmail", "GET", "/email/query", opts);
 }

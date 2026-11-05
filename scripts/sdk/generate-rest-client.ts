@@ -69,14 +69,14 @@ function whereType(name: string, fields: { name: string; operators: string[] }[]
     return `Where<${name}, { ${entries.join("; ")} }>`;
 }
 
-/** The `query` options: a filter, ordering, comparisons, and paging, plus the selection. */
-function queryOptsType(
+/** The properties of the `query` options: a filter, ordering, comparisons, paging, and the selection. */
+function queryOpts(
     name: string,
     filters: string[],
     required: string[],
     order: string[],
     where: { name: string; operators: string[] }[],
-): string {
+): string[] {
     const parts: string[] = [];
     if (filters.length > 0) {
         // A required filter makes the whole object mandatory, exactly as the server's own read types do.
@@ -90,7 +90,7 @@ function queryOptsType(
         parts.push(`where?: ${whereType(name, where)}`);
     }
     parts.push("limit?: number", "offset?: number", "select: S");
-    return `{ ${parts.join("; ")} }`;
+    return parts;
 }
 
 /** The operation of the given kind, or undefined when the entity does not expose it. */
@@ -339,7 +339,11 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("");
         lines.push(...callPreamble(query.id, [entitySummary(entity, "query")], entityCallErrors(entity, query)));
         lines.push(`export function ${query.id}<S extends Selection<${name}>>(`);
-        lines.push(`    opts: ${queryOptsType(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields)},`);
+        lines.push("    opts: {");
+        for (const property of queryOpts(name, entity.filters, entity.requiredFilters, entity.orderFields, entity.whereFields)) {
+            lines.push(`        ${property};`);
+        }
+        lines.push("    },");
         lines.push(`): Call<Selected<${name}, S>[], ${errorAliasName(query.id)}> {`);
         lines.push(
             `    return call<Selected<${name}, S>[], ${errorAliasName(query.id)}>("${query.id}", "${query.method}", "${query.path}", opts);`,

@@ -32,7 +32,12 @@ export type QueryCustomerErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryCustomer<S extends Selection<Customer>>(
-    opts: { filter?: Filters<Customer, "id" | "tenantId">; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<Customer, "id" | "tenantId">;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<Customer, S>[], QueryCustomerErrors> {
     return call<Selected<Customer, S>[], QueryCustomerErrors>("queryCustomer", "GET", "/customer/query", opts);
 }

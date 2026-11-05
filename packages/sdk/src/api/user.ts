@@ -31,7 +31,13 @@ export type QueryUserErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryUser<S extends Selection<User>>(
-    opts: { filter?: Filters<User, "id" | "email" | "deletedAt">; where?: Where<User, { emailVerifiedAt: "isNull" | "isNotNull" }>; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<User, "id" | "email" | "deletedAt">;
+        where?: Where<User, { emailVerifiedAt: "isNull" | "isNotNull" }>;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<User, S>[], QueryUserErrors> {
     return call<Selected<User, S>[], QueryUserErrors>("queryUser", "GET", "/user/query", opts);
 }

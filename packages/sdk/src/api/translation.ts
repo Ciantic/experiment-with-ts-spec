@@ -32,7 +32,12 @@ export type QueryTranslationErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryTranslation<S extends Selection<Translation>>(
-    opts: { filter?: Filters<Translation, "lang" | "key">; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<Translation, "lang" | "key">;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<Translation, S>[], QueryTranslationErrors> {
     return call<Selected<Translation, S>[], QueryTranslationErrors>("queryTranslation", "GET", "/translation/query", opts);
 }

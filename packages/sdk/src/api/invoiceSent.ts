@@ -32,7 +32,12 @@ export type QueryInvoiceSentErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryInvoiceSent<S extends Selection<InvoiceSent>>(
-    opts: { filter?: Filters<InvoiceSent, "id" | "tenantId">; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<InvoiceSent, "id" | "tenantId">;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<InvoiceSent, S>[], QueryInvoiceSentErrors> {
     return call<Selected<InvoiceSent, S>[], QueryInvoiceSentErrors>("queryInvoiceSent", "GET", "/invoice_sent/query", opts);
 }

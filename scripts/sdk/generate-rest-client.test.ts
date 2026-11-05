@@ -235,7 +235,9 @@ describe("renderClientModule", () => {
         const markerEntity = model.entities.find((entity) => entity.entity === "Marker");
         const code = renderClientModule(markerEntity!);
 
-        expect(code).toContain("limit?: number; offset?: number; select: S");
+        expect(code).toContain("        limit?: number;");
+        expect(code).toContain("        offset?: number;");
+        expect(code).toContain("        select: S;");
     });
 
     it("narrows the comparisons to the whitelisted operators", () => {

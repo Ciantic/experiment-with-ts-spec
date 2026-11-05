@@ -30,7 +30,12 @@ export type QueryAuditLogErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryAuditLog<S extends Selection<AuditLog>>(
-    opts: { filter?: Filters<AuditLog, "id">; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<AuditLog, "id">;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<AuditLog, S>[], QueryAuditLogErrors> {
     return call<Selected<AuditLog, S>[], QueryAuditLogErrors>("queryAuditLog", "GET", "/audit_log/query", opts);
 }

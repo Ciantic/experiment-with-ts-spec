@@ -33,7 +33,14 @@ export type QueryInvoiceErrors =
  * @throws {HttpError} when the body names no error kind the SDK knows
  */
 export function queryInvoice<S extends Selection<Invoice>>(
-    opts: { filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">; order?: Order<"createdAt" | "updatedAt">[]; where?: Where<Invoice, { issueDate: "gte" | "lte" }>; limit?: number; offset?: number; select: S },
+    opts: {
+        filter?: Filters<Invoice, "id" | "tenantId" | "customerId" | "sellerId" | "deletedAt">;
+        order?: Order<"createdAt" | "updatedAt">[];
+        where?: Where<Invoice, { issueDate: "gte" | "lte" }>;
+        limit?: number;
+        offset?: number;
+        select: S;
+    },
 ): Call<Selected<Invoice, S>[], QueryInvoiceErrors> {
     return call<Selected<Invoice, S>[], QueryInvoiceErrors>("queryInvoice", "GET", "/invoice/query", opts);
 }
