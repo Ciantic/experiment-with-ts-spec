@@ -78,7 +78,7 @@ payload. A field may carry both markers.
 ## The triggers
 
 Each scope installs its own trigger and publishes on its own channel:
-`<table>_all_topic` and `<table>_rows_topic`.
+`<table>_all_channel` and `<table>_rows_channel`.
 
 `@watchAll` without a filter installs a statement-level trigger that publishes
 only `TG_OP`:
@@ -86,7 +86,7 @@ only `TG_OP`:
 ```sql
 create function "widget_all_notify"() returns trigger as $$
 begin
-    perform pg_notify('widget_all_topic', TG_OP);
+    perform pg_notify('widget_all_channel', TG_OP);
     return null;
 end;
 $$ language plpgsql;
@@ -103,9 +103,9 @@ filter values, but no key:
 create function "widget_all_notify"() returns trigger as $$
 begin
     if TG_OP = 'UPDATE' and (OLD."tenantId") is distinct from (NEW."tenantId") then
-        perform pg_notify('widget_all_topic', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', OLD."tenantId"::text))::text);
+        perform pg_notify('widget_all_channel', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', OLD."tenantId"::text))::text);
     end if;
-    perform pg_notify('widget_all_topic', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);
+    perform pg_notify('widget_all_channel', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);
     return null;
 end;
 $$ language plpgsql;
@@ -122,9 +122,9 @@ a `bigint`, and a `Uint8Array` compare deterministically:
 create function "widget_rows_notify"() returns trigger as $$
 begin
     if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then
-        perform pg_notify('widget_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);
+        perform pg_notify('widget_rows_channel', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);
     end if;
-    perform pg_notify('widget_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);
+    perform pg_notify('widget_rows_channel', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);
     return null;
 end;
 $$ language plpgsql;

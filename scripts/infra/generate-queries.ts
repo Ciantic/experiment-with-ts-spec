@@ -6,7 +6,6 @@ import { TRIGGER_EVENTS, loadSpec, lowerFirst, type DeclaredType, type FilterDef
 import {
     buildSpecTables,
     primaryKeyColumns,
-    watchChannel,
     type Table,
 } from "./postgres-model.ts";
 
@@ -284,10 +283,12 @@ function watchOptsType(keyType: string, pks: boolean, entity: string, filters: s
 /** Render one entity's change streams: `watch<Entity>` for the table and `watch<Entity>Rows` for keys. */
 export function renderWatchModule(entity: string, table: Table): string {
     const keyType = `${entity}PrimaryKey`;
-    const all = table.watch.includes("all");
-    const rows = table.watch.includes("rows");
-    const allUnion = all ? operationUnion(table.watchAllOps ?? []) : undefined;
-    const rowsUnion = rows ? operationUnion(table.watchRowsOps ?? []) : undefined;
+    const allWatch = table.watchAll;
+    const rowsWatch = table.watchRows;
+    const all = allWatch !== undefined;
+    const rows = rowsWatch !== undefined;
+    const allUnion = allWatch === undefined ? undefined : operationUnion(allWatch.ops);
+    const rowsUnion = rowsWatch === undefined ? undefined : operationUnion(rowsWatch.ops);
     const allEvent = allUnion === undefined ? "WatchAllEvent" : `WatchAllEvent<${allUnion}>`;
     const rowsEvent = rowsUnion === undefined ? `WatchRowsEvent<${keyType}>` : `WatchRowsEvent<${keyType}, ${rowsUnion}>`;
     const fields = rows ? primaryKeyColumns(table).map((column) => column.name) : [];
@@ -295,7 +296,7 @@ export function renderWatchModule(entity: string, table: Table): string {
     if (rows) {
         lines.push(`import type { ${keyType} } from "sdk/schemas.ts";`);
     }
-    if (table.watchAllFilters.length > 0 || table.watchRowsFilters.length > 0) {
+    if ((allWatch?.filters.length ?? 0) > 0 || (rowsWatch?.filters.length ?? 0) > 0) {
         lines.push(`import type { ${entity} } from "${table.importSpecifier}";`);
     }
     const watchTypes = all ? ["WatchAllEvent"] : [];
@@ -307,7 +308,7 @@ export function renderWatchModule(entity: string, table: Table): string {
             watchTypes.push("WatchOperation");
         }
     }
-    if (table.watchAllFilters.length > 0 || table.watchRowsFilters.length > 0) {
+    if ((allWatch?.filters.length ?? 0) > 0 || (rowsWatch?.filters.length ?? 0) > 0) {
         watchTypes.push("WatchFilter");
     }
     watchTypes.sort((a, b) => a.localeCompare(b));
@@ -317,20 +318,20 @@ export function renderWatchModule(entity: string, table: Table): string {
     lines.push(`import { ${functions.join(", ")} } from "../notifications.ts";`);
     lines.push("");
 
-    if (all) {
-        const allFilters = table.watchAllFilters;
+    if (allWatch !== undefined) {
+        const allFilters = allWatch.filters;
         const optionalFilterArg = allFilters.length > 0 ? ", opts?.filter" : "";
         lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to operations${allFilters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
         lines.push(`export function watch${entity}(`);
         lines.push("    db: SqlExecutor,");
         lines.push(`    opts?: ${watchOptsType(keyType, false, entity, allFilters, allUnion)},`);
         lines.push(`): AsyncIterable<${allEvent}> {`);
-        lines.push(`    return watchAll(db, ${JSON.stringify(watchChannel(table.name, "all"))}, opts?.ops, opts?.signal${optionalFilterArg})${allUnion === undefined ? "" : ` as AsyncIterable<${allEvent}>`};`);
+        lines.push(`    return watchAll(db, ${JSON.stringify(allWatch.channel)}, opts?.ops, opts?.signal${optionalFilterArg})${allUnion === undefined ? "" : ` as AsyncIterable<${allEvent}>`};`);
         lines.push("}");
     }
 
-    if (rows) {
-        const rowFilters = table.watchRowsFilters;
+    if (rowsWatch !== undefined) {
+        const rowFilters = rowsWatch.filters;
         const filterArg = rowFilters.length > 0 ? ", opts.filter" : "";
         if (all) {
             lines.push("");
@@ -341,7 +342,7 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`    opts: ${watchOptsType(keyType, true, entity, rowFilters, rowsUnion)},`);
         lines.push(`): AsyncIterable<${rowsEvent}> {`);
         lines.push(
-            `    return watchRows(db, ${JSON.stringify(watchChannel(table.name, "rows"))}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg})${rowsUnion === undefined ? "" : ` as AsyncIterable<${rowsEvent}>`};`,
+            `    return watchRows(db, ${JSON.stringify(rowsWatch.channel)}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg})${rowsUnion === undefined ? "" : ` as AsyncIterable<${rowsEvent}>`};`,
         );
         lines.push("}");
     }
@@ -408,7 +409,7 @@ export function generateQueries(tables: Map<string, Table>, declared?: DeclaredT
         if (table.queries.includes("query")) {
             files.set(queryFileName(table.interfaceName), renderQueryModule(table.interfaceName, table));
         }
-        if (table.watch.length > 0) {
+        if (table.watchAll !== undefined || table.watchRows !== undefined) {
             files.set(watchFileName(table.interfaceName), renderWatchModule(table.interfaceName, table));
         }
         if (table.tenantOwned !== undefined) {
@@ -421,7 +422,7 @@ export function generateQueries(tables: Map<string, Table>, declared?: DeclaredT
         if (table.queries.includes("query")) {
             lines.push(`export * from "./${queryFileName(table.interfaceName)}";`);
         }
-        if (table.watch.length > 0) {
+        if (table.watchAll !== undefined || table.watchRows !== undefined) {
             lines.push(`export * from "./${watchFileName(table.interfaceName)}";`);
         }
         if (table.tenantOwned !== undefined) {

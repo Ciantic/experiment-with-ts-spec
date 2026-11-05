@@ -6,7 +6,6 @@ import { SPEC_GLOB, loadSpec, type ReferentialAction, type SpecModel } from "../
 import {
     buildSpecTables,
     quote,
-    watchChannel,
     type Column,
     type Diagnostic,
     type Table,
@@ -231,16 +230,19 @@ function changedCondition(columns: Column[]): string {
 /** Notify one scope's channel, publishing `TG_OP` and the keys or filter values that scope carries. See docs/notifications.md. */
 function renderScopeTrigger(table: Table, scope: "all" | "rows"): string[] {
     const rows = scope === "rows";
-    const ops = (rows ? table.watchRowsOps : table.watchAllOps) ?? [];
+    const watch = rows ? table.watchRows : table.watchAll;
+    if (watch === undefined) {
+        return [];
+    }
+    const ops = watch.ops;
     const keys = rows ? table.columns.filter((column) => column.primaryKey) : [];
-    const reserved = rows ? table.watchRowsFilters : table.watchAllFilters;
-    const filters = table.columns.filter((column) => reserved.includes(column.name));
+    const filters = table.columns.filter((column) => watch.filters.includes(column.name));
     // A keyless table cannot publish a row identity; the table model already reports it.
     if (rows && keys.length === 0) {
         return [];
     }
     const name = quote(`${table.name}_${scope}_notify`);
-    const channel = quoteLiteral(watchChannel(table.name, scope));
+    const channel = quoteLiteral(watch.channel);
     const events = ops.join(" or ");
 
     // A statement trigger cannot read a changed row's filter values, so a filter forces the row level.
@@ -298,7 +300,10 @@ function renderScopeTrigger(table: Table, scope: "all" | "rows"): string[] {
 
 /** Notify each declared scope on its own channel. See docs/notifications.md. */
 function renderNotifyTriggers(table: Table): string[] {
-    return table.watch.flatMap((scope) => renderScopeTrigger(table, scope));
+    return [
+        ...(table.watchAll === undefined ? [] : renderScopeTrigger(table, "all")),
+        ...(table.watchRows === undefined ? [] : renderScopeTrigger(table, "rows")),
+    ];
 }
 
 /** Render Postgres DDL from the spec. */
@@ -320,7 +325,7 @@ export function generateSchema(spec: SpecModel): { sql: string; diagnostics: Dia
     }
 
     for (const table of ordered) {
-        if (table.watch.length > 0) {
+        if (table.watchAll !== undefined || table.watchRows !== undefined) {
             lines.push(...renderNotifyTriggers(table));
         }
     }

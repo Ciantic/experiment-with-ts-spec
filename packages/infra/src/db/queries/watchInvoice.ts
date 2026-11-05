@@ -10,7 +10,7 @@ export function watchInvoice(
     db: SqlExecutor,
     opts?: { filter?: WatchFilter<Invoice, "tenantId"> | undefined; ops?: readonly "INSERT"[] | undefined; signal?: AbortSignal },
 ): AsyncIterable<WatchAllEvent<"INSERT">> {
-    return watchAll(db, "invoice_all_topic", opts?.ops, opts?.signal, opts?.filter) as AsyncIterable<WatchAllEvent<"INSERT">>;
+    return watchAll(db, "invoice_all_channel", opts?.ops, opts?.signal, opts?.filter) as AsyncIterable<WatchAllEvent<"INSERT">>;
 }
 
 /** Subscribe to changes of the selected `Invoice` rows, optionally scoped to operations and filter values. See docs/notifications.md. */
@@ -18,5 +18,5 @@ export function watchInvoiceRows(
     db: SqlExecutor,
     opts: { pks: InvoicePrimaryKey[]; filter?: WatchFilter<Invoice, "tenantId"> | undefined; ops?: readonly WatchOperation[] | undefined; signal?: AbortSignal },
 ): AsyncIterable<WatchRowsEvent<InvoicePrimaryKey>> {
-    return watchRows(db, "invoice_rows_topic", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);
+    return watchRows(db, "invoice_rows_channel", opts.pks, ["id"], opts.ops, opts.signal, opts.filter);
 }

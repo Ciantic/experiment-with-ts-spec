@@ -955,7 +955,7 @@ describe("generateSchema triggers", () => {
         });
 
         expect(sql).toContain('create function "thing_all_notify"() returns trigger as $$');
-        expect(sql).toContain("    perform pg_notify('thing_all_topic', TG_OP);");
+        expect(sql).toContain("    perform pg_notify('thing_all_channel', TG_OP);");
         expect(sql).toContain(
             'create trigger "thing_all_notify" after insert or update or delete on "thing"',
         );
@@ -1014,11 +1014,11 @@ describe("generateSchema triggers", () => {
 
         expect(sql).toContain('create function "thing_rows_notify"() returns trigger as $$');
         expect(sql).toContain(
-            `perform pg_notify('thing_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);`,
+            `perform pg_notify('thing_rows_channel', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text))::text);`,
         );
         expect(sql).toContain(`if TG_OP = 'UPDATE' and (OLD."id") is distinct from (NEW."id") then`);
         expect(sql).toContain(
-            `perform pg_notify('thing_rows_topic', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);`,
+            `perform pg_notify('thing_rows_channel', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text))::text);`,
         );
         expect(sql).toContain(
             'create trigger "thing_rows_notify" after insert or update or delete on "thing"',
@@ -1033,10 +1033,10 @@ describe("generateSchema triggers", () => {
             `if TG_OP = 'UPDATE' and (OLD."tenantId") is distinct from (NEW."tenantId") then`,
         );
         expect(sql).toContain(
-            `perform pg_notify('widget_all_topic', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);`,
+            `perform pg_notify('widget_all_channel', json_build_object('op', TG_OP, 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);`,
         );
         expect(sql).toContain('for each row execute function "widget_all_notify"();');
-        expect(sql).not.toContain("perform pg_notify('widget_all_topic', TG_OP);");
+        expect(sql).not.toContain("perform pg_notify('widget_all_channel', TG_OP);");
     });
 
     it("fires the statement trigger for each write and publishes TG_OP", async () => {
@@ -1046,7 +1046,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchAll(db, "widget_all_topic")[Symbol.asyncIterator]();
+            const iterator = watchAll(db, "widget_all_channel")[Symbol.asyncIterator]();
 
             const inserted = iterator.next();
             await settle();
@@ -1074,7 +1074,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchAll(db, "widget_all_topic", undefined, undefined, { tenantId: PARENT })[
+            const iterator = watchAll(db, "widget_all_channel", undefined, undefined, { tenantId: PARENT })[
                 Symbol.asyncIterator
             ]();
 
@@ -1110,7 +1110,7 @@ describe("generateSchema triggers", () => {
         try {
             await driver.exec(sql);
             const db = driver.createExecutor();
-            const iterator = watchRows(db, "widget_rows_topic", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget_rows_channel", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
 
@@ -1145,7 +1145,7 @@ describe("generateSchema triggers", () => {
             const db = driver.createExecutor();
             await db.query(`insert into "widget" ("id", "name") values ($1, $2)`, [PARENT, "a"]);
 
-            const iterator = watchRows(db, "widget_rows_topic", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
+            const iterator = watchRows(db, "widget_rows_channel", [{ id: PARENT }, { id: PARENT_B }], ["id"])[
                 Symbol.asyncIterator
             ]();
             const first = iterator.next();

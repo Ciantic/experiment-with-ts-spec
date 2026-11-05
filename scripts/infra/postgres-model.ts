@@ -22,7 +22,6 @@ import {
     type TriggerTiming,
     type ReadOperation,
     type WriteOperation,
-    type WatchScope,
     assignsColumn,
     triggerLevel,
 } from "../spec/spec-model.ts";
@@ -99,6 +98,16 @@ export interface Trigger {
     statements: string[];
 }
 
+/** One declared change scope: the operations its trigger publishes, its filters, and its channel. */
+export interface TableWatch {
+    /** The operations the trigger fires on. */
+    ops: TriggerEvent[];
+    /** The fields whose values the change payload carries. */
+    filters: string[];
+    /** The LISTEN/NOTIFY channel the trigger publishes on. */
+    channel: string;
+}
+
 export interface Table {
     name: string;
     interfaceName: string;
@@ -115,16 +124,10 @@ export interface Table {
     repositoryOperations: WriteOperation[];
     /** The read operations `@queries` declares, which the query generator renders. */
     queries: ReadOperation[];
-    /** The notification scopes the scope tags declare, which the schema and watch generators read. See docs/notifications.md. */
-    watch: WatchScope[];
-    /** The operations `@watchAll ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
-    watchAllOps?: TriggerEvent[];
-    /** The operations `@watchRows ops=` publishes; absent when the scope is not declared. See docs/notifications.md. */
-    watchRowsOps?: TriggerEvent[];
-    /** The fields `@watchAllFilter` names, whose values the `all` change payload carries. See docs/notifications.md. */
-    watchAllFilters: string[];
-    /** The fields `@watchRowsFilter` names, whose values the `rows` change payload carries. See docs/notifications.md. */
-    watchRowsFilters: string[];
+    /** The `all` change stream, absent when `@watchAll` is not declared. See docs/notifications.md. */
+    watchAll?: TableWatch;
+    /** The `rows` change stream, absent when `@watchRows` is not declared. See docs/notifications.md. */
+    watchRows?: TableWatch;
     /** The column `@tenantOwned` names and whether it is optional, or absent on a global entity. See docs/tenancy.md. */
     tenantOwned?: TenantOwned;
 }
@@ -134,11 +137,6 @@ interface TypeResolution {
     checkValues?: string[];
     entity?: string;
     isArray?: boolean;
-}
-
-/** The LISTEN/NOTIFY channel a table's scope publishes on. */
-export function watchChannel(tableName: string, scope: WatchScope): string {
-    return `${tableName}_${scope}_topic`;
 }
 
 /** The table's primary key columns, in declaration order. A missing `@primaryKey` is a diagnostic. */
@@ -217,11 +215,12 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         triggers: [],
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
-        watch: spec.watch,
-        ...(spec.watchAll === undefined ? {} : { watchAllOps: spec.watchAll }),
-        ...(spec.watchRows === undefined ? {} : { watchRowsOps: spec.watchRows }),
-        watchAllFilters: spec.watchAllFilters,
-        watchRowsFilters: spec.watchRowsFilters,
+        ...(spec.watchAll === undefined
+            ? {}
+            : { watchAll: { ops: spec.watchAll, filters: spec.watchAllFilters, channel: `${spec.pgTableName}_all_channel` } }),
+        ...(spec.watchRows === undefined
+            ? {}
+            : { watchRows: { ops: spec.watchRows, filters: spec.watchRowsFilters, channel: `${spec.pgTableName}_rows_channel` } }),
         ...(spec.tags.tenantOwned === undefined ? {} : { tenantOwned: spec.tags.tenantOwned }),
     };
 
