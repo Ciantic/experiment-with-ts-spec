@@ -3,6 +3,12 @@ import type { ServerResponse } from "node:http";
 import { stringify as encode } from "devalue";
 import { WritableResponse } from "./api-http-response.ts";
 
+/** How often a quiet stream writes a comment line, below the shortest idle timeout a proxy in front of it uses. See docs/notifications.md. */
+export const SSE_HEARTBEAT_MS = 15_000;
+
+/** A comment line: the event-stream grammar ignores it, so it reaches no subscriber and carries no key. */
+const HEARTBEAT = ": ping\n\n";
+
 /** The events a stream writes; the server opens it with the signal that ends with the response. */
 export class SseStream extends WritableResponse {
     readonly #open: (signal: AbortSignal) => AsyncIterable<unknown>;
@@ -24,6 +30,12 @@ export class SseStream extends WritableResponse {
         response.on("close", onClose);
         // Send the event-stream headers before the first change, so a client's `fetch` resolves.
         response.flushHeaders();
+        const heartbeat = setInterval(() => {
+            if (response.writableEnded || response.destroyed) {
+                return;
+            }
+            response.write(HEARTBEAT);
+        }, SSE_HEARTBEAT_MS);
 
         void (async () => {
             try {
@@ -35,6 +47,7 @@ export class SseStream extends WritableResponse {
             } catch {
                 response.destroy();
             } finally {
+                clearInterval(heartbeat);
                 response.off("close", onClose);
                 abort.abort();
             }

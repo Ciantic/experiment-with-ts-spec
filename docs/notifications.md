@@ -216,6 +216,20 @@ data: {"op":"INSERT"}
 
 ```
 
+A quiet stream would otherwise leave the socket silent long enough for a proxy
+to close it, so every 15 seconds it writes a comment line instead:
+
+```
+: ping
+
+```
+
+The grammar ignores a line that starts with `:`, so the comment fires no
+listener and adds no `id:`, and a client needs no change to decode it. The
+interval sits below the shortest idle timeout a proxy in front of the process
+uses. Node's own `requestTimeout` clears once the request is read, so it is not
+what the heartbeat guards against.
+
 The SDK generates one helper per exposed scope:
 
 ```ts
