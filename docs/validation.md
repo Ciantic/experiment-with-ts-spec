@@ -35,8 +35,14 @@ schema uses, so the backend repositories, the REST API, the generated client, an
   read.
 - `packages/sdk/src/queries/index.ts` — the barrel re-exporting every
   query module.
+- `packages/sdk/src/watches/watch<Entity>.ts` — the argument a change stream
+  accepts: the keys the `rows` scope requires, the `@watchFilter` values, and
+  the operations `@watch ops=` publishes. `all` makes the whole argument
+  optional. See `docs/notifications.md`.
+- `packages/sdk/src/watches/index.ts` — the barrel re-exporting every watch
+  module.
 - `packages/sdk/src/schemas.ts` — the generated schema barrel re-exporting the
-  primitives and the three directories. The package entry,
+  primitives and every directory. The package entry,
   `packages/sdk/src/index.ts`, is hand-written and schema-free, so importing the
   client's transport never loads `zod`.
 - `packages/sdk/src/errors.ts` — hand-written, not generated: the shared

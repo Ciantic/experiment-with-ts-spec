@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { INFRA_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, lowerFirst, type DeclaredType, type FilterDefault, type SpecModel } from "../spec/spec-model.ts";
+import { TRIGGER_EVENTS, loadSpec, lowerFirst, type DeclaredType, type FilterDefault, type SpecModel, type TriggerEvent } from "../spec/spec-model.ts";
 import {
     buildSpecTables,
     primaryKeyColumns,
@@ -254,8 +254,20 @@ function watchFilterType(entity: string, filters: string[]): string | undefined 
         : `WatchFilter<${entity}, ${filters.map((field) => JSON.stringify(field)).join(" | ")}>`;
 }
 
+/** The uppercase union of the operations a table publishes; undefined when it publishes all three. */
+function operationUnion(ops: readonly TriggerEvent[]): string | undefined {
+    return ops.length === TRIGGER_EVENTS.length
+        ? undefined
+        : ops.map((op) => JSON.stringify(op.toUpperCase())).join(" | ");
+}
+
+/** A readonly array of one union, parenthesized only when it has more than one member. */
+function readonlyOperations(union: string): string {
+    return union.includes(" | ") ? `readonly (${union})[]` : `readonly ${union}[]`;
+}
+
 /** The options a generated watch takes: `pks` only on the rows helper, `filter` only when declared. */
-function watchOptsType(keyType: string, pks: boolean, entity: string, filters: string[]): string {
+function watchOptsType(keyType: string, pks: boolean, entity: string, filters: string[], union: string | undefined): string {
     const parts: string[] = [];
     if (pks) {
         parts.push(`pks: ${keyType}[]`);
@@ -264,7 +276,7 @@ function watchOptsType(keyType: string, pks: boolean, entity: string, filters: s
     if (filter !== undefined) {
         parts.push(`filter?: ${filter} | undefined`);
     }
-    parts.push("ops?: readonly WatchOperation[] | undefined", "signal?: AbortSignal");
+    parts.push(union === undefined ? "ops?: readonly WatchOperation[] | undefined" : `ops?: ${readonlyOperations(union)} | undefined`, "signal?: AbortSignal");
     return `{ ${parts.join("; ")} }`;
 }
 
@@ -274,6 +286,9 @@ export function renderWatchModule(entity: string, table: Table): string {
     const all = table.watch.includes("all");
     const rows = table.watch.includes("rows");
     const filters = table.watchFilters;
+    const union = operationUnion(table.watchOps);
+    const allEvent = union === undefined ? "WatchAllEvent" : `WatchAllEvent<${union}>`;
+    const rowsEvent = union === undefined ? `WatchRowsEvent<${keyType}>` : `WatchRowsEvent<${keyType}, ${union}>`;
     const fields = rows ? primaryKeyColumns(table).map((column) => column.name) : [];
     const channel = JSON.stringify(table.name);
     const lines: string[] = [HEADER];
@@ -287,7 +302,9 @@ export function renderWatchModule(entity: string, table: Table): string {
     if (rows) {
         watchTypes.push("WatchRowsEvent");
     }
-    watchTypes.push("WatchOperation");
+    if (union === undefined) {
+        watchTypes.push("WatchOperation");
+    }
     if (filters.length > 0) {
         watchTypes.push("WatchFilter");
     }
@@ -305,9 +322,9 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`/** Subscribe to changes of \`${entity}\`, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
         lines.push(`export function watch${entity}(`);
         lines.push("    db: SqlExecutor,");
-        lines.push(`    opts?: ${watchOptsType(keyType, false, entity, filters)},`);
-        lines.push("): AsyncIterable<WatchAllEvent> {");
-        lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal${optionalFilterArg});`);
+        lines.push(`    opts?: ${watchOptsType(keyType, false, entity, filters, union)},`);
+        lines.push(`): AsyncIterable<${allEvent}> {`);
+        lines.push(`    return watchAll(db, ${channel}, opts?.ops, opts?.signal${optionalFilterArg})${union === undefined ? "" : ` as AsyncIterable<${allEvent}>`};`);
         lines.push("}");
     }
 
@@ -318,10 +335,10 @@ export function renderWatchModule(entity: string, table: Table): string {
         lines.push(`/** Subscribe to changes of the selected \`${entity}\` rows, optionally scoped to operations${filters.length > 0 ? " and filter values" : ""}. See docs/notifications.md. */`);
         lines.push(`export function watch${entity}Rows(`);
         lines.push("    db: SqlExecutor,");
-        lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters)},`);
-        lines.push(`): AsyncIterable<WatchRowsEvent<${keyType}>> {`);
+        lines.push(`    opts: ${watchOptsType(keyType, true, entity, filters, union)},`);
+        lines.push(`): AsyncIterable<${rowsEvent}> {`);
         lines.push(
-            `    return watchRows(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg});`,
+            `    return watchRows(db, ${channel}, opts.pks, ${JSON.stringify(fields)}, opts.ops, opts.signal${filterArg})${union === undefined ? "" : ` as AsyncIterable<${rowsEvent}>`};`,
         );
         lines.push("}");
     }

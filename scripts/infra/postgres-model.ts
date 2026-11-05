@@ -117,6 +117,8 @@ export interface Table {
     queries: ReadOperation[];
     /** The notification scopes `@watch` declares, which the schema and watch generators read. See docs/notifications.md. */
     watch: WatchScope[];
+    /** The operations `@watch ops=` publishes; all when the tag names none. See docs/notifications.md. */
+    watchOps: TriggerEvent[];
     /** The fields `@watchFilter` names, whose values the change payload carries. See docs/notifications.md. */
     watchFilters: string[];
     /** The column `@tenantOwned` names and whether it is optional, or absent on a global entity. See docs/tenancy.md. */
@@ -207,6 +209,7 @@ function buildTable(context: BuildContext, spec: SpecInterface): Table {
         repositoryOperations: spec.repositoryOperations,
         queries: spec.queries,
         watch: spec.watch,
+        watchOps: spec.watchOps,
         watchFilters: spec.watchFilters,
         ...(spec.tags.tenantOwned === undefined ? {} : { tenantOwned: spec.tags.tenantOwned }),
     };

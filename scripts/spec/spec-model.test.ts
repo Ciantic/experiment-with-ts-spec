@@ -103,6 +103,16 @@ describe("parseSpec interfaces", () => {
         expect(interfaces.get("Thing")?.watch).toEqual(["all", "rows"]);
         expect(interfaces.get("Thing")?.restWatch).toEqual(["all", "rows"]);
     });
+
+    it("reads the operations @watch publishes, defaulting to all of them", () => {
+        const { interfaces } = parse({
+            "Thing.ts": "/**\n * @entity\n * @watch all\n */\nexport interface Thing { id: string; }",
+            "Other.ts": "/**\n * @entity\n * @watch all ops=update,insert\n */\nexport interface Other { id: string; }",
+        });
+
+        expect(interfaces.get("Thing")?.watchOps).toEqual(["insert", "update", "delete"]);
+        expect(interfaces.get("Other")?.watchOps).toEqual(["insert", "update"]);
+    });
 });
 
 describe("parseSpec tags", () => {

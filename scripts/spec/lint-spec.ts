@@ -560,11 +560,13 @@ function lintSurfaceTags(spec: SpecInterface, report: Report): void {
             continue;
         }
         const tokens = (tag.value ?? "").split(/\s+/).filter((token) => token !== "");
-        if (tokens.length === 0) {
+        const parameters = name === "watch" ? tokens.filter((token) => token.startsWith("ops=")) : [];
+        const scopes = tokens.filter((token) => !parameters.includes(token));
+        if (scopes.length === 0) {
             report(`@${name} requires at least one of: ${vocabulary.join(", ")}`, tag);
         }
         const named = new Set<string>();
-        for (const token of tokens) {
+        for (const token of scopes) {
             if (!vocabulary.includes(token)) {
                 report(`@${name} \`${token}\` is not one of: ${vocabulary.join(", ")}`, tag);
             } else if (named.has(token)) {
@@ -572,6 +574,9 @@ function lintSurfaceTags(spec: SpecInterface, report: Report): void {
             } else {
                 named.add(token);
             }
+        }
+        if (name === "watch") {
+            lintWatchOps(tag, parameters, report);
         }
         declared.set(name, named);
     }
@@ -588,6 +593,32 @@ function lintSurfaceTags(spec: SpecInterface, report: Report): void {
             if (!declaredSet.has(operation)) {
                 report(`@${exposed} \`${operation}\` is not in @${declaredBy}`, tag);
             }
+        }
+    }
+}
+
+/** `@watch ops=` names the operations the trigger publishes; an absent parameter publishes every operation. */
+function lintWatchOps(tag: SpecTag, parameters: string[], report: Report): void {
+    if (parameters.length === 0) {
+        return;
+    }
+    if (parameters.length > 1) {
+        report("@watch names ops= more than once", tag);
+    }
+    const value = parameters[0]?.slice("ops=".length) ?? "";
+    const tokens = value.split(",").map((token) => token.trim()).filter((token) => token !== "");
+    if (tokens.length === 0) {
+        report(`@watch ops= requires at least one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+        return;
+    }
+    const named = new Set<string>();
+    for (const token of tokens) {
+        if (!(TRIGGER_EVENTS as readonly string[]).includes(token)) {
+            report(`@watch ops= \`${token}\` is not one of: ${TRIGGER_EVENTS.join(", ")}`, tag);
+        } else if (named.has(token)) {
+            report(`@watch ops= names \`${token}\` twice`, tag);
+        } else {
+            named.add(token);
         }
     }
 }

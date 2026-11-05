@@ -5,7 +5,7 @@ import { z } from "zod";
 import { SseStream } from "../sse.ts";
 import { createInvoice, deleteInvoice, updateInvoice, upsertInvoice } from "../../db/repositories/index.ts";
 import { queryInvoice, watchInvoice, watchInvoiceRows } from "../../db/queries/index.ts";
-import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceSchema, invoiceUpsertSchema, queryInvoiceSchema } from "sdk/schemas.ts";
+import { invoiceInsertSchema, invoicePatchSchema, invoicePrimaryKeySchema, invoiceUpsertSchema, queryInvoiceSchema, watchInvoiceSchema } from "sdk/schemas.ts";
 
 /** The calls `/invoice` exposes: each under its id, its verb, and its path. */
 export const invoiceRoutes: Route[] = [
@@ -24,7 +24,7 @@ export const invoiceRoutes: Route[] = [
         path: "/invoice/watch",
         source: "query",
         stream: true,
-        input: z.strictObject({ pks: z.array(invoicePrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }).optional(),
+        input: watchInvoiceSchema,
         guard: canWatchInvoice,
         handler: async (ctx, body) =>
             new SseStream((signal) => {

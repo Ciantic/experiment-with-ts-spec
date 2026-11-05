@@ -400,6 +400,8 @@ export interface Tags {
     restQueries?: ReadOperation[];
     /** The notification scopes `@watch` declares, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
     watch?: WatchScope[];
+    /** The operations `@watch ops=` publishes, in {@link TRIGGER_EVENTS} order; all when absent. See docs/notifications.md. */
+    watchOps?: TriggerEvent[];
     /** The notification scopes `@restWatch` exposes, in {@link WATCH_SCOPES} order. See docs/notifications.md. */
     restWatch?: WatchScope[];
     /** The plural noun for the entity, from `@plural invoices`. See docs/permissions.md. */
@@ -484,6 +486,8 @@ export interface SpecInterface {
     restQueries: ReadOperation[];
     /** The notification scopes `@watch` declares; empty when the tag is absent. See docs/notifications.md. */
     watch: WatchScope[];
+    /** The operations `@watch ops=` publishes, in {@link TRIGGER_EVENTS} order; all when absent. See docs/notifications.md. */
+    watchOps: TriggerEvent[];
     /** The notification scopes `@restWatch` exposes; empty when the tag is absent. See docs/notifications.md. */
     restWatch: WatchScope[];
     /** The fields a `@watchFilter` marker marks; empty when no field carries it. See docs/notifications.md. */
@@ -927,6 +931,16 @@ function parseWatchScopes(value: string | undefined): WatchScope[] {
     const tokens = (value ?? "").split(/\s+/).filter((token) => token !== "");
     return WATCH_SCOPES.filter((scope) => tokens.includes(scope));
 }
+
+/** The operations a `@watch ops=` names, de-duplicated and in {@link TRIGGER_EVENTS} order; all when absent. */
+function parseWatchOps(value: string | undefined): TriggerEvent[] {
+    const parameter = parseParameters({ name: "watch", value, text: "", line: 0 }).get("ops");
+    if (parameter === undefined) {
+        return [...TRIGGER_EVENTS];
+    }
+    const tokens = parameter.split(",").map((token) => token.trim());
+    return TRIGGER_EVENTS.filter((event) => tokens.includes(event));
+}
 /** A parsed `@queryFilter` value: the options it names, and the tokens it does not understand. */
 export interface ParsedQueryFilter {
     required: boolean;
@@ -1160,7 +1174,10 @@ export function readTags(holder: { getJsDocs(): JSDoc[] }): Tags {
                     if (tags.restQueries === undefined) tags.restQueries = parseReadOperations(value);
                     break;
                 case "watch":
-                    if (tags.watch === undefined) tags.watch = parseWatchScopes(value);
+                    if (tags.watch === undefined) {
+                        tags.watch = parseWatchScopes(value);
+                        tags.watchOps = parseWatchOps(value);
+                    }
                     break;
                 case "restWatch":
                     if (tags.restWatch === undefined) tags.restWatch = parseWatchScopes(value);
@@ -1639,6 +1656,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 queries: declarationTags.queries ?? [],
                 restQueries: declarationTags.restQueries ?? [],
                 watch: declarationTags.watch ?? [],
+                watchOps: declarationTags.watchOps ?? [],
                 restWatch: declarationTags.restWatch ?? [],
                 watchFilters: properties
                     .filter((property) => property.tags.watchFilter)

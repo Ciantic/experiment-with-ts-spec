@@ -11,6 +11,7 @@ import {
     type ZodOperation,
     type ZodPrimitive,
     type ZodQuery,
+    type ZodWatch,
 } from "./zod-model.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
@@ -85,6 +86,58 @@ const QUERIES_INDEX = join(QUERIES_DIR, "index.ts");
 /** The file for one entity's queries, e.g. `Invoice` -> `queries/queryInvoice.ts`. */
 export function queryFileName(entity: string): string {
     return join(QUERIES_DIR, `query${entity}.ts`);
+}
+
+/** The directory holding the generated watch argument schemas, under the output root. */
+const WATCHES_DIR = "watches";
+
+/** The barrel re-exporting every watch schema, inside {@link WATCHES_DIR}. */
+const WATCHES_INDEX = join(WATCHES_DIR, "index.ts");
+
+/** The file for one entity's watch argument, e.g. `Invoice` -> `watches/watchInvoice.ts`. */
+export function watchFileName(entity: string): string {
+    return join(WATCHES_DIR, `watch${entity}.ts`);
+}
+
+/** Render one entity's watch argument schema: the keys, filter values, and operations its route takes. */
+export function generateWatchFile(watch: ZodWatch): string {
+    const lines = [HEADER, 'import { z } from "zod";'];
+    const module = lowerFirst(watch.entity);
+    const rows = watch.scopes.includes("rows");
+    const all = watch.scopes.includes("all");
+    const imports: string[] = [];
+    if (watch.filterFields.length > 0) {
+        imports.push(`import { ${module}Schema } from "../domain/${module}Schema.ts";`);
+    }
+    if (rows) {
+        imports.push(`import { ${module}PrimaryKeySchema } from "../repositories/${module}PrimaryKeySchema.ts";`);
+    }
+    lines.push(...imports.sort((a, b) => a.localeCompare(b)));
+    lines.push("");
+    const members: string[] = [];
+    if (rows) {
+        members.push(`pks: z.array(${module}PrimaryKeySchema)${all ? ".exactOptional()" : ""}`);
+    }
+    if (watch.filterFields.length > 0) {
+        const fields = watch.filterFields
+            .map((field) => `${field}: ${module}Schema.shape.${field}.exactOptional()`)
+            .join(", ");
+        members.push(`filter: z.strictObject({ ${fields} }).exactOptional()`);
+    }
+    members.push(`ops: z.array(z.enum([${watch.operations.map((op) => JSON.stringify(op)).join(", ")}])).exactOptional()`);
+    const object = `z.strictObject({ ${members.join(", ")} })`;
+    lines.push(`export const ${watch.schemaName} = ${all ? `${object}.optional()` : object};`);
+    lines.push("");
+    return lines.join("\n");
+}
+
+/** Render the barrel re-exporting every watch schema. */
+export function generateWatchesIndex(watches: ZodWatch[]): string {
+    const lines = [HEADER];
+    for (const watch of [...watches].sort((a, b) => a.entity.localeCompare(b.entity))) {
+        lines.push(`export * from "./watch${watch.entity}.ts";`);
+    }
+    return lines.join("\n") + "\n";
 }
 
 /** Render one entity's query schema module: the `query` filters and `select`. */
@@ -615,6 +668,9 @@ export function generateSchemaBarrel(model: ZodModel): string {
     if (model.queries.length > 0) {
         lines.push('export * from "./queries/index.ts";');
     }
+    if (model.watches.length > 0) {
+        lines.push('export * from "./watches/index.ts";');
+    }
     if (model.operations.length > 0) {
         lines.push(`export * from "./${OPERATIONS_DIR}/index.ts";`);
     }
@@ -655,6 +711,13 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     }
     if (model.queries.length > 0) {
         files.set(QUERIES_INDEX, generateQueriesIndex(model.queries));
+    }
+
+    for (const watch of model.watches) {
+        files.set(watchFileName(watch.entity), generateWatchFile(watch));
+    }
+    if (model.watches.length > 0) {
+        files.set(WATCHES_INDEX, generateWatchesIndex(model.watches));
     }
 
     for (const operation of model.operations) {

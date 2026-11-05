@@ -237,6 +237,7 @@ function renderNotifyTriggers(table: Table): string[] {
         return [];
     }
     const name = quote(`${table.name}_notify`);
+    const events = table.watchOps.join(" or ");
 
     // A statement trigger cannot read a changed row's filter values, so a filter forces the row level.
     if (!rows && filters.length === 0) {
@@ -248,7 +249,7 @@ function renderNotifyTriggers(table: Table): string[] {
             "end;",
             "$$ language plpgsql;",
             "",
-            `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
+            `create trigger ${name} after ${events} on ${quote(table.name)}`,
             `    for each statement execute function ${name}();`,
             "",
         ];
@@ -273,15 +274,19 @@ function renderNotifyTriggers(table: Table): string[] {
     return [
         `create function ${name}() returns trigger as $$`,
         "begin",
-        `    if TG_OP = 'UPDATE' and ${changed} then`,
-        `        perform pg_notify(${quoteLiteral(table.name)}, ${payload("old")});`,
-        "    end if;",
+        ...(table.watchOps.includes("update")
+            ? [
+                `    if TG_OP = 'UPDATE' and ${changed} then`,
+                `        perform pg_notify(${quoteLiteral(table.name)}, ${payload("old")});`,
+                "    end if;",
+            ]
+            : []),
         `    perform pg_notify(${quoteLiteral(table.name)}, ${payload("either")});`,
         "    return null;",
         "end;",
         "$$ language plpgsql;",
         "",
-        `create trigger ${name} after insert or update or delete on ${quote(table.name)}`,
+        `create trigger ${name} after ${events} on ${quote(table.name)}`,
         `    for each row execute function ${name}();`,
         "",
     ];

@@ -21,7 +21,7 @@ export type InvoiceId = BrandedId<"InvoiceId">;
  * @restRepository create upsert update delete
  * @queries query
  * @restQueries query
- * @watch all rows
+ * @watch all rows ops=insert
  * @restWatch all rows
  */
 export interface Invoice {

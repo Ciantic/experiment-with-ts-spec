@@ -5,17 +5,17 @@ import { parse as decode } from "devalue";
 export type WatchOperation = "INSERT" | "UPDATE" | "DELETE";
 
 /** One watched change: the requested key, and what happened to it. */
-export interface WatchRowsEvent<Key> {
+export interface WatchRowsEvent<Key, Op extends WatchOperation = WatchOperation> {
     pks: Key;
-    op: WatchOperation;
+    op: Op;
 }
 
 /** The values a change stream matches: the fields an entity declares with `@watchFilter`, compared for equality. See docs/notifications.md. */
 export type WatchFilter<E, K extends keyof E = keyof E> = Partial<Pick<E, K>>;
 
 /** An all-rows change: the operation, without a key. */
-export interface WatchAllEvent {
-    op: WatchOperation;
+export interface WatchAllEvent<Op extends WatchOperation = WatchOperation> {
+    op: Op;
 }
 
 /** Open a server-sent event stream and call `onChange` for each decoded event. */

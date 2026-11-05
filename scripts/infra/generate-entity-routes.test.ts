@@ -65,6 +65,24 @@ export interface Notified {
 }
 `.trim();
 
+/** An entity whose trigger publishes only inserts. */
+const INSERTED = `
+/**
+ * @pgTable inserted
+ * @repository create
+ * @restRepository create
+ * @queries query
+ * @restQueries query
+ * @watch all rows ops=insert
+ * @restWatch all rows
+ * @entity
+ */
+export interface Inserted {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** An entity whose selected rows are watched over REST. */
 const WATCHED = `
 /**
@@ -365,11 +383,23 @@ export interface Internal {
         expect(code).toContain('path: "/notified/watch"');
         expect(code).toContain("stream: true,");
         expect(code).toContain(
-            'input: z.strictObject({ pks: z.array(notifiedPrimaryKeySchema).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }).optional(),',
+            "input: watchNotifiedSchema,",
         );
         expect(code).toContain("const opts = body;");
         expect(code).toContain("? watchNotified(ctx.db, { ops: opts?.ops, signal })");
         expect(code).toContain(": watchNotifiedRows(ctx.db, { pks: opts.pks, ops: opts.ops, signal });");
+    });
+
+    it("validates ops against the operations @watch ops= publishes", () => {
+        const entity = build({ Inserted: INSERTED }).entities[0];
+        if (!entity) {
+            throw new Error("fixture is missing the inserted entity");
+        }
+        const code = renderEntityRoutes(entity);
+
+        expect(code).toContain(
+            "input: watchInsertedSchema,",
+        );
     });
 
     it("serves a rows-only watch with a required key filter", () => {
@@ -383,7 +413,7 @@ export interface Internal {
         expect(code).toContain('id: "watchWatched"');
         expect(code).toContain('path: "/watched/watch"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain('input: z.strictObject({ pks: z.array(watchedPrimaryKeySchema), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }),');
+        expect(code).toContain("input: watchWatchedSchema,");
         expect(code).toContain("const opts = body;");
         expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
     });
@@ -397,7 +427,7 @@ export interface Internal {
 
         expect(code).toContain("const opts = body;");
         expect(code).toContain(
-            "input: z.strictObject({ pks: z.array(filteredPrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: filteredSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum([\"INSERT\", \"UPDATE\", \"DELETE\"])).exactOptional() }).optional(),",
+            "input: watchFilteredSchema,",
         );
         expect(code).toContain("? watchFiltered(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })");
         expect(code).toContain(

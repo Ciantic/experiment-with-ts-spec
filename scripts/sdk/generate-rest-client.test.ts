@@ -108,6 +108,21 @@ export interface Notified {
 }
 `.trim();
 
+/** An entity whose change stream publishes only inserts. */
+const INSERT_ONLY = `
+/**
+ * @pgTable inserted
+ * @repository create
+ * @watch all rows ops=insert
+ * @restWatch all rows
+ * @entity
+ */
+export interface Inserted {
+    /** @primaryKey */
+    id: string;
+}
+`.trim();
+
 /** An entity whose change stream carries a filter value. */
 const FILTERED = `
 /**
@@ -429,11 +444,11 @@ describe("watch helpers", () => {
         );
         expect(module()).toContain("export function watchNotified(");
         expect(module()).toContain("export function watchNotifiedRows(");
-        expect(module()).toContain("onChange: (event: WatchAllEvent) => void,");
-        expect(module()).toContain("onChange: (event: WatchRowsEvent<NotifiedPrimaryKey>) => void,");
-        expect(module()).toContain(
-            "opts: { pks: NotifiedPrimaryKey[]; ops?: readonly WatchOperation[] },",
-        );
+        expect(module()).toContain("    opts: {");
+        expect(module()).toContain("        onChange: (event: WatchAllEvent) => void;");
+        expect(module()).toContain("        onChange: (event: WatchRowsEvent<NotifiedPrimaryKey>) => void;");
+        expect(module()).toContain("        pks: NotifiedPrimaryKey[];");
+        expect(module()).toContain("        ops?: readonly WatchOperation[];");
         expect(module()).not.toContain(" | WatchAllEvent>");
     });
 
@@ -443,6 +458,24 @@ describe("watch helpers", () => {
         );
         expect(module()).toContain(
             'return watch<WatchRowsEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", ops === undefined ? { pks } : { pks, ops }), onChange);',
+        );
+    });
+
+    it("narrows the helpers to the operations @watch ops= publishes", () => {
+        const inserted = build({ Inserted: INSERT_ONLY });
+        const narrowed = generateRestClient(inserted).get("inserted.ts") ?? "";
+
+        expect(narrowed).toContain(
+            'import { watch, type WatchAllEvent, type WatchRowsEvent } from "../watch.ts";',
+        );
+        expect(narrowed).toContain('        onChange: (event: WatchAllEvent<"INSERT">) => void;');
+        expect(narrowed).toContain(
+            '        onChange: (event: WatchRowsEvent<InsertedPrimaryKey, "INSERT">) => void;',
+        );
+        expect(narrowed).toContain("        pks: InsertedPrimaryKey[];");
+        expect(narrowed).toContain('        ops?: readonly "INSERT"[];');
+        expect(narrowed).toContain(
+            'return watch<WatchAllEvent<"INSERT">>(http.url("/inserted/watch", ops === undefined ? undefined : { ops }), onChange);',
         );
     });
 
@@ -475,20 +508,18 @@ describe("watch helpers", () => {
         );
         const all = generated.watchNotified as (
             http: { url(path: string, argument?: unknown): string },
-            onChange: (event: unknown) => void,
-            opts?: { ops?: string[] },
+            opts: { onChange: (event: unknown) => void; ops?: string[] },
         ) => { close(): void };
         const rows = generated.watchNotifiedRows as (
             http: { url(path: string, argument?: unknown): string },
-            onChange: (event: unknown) => void,
-            opts: { pks: { id: string }[]; ops?: string[] },
+            opts: { onChange: (event: unknown) => void; pks: { id: string }[]; ops?: string[] },
         ) => { close(): void };
         const http = new ApiClient("http://api.example");
         const onChange = (event: unknown) => events.push(event);
 
-        all(http, onChange, { ops: ["DELETE"] });
-        all(http, onChange);
-        rows(http, onChange, { pks: [{ id: "a" }], ops: ["UPDATE"] });
+        all(http, { onChange, ops: ["DELETE"] });
+        all(http, { onChange });
+        rows(http, { onChange, pks: [{ id: "a" }], ops: ["UPDATE"] });
 
         expect(watchedUrls).toEqual([
             http.url("/notified/watch", { ops: ["DELETE"] }),

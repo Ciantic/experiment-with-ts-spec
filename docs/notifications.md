@@ -9,14 +9,15 @@ share one channel:
   primary key; a subscriber receives `{ pks, op }`.
 
 Declare the scopes with `@watch`, and the subset the REST surface exposes with
-`@restWatch`:
+`@restWatch`. An optional `ops=` on `@watch` restricts the operations the
+triggers publish:
 
 ```ts
 /**
  * @pgTable widget
  * @repository create
  * @queries query
- * @watch all rows
+ * @watch all rows ops=insert,update
  * @restWatch all rows
  */
 export interface Widget {
@@ -24,6 +25,10 @@ export interface Widget {
     id: WidgetId;
 }
 ```
+
+`ops=` takes one or more of `insert`, `update`, and `delete`; omitted means all
+three. It restricts what the trigger publishes, so a subscriber that names an
+omitted operation simply never receives one.
 
 `@watch` may name either or both scopes. `@restWatch` is optional and may only
 name a scope `@watch` declares, so an entity can stream to backend callers and
@@ -67,7 +72,8 @@ REST surface whenever the entity exposes a watch.
 
 ## The triggers
 
-`all` alone installs a statement-level trigger that publishes only `TG_OP`:
+`all` alone installs a statement-level trigger that publishes only `TG_OP`.
+The trigger fires on the operations `ops=` names, all three when it names none:
 
 ```sql
 create function "widget_notify"() returns trigger as $$
@@ -172,8 +178,13 @@ has no `listen` method, and the subscription refuses it.
 
 ## Operations
 
-`ops` filters the stream to one or more of `INSERT`, `UPDATE`, and `DELETE`.
-Omitted means every operation; an empty array means none.
+`ops` on a subscription filters the stream to one or more of `INSERT`, `UPDATE`,
+and `DELETE`. Omitted means every operation; an empty array means none.
+
+`ops=` on `@watch` is the publisher-side counterpart: it narrows the trigger
+itself, so an operation the entity does not publish never wakes the listener or
+reaches a subscriber. The generated helpers type `ops` to the published set and
+the REST route rejects one that names an omitted operation.
 
 ## Where the filters run
 
@@ -208,13 +219,22 @@ import { watchWidget, watchWidgetRows } from "sdk/api/widget.ts";
 
 const http = new ApiClient("http://127.0.0.1:3000");
 
-const all = watchWidget(http, (event) => {
-    // event.op is INSERT, UPDATE, or DELETE
-}, { filter: { tenantId }, ops: ["DELETE"] });
+const all = watchWidget(http, {
+    onChange: (event) => {
+        // event.op is INSERT, UPDATE, or DELETE
+    },
+    filter: { tenantId },
+    ops: ["DELETE"],
+});
 
-const one = watchWidgetRows(http, (event) => {
-    // event.pks.id is the widget; event.op is INSERT, UPDATE, or DELETE
-}, { pks: [{ id }], filter: { tenantId }, ops: ["UPDATE"] });
+const one = watchWidgetRows(http, {
+    onChange: (event) => {
+        // event.pks.id is the widget; event.op is INSERT, UPDATE, or DELETE
+    },
+    pks: [{ id }],
+    filter: { tenantId },
+    ops: ["UPDATE"],
+});
 
 // later
 all.close();

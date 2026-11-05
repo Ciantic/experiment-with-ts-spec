@@ -962,6 +962,42 @@ describe("generateSchema triggers", () => {
         expect(sql).toContain("    for each statement execute function \"thing_notify\"();");
     });
 
+    it("fires the statement trigger only on the operations @watch ops= names", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/**
+                 * @entity
+                 * @watch all ops=insert
+                 */
+                export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('create trigger "thing_notify" after insert on "thing"');
+        expect(sql).not.toContain("update or delete");
+    });
+
+    it("omits the old-identity notification when @watch ops= excludes update", () => {
+        const { sql } = generate({
+            entities: {
+                Thing: `/**
+                 * @entity
+                 * @watch rows ops=insert,delete
+                 */
+                export interface Thing {
+                    /** @primaryKey */
+                    id: GUID;
+                }`,
+            },
+        });
+
+        expect(sql).toContain('create trigger "thing_notify" after insert or delete on "thing"');
+        expect(sql).not.toContain("if TG_OP = 'UPDATE'");
+    });
+
     it("publishes the primary key per row when the entity declares the watch scope", () => {
         const { sql } = generate({
             entities: {

@@ -3,4 +3,5 @@ export * from "./primitives.ts";
 export * from "./domain/index.ts";
 export * from "./repositories/index.ts";
 export * from "./queries/index.ts";
+export * from "./watches/index.ts";
 export * from "./operations/index.ts";

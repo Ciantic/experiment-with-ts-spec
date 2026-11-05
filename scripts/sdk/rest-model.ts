@@ -14,6 +14,7 @@ import {
     type SpecModel,
     type SpecOperation,
     type TenantOwned,
+    type TriggerEvent,
     type WriteOperation,
 } from "../spec/spec-model.ts";
 
@@ -64,6 +65,8 @@ export interface RestEntity {
     versionFields: string[];
     /** The `@watch` scopes the entity declares. See docs/notifications.md. */
     watch: WatchScope[];
+    /** The operations `@watch ops=` publishes, in trigger order. See docs/notifications.md. */
+    watchOps: TriggerEvent[];
     /** The `@restWatch` scopes the route exposes; a subset of {@link watch}. */
     restWatch: WatchScope[];
     /** The `@watchFilter` fields, whose values the change payload carries. See docs/notifications.md. */
@@ -203,6 +206,7 @@ function restEntityFor(spec: SpecInterface): RestEntity {
         whereFields,
         versionFields: properties.filter((property) => property.tags.version).map((property) => property.name),
         watch: spec.watch,
+        watchOps: spec.watchOps,
         restWatch: spec.restWatch,
         watchFilters: spec.watchFilters,
         operations: operationsFor(spec.name, path, spec.restQueries, spec.restRepositoryOperations, spec.restWatch),

@@ -18,6 +18,7 @@ import {
     type SpecType,
     type SpecTypeAlias,
     type SpecTypeMember,
+    type WatchScope,
 } from "../spec/spec-model.ts";
 
 export type { Diagnostic };
@@ -132,8 +133,21 @@ export interface ZodModel {
     primitives: ZodPrimitive[];
     entities: ZodEntity[];
     queries: ZodQuery[];
+    watches: ZodWatch[];
     operations: ZodOperation[];
     diagnostics: Diagnostic[];
+}
+
+/** The generated watch argument schema for one entity: the scopes its route exposes. See docs/notifications.md. */
+export interface ZodWatch {
+    entity: string;
+    schemaName: string;
+    /** The `@restWatch` scopes; `all` makes the whole argument optional and `rows` adds `pks`. */
+    scopes: WatchScope[];
+    /** The `@watchFilter` fields the filter object validates. */
+    filterFields: string[];
+    /** The operations `@watch ops=` publishes, in wire form. */
+    operations: string[];
 }
 
 /** One comparable field: its name, its whitelisted operators, and the schema its values validate against. */
@@ -589,8 +603,22 @@ export function buildZodModel(spec: SpecModel): ZodModel {
     const entities = buildEntities(interfaces, resolver);
     const queries = buildQueries(interfaces, resolver);
     const operations = buildOperations(spec, resolver);
+    const watches = buildWatches(interfaces);
 
-    return { primitives: buildPrimitives(aliases), entities, queries, operations, diagnostics };
+    return { primitives: buildPrimitives(aliases), entities, queries, watches, operations, diagnostics };
+}
+
+/** The watch argument schemas: one per entity whose route exposes a change stream. */
+function buildWatches(interfaces: Map<string, SpecInterface>): ZodWatch[] {
+    return [...interfaces.values()]
+        .filter((spec) => spec.restWatch.length > 0)
+        .map((spec) => ({
+            entity: spec.name,
+            schemaName: `watch${spec.name}Schema`,
+            scopes: [...spec.restWatch],
+            filterFields: [...spec.watchFilters],
+            operations: spec.watchOps.map((op) => op.toUpperCase()),
+        }));
 }
 
 /** Every spec declaration a type shape names, keyed by the module specifier that imports it. */

@@ -2563,6 +2563,57 @@ export interface Draft { }`,
         ]);
     });
 
+    it("accepts ops= on @watch, in any order", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watch all ops=update,insert
+ */`);
+
+        expect(findings).toEqual([]);
+    });
+
+    it("reports an operation @watch ops= does not know", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watch all ops=insert,merge
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @watch ops= `merge` is not one of: insert, update, delete"]);
+    });
+
+    it("reports an operation @watch ops= names twice", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watch all ops=insert,insert
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @watch ops= names `insert` twice"]);
+    });
+
+    it("requires at least one operation from @watch ops=", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watch all ops=
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @watch ops= requires at least one of: insert, update, delete"]);
+    });
+
+    it("rejects ops= on @restWatch", () => {
+        const findings = lintEntity(`/**
+ * @entity
+ * @repository create
+ * @watch all
+ * @restWatch all ops=insert
+ */`);
+
+        expect(findings).toEqual(["`Invoice`: @restWatch `ops=insert` is not one of: all, rows"]);
+    });
+
     it("reports an exposed notification scope the entity does not declare", () => {
         const findings = lintEntity(`/**
  * @entity

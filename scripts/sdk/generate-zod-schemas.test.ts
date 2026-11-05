@@ -1552,3 +1552,60 @@ export interface Ops<T> {
         expect(operationModule(files, "run")).toContain("export type RunOutput = () => void;");
     });
 });
+
+describe("watch schemas", () => {
+    const INVOICE = `
+/**
+ * @entity
+ * @pgTable invoice
+ * @repository create
+ * @watch all rows ops=insert
+ * @restWatch all rows
+ */
+export interface Invoice {
+    /** @primaryKey */
+    id: string;
+
+    /** @watchFilter */
+    tenantId: string;
+}
+`.trim();
+
+    it("models one watch per entity whose route exposes a change stream", () => {
+        const { model } = generate({ entities: { Invoice: INVOICE } });
+
+        expect(model.watches).toEqual([
+            {
+                entity: "Invoice",
+                schemaName: "watchInvoiceSchema",
+                scopes: ["all", "rows"],
+                filterFields: ["tenantId"],
+                operations: ["INSERT"],
+            },
+        ]);
+    });
+
+    it("renders the watch argument as its own schema module", () => {
+        const { files } = generate({ entities: { Invoice: INVOICE } });
+        const code = files.get(join("watches", "watchInvoice.ts")) ?? "";
+
+        expect(code).toContain(
+            'import { invoiceSchema } from "../domain/invoiceSchema.ts";',
+        );
+        expect(code).toContain(
+            'import { invoicePrimaryKeySchema } from "../repositories/invoicePrimaryKeySchema.ts";',
+        );
+        expect(code).toContain(
+            'export const watchInvoiceSchema = z.strictObject({ pks: z.array(invoicePrimaryKeySchema).exactOptional(), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() }).optional();',
+        );
+    });
+
+    it("re-exports the watch schemas from the schema barrel", () => {
+        const { files } = generate({ entities: { Invoice: INVOICE } });
+
+        expect(files.get(join("watches", "index.ts"))).toContain(
+            'export * from "./watchInvoice.ts";',
+        );
+        expect(files.get("schemas.ts")).toContain('export * from "./watches/index.ts";');
+    });
+});

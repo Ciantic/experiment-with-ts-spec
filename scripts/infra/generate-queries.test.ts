@@ -32,6 +32,7 @@ function table(
         repositoryOperations: [...WRITE_OPERATIONS],
         queries: ["query"],
         watch: [],
+        watchOps: ["insert", "update", "delete"],
         watchFilters: [],
     };
 }
@@ -313,6 +314,26 @@ describe("renderWatchModule", () => {
         expect(code).toContain("export function watchInvoice(");
         expect(code).toContain("export function watchInvoiceRows(");
         expect(code).not.toContain("): AsyncIterable<WatchRowsEvent<InvoicePrimaryKey>>;");
+    });
+
+    it("narrows ops and events to the operations the table publishes", () => {
+        const code = renderWatchModule("Invoice", { ...invoice, watch: ["all", "rows"], watchOps: ["insert"] });
+
+        expect(code).toContain('import type { WatchAllEvent, WatchRowsEvent } from "sdk/watch.ts";');
+        expect(code).toContain(
+            'opts?: { ops?: readonly "INSERT"[] | undefined; signal?: AbortSignal },',
+        );
+        expect(code).toContain('): AsyncIterable<WatchAllEvent<"INSERT">> {');
+        expect(code).toContain(
+            'opts: { pks: InvoicePrimaryKey[]; ops?: readonly "INSERT"[] | undefined; signal?: AbortSignal },',
+        );
+        expect(code).toContain('): AsyncIterable<WatchRowsEvent<InvoicePrimaryKey, "INSERT">> {');
+        expect(code).toContain(
+            'return watchAll(db, "invoice", opts?.ops, opts?.signal) as AsyncIterable<WatchAllEvent<"INSERT">>;',
+        );
+        expect(code).toContain(
+            'return watchRows(db, "invoice", opts.pks, ["id"], opts.ops, opts.signal) as AsyncIterable<WatchRowsEvent<InvoicePrimaryKey, "INSERT">>;',
+        );
     });
 
     it("accepts a typed filter when @watchFilter names a field", () => {

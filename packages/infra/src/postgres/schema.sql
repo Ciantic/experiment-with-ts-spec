@@ -265,13 +265,10 @@ create trigger "invoice_sent_row_compute" before insert or update on "invoice_se
 
 create function "invoice_notify"() returns trigger as $$
 begin
-    if TG_OP = 'UPDATE' and ((OLD."id") is distinct from (NEW."id") or (OLD."tenantId") is distinct from (NEW."tenantId")) then
-        perform pg_notify('invoice', json_build_object('op', TG_OP, 'key', json_build_object('id', OLD."id"::text), 'filter', json_build_object('tenantId', OLD."tenantId"::text))::text);
-    end if;
     perform pg_notify('invoice', json_build_object('op', TG_OP, 'key', json_build_object('id', case when TG_OP = 'DELETE' then OLD."id" else NEW."id" end::text), 'filter', json_build_object('tenantId', case when TG_OP = 'DELETE' then OLD."tenantId" else NEW."tenantId" end::text))::text);
     return null;
 end;
 $$ language plpgsql;
 
-create trigger "invoice_notify" after insert or update or delete on "invoice"
+create trigger "invoice_notify" after insert on "invoice"
     for each row execute function "invoice_notify"();

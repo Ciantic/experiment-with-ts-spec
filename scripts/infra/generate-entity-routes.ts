@@ -53,7 +53,7 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
         case "query":
             return `query${entity.entity}Schema`;
         case "watch":
-            return `${entity.module}PrimaryKeySchema`;
+            return `watch${entity.entity}Schema`;
         case "create":
             return `${entity.module}InsertSchema`;
         case "upsert":
@@ -66,44 +66,10 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     }
 }
 
-/** The entity's own schema, whose picked fields validate a `@watchFilter` value. */
-function entitySchemaName(entity: RestEntity): string {
-    return `${entity.module}Schema`;
-}
-
-/** The filter object a watch accepts: the fields `@watchFilter` declares, each optional. */
-function watchFilterExpression(entity: RestEntity): string {
-    const members = entity.watchFilters
-        .map((field) => `${field}: ${entitySchemaName(entity)}.shape.${field}.exactOptional()`)
-        .join(", ");
-    return `z.strictObject({ ${members} })`;
-}
-
-/** The generated schema expression for the operations a stream may select. */
-const OPS_SCHEMA = 'z.array(z.enum(["INSERT", "UPDATE", "DELETE"]))';
-
 /** The expression the router validates the argument with. A read takes options; every write takes rows. */
 function inputExpression(entity: RestEntity, kind: RestKind): string {
     if (kind === "watch") {
-        const keys = `z.array(${schemaName(entity, kind) as string})`;
-        const ops = `ops: ${OPS_SCHEMA}.exactOptional()`;
-        const filter =
-            entity.watchFilters.length > 0 ? `filter: ${watchFilterExpression(entity)}.exactOptional()` : undefined;
-        const all = entity.restWatch.includes("all");
-        const rows = entity.restWatch.includes("rows");
-        const members: string[] = [];
-        if (all && rows) {
-            members.push(`pks: ${keys}.exactOptional()`);
-        } else if (rows) {
-            members.push(`pks: ${keys}`);
-        }
-        if (filter !== undefined) {
-            members.push(filter);
-        }
-        members.push(ops);
-        const object = `z.strictObject({ ${members.join(", ")} })`;
-        // Only the all scope may omit the whole argument; the rows scope names its keys.
-        return all ? `${object}.optional()` : object;
+        return schemaName(entity, kind) as string;
     }
     const name = schemaName(entity, kind) as string;
     return kind === "query" ? name : `z.array(${name})`;
@@ -145,10 +111,6 @@ function inputSchemas(entity: RestEntity): string[] {
             return name === undefined ? [] : [name];
         }),
     );
-    // A watch filter picks its fields out of the entity's own schema.
-    if (entity.restWatch.length > 0 && entity.watchFilters.length > 0) {
-        names.add(entitySchemaName(entity));
-    }
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
@@ -163,8 +125,8 @@ export function renderEntityRoutes(entity: RestEntity): string {
     const guards = entity.operations.map(guardName).sort((a, b) => a.localeCompare(b));
     lines.push(`import { ${guards.join(", ")} } from "${GUARDS_IMPORT}";`);
     const streams = entity.operations.some((operation) => operation.kind === "watch");
-    // A stream takes a row/operation filter, and a write wraps its rows in an array, so both need `z`.
-    if (streams || entity.operations.some((operation) => operation.kind !== "query" && operation.kind !== "watch")) {
+    // A write wraps its rows in an array, so only the writes need `z`.
+    if (entity.operations.some((operation) => operation.kind !== "query" && operation.kind !== "watch")) {
         lines.push('import { z } from "zod";');
     }
     if (streams) {

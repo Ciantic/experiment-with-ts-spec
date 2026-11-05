@@ -68,9 +68,9 @@ exposed, named nowhere when only `all` is exposed, and optional when both are.
 `filter` is present when a field of the entity carries `@watchFilter`, and its
 fields are the ones that tag marks. The stream has no `Call` builder, since it
 opens a connection rather than sending one request; the SDK generates
-`watch<Entity>(http, onChange, options)` for `all` and
-`watch<Entity>Rows(http, onChange, options)` for `rows`, each returning a
-subscription. See `docs/notifications.md`. An entity that names no exposed
+`watch<Entity>(http, { onChange, filter?, ops? })` for `all` and
+`watch<Entity>Rows(http, { onChange, pks, filter?, ops? })` for `rows`, each
+returning the `EventSource`. See `docs/notifications.md`. An entity that names no exposed
 operation at all has no collection: no path, no route module, and no client
 module. See `docs/spec-annotations.md`. A read and a delete carry their argument
 in a single `q` query parameter; a write carries it in the body.
