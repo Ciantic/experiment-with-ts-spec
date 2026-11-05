@@ -463,7 +463,7 @@ describe("watch helpers", () => {
             'return watch<WatchAllEvent>(http.url("/notified/watch", ops === undefined ? undefined : { ops }), onChange);',
         );
         expect(module()).toContain(
-            'return watch<WatchRowsEvent<NotifiedPrimaryKey>>(http.url("/notified/watch", ops === undefined ? { pks } : { pks, ops }), onChange);',
+            'return watch<WatchRowsEvent<NotifiedPrimaryKey>>(http.url("/notified/watch/rows", ops === undefined ? { pks } : { pks, ops }), onChange);',
         );
     });
 
@@ -531,12 +531,12 @@ describe("watch helpers", () => {
         expect(watchedUrls).toEqual([
             http.url("/notified/watch", { ops: ["DELETE"] }),
             http.url("/notified/watch"),
-            http.url("/notified/watch", { pks: [{ id: "a" }], ops: ["UPDATE"] }),
+            http.url("/notified/watch/rows", { pks: [{ id: "a" }], ops: ["UPDATE"] }),
         ]);
         expect(watchedUrls.map((url) => new URL(url).pathname)).toEqual([
             "/notified/watch",
             "/notified/watch",
-            "/notified/watch",
+            "/notified/watch/rows",
         ]);
         expect(events).toHaveLength(3);
     });

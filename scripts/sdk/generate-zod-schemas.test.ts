@@ -1580,6 +1580,7 @@ export interface Invoice {
             {
                 entity: "Invoice",
                 schemaName: "watchInvoiceSchema",
+                rowsSchemaName: "watchInvoiceRowsSchema",
                 scopes: ["all", "rows"],
                 allFilters: ["tenantId"],
                 rowsFilters: ["tenantId"],
@@ -1589,27 +1590,32 @@ export interface Invoice {
         ]);
     });
 
-    it("renders the watch argument as its own schema module", () => {
+    it("renders one schema module per exposed scope", () => {
         const { files } = generate({ entities: { Invoice: INVOICE } });
-        const code = files.get(join("watches", "watchInvoice.ts")) ?? "";
+        const all = files.get(join("watches", "watchInvoiceSchema.ts")) ?? "";
+        const rows = files.get(join("watches", "watchInvoiceRowsSchema.ts")) ?? "";
 
-        expect(code).toContain(
-            'import { invoiceSchema } from "../domain/invoiceSchema.ts";',
+        expect(all).toContain('import { invoiceSchema } from "../domain/invoiceSchema.ts";');
+        expect(all).not.toContain("invoicePrimaryKeySchema");
+        expect(all).toContain(
+            'export const watchInvoiceSchema = z.strictObject({ filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() }).optional();',
         );
-        expect(code).toContain(
+
+        expect(rows).toContain('import { invoiceSchema } from "../domain/invoiceSchema.ts";');
+        expect(rows).toContain(
             'import { invoicePrimaryKeySchema } from "../repositories/invoicePrimaryKeySchema.ts";',
         );
-        expect(code).toContain(
-            'export const watchInvoiceSchema = z.union([z.strictObject({ pks: z.array(invoicePrimaryKeySchema), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() }), z.strictObject({ filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT"])).exactOptional() })]).optional();',
+        expect(rows).toContain(
+            'export const watchInvoiceRowsSchema = z.strictObject({ pks: z.array(invoicePrimaryKeySchema), filter: z.strictObject({ tenantId: invoiceSchema.shape.tenantId.exactOptional() }).exactOptional(), ops: z.array(z.enum(["INSERT", "UPDATE", "DELETE"])).exactOptional() });',
         );
     });
 
     it("re-exports the watch schemas from the schema barrel", () => {
         const { files } = generate({ entities: { Invoice: INVOICE } });
 
-        expect(files.get(join("watches", "index.ts"))).toContain(
-            'export * from "./watchInvoice.ts";',
-        );
+        const index = files.get(join("watches", "index.ts")) ?? "";
+        expect(index).toContain('export * from "./watchInvoiceSchema.ts";');
+        expect(index).toContain('export * from "./watchInvoiceRowsSchema.ts";');
         expect(files.get("schemas.ts")).toContain('export * from "./watches/index.ts";');
     });
 });

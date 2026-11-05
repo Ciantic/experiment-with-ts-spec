@@ -8,6 +8,7 @@ import {
     type Diagnostic,
     type RestPermission,
     type WatchScope,
+    WATCH_SCOPES,
     type ReadOperation,
     type SpecInterface,
     type SpecLocation,
@@ -37,6 +38,8 @@ export interface RestOperation {
     method: RestMethod;
     path: string;
     source: RestSource;
+    /** The change scope a watch serves; absent on every other kind. */
+    scope?: WatchScope;
 }
 
 /** One entity's REST surface. */
@@ -168,8 +171,19 @@ function operationsFor(
             operations.push({ id: callId(entity, kind), kind, method: "GET", path: readPath(path), source: "query" });
         }
     }
-    if (watch.length > 0) {
-        operations.push({ id: callId(entity, "watch"), kind: "watch", method: "GET", path: `${path}/watch`, source: "query" });
+    for (const scope of WATCH_SCOPES) {
+        if (!watch.includes(scope)) {
+            continue;
+        }
+        const rows = scope === "rows";
+        operations.push({
+            id: rows ? `${callId(entity, "watch")}Rows` : callId(entity, "watch"),
+            kind: "watch",
+            method: "GET",
+            path: rows ? `${path}/watch/rows` : `${path}/watch`,
+            source: "query",
+            scope,
+        });
     }
     for (const kind of WRITE_OPERATIONS) {
         if (writes.includes(kind)) {

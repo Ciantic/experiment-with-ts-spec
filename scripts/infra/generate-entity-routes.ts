@@ -9,6 +9,7 @@ import {
     type RestEntity,
     type RestKind,
     type RestModel,
+    type RestOperation,
 } from "../sdk/rest-model.ts";
 import { guardName } from "./generate-guards.ts";
 
@@ -53,7 +54,7 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
         case "query":
             return `query${entity.entity}Schema`;
         case "watch":
-            return `watch${entity.entity}Schema`;
+            return undefined;
         case "create":
             return `${entity.module}InsertSchema`;
         case "upsert":
@@ -66,13 +67,18 @@ function schemaName(entity: RestEntity, kind: RestKind): string | undefined {
     }
 }
 
+/** The schema that validates one watch scope's argument. */
+function watchSchemaName(entity: RestEntity, scope: string | undefined): string {
+    return `watch${entity.entity}${scope === "rows" ? "Rows" : ""}Schema`;
+}
+
 /** The expression the router validates the argument with. A read takes options; every write takes rows. */
-function inputExpression(entity: RestEntity, kind: RestKind): string {
-    if (kind === "watch") {
-        return schemaName(entity, kind) as string;
+function inputExpression(entity: RestEntity, operation: RestOperation): string {
+    if (operation.kind === "watch") {
+        return watchSchemaName(entity, operation.scope);
     }
-    const name = schemaName(entity, kind) as string;
-    return kind === "query" ? name : `z.array(${name})`;
+    const name = schemaName(entity, operation.kind) as string;
+    return operation.kind === "query" ? name : `z.array(${name})`;
 }
 
 /** Every repository function one entity needs. */
@@ -88,16 +94,8 @@ function repositoryFunctions(entity: RestEntity): string[] {
 function queryBarrelFunctions(entity: RestEntity): string[] {
     const names = new Set<string>();
     for (const operation of entity.operations) {
-        if (operation.kind === "query") {
+        if (operation.kind === "query" || operation.kind === "watch") {
             names.add(operation.id);
-        } else if (operation.kind === "watch") {
-            // The all stream is the table watch; the rows stream is its own function.
-            if (entity.restWatch.includes("all")) {
-                names.add(operation.id);
-            }
-            if (entity.restWatch.includes("rows")) {
-                names.add(`${operation.id}Rows`);
-            }
         }
     }
     return [...names].sort((a, b) => a.localeCompare(b));
@@ -107,6 +105,9 @@ function queryBarrelFunctions(entity: RestEntity): string[] {
 function inputSchemas(entity: RestEntity): string[] {
     const names = new Set(
         entity.operations.flatMap((operation) => {
+            if (operation.kind === "watch") {
+                return [watchSchemaName(entity, operation.scope)];
+            }
             const name = schemaName(entity, operation.kind);
             return name === undefined ? [] : [name];
         }),
@@ -154,38 +155,21 @@ export function renderEntityRoutes(entity: RestEntity): string {
         if (operation.kind === "watch") {
             lines.push("        stream: true,");
         }
-        lines.push(`        input: ${inputExpression(entity, operation.kind)},`);
+        lines.push(`        input: ${inputExpression(entity, operation)},`);
         lines.push(`        guard: ${guardName(operation)},`);
         if (operation.kind === "watch") {
-            const all = entity.restWatch.includes("all");
-            const rows = entity.restWatch.includes("rows");
-            const allFilter = entity.watchAllFilters.length > 0;
-            const rowsFilter = entity.watchRowsFilters.length > 0;
-            if (all && rows) {
-                lines.push("        handler: async (ctx, body) =>");
-                lines.push("            new SseStream((signal) => {");
-                lines.push("                const opts = body;");
-                lines.push("                return opts === undefined || !(\"pks\" in opts)");
-                lines.push(
-                    `                    ? ${operation.id}(ctx.db, {${allFilter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal })`,
-                );
-                lines.push(
-                    `                    : ${operation.id}Rows(ctx.db, { pks: opts.pks,${rowsFilter ? " filter: opts.filter," : ""} ops: opts.ops, signal });`,
-                );
-                lines.push("            }),");
-            } else if (rows) {
-                lines.push("        handler: async (ctx, body) =>");
-                lines.push("            new SseStream((signal) => {");
-                lines.push("                const opts = body;");
-                lines.push(`                return ${operation.id}Rows(ctx.db, { ...opts, signal });`);
-                lines.push("            }),");
-            } else {
-                lines.push("        handler: async (ctx, body) =>");
-                lines.push("            new SseStream((signal) => {");
-                lines.push("                const opts = body;");
-                lines.push(`                return ${operation.id}(ctx.db, {${allFilter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`);
-                lines.push("            }),");
-            }
+            const rows = operation.scope === "rows";
+            const filter =
+                rows ? entity.watchRowsFilters.length > 0 : entity.watchAllFilters.length > 0;
+            lines.push("        handler: async (ctx, body) =>");
+            lines.push("            new SseStream((signal) => {");
+            lines.push("                const opts = body;");
+            lines.push(
+                rows
+                    ? `                return ${operation.id}(ctx.db, { ...opts, signal });`
+                    : `                return ${operation.id}(ctx.db, {${filter ? " filter: opts?.filter," : ""} ops: opts?.ops, signal });`,
+            );
+            lines.push("            }),");
         } else {
             // The body is validated against the schema above, so the handler may trust its shape.
             lines.push(`        handler: (ctx, body) => ${operation.id}(ctx.db, body),`);

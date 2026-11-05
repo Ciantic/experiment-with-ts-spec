@@ -234,20 +234,22 @@ function keyType(entity: RestEntity): string {
 export function renderClientModule(entity: RestEntity): string {
     const name = entity.entity;
     const query = operation(entity, "query");
-    const watchOperation = operation(entity, "watch");
+    const watchOperations = entity.operations.filter((candidate) => candidate.kind === "watch");
+    const allOperation = watchOperations.find((candidate) => candidate.scope === "all");
+    const rowsOperation = watchOperations.find((candidate) => candidate.scope === "rows");
     const create = operation(entity, "create");
     const upsert = operation(entity, "upsert");
     const update = operation(entity, "update");
     const remove = operation(entity, "delete");
-    const watchAll = watchOperation !== undefined && entity.restWatch.includes("all");
-    const watchRows = watchOperation !== undefined && entity.restWatch.includes("rows");
+    const watchAll = allOperation !== undefined;
+    const watchRows = rowsOperation !== undefined;
     const calls = [query, create, upsert, update, remove].filter(
         (call): call is RestOperation => call !== undefined,
     );
     const callErrors = calls.flatMap((call) => entityCallErrors(entity, call));
     const httpTypes = [
         ...new Set([
-            ...(watchOperation === undefined ? [] : ["HttpClient"]),
+            ...(watchOperations.length === 0 ? [] : ["HttpClient"]),
             ...callErrors.map((error) => error.name),
         ]),
     ].sort((a, b) => a.localeCompare(b));
@@ -271,7 +273,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push(`import type { ${selectionTypes.join(", ")} } from "${SELECTION_IMPORT}";`);
     }
     // A filter names the entity's fields, so the stream's type needs it too.
-    if (!query && watchOperation && (entity.watchAllFilters.length > 0 || entity.watchRowsFilters.length > 0)) {
+    if (!query && watchOperations.length > 0 && (entity.watchAllFilters.length > 0 || entity.watchRowsFilters.length > 0)) {
         lines.push(`import type { ${name} } from "${entity.importSpecifier}";`);
     }
     // The write types come from this package's schema modules; a type-only import keeps `zod` out of the runtime.
@@ -308,7 +310,7 @@ export function renderClientModule(entity: RestEntity): string {
     if (httpTypes.length > 0) {
         lines.push(`import type { ${httpTypes.join(", ")} } from "${ERRORS_IMPORT}";`);
     }
-    if (watchOperation) {
+    if (watchOperations.length > 0) {
         // A stream is opened rather than sent, so the helper needs the client's root and an EventSource factory.
         const allUnion = watchAll ? operationUnion(entity.watchAllOps ?? []) : undefined;
         const rowsUnion = watchRows ? operationUnion(entity.watchRowsOps ?? []) : undefined;
@@ -355,7 +357,7 @@ export function renderClientModule(entity: RestEntity): string {
         lines.push("}");
     }
 
-    if (watchOperation) {
+    if (watchOperations.length > 0) {
         const key = keyType(entity);
         const filterType = (fields: string[]): string | undefined =>
             fields.length > 0
@@ -370,9 +372,9 @@ export function renderClientModule(entity: RestEntity): string {
         const allEvent = allUnion === undefined ? "WatchAllEvent" : `WatchAllEvent<${allUnion}>`;
         const rowsEvent = rowsUnion === undefined ? `WatchRowsEvent<${key}>` : `WatchRowsEvent<${key}, ${rowsUnion}>`;
         lines.push("");
-        if (watchAll) {
+        if (allOperation !== undefined) {
             lines.push(`/** The change stream of all \`${name}\` rows, optionally scoped to operations${allFilter === undefined ? "" : " and filter values"}. See docs/notifications.md. */`);
-            lines.push(`export function ${watchOperation.id}(`);
+            lines.push(`export function ${allOperation.id}(`);
             lines.push("    http: HttpClient,");
             lines.push("    opts: {");
             lines.push(`        onChange: (event: ${allEvent}) => void;`);
@@ -384,23 +386,23 @@ export function renderClientModule(entity: RestEntity): string {
             lines.push("): EventSource {");
             lines.push("    const { onChange, ops } = opts;");
             if (allFilter === undefined) {
-                lines.push(`    return watch<${allEvent}>(http.url("${watchOperation.path}", ops === undefined ? undefined : { ops }), onChange);`);
+                lines.push(`    return watch<${allEvent}>(http.url("${allOperation.path}", ops === undefined ? undefined : { ops }), onChange);`);
             } else {
                 lines.push("    const selected = opts.filter;");
                 lines.push("    const argument = ops === undefined && selected === undefined");
                 lines.push("        ? undefined");
                 lines.push("        : { ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };");
-                lines.push(`    return watch<${allEvent}>(http.url("${watchOperation.path}", argument), onChange);`);
+                lines.push(`    return watch<${allEvent}>(http.url("${allOperation.path}", argument), onChange);`);
             }
             lines.push("}");
         }
 
-        if (watchRows) {
+        if (rowsOperation !== undefined) {
             if (watchAll) {
                 lines.push("");
             }
             lines.push(`/** The change stream of the selected \`${name}\` rows, optionally scoped to operations${rowsFilter === undefined ? "" : " and filter values"}. See docs/notifications.md. */`);
-            lines.push(`export function ${watchOperation.id}Rows(`);
+            lines.push(`export function ${rowsOperation.id}(`);
             lines.push("    http: HttpClient,");
             lines.push("    opts: {");
             lines.push(`        onChange: (event: ${rowsEvent}) => void;`);
@@ -417,11 +419,11 @@ export function renderClientModule(entity: RestEntity): string {
             }
             if (rowsFilter === undefined) {
                 lines.push(
-                    `    return watch<${rowsEvent}>(http.url("${watchOperation.path}", ops === undefined ? { pks } : { pks, ops }), onChange);`,
+                    `    return watch<${rowsEvent}>(http.url("${rowsOperation.path}", ops === undefined ? { pks } : { pks, ops }), onChange);`,
                 );
             } else {
                 lines.push("    const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };");
-                lines.push(`    return watch<${rowsEvent}>(http.url("${watchOperation.path}", argument), onChange);`);
+                lines.push(`    return watch<${rowsEvent}>(http.url("${rowsOperation.path}", argument), onChange);`);
             }
             lines.push("}");
         }

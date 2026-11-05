@@ -150,7 +150,8 @@ describe("entityActions", () => {
             "update",
             "delete",
             "query",
-            "watch",
+            "watchAll",
+            "watchRows",
         ]);
     });
 
@@ -323,7 +324,8 @@ export interface WidgetOperations<T> {
             "update",
             "delete",
             "query",
-            "watch",
+            "watchAll",
+            "watchRows",
             "send",
         ]);
     });
@@ -348,7 +350,8 @@ export interface WidgetOperations<T> {
             "update",
             "delete",
             "query",
-            "watch",
+            "watchAll",
+            "watchRows",
         ]);
     });
 
@@ -374,6 +377,8 @@ describe("actionName", () => {
     it("capitalizes the verb and names the plural", () => {
         expect(actionName("create", "sent invoices")).toBe("Create sent invoices");
         expect(actionName("query", "invoices")).toBe("Query invoices");
+        expect(actionName("watchAll", "invoices")).toBe("Watch all invoices");
+        expect(actionName("watchRows", "invoices")).toBe("Watch rows of invoices");
     });
 });
 
@@ -381,7 +386,7 @@ describe("renderPermissionsModule", () => {
     it("renders one nested entry per entity, inside a const", () => {
         const module = renderPermissionsModule([
             { key: "marker", name: "Marker", plural: "markers", tenantOwned: false, actions: ["create", "update", "query"] },
-            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watch"] },
+            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watchAll", "watchRows"] },
         ]);
 
         expect(module).toContain("export const PERMISSIONS = {");
@@ -390,7 +395,8 @@ describe("renderPermissionsModule", () => {
         expect(module).toContain("        tenantOwned: false,");
         expect(module).toContain('            "create": { name: "Create markers" },');
         expect(module).toContain("        tenantOwned: true,");
-        expect(module).toContain('            "watch": { name: "Watch widgets" },');
+        expect(module).toContain('            "watchAll": { name: "Watch all widgets" },');
+        expect(module).toContain('            "watchRows": { name: "Watch rows of widgets" },');
         expect(module).toContain("} as const;");
     });
 
@@ -430,7 +436,7 @@ describe("renderPermissionsModule", () => {
 
     it("loads to the nested PERMISSIONS value the SDK reads at runtime", () => {
         const entries: PermissionEntry[] = [
-            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watch"] },
+            { key: "widget", name: "Widget", plural: "widgets", tenantOwned: true, actions: ["query", "watchAll", "watchRows"] },
         ];
         const loaded = tsLoadGeneratedModule<Record<string, unknown>>(
             renderPermissionsModule(entries),
@@ -443,7 +449,8 @@ describe("renderPermissionsModule", () => {
                 tenantOwned: true,
                 actions: {
                     query: { name: "Query widgets" },
-                    watch: { name: "Watch widgets" },
+                    watchAll: { name: "Watch all widgets" },
+                    watchRows: { name: "Watch rows of widgets" },
                 },
             },
         });

@@ -204,10 +204,10 @@ measurable.
 
 ## Over REST
 
-One route serves both scopes: `GET /<table>/watch`. Its argument is
-`{ pks?, filter?, ops? }`. When `pks` is present the route validates the `rows`
-scope and its filter; otherwise it validates `all` and its filter. `ops` is
-validated against the operations that scope publishes.
+Each scope has its own route. `GET /<table>/watch` takes `{ filter?, ops? }`
+for `all`; `GET /<table>/watch/rows` takes `{ pks, filter?, ops? }` for `rows`.
+Each route validates against its own schema, and `ops` is validated against the
+operations that scope publishes.
 
 Each event is `{ op }` for the table stream, or `{ pks, op }` for the row stream:
 

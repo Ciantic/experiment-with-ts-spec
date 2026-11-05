@@ -94,19 +94,19 @@ const WATCHES_DIR = "watches";
 /** The barrel re-exporting every watch schema, inside {@link WATCHES_DIR}. */
 const WATCHES_INDEX = join(WATCHES_DIR, "index.ts");
 
-/** The file for one entity's watch argument, e.g. `Invoice` -> `watches/watchInvoice.ts`. */
-export function watchFileName(entity: string): string {
-    return join(WATCHES_DIR, `watch${entity}.ts`);
+/** The file for one scope's watch argument, e.g. `Invoice` + `rows` -> `watches/watchInvoiceRowsSchema.ts`. */
+export function watchFileName(entity: string, scope: string): string {
+    return join(WATCHES_DIR, `watch${entity}${scope === "rows" ? "Rows" : ""}Schema.ts`);
 }
 
-/** Render one entity's watch argument schema: the keys, filter values, and operations its route takes. */
-export function generateWatchFile(watch: ZodWatch): string {
+/** Render one scope's watch argument schema: its keys, filter values, and operations. */
+export function generateWatchFile(watch: ZodWatch, scope: "all" | "rows"): string {
     const lines = [HEADER, 'import { z } from "zod";'];
     const module = lowerFirst(watch.entity);
-    const rows = watch.scopes.includes("rows");
-    const all = watch.scopes.includes("all");
+    const rows = scope === "rows";
+    const filters = rows ? watch.rowsFilters : watch.allFilters;
     const imports: string[] = [];
-    if (watch.allFilters.length > 0 || watch.rowsFilters.length > 0) {
+    if (filters.length > 0) {
         imports.push(`import { ${module}Schema } from "../domain/${module}Schema.ts";`);
     }
     if (rows) {
@@ -114,23 +114,23 @@ export function generateWatchFile(watch: ZodWatch): string {
     }
     lines.push(...imports.sort((a, b) => a.localeCompare(b)));
     lines.push("");
-    const filter = (fields: string[]): string =>
-        `filter: z.strictObject({ ${fields.map((field) => `${field}: ${module}Schema.shape.${field}.exactOptional()`).join(", ")} }).exactOptional()`;
-    const ops = (operations: string[]): string =>
-        `ops: z.array(z.enum([${operations.map((op) => JSON.stringify(op)).join(", ")}])).exactOptional()`;
-    const allObject = `z.strictObject({ ${[...(watch.allFilters.length > 0 ? [filter(watch.allFilters)] : []), ops(watch.allOperations)].join(", ")} })`;
-    const rowsObject = `z.strictObject({ pks: z.array(${module}PrimaryKeySchema), ${[...(watch.rowsFilters.length > 0 ? [filter(watch.rowsFilters)] : []), ops(watch.rowsOperations)].join(", ")} })`;
-    const schema = all && rows ? `z.union([${rowsObject}, ${allObject}]).optional()` : all ? `${allObject}.optional()` : rowsObject;
-    lines.push(`export const ${watch.schemaName} = ${schema};`);
+    const filter = `filter: z.strictObject({ ${filters.map((field) => `${field}: ${module}Schema.shape.${field}.exactOptional()`).join(", ")} }).exactOptional()`;
+    const operations = rows ? watch.rowsOperations : watch.allOperations;
+    const ops = `ops: z.array(z.enum([${operations.map((op) => JSON.stringify(op)).join(", ")}])).exactOptional()`;
+    const members = [...(rows ? [`pks: z.array(${module}PrimaryKeySchema)`] : []), ...(filters.length > 0 ? [filter] : []), ops];
+    const object = `z.strictObject({ ${members.join(", ")} })`;
+    lines.push(`export const ${rows ? watch.rowsSchemaName : watch.schemaName} = ${rows ? object : `${object}.optional()`};`);
     lines.push("");
     return lines.join("\n");
 }
 
-/** Render the barrel re-exporting every watch schema. */
+/** Render the barrel re-exporting every scope's watch schema. */
 export function generateWatchesIndex(watches: ZodWatch[]): string {
     const lines = [HEADER];
     for (const watch of [...watches].sort((a, b) => a.entity.localeCompare(b.entity))) {
-        lines.push(`export * from "./watch${watch.entity}.ts";`);
+        for (const scope of watch.scopes) {
+            lines.push(`export * from "./watch${watch.entity}${scope === "rows" ? "Rows" : ""}Schema.ts";`);
+        }
     }
     return lines.join("\n") + "\n";
 }
@@ -709,7 +709,9 @@ export function generateZodSchemas(model: ZodModel): Map<string, string> {
     }
 
     for (const watch of model.watches) {
-        files.set(watchFileName(watch.entity), generateWatchFile(watch));
+        for (const scope of watch.scopes) {
+            files.set(watchFileName(watch.entity, scope), generateWatchFile(watch, scope));
+        }
     }
     if (model.watches.length > 0) {
         files.set(WATCHES_INDEX, generateWatchesIndex(model.watches));

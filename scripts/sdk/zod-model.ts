@@ -142,6 +142,7 @@ export interface ZodModel {
 export interface ZodWatch {
     entity: string;
     schemaName: string;
+    rowsSchemaName: string;
     /** The `@restWatch` scopes; `all` makes the whole argument optional and `rows` adds `pks`. */
     scopes: WatchScope[];
     /** The `@watchAllFilter` fields the `all` filter object validates. */
@@ -619,6 +620,7 @@ function buildWatches(interfaces: Map<string, SpecInterface>): ZodWatch[] {
         .map((spec) => ({
             entity: spec.name,
             schemaName: `watch${spec.name}Schema`,
+            rowsSchemaName: `watch${spec.name}RowsSchema`,
             scopes: [...spec.restWatch],
             allFilters: [...spec.watchAllFilters],
             rowsFilters: [...spec.watchRowsFilters],

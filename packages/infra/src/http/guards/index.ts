@@ -51,3 +51,4 @@ export * from "./canUpsertSeller.ts";
 export * from "./canUpsertTenant.ts";
 export * from "./canUpsertTranslation.ts";
 export * from "./canWatchInvoice.ts";
+export * from "./canWatchInvoiceRows.ts";

@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SDK_PACKAGE_ROOT } from "../paths.ts";
-import { loadSpec, lowerFirst, type SpecInterface, type SpecModel } from "../spec/spec-model.ts";
+import { WATCH_SCOPES, loadSpec, lowerFirst, type SpecInterface, type SpecModel } from "../spec/spec-model.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
 type Output = Pick<Console, "log" | "error">;
@@ -24,11 +24,13 @@ export interface PermissionEntry {
     actions: string[];
 }
 
-/** The actions an entity exposes over REST: its repository writes, then its query, then its watch. */
+/** The actions an entity exposes over REST: its repository writes, then its query, then each watch scope. */
 export function entityActions(entity: SpecInterface): string[] {
     const actions: string[] = [...entity.restRepositoryOperations, ...entity.restQueries];
-    if (entity.restWatch.length > 0) {
-        actions.push("watch");
+    for (const scope of WATCH_SCOPES) {
+        if (entity.restWatch.includes(scope)) {
+            actions.push(scope === "all" ? "watchAll" : "watchRows");
+        }
     }
     return actions;
 }
@@ -83,6 +85,12 @@ export function buildPermissionsModel(spec: SpecModel): PermissionEntry[] {
 
 /** The label an action reads, over the plural noun the entity declares. */
 export function actionName(action: string, plural: string): string {
+    if (action === "watchAll") {
+        return `Watch all ${plural}`;
+    }
+    if (action === "watchRows") {
+        return `Watch rows of ${plural}`;
+    }
     return `${action.charAt(0).toUpperCase()}${action.slice(1)} ${plural}`;
 }
 

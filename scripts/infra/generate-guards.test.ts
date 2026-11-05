@@ -446,6 +446,7 @@ describe("generateGuards", () => {
             "canUpdateOwned.ts",
             "canUpsertOwned.ts",
             "canWatchOwned.ts",
+            "canWatchOwnedRows.ts",
             "index.ts",
         ]);
     });

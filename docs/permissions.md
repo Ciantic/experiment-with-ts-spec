@@ -21,7 +21,8 @@ export const PERMISSIONS = {
         actions: {
             "create": { name: "Create widgets" },
             "query": { name: "Query widgets" },
-            "watch": { name: "Watch widgets" },
+            "watchAll": { name: "Watch all widgets" },
+            "watchRows": { name: "Watch rows of widgets" },
         },
     },
 } as const;
@@ -46,7 +47,8 @@ a tenant-scoped check.
 `name` is the entity's camel-cased key split into capitalized words:
 `invoiceSentRow` becomes `"Invoice Sent Row"`. An action's `name` is its verb
 capitalized plus the entity's plural, so `create` on `Invoice` becomes
-`"Create invoices"`, matching the batch the call takes. Both are for
+`"Create invoices"`, matching the batch the call takes. A watch scope reads
+`"Watch all invoices"` or `"Watch rows of invoices"`. Both names are for
 presentation; the keys are what a permission check uses.
 
 `SpecInterface` carries both names, evaluated once while the model parses the
@@ -66,12 +68,12 @@ parsed `SpecModel` in `scripts/spec/spec-model.ts`:
 | ----------------- | --------------------------------------------------------- |
 | `@restRepository` | the write operations it names: `create`, `upsert`, `update`, `delete` |
 | `@restQueries`    | `query`                                                   |
-| `@restWatch`      | `watch`, whatever scopes it names                         |
+| `@restWatch`      | `watchAll` for `all`, `watchRows` for `rows`              |
 
-The writes come first in their canonical order, then the query, then the watch.
-An entity without a `@restWatch` has no `watch` action, and an entity that
-exposes no call has no entry at all, whatever `@repository` and `@queries` it
-declares for backend callers.
+The writes come first in their canonical order, then the query, then the watch
+scopes in `all`, `rows` order. An entity without a `@restWatch` has no watch
+action, and an entity that exposes no call has no entry at all, whatever
+`@repository` and `@queries` it declares for backend callers.
 
 A REST operation adds the action its `@restPermission <scope>:<action>` names,
 after the entity's exposed actions and in a stable sorted order. The scope must
@@ -158,7 +160,8 @@ export const canCreateTenant: RouteGuard = async (ctx) => {
 | --- | --- |
 | `query` | every tenant the filter names |
 | `create` | every inserted row's tenant |
-| `watch` | the filter tenant, or the tenant of every key named |
+| `watchAll` | the filter tenant, or the global permission when it names none |
+| `watchRows` | the filter tenant, or the tenant of every key named |
 | `upsert` | every row's tenant, and the stored tenant it leaves |
 | `update` | the stored tenant, and the tenant a patch moves it to |
 | `delete` | the stored tenant of every key |
@@ -179,7 +182,8 @@ entity.
 Every module is plain TypeScript over the parsed argument, with no shared guard
 helper: a read's filter names its tenant as a set, so the module spreads
 `filter?.tenantId`; a row names its tenant as one value, so the module reads
-`row.tenantId`; a watch names one filter value and falls back to the lookup. The
+`row.tenantId`; a watch names one filter value and, on the rows scope, falls
+back to the lookup. The
 set is deduplicated with `new Set`, and a value that is absent simply contributes
 none.
 

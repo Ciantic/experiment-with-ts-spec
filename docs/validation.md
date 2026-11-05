@@ -35,10 +35,12 @@ schema uses, so the backend repositories, the REST API, the generated client, an
   read.
 - `packages/sdk/src/queries/index.ts` — the barrel re-exporting every
   query module.
-- `packages/sdk/src/watches/watch<Entity>.ts` — the argument a change stream
-  accepts: the keys the `rows` scope requires, the filter values of the scope
-  the argument selects, and the operations that scope's tag publishes. Exposing
-  `all` makes the whole argument optional. See `docs/notifications.md`.
+- `packages/sdk/src/watches/watch<Entity>Schema.ts` — the argument the `all`
+  stream accepts: its filter values and the operations its tag publishes; the
+  whole argument is optional. See `docs/notifications.md`.
+- `packages/sdk/src/watches/watch<Entity>RowsSchema.ts` — the argument the
+  `rows` stream accepts: the required keys, its filter values, and the
+  operations its tag publishes.
 - `packages/sdk/src/watches/index.ts` — the barrel re-exporting every watch
   module.
 - `packages/sdk/src/schemas.ts` — the generated schema barrel re-exporting the

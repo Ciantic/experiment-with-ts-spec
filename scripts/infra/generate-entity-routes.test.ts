@@ -255,11 +255,12 @@ describe("renderEntityRoutes", () => {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain(
-            'import { canCreateOwned, canDeleteOwned, canQueryOwned, canUpdateOwned, canUpsertOwned, canWatchOwned } from "../guards/index.ts";',
+            'import { canCreateOwned, canDeleteOwned, canQueryOwned, canUpdateOwned, canUpsertOwned, canWatchOwned, canWatchOwnedRows } from "../guards/index.ts";',
         );
         expect(code).toContain("guard: canQueryOwned,");
         expect(code).toContain("guard: canCreateOwned,");
         expect(code).toContain("guard: canWatchOwned,");
+        expect(code).toContain("guard: canWatchOwnedRows,");
         expect(code).toContain("guard: canUpsertOwned,");
         expect(code).toContain("guard: canUpdateOwned,");
         expect(code).toContain("guard: canDeleteOwned,");
@@ -376,7 +377,7 @@ export interface Internal {
         expect(code).not.toContain("/internal/query");
     });
 
-    it("serves an all-and-rows watch as one optional-key stream", () => {
+    it("serves each exposed scope as its own stream", () => {
         const entity = build({ Notified: NOTIFIED }).entities[0];
         if (!entity) {
             throw new Error("fixture is missing the notified entity");
@@ -386,13 +387,13 @@ export interface Internal {
         expect(code).toContain('import { SseStream } from "../sse.ts";');
         expect(code).toContain('id: "watchNotified"');
         expect(code).toContain('path: "/notified/watch"');
+        expect(code).toContain('id: "watchNotifiedRows"');
+        expect(code).toContain('path: "/notified/watch/rows"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain(
-            "input: watchNotifiedSchema,",
-        );
-        expect(code).toContain("const opts = body;");
-        expect(code).toContain("? watchNotified(ctx.db, { ops: opts?.ops, signal })");
-        expect(code).toContain(": watchNotifiedRows(ctx.db, { pks: opts.pks, ops: opts.ops, signal });");
+        expect(code).toContain("input: watchNotifiedSchema,");
+        expect(code).toContain("input: watchNotifiedRowsSchema,");
+        expect(code).toContain("return watchNotified(ctx.db, { ops: opts?.ops, signal });");
+        expect(code).toContain("return watchNotifiedRows(ctx.db, { ...opts, signal });");
     });
 
     it("validates ops against the operations the scope tag publishes", () => {
@@ -402,9 +403,8 @@ export interface Internal {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain(
-            "input: watchInsertedSchema,",
-        );
+        expect(code).toContain("input: watchInsertedSchema,");
+        expect(code).toContain("input: watchInsertedRowsSchema,");
     });
 
     it("serves a rows-only watch with a required key filter", () => {
@@ -415,10 +415,10 @@ export interface Internal {
         const code = renderEntityRoutes(entity);
 
         expect(code).toContain('import { SseStream } from "../sse.ts";');
-        expect(code).toContain('id: "watchWatched"');
-        expect(code).toContain('path: "/watched/watch"');
+        expect(code).toContain('id: "watchWatchedRows"');
+        expect(code).toContain('path: "/watched/watch/rows"');
         expect(code).toContain("stream: true,");
-        expect(code).toContain("input: watchWatchedSchema,");
+        expect(code).toContain("input: watchWatchedRowsSchema,");
         expect(code).toContain("const opts = body;");
         expect(code).toContain("return watchWatchedRows(ctx.db, { ...opts, signal });");
     });
@@ -430,14 +430,12 @@ export interface Internal {
         }
         const code = renderEntityRoutes(entity);
 
-        expect(code).toContain("const opts = body;");
+        expect(code).toContain("input: watchFilteredSchema,");
+        expect(code).toContain("input: watchFilteredRowsSchema,");
         expect(code).toContain(
-            "input: watchFilteredSchema,",
+            "return watchFiltered(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal });",
         );
-        expect(code).toContain("? watchFiltered(ctx.db, { filter: opts?.filter, ops: opts?.ops, signal })");
-        expect(code).toContain(
-            ": watchFilteredRows(ctx.db, { pks: opts.pks, filter: opts.filter, ops: opts.ops, signal });",
-        );
+        expect(code).toContain("return watchFilteredRows(ctx.db, { ...opts, signal });");
     });
 });
 

@@ -75,7 +75,7 @@ export function watchInvoiceRows(
     const { onChange, pks, ops } = opts;
     const selected = opts.filter;
     const argument = { pks, ...(ops === undefined ? {} : { ops }), ...(selected === undefined ? {} : { filter: selected }) };
-    return watch<WatchRowsEvent<InvoicePrimaryKey>>(http.url("/invoice/watch", argument), onChange);
+    return watch<WatchRowsEvent<InvoicePrimaryKey>>(http.url("/invoice/watch/rows", argument), onChange);
 }
 
 /** The errors `exec` can reject `createInvoice` with. */

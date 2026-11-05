@@ -267,9 +267,19 @@ describe("buildRestModel", () => {
             method: "GET",
             path: "/notified/watch",
             source: "query",
+            scope: "all",
+        });
+        expect(entity?.operations).toContainEqual({
+            id: "watchNotifiedRows",
+            kind: "watch",
+            method: "GET",
+            path: "/notified/watch/rows",
+            source: "query",
+            scope: "rows",
         });
         expect(entity?.operations.map((operation) => operation.kind)).toEqual([
             "query",
+            "watch",
             "watch",
             "create",
         ]);
@@ -303,11 +313,12 @@ describe("buildRestModel", () => {
         const entity = build({ Watched: WATCHED }).entities[0];
 
         expect(entity?.operations).toContainEqual({
-            id: "watchWatched",
+            id: "watchWatchedRows",
             kind: "watch",
             method: "GET",
-            path: "/watched/watch",
+            path: "/watched/watch/rows",
             source: "query",
+            scope: "rows",
         });
         expect(entity?.watch).toEqual(["rows"]);
         expect(entity?.restWatch).toEqual(["rows"]);

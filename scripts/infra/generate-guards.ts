@@ -34,6 +34,14 @@ export function guardName(operation: RestOperation): string {
     return `can${operation.id.charAt(0).toUpperCase()}${operation.id.slice(1)}`;
 }
 
+/** The permission action a call checks: a watch names its scope. */
+export function permissionAction(operation: RestOperation): string {
+    if (operation.kind !== "watch") {
+        return operation.kind;
+    }
+    return operation.scope === "rows" ? "watchRows" : "watchAll";
+}
+
 /** The check each kind makes, for the doc comment the module carries. */
 const CHECKS: Record<RestKind, string> = {
     query: "the session may read the tenants the filter names",
@@ -170,7 +178,8 @@ export function renderGuardModule(
 ): string {
     const name = guardName(operation);
     const scope = JSON.stringify(entity.module);
-    const action = JSON.stringify(operation.kind);
+    const permission = permissionAction(operation);
+    const action = JSON.stringify(permission);
     const lines: string[] = [HEADER];
 
     lines.push(`import { ForbiddenError } from "${FORBIDDEN_IMPORT}";`);
@@ -179,12 +188,12 @@ export function renderGuardModule(
     if (entity.tenantOwned === undefined) {
         lines.push("");
         lines.push("/**");
-        lines.push(` * Guard \`${operation.id}\`: the session holds \`${entity.module}:${operation.kind}\`.`);
+        lines.push(` * Guard \`${operation.id}\`: the session holds \`${entity.module}:${permission}\`.`);
         lines.push(" * @throws {ForbiddenError} when the session lacks it");
         lines.push(" */");
         lines.push(`export const ${name}: RouteGuard = async (ctx) => {`);
         lines.push(`    if (!(await ctx.hasGlobalPermission(${scope}, ${action}))) {`);
-        lines.push(`        throw new ForbiddenError("missing permission ${entity.module}:${operation.kind}");`);
+        lines.push(`        throw new ForbiddenError("missing permission ${entity.module}:${permission}");`);
         lines.push("    }");
         lines.push("};");
         return lines.join("\n") + "\n";
@@ -221,9 +230,9 @@ export function renderGuardModule(
     lines.push(...tenantLines(entity, operation.kind, lookup, field as string, owned.optional));
     const emptyMessage =
         owned.optional && operation.kind === "query"
-            ? `${entity.module}:${operation.kind} names no tenant, which needs the global permission`
+            ? `${entity.module}:${permission} names no tenant, which needs the global permission`
             : undefined;
-    lines.push(...checkLines(entity.module, operation.kind, owned.optional, emptyMessage));
+    lines.push(...checkLines(entity.module, permission, owned.optional, emptyMessage));
     lines.push("};");
     return lines.join("\n") + "\n";
 }
