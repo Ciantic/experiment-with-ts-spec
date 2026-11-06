@@ -117,6 +117,49 @@ describe("parseSpec interfaces", () => {
     });
 });
 
+describe("parseSpec top-level directory", () => {
+    function parseUnderSrc(files: Record<string, string>) {
+        const spec = Object.entries(files).map(([name, sourceFileText]) => ({
+            filePath: join(SPEC_SRC_ROOT, name),
+            sourceFileText,
+        }));
+        return parseInMemorySpec(spec, { sourceGlob: join(SPEC_SRC_ROOT, "**/*.ts") });
+    }
+
+    it("records the first directory on an interface", () => {
+        const spec = parseUnderSrc({
+            "widget-service/Widget.ts": "/** @entity */\nexport interface Widget { id: string; }",
+        });
+
+        expect(spec.interfaces.get("Widget")?.topLevelDirectory).toBe("widget-service");
+    });
+
+    it("records the first directory, not the declaration's immediate parent", () => {
+        const spec = parseUnderSrc({
+            "widget-service/primitives/Code.ts": "/** @primitive */\nexport type Code = string;",
+        });
+
+        expect(spec.aliases.get("Code")?.topLevelDirectory).toBe("widget-service");
+    });
+
+    it("records the contract's directory on its operations", () => {
+        const spec = parseUnderSrc({
+            "account-service/operations/AccountOperations.ts":
+                "export interface AccountOperations<T> {\n    /** @operation */\n    list(ctx: T): void;\n}",
+        });
+
+        expect(spec.operations[0]?.topLevelDirectory).toBe("account-service");
+    });
+
+    it("leaves it absent for a declaration directly under src", () => {
+        const spec = parseUnderSrc({
+            "Widget.ts": "/** @entity */\nexport interface Widget { id: string; }",
+        });
+
+        expect(spec.interfaces.get("Widget")?.topLevelDirectory).toBeUndefined();
+    });
+});
+
 describe("parseSpec tags", () => {
     const thing = (doc: string, field: string) =>
         `/** @entity */\nexport interface Thing {\n${doc}\n    ${field}\n}`;

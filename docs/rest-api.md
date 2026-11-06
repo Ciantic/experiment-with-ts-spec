@@ -12,18 +12,19 @@ the transport.
 - `scripts/operations/generate-operation-guards.ts` — scaffolds the
   hand-written guards a `@restPermission` names, and checks them with `--check`.
 - `scripts/operations/generate-operation-routes.ts` — the operation route
-  generator, writing the `operationRoutes` module the operations package
-  exposes.
+  generator, writing one `routes.ts` per service directory, each exporting the
+  calls its contracts declare.
 - `scripts/sdk/generate-rest-client.ts` — the client generator.
 - `packages/infra/src/http/routes/` — generated: `<entity>Routes.ts` per entity,
   each a `Route[]` for that collection, plus the `index.ts` barrel exporting
   `entityRoutes`.
-- `packages/operations/src/operationRoutes.ts` — generated: the calls a
-  `@restOperation` declares, re-exported from the package root beside the
-  operations. The backend's `packages/backend/src/http/routes/index.ts` is
-  hand-written: it joins infra's `entityRoutes` with `operationRoutes` into the
-  table the router matches a request on and the group handler resolves an id in.
-  See `docs/operations.md`.
+- `packages/operations/src/<service>/routes.ts` — generated: the calls the
+  service's `@restOperation` tags declare. The package barrel imports each
+  service's `operationRoutes` and spreads them into one table beside the
+  operations, so the backend's hand-written
+  `packages/backend/src/http/routes/index.ts` still joins infra's `entityRoutes`
+  with a single `operationRoutes` into the table the router matches a request on
+  and the group handler resolves an id in. See `docs/operations.md`.
 - `packages/infra/src/http/router.ts` — the `ApiRouter` class and the
   `HttpRouter` interface, the request handler. Hand-written.
 - `packages/infra/src/http/api-http-response.ts` — the `ApiHttpResponse` class,
@@ -46,8 +47,8 @@ the transport.
 - `pnpm generate:entity-routes` — writes infra's entity route modules.
 - `pnpm generate:operation-guards` — scaffolds the permission guards the
   operation routes use.
-- `pnpm generate:operation-routes` — writes the operation routes and the
-  combined table.
+- `pnpm generate:operation-routes` — writes one route table per service
+  directory.
 - `pnpm generate:rest-client` — writes the client.
 - Either accepts `--out <dir>`; a missing directory is created.
 
@@ -193,7 +194,7 @@ have different import rules:
 | --- | --- | --- |
 | May import | `sdk/*`, `../db/queries/*`, `../db/repositories/*`, `./router.ts`, `infra` | `spec/*`, type-only `../selection.ts` and `../repositories/*`, and its own `../client.ts` |
 | Lives in | `scripts/infra`, `scripts/operations` | `scripts/sdk` |
-| Emits | `packages/infra/src/http/routes/*.ts`, `packages/operations/src/operationRoutes.ts` | `packages/sdk/src/api/*.ts` |
+| Emits | `packages/infra/src/http/routes/*.ts`, `packages/operations/src/<service>/routes.ts` | `packages/sdk/src/api/*.ts` |
 
 That second row is the point of the client and is asserted by a test: **the
 generated client imports nothing from infra or the backend.** It cannot reach a table

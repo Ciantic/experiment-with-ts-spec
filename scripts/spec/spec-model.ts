@@ -329,6 +329,17 @@ function locationOf(declaration: Node): SpecLocation {
     };
 }
 
+/** The first directory under `spec/src` a source file sits in, e.g. `widget-service`; absent directly under `src/`. */
+function topLevelDirectoryOf(filePath: string): string | undefined {
+    const relativeToSrc = relativePath(SPEC_SRC_ROOT, filePath);
+    const [first, ...rest] = relativeToSrc.split(/[\\/]/u);
+    // A file outside the spec root, or one at its top, names no directory.
+    if (first === undefined || first === ".." || rest.length === 0) {
+        return undefined;
+    }
+    return first;
+}
+
 /** The `key=value` parameters on a tag comment, such as `default asc`. */
 export type TagParameters = Map<string, string>;
 
@@ -475,6 +486,8 @@ export interface SpecInterface {
     location: SpecLocation;
     /** The module specifier that imports the entity, e.g. `spec/Widget.ts`. */
     importSpecifier: string;
+    /** The first directory under `spec/src` the interface sits in, e.g. `widget-service`; absent directly under `src/`. */
+    topLevelDirectory: string | undefined;
     /** The interface's type parameters as written, e.g. `["T"]`; an operation contract takes its context here. */
     typeParameters: string[];
     properties: SpecProperty[];
@@ -551,6 +564,8 @@ export interface SpecOperation {
     interfaceName: string;
     /** The module specifier that imports the contract, e.g. `spec/WidgetOperations.ts`. */
     importSpecifier: string;
+    /** The first directory under `spec/src` the contract sits in, e.g. `widget-service`; absent directly under `src/`. */
+    topLevelDirectory: string | undefined;
     /** The contract's type parameters, which a generator fills with the context it supplies. */
     interfaceTypeParameters: string[];
     /** The method name, which is the operation id. */
@@ -599,6 +614,8 @@ export interface SpecTypeAlias {
     name: string;
     filePath: string;
     location: SpecLocation;
+    /** The first directory under `spec/src` the alias sits in, e.g. `widget-service`; absent directly under `src/`. */
+    topLevelDirectory: string | undefined;
     /** The alias's own type as a shape. */
     type: SpecType;
     /** The type parameters as written, e.g. `["T extends string"]`. */
@@ -1365,6 +1382,7 @@ function readOperation(
     return {
         interfaceName: contract.name,
         importSpecifier: contract.importSpecifier,
+        topLevelDirectory: contract.topLevelDirectory,
         interfaceTypeParameters: contract.typeParameters,
         name: method.getName(),
         description,
@@ -1408,6 +1426,7 @@ export function collectAliases(project: Project, sourceGlob?: string): Map<strin
                 name: declaration.getName(),
                 filePath,
                 location: locationOf(declaration),
+                topLevelDirectory: topLevelDirectoryOf(filePath),
                 type: typeNode ? readType(typeNode) : { kind: "missing" },
                 typeParameters: declaration.getTypeParameters().map((parameter) => parameter.getText()),
                 tags: readTags(declaration),
@@ -1662,6 +1681,7 @@ export function parseSpec(project: Project, options: ParseOptions = {}): SpecMod
                 filePath,
                 location: locationOf(declaration),
                 importSpecifier: specImportSpecifier(filePath),
+                topLevelDirectory: topLevelDirectoryOf(filePath),
                 typeParameters: declaration.getTypeParameters().map((parameter) => parameter.getText()),
                 tags: declarationTags,
                 properties,

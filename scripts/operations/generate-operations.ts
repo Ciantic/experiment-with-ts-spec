@@ -1,8 +1,18 @@
 /** Scaffold one operation module per `@operation`, and verify each hand-written one still declares its contract. See docs/operations.md. */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { OPERATIONS_PACKAGE_ROOT } from "../paths.ts";
-import { OPERATION_ROUTES_EXPORT, OPERATION_ROUTES_FILE } from "./generate-operation-routes.ts";
+import {
+    GUARDS_DIRECTORY,
+    ROUTES_FILE,
+    SPEC_TEST_SUFFIX,
+    filesBelow,
+    groupedName,
+    groupedPath,
+    removeEmptyDirectories,
+} from "./generated-paths.ts";
+import { OPERATION_ROUTES_EXPORT, routeGroups } from "./generate-operation-routes.ts";
+import { buildRestModel } from "../sdk/rest-model.ts";
 import {
     loadSpec,
     type Diagnostic,
@@ -91,14 +101,38 @@ export function declaresContract(source: string): boolean {
     return /export\s+const\s+\w+\s*:\s*\w+(?:\s*<[^=;]*?>)?\s*\[\s*["']\w+["']\s*\]\s*=/u.test(source);
 }
 
-/** Render the root barrel: each operation the spec declares, sorted by name, then the operation routes. */
-export function renderOperationsIndex(operations: readonly SpecOperation[]): string {
-    const lines: string[] = [INDEX_HEADER];
-    const names = operations.map((operation) => operation.name).sort((a, b) => a.localeCompare(b));
-    for (const name of names) {
-        lines.push(`export { ${name} } from "./${name}.ts";`);
+/** invoicing-service -> invoicingServiceRoutes; the root group -> rootRoutes. */
+function routeGroupAlias(topLevelDirectory: string | undefined): string {
+    if (topLevelDirectory === undefined) {
+        return "rootRoutes";
     }
-    lines.push(`export { ${OPERATION_ROUTES_EXPORT} } from "./${OPERATION_ROUTES_FILE}";`);
+    const camel = topLevelDirectory
+        .replace(/[-_.]+(.)/gu, (_match, letter: string) => letter.toUpperCase())
+        .replace(/[^A-Za-z0-9$]/gu, "");
+    return `${camel}Routes`;
+}
+
+/** Render the root barrel: each operation the spec declares, then every group's calls in one route table. */
+export function renderOperationsIndex(
+    operations: readonly SpecOperation[],
+    routeGroupDirectories: readonly (string | undefined)[],
+): string {
+    const lines: string[] = [INDEX_HEADER];
+    lines.push('import type { Route } from "infra";');
+    for (const group of routeGroupDirectories) {
+        lines.push(
+            `import { ${OPERATION_ROUTES_EXPORT} as ${routeGroupAlias(group)} } from "./${groupedName(group, ROUTES_FILE)}";`,
+        );
+    }
+    const sorted = [...operations].sort((a, b) => a.name.localeCompare(b.name));
+    for (const operation of sorted) {
+        const name = groupedName(operation.topLevelDirectory, `${operation.name}.ts`);
+        lines.push(`export { ${operation.name} } from "./${name}";`);
+    }
+    lines.push("");
+    lines.push("/** The calls every service's `@restOperation` declares, in one table. */");
+    const spreads = routeGroupDirectories.map((group) => `...${routeGroupAlias(group)}`);
+    lines.push(`export const ${OPERATION_ROUTES_EXPORT}: Route[] = [${spreads.join(", ")}];`);
     return lines.join("\n") + "\n";
 }
 
@@ -112,7 +146,7 @@ type ModuleStatus = {
 /** Read every module once, so a check run and a generate run decide on the same facts. */
 function inspect(operations: readonly SpecOperation[], outDir: string): ModuleStatus[] {
     return operations.map((operation) => {
-        const file = join(outDir, `${operation.name}.ts`);
+        const file = groupedPath(outDir, operation.topLevelDirectory, `${operation.name}.ts`);
         if (!existsSync(file)) {
             return { operation, file, state: "missing" as const };
         }
@@ -121,9 +155,12 @@ function inspect(operations: readonly SpecOperation[], outDir: string): ModuleSt
     });
 }
 
-/** The module names the spec still declares, and the barrel and routes beside them, so pruning leaves them alone. */
+/** The module names the spec still declares, and the barrel beside them, so pruning leaves them alone. */
 function keepModules(operations: readonly SpecOperation[]): Set<string> {
-    return new Set([INDEX_FILE, OPERATION_ROUTES_FILE, ...operations.map((operation) => `${operation.name}.ts`)]);
+    return new Set([
+        INDEX_FILE,
+        ...operations.map((operation) => groupedName(operation.topLevelDirectory, `${operation.name}.ts`)),
+    ]);
 }
 
 /** The finding for an operation the spec declares and no module answers. */
@@ -167,11 +204,12 @@ function staleScaffold(file: string): Diagnostic {
 function staleModules(outDir: string, keep: Set<string>): { scaffolds: string[]; findings: Diagnostic[] } {
     const scaffolds: string[] = [];
     const findings: Diagnostic[] = [];
-    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+    // The guards, routes, and spec tests are their own generators' to prune, so this run only sees operation modules.
+    for (const shown of filesBelow(outDir, ".ts", new Set([GUARDS_DIRECTORY]))) {
+        if (shown.endsWith(SPEC_TEST_SUFFIX) || basename(shown) === ROUTES_FILE || keep.has(shown)) {
             continue;
         }
-        const file = join(outDir, entry.name);
+        const file = join(outDir, shown);
         const source = readFileSync(file, "utf8");
         if (isScaffold(source)) {
             scaffolds.push(file);
@@ -179,11 +217,11 @@ function staleModules(outDir: string, keep: Set<string>): { scaffolds: string[];
         }
         // An implementation is the author's, so the generator reports it rather than deleting it.
         if (declaresContract(source)) {
-            const shown = relative(process.cwd(), file);
+            const path = relative(process.cwd(), file);
             findings.push({
-                filePath: shown,
+                filePath: path,
                 line: 1,
-                message: `\`${basename(file, ".ts")}\` is no longer an @operation; delete ${shown} or restore the spec`,
+                message: `\`${basename(file, ".ts")}\` is no longer an @operation; delete ${path} or restore the spec`,
             });
         }
     }
@@ -225,6 +263,14 @@ function validate(spec: SpecModel): Diagnostic[] {
                 message: `\`${operation.name}\`: an operation contract takes at most one type parameter, the context`,
             });
         }
+        // The group's route module takes the name, so an operation called `routes` would be overwritten by it.
+        if (operation.name === basename(ROUTES_FILE, ".ts")) {
+            findings.push({
+                filePath: operation.location.filePath,
+                line: operation.location.line,
+                message: `\`${operation.name}\`: the group's route module is ${ROUTES_FILE}; rename the operation`,
+            });
+        }
         const existing = byName.get(operation.name);
         if (existing) {
             findings.push({
@@ -248,7 +294,12 @@ function report(findings: Diagnostic[], operations: number, output: Output): voi
 }
 
 /** Report the modules the spec no longer describes, writing and deleting nothing. */
-function checkRun(operations: readonly SpecOperation[], outDir: string, output: Output): number {
+function checkRun(
+    operations: readonly SpecOperation[],
+    routeGroupDirectories: readonly (string | undefined)[],
+    outDir: string,
+    output: Output,
+): number {
     const findings: Diagnostic[] = [];
     let verified = 0;
     for (const status of inspect(operations, outDir)) {
@@ -263,7 +314,7 @@ function checkRun(operations: readonly SpecOperation[], outDir: string, output: 
         );
     }
     const index = join(outDir, INDEX_FILE);
-    if (!existsSync(index) || readFileSync(index, "utf8") !== renderOperationsIndex(operations)) {
+    if (!existsSync(index) || readFileSync(index, "utf8") !== renderOperationsIndex(operations, routeGroupDirectories)) {
         findings.push(staleIndex(index));
     }
     if (existsSync(outDir)) {
@@ -279,13 +330,19 @@ function checkRun(operations: readonly SpecOperation[], outDir: string, output: 
 }
 
 /** Scaffold the modules the spec adds, verify the committed ones, and delete the scaffolds it no longer declares. */
-function generateRun(operations: readonly SpecOperation[], outDir: string, output: Output): number {
+function generateRun(
+    operations: readonly SpecOperation[],
+    routeGroupDirectories: readonly (string | undefined)[],
+    outDir: string,
+    output: Output,
+): number {
     mkdirSync(outDir, { recursive: true });
     const findings: Diagnostic[] = [];
     let created = 0;
     let verified = 0;
     for (const status of inspect(operations, outDir)) {
         if (status.state === "missing") {
+            mkdirSync(dirname(status.file), { recursive: true });
             writeFileSync(status.file, renderOperationFile(status.operation));
             created += 1;
             continue;
@@ -296,12 +353,13 @@ function generateRun(operations: readonly SpecOperation[], outDir: string, outpu
         }
         verified += 1;
     }
-    writeFileSync(join(outDir, INDEX_FILE), renderOperationsIndex(operations));
+    writeFileSync(join(outDir, INDEX_FILE), renderOperationsIndex(operations, routeGroupDirectories));
     const stale = staleModules(outDir, keepModules(operations));
     findings.push(...stale.findings);
     for (const file of stale.scaffolds) {
         rmSync(file);
     }
+    removeEmptyDirectories(outDir);
     if (findings.length > 0) {
         report(findings, operations.length, output);
         return 1;
@@ -325,10 +383,12 @@ export function run(spec: SpecModel, argv: readonly string[] = process.argv, out
         report(findings, operations.length, output);
         return 1;
     }
+    // The barrel imports one route module per group, so it names the groups the route generator writes.
+    const groups = routeGroups(buildRestModel(spec));
     // The mode picks the whole procedure: a check run reports what a generate run would repair.
     return argv.includes("--check")
-        ? checkRun(operations, outDir, output)
-        : generateRun(operations, outDir, output);
+        ? checkRun(operations, groups, outDir, output)
+        : generateRun(operations, groups, outDir, output);
 }
 
 if (import.meta.main) {

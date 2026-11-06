@@ -280,7 +280,7 @@ names. The guard is hand-written because its argument is the operation's own
 input, not an entity filter or a row batch:
 
 ```ts
-// packages/operations/src/guards/canSendInvoice.ts
+// packages/operations/src/invoicing-service/guards/canSendInvoice.ts
 export const canSendInvoice: RouteGuard<SendInvoiceInput> = async (ctx, argument) => {
     if (await ctx.hasGlobalPermission("invoice", "send")) {
         return;

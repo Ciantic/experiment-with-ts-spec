@@ -1,8 +1,17 @@
 /** Scaffold one `{operation}.spec.test.ts` per `@testDescribe`/`@testIt`, and verify a hand-written one declares those tests. See docs/spec-tests.md. */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { OPERATIONS_PACKAGE_ROOT } from "../paths.ts";
 import { loadSpec, type Diagnostic, type SpecModel, type SpecOperation } from "../spec/spec-model.ts";
+import {
+    SPEC_TEST_SUFFIX,
+    filesBelow,
+    groupedName,
+    groupedPath,
+    removeEmptyDirectories,
+} from "./generated-paths.ts";
+
+export { SPEC_TEST_SUFFIX } from "./generated-paths.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
 type Output = Pick<Console, "log" | "error">;
@@ -11,9 +20,6 @@ export type { Diagnostic };
 
 /** Where the spec tests are written when no `--out` is given: beside the operation modules they exercise. */
 const DEFAULT_OUT_DIR = join(OPERATIONS_PACKAGE_ROOT, "src");
-
-/** The suffix a spec test takes, so it sits beside the operation module rather than in its own directory. */
-export const SPEC_TEST_SUFFIX = ".spec.test.ts";
 
 /** The first line of a scaffold: it names the generator that started the file, and who finishes it. */
 export const SPEC_TEST_MARKER = "// Generated for implementation by: scripts/operations/generate-spec-tests.ts";
@@ -174,7 +180,7 @@ type SpecTestStatus =
 /** Read every file once, so a check run and a generate run decide on the same facts. */
 function inspect(tested: readonly SpecOperation[], outDir: string): SpecTestStatus[] {
     return tested.map((operation) => {
-        const file = join(outDir, `${operation.name}${SPEC_TEST_SUFFIX}`);
+        const file = groupedPath(outDir, operation.topLevelDirectory, `${operation.name}${SPEC_TEST_SUFFIX}`);
         if (!existsSync(file)) {
             return { operation, file, state: "missing" as const };
         }
@@ -196,7 +202,9 @@ function inspect(tested: readonly SpecOperation[], outDir: string): SpecTestStat
 
 /** The file names the spec still declares, so pruning leaves them alone. */
 function keepFiles(tested: readonly SpecOperation[]): Set<string> {
-    return new Set(tested.map((operation) => `${operation.name}${SPEC_TEST_SUFFIX}`));
+    return new Set(
+        tested.map((operation) => groupedName(operation.topLevelDirectory, `${operation.name}${SPEC_TEST_SUFFIX}`)),
+    );
 }
 
 /** The finding for an operation that declares tests and has no file. */
@@ -245,11 +253,12 @@ function staleSpecTest(file: string, deletable: boolean): Diagnostic {
 function staleFiles(outDir: string, keep: Set<string>): { scaffolds: string[]; findings: Diagnostic[] } {
     const scaffolds: string[] = [];
     const findings: Diagnostic[] = [];
-    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(SPEC_TEST_SUFFIX) || keep.has(entry.name)) {
+    // Guards are another generator's to prune, so this run only sees the spec tests beside the operation modules.
+    for (const shown of filesBelow(outDir, SPEC_TEST_SUFFIX, new Set(["guards"]))) {
+        if (keep.has(shown)) {
             continue;
         }
-        const file = join(outDir, entry.name);
+        const file = join(outDir, shown);
         // An implemented spec test is the author's, so the generator reports it rather than deleting it.
         if (isSpecTestScaffold(readFileSync(file, "utf8"))) {
             scaffolds.push(file);
@@ -313,10 +322,12 @@ function generateRun(declared: readonly SpecOperation[], tested: readonly SpecOp
                 verified += 1;
                 break;
             case "missing":
+                mkdirSync(dirname(status.file), { recursive: true });
                 writeFileSync(status.file, renderSpecTestFile(status.operation));
                 created += 1;
                 break;
             case "stale":
+                mkdirSync(dirname(status.file), { recursive: true });
                 writeFileSync(status.file, renderSpecTestFile(status.operation));
                 regenerated += 1;
                 break;
@@ -330,6 +341,7 @@ function generateRun(declared: readonly SpecOperation[], tested: readonly SpecOp
     for (const file of stale.scaffolds) {
         rmSync(file);
     }
+    removeEmptyDirectories(outDir);
     if (findings.length > 0) {
         report(findings, declared.length, output);
         return 1;

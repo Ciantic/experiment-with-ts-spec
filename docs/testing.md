@@ -125,7 +125,8 @@ values, all of which are domain decisions rather than code behaviour.
   `query<Entity>`, asserting the seeded row counts. It is a test of the seed and
   the real schema; the HTTP surface, generated client, and server are not in
   scope.
-- `{operation}.spec.test.ts` in `packages/operations/src/` — the tests the
+- `{operation}.spec.test.ts` in the operation's service directory under
+  `packages/operations/src/` — the tests the
   spec declares for an operation, over fixtures the test builds in memory: the
   rows a call writes, and that an input missing any one of the fields it needs is
   refused with nothing written.

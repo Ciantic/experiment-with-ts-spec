@@ -97,6 +97,8 @@ export interface RestOperationCall {
     id: string;
     /** The contract interface that declares it, e.g. `InvoiceOperations`. */
     contract: string;
+    /** The first directory under `spec/src` the contract sits in; the generated module is grouped beneath it. */
+    topLevelDirectory: string | undefined;
     method: RestMethod;
     path: string;
     /** Where the call carries its argument: a `GET` or a `DELETE` has no body, so it uses `q`. */
@@ -280,6 +282,7 @@ function restOperationCalls(spec: SpecModel, entities: RestEntity[], report: (lo
         calls.push({
             id: operation.name,
             contract: operation.interfaceName,
+            topLevelDirectory: operation.topLevelDirectory,
             method: restMethod as RestMethod,
             path: restPath,
             source: restMethod === "GET" || restMethod === "DELETE" ? "query" : "body",

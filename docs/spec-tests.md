@@ -28,8 +28,8 @@ no block, and the linter reports it rather than guessing one.
 ## The generated file
 
 `pnpm generate:spec-tests` writes one `{operation}.spec.test.ts` beside the
-operation module, in `packages/operations/src/`; `pnpm generate` runs it
-right after the operation scaffold. The suffix keeps the generated test apart
+operation module, in the same service directory under `packages/operations/src/`;
+`pnpm generate` runs it right after the operation scaffold. The suffix keeps the generated test apart
 from a hand-written `{operation}.test.ts` for the same operation, so both can
 exist.
 
@@ -74,7 +74,7 @@ block does not describe the operation the spec declares, and the run fails rathe
 than merging the two:
 
 ```
-packages/operations/src/freezeWidget.spec.test.ts:1: `freezeWidget`: the spec's it("records who froze it") is missing; the spec defines the tests, so the file must match it
+packages/operations/src/widget-service/freezeWidget.spec.test.ts:1: `freezeWidget`: the spec's it("records who froze it") is missing; the spec defines the tests, so the file must match it
 ```
 
 `pnpm lint` runs the same check through `pnpm lint:spec-tests`, which is

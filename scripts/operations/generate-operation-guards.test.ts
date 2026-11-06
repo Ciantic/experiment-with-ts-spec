@@ -1,5 +1,5 @@
 /** Unit tests for the operation guard scaffold generator, driven by self-contained fixtures and a temp directory. See docs/testing.md. */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,7 +16,7 @@ import {
 const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "**/*.ts");
 
 const WIDGET = `
 /**
@@ -58,7 +58,7 @@ export interface WidgetOperations<T> {
 function build(sources: Record<string, string>): SpecModel {
     return parseInMemorySpec(
         Object.entries(sources).map(([name, sourceFileText]) => ({
-            filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
+            filePath: join(SPEC_SRC_ROOT, `${name}.ts`),
             sourceFileText,
         })),
         { sourceGlob: SPEC_GLOB },
@@ -156,9 +156,21 @@ describe("run", () => {
         const dir = tempDir();
 
         expect(run(spec, ["--out", dir], SILENT)).toBe(0);
-        expect(readFileSync(join(dir, "canSendWidget.ts"), "utf8")).toContain("widget:send");
-        expect(readFileSync(join(dir, "canReset.ts"), "utf8")).toContain("widget:reset");
+        expect(readFileSync(join(dir, "guards", "canSendWidget.ts"), "utf8")).toContain("widget:send");
+        expect(readFileSync(join(dir, "guards", "canReset.ts"), "utf8")).toContain("widget:reset");
         expect(run(spec, ["--out", dir, "--check"], SILENT)).toBe(0);
+    });
+
+    it("writes a guard under the service directory its contract names", () => {
+        const dir = tempDir();
+        const grouped = build({
+            "widget-service/Widget": WIDGET,
+            "widget-service/WidgetOperations": OPERATIONS,
+        });
+
+        expect(run(grouped, ["--out", dir], SILENT)).toBe(0);
+        expect(readFileSync(join(dir, "widget-service", "guards", "canSendWidget.ts"), "utf8")).toContain("widget:send");
+        expect(run(grouped, ["--out", dir, "--check"], SILENT)).toBe(0);
     });
 
     it("reports a missing guard in --check", () => {
@@ -169,7 +181,7 @@ describe("run", () => {
         const dir = tempDir();
         expect(run(spec, ["--out", dir], SILENT)).toBe(0);
         writeFileSync(
-            join(dir, "canSendWidget.ts"),
+            join(dir, "guards", "canSendWidget.ts"),
             "export const canSendWidget = async () => undefined;\n",
         );
 
@@ -181,7 +193,7 @@ describe("run", () => {
         expect(run(spec, ["--out", dir], SILENT)).toBe(0);
         for (const name of ["canSendWidget", "canReset"]) {
             writeFileSync(
-                join(dir, `${name}.ts`),
+                join(dir, "guards", `${name}.ts`),
                 name === "canSendWidget"
                     ? 'export const canSendWidget = async (ctx) => ctx.hasGlobalPermission("widget", "send");\n'
                     : 'export const canReset = async (ctx) => ctx.hasGlobalPermission("widget", "reset");\n',
@@ -194,14 +206,15 @@ describe("run", () => {
     it("reports a guard module that no longer exports its name", () => {
         const dir = tempDir();
         expect(run(spec, ["--out", dir], SILENT)).toBe(0);
-        writeFileSync(join(dir, "canSendWidget.ts"), "/** widget:send */\nexport const other = 1;\n");
+        writeFileSync(join(dir, "guards", "canSendWidget.ts"), "/** widget:send */\nexport const other = 1;\n");
 
         expect(run(spec, ["--out", dir, "--check"], SILENT)).toBe(1);
     });
 
     it("removes an untouched scaffold the spec no longer references", () => {
         const dir = tempDir();
-        const file = join(dir, "canOld.ts");
+        mkdirSync(join(dir, "guards"), { recursive: true });
+        const file = join(dir, "guards", "canOld.ts");
         writeFileSync(
             file,
             `${SCAFFOLD_MARKER}\nexport const canOld = () => {\n    throw new NotImplemented("canOld is scaffolded");\n};\n`,
@@ -213,7 +226,8 @@ describe("run", () => {
 
     it("keeps an implemented guard the spec no longer references", () => {
         const dir = tempDir();
-        const file = join(dir, "canOld.ts");
+        mkdirSync(join(dir, "guards"), { recursive: true });
+        const file = join(dir, "guards", "canOld.ts");
         writeFileSync(file, `${SCAFFOLD_MARKER}\nexport const canOld = () => true;\n`);
 
         expect(run(build({ Widget: WIDGET }), ["--out", dir], SILENT)).toBe(0);

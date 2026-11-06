@@ -42,8 +42,16 @@ tags decide what it is. No directory does:
 - An interface carrying no `@entity` is a **contract**, such as the ones in
   `src/<app>/operations/`; the entity generators ignore it. A method carrying
   `@operation` is read by the operations generator instead, which scaffolds one
-  module per operation in `packages/operations/src/`. An entity tag on a contract is a lint finding,
+  module per operation in the contract's service directory under
+  `packages/operations/src/`. An entity tag on a contract is a lint finding,
   not a silent omission. See `docs/operations.md`.
+
+The first directory under `src/` is recorded, though it never decides what is
+generated. Every interface, alias, and operation carries `topLevelDirectory`,
+the segment naming the service a declaration belongs to: a declaration in
+`src/widget-service/Widget.ts`, or deep beneath it, has `widget-service`, while
+one directly under `src/` has none. A generator that groups its output by
+service reads the field; the tags still decide what it writes.
 
 ## Tags
 

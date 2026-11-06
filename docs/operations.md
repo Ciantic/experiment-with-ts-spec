@@ -2,8 +2,10 @@
 
 A method carrying `@operation` on a contract interface is an operation. The
 operations generator scaffolds one module per operation under
-`packages/operations/src/`, and after that the module is hand-written code that
-regeneration only verifies.
+`packages/operations/src/`, in the directory named for the contract's first
+directory under `packages/spec/src/`; an operation whose contract sits directly
+under `src/` stays at the package root. After that the module is hand-written
+code that regeneration only verifies.
 
 A contract interface groups the operations for one area. One such contract might
 declare `sendWidget` with `@operation` and `@restOperation POST /widget/send`,
@@ -86,10 +88,10 @@ lint rule requires for that throw; remove the tag together with the throw. The
 `scaffold/no-not-implemented` Oxlint rule warns on a `throw new NotImplemented`,
 so a call left as its scaffold is visible in `pnpm lint`. See `docs/errors.md`.
 
-A REST operation also gets a guard scaffold under
-`packages/operations/src/guards/`, named `can<OperationId>` or the name
-`@restPermissionGuard` gives. `scripts/operations/generate-operation-guards.ts`
-writes it once and never overwrites it; the scaffold fails closed with
+A REST operation also gets a guard scaffold under its service's `guards/`
+directory, named `can<OperationId>` or the name `@restPermissionGuard` gives.
+`scripts/operations/generate-operation-guards.ts` writes it once and never
+overwrites it; the scaffold fails closed with
 `NotImplemented`, and the author replaces the body with the permission check.
 The guard file is pruned only while it is still an untouched scaffold. See
 `docs/permissions.md`.
@@ -119,8 +121,9 @@ The package's root, `packages/operations/src/index.ts`, is the one entry the
 package exposes, and the backend imports the operations and their routes from it
 by package name. The generator writes it on every run, since it is a list of the
 spec's operations rather than hand-written code: each operation is re-exported
-from its module, sorted by name, followed by the operation routes. The `--check`
-run reports it when it no longer matches.
+from its module, sorted by name, and every service's `operationRoutes` is
+spread into the package's one `operationRoutes` table. The `--check` run reports
+it when it no longer matches.
 
 ## Regeneration checks
 
@@ -220,7 +223,7 @@ An operation that writes more than one row opens its own boundary with
 same model as the entity routes:
 
 ```ts
-// packages/operations/src/operationRoutes.ts
+// packages/operations/src/widget-service/routes.ts
 {
     id: "sendWidget",
     method: "POST",
@@ -232,13 +235,16 @@ same model as the entity routes:
 }
 ```
 
-The route imports `canSendWidget` from `./guards/canSendWidget.ts`. The guard is
-hand-written because its argument is the operation input; the generator scaffolds
-it under `packages/operations/src/guards/` and `pnpm lint:operation-guards`
-checks that the body still names the declared permission.
+The route imports `canSendWidget` from `./guards/canSendWidget.ts`, beside it in
+the service's directory. The guard is hand-written because its argument is the
+operation input; the generator scaffolds it under the service's `guards/` and
+`pnpm lint:operation-guards` checks that the body still names the declared
+permission.
 
-`operationRoutes` is spread into the table the router matches on, so a group can
-name the operation by its id. The handler passes the route's context straight to
+Each service's `routes.ts` exports its calls as `operationRoutes`; the package
+barrel imports one per service and spreads them into a single `operationRoutes`
+table. The backend spreads that table into the one the router matches on, so a
+group can name the operation by its id. The handler passes the route's context straight to
 the module, which is what makes the context choice compile-checked: a module
 whose context the backend cannot supply fails at the generated route, not at
 runtime.

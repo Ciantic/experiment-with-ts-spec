@@ -1,15 +1,17 @@
 /** Unit tests for the operation route renderer and the exposure check across the generated routes. See docs/testing.md. */
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SPEC_SRC_ROOT, parseInMemorySpec } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel } from "../sdk/rest-model.ts";
 import { renderEntityRoutesFiles } from "../infra/generate-entity-routes.ts";
 // The drift check drives the route and client generators from one model, so it lives with the routes.
 import { generateRestClient } from "../sdk/generate-rest-client.ts";
-import { renderOperationRoutes, renderRouteFiles } from "./generate-operation-routes.ts";
+import { renderOperationRoutes, renderRouteFiles, run } from "./generate-operation-routes.ts";
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "**/*.ts");
 
 /** A versioned entity, so the routes cover a patch as well as a plain write. */
 const WIDGET = `
@@ -83,7 +85,7 @@ export interface WidgetOperations<T> {
 /** Build a model from in-memory domain files, so no test reads the real spec. */
 function build(domain: Record<string, string>): RestModel {
     const spec = Object.entries(domain).map(([name, sourceFileText]) => ({
-        filePath: join(SPEC_SRC_ROOT, "fixtures", `${name}.ts`),
+        filePath: join(SPEC_SRC_ROOT, `${name}.ts`),
         sourceFileText,
     }));
     return buildRestModel(parseInMemorySpec(spec, { sourceGlob: SPEC_GLOB }));
@@ -119,6 +121,21 @@ describe("renderOperationRoutes", () => {
         expect(code).toContain("handler: (ctx) => resetWidgets(ctx)");
     });
 
+    it("writes one routes module per service, with every import inside that service's directory", () => {
+        const grouped = build({
+            "widget-service/Widget": WIDGET,
+            "widget-service/WidgetOperations": OPERATIONS,
+        });
+
+        const files = renderRouteFiles(grouped);
+        const code = files.get("widget-service/routes.ts") ?? "";
+
+        expect([...files.keys()]).toEqual(["widget-service/routes.ts"]);
+        expect(code).toContain('import { sendWidget } from "./sendWidget.ts";');
+        expect(code).toContain('import { resetWidgets } from "./resetWidgets.ts";');
+        expect(code).toContain('import { canSendWidget } from "./guards/canSendWidget.ts";');
+    });
+
     it("imports the guard each permission declares and attaches it to the route", () => {
         const code = renderOperationRoutes(withOperations.operations);
 
@@ -137,10 +154,51 @@ describe("renderOperationRoutes", () => {
         expect(code).toContain("    }),");
     });
 
-    it("writes the operation module even when the spec declares none", () => {
-        const files = renderRouteFiles(build({ Widget: WIDGET }));
+    it("writes no routes module when the spec declares no route", () => {
+        expect([...renderRouteFiles(build({ Widget: WIDGET })).keys()]).toEqual([]);
+    });
+});
 
-        expect(files.get("operationRoutes.ts")).toContain("export const operationRoutes: Route[] = [];");
+describe("run", () => {
+    const dirs: string[] = [];
+
+    afterEach(() => {
+        for (const dir of dirs.splice(0)) {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    /** A fresh directory the generator can write into. */
+    function tempDir(): string {
+        const dir = mkdtempSync(join(tmpdir(), "operation-routes-"));
+        dirs.push(dir);
+        return dir;
+    }
+
+    /** Parse domain files into a spec, so a run writes from the same sources the renderer tests read. */
+    function specOf(domain: Record<string, string>) {
+        return parseInMemorySpec(
+            Object.entries(domain).map(([name, sourceFileText]) => ({
+                filePath: join(SPEC_SRC_ROOT, `${name}.ts`),
+                sourceFileText,
+            })),
+            { sourceGlob: SPEC_GLOB },
+        );
+    }
+
+    it("writes a routes module per service and prunes the one a dropped group leaves", () => {
+        const dir = tempDir();
+        const silent = { log: () => undefined, error: () => undefined };
+        const grouped = specOf({
+            "widget-service/Widget": WIDGET,
+            "widget-service/WidgetOperations": OPERATIONS,
+        });
+
+        expect(run(grouped, ["--out", dir], silent)).toBe(0);
+        expect(existsSync(join(dir, "widget-service", "routes.ts"))).toBe(true);
+
+        expect(run(specOf({ Widget: WIDGET }), ["--out", dir], silent)).toBe(0);
+        expect(existsSync(join(dir, "widget-service"))).toBe(false);
     });
 });
 

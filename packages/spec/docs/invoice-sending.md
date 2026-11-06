@@ -111,7 +111,7 @@ a live company record.
 - **The delivery records nothing.** Neither `Invoice` nor `InvoiceSent` carries a
   format or channel, so the chosen delivery is invisible afterwards. The language
   is the exception: it is on both.
-- **`sendInvoice` stops at the queue.** `packages/operations/src/sendInvoice.ts`
+- **`sendInvoice` stops at the queue.** `packages/operations/src/invoicing-service/sendInvoice.ts`
   snapshots the invoice and queues an email in one transaction; nothing delivers
   the email, and the demonstration sender is fixed because `Seller` has no email
   field.

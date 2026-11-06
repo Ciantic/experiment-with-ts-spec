@@ -18,7 +18,7 @@ import {
 const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "**/*.ts");
 
 /** A returned entity the fixture contract can reference. */
 const SENT = `
@@ -59,7 +59,7 @@ export interface InvoiceOperations<T> {
 /** Build a model from in-memory sources, so no test reads the real spec. */
 function build(files: Record<string, string> = { "InvoiceSent.ts": SENT, "InvoiceOperations.ts": OPERATIONS }): SpecModel {
     const sources = Object.entries(files).map(([name, sourceFileText]) => ({
-        filePath: join(SPEC_SRC_ROOT, "fixtures", name),
+        filePath: join(SPEC_SRC_ROOT, name),
         sourceFileText,
     }));
     return parseInMemorySpec(sources, { sourceGlob: SPEC_GLOB });
@@ -107,7 +107,7 @@ describe("renderOperationFile", () => {
     it("imports the contract and the error its body throws", () => {
         const code = renderOperationFile(operation(build()));
 
-        expect(code).toContain('import type { InvoiceOperations } from "spec/fixtures/InvoiceOperations.ts";');
+        expect(code).toContain('import type { InvoiceOperations } from "spec/InvoiceOperations.ts";');
         expect(code).toContain('import { NotImplemented } from "sdk/errors.ts";');
     });
 
@@ -283,7 +283,7 @@ describe("meetsContract", () => {
 
     it("accepts a hand-written module that keeps the annotation", () => {
         const source = `
-import type { InvoiceOperations } from "spec/fixtures/InvoiceOperations.ts";
+import type { InvoiceOperations } from "spec/InvoiceOperations.ts";
 export const sendInvoice: InvoiceOperations<{ db: SqlExecutor }>["sendInvoice"] = async (ctx, opts) => {
     return null as never;
 };
@@ -314,6 +314,40 @@ describe("run", () => {
         expect(readFileSync(join(dir, "sendInvoice.ts"), "utf8")).toContain("export const sendInvoice:");
     });
 
+    it("writes an operation under the service directory its contract names", () => {
+        const dir = tempDir();
+        const code = build({
+            "invoicing-service/InvoiceSent.ts": SENT,
+            "invoicing-service/InvoiceOperations.ts": OPERATIONS,
+        });
+
+        expect(run(code, ["--out", dir], SILENT)).toBe(0);
+        expect(readFileSync(join(dir, "invoicing-service", "sendInvoice.ts"), "utf8")).toContain(
+            "export const sendInvoice:",
+        );
+        expect(readFileSync(join(dir, "index.ts"), "utf8")).toContain(
+            'export { sendInvoice } from "./invoicing-service/sendInvoice.ts";',
+        );
+        expect(run(code, ["--check", "--out", dir], SILENT)).toBe(0);
+    });
+
+    it("composes a group's routes module into the package barrel", () => {
+        const dir = tempDir();
+        const code = build({
+            "invoicing-service/InvoiceSent.ts": SENT,
+            "invoicing-service/InvoiceOperations.ts": OPERATIONS.replace(
+                "@restOperation",
+                "@restOperation POST /invoice/send",
+            ),
+        });
+
+        expect(run(code, ["--out", dir], SILENT)).toBe(0);
+        expect(readFileSync(join(dir, "index.ts"), "utf8")).toContain(
+            'import { operationRoutes as invoicingServiceRoutes } from "./invoicing-service/routes.ts";',
+        );
+        expect(run(code, ["--check", "--out", dir], SILENT)).toBe(0);
+    });
+
     it("leaves a committed module alone on the next run", () => {
         const dir = tempDir();
         const file = join(dir, "sendInvoice.ts");
@@ -340,6 +374,19 @@ describe("run", () => {
 export interface Ops<T> {
     /** @restOperation */
     sendInvoice(ctx: T): Promise<void>;
+}`,
+        });
+
+        expect(run(code, ["--out", tempDir()], SILENT)).toBe(1);
+    });
+
+    it("fails when an operation takes the name of its group's routes module", () => {
+        const code = build({
+            "InvoiceSent.ts": SENT,
+            "Ops.ts": `
+export interface Ops<T> {
+    /** @operation */
+    routes(ctx: T): Promise<void>;
 }`,
         });
 
@@ -382,20 +429,37 @@ export interface Other<T> {
 
 describe("renderOperationsIndex", () => {
     it("re-exports the operation from its module under the package root", () => {
-        const code = renderOperationsIndex([operation(build())]);
+        const code = renderOperationsIndex([operation(build())], []);
 
         expect(code).toContain('export { sendInvoice } from "./sendInvoice.ts";');
     });
 
-    it("exports the operation routes even when the spec declares no operation", () => {
-        expect(renderOperationsIndex([])).toContain('export { operationRoutes } from "./operationRoutes.ts";');
+    it("exports an empty route table when the spec declares no group", () => {
+        const code = renderOperationsIndex([], []);
+
+        expect(code).toContain('import type { Route } from "infra";');
+        expect(code).toContain("export const operationRoutes: Route[] = [];");
+    });
+
+    it("composes the routes of every group into the one table the backend spreads", () => {
+        const code = renderOperationsIndex([operation(build())], ["invoicing-service"]);
+
+        expect(code).toContain('import { operationRoutes as invoicingServiceRoutes } from "./invoicing-service/routes.ts";');
+        expect(code).toContain("export const operationRoutes: Route[] = [...invoicingServiceRoutes];");
+    });
+
+    it("names the root group's routes module without a prefix", () => {
+        const code = renderOperationsIndex([operation(build())], [undefined]);
+
+        expect(code).toContain('import { operationRoutes as rootRoutes } from "./routes.ts";');
+        expect(code).toContain("export const operationRoutes: Route[] = [...rootRoutes];");
     });
 
     it("is written beside the modules, so the package root resolves after a run", () => {
         const dir = tempDir();
         expect(run(build(), ["--out", dir], SILENT)).toBe(0);
 
-        expect(readFileSync(join(dir, "index.ts"), "utf8")).toBe(renderOperationsIndex([operation(build())]));
+        expect(readFileSync(join(dir, "index.ts"), "utf8")).toBe(renderOperationsIndex([operation(build())], []));
     });
 });
 

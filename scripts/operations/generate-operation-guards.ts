@@ -1,9 +1,10 @@
 /** Scaffold one permission guard per REST operation, and check that a hand-written guard enforces its permission. See docs/permissions.md. */
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { OPERATIONS_PACKAGE_ROOT } from "../paths.ts";
 import { loadSpec, type Diagnostic, type RestPermission, type SpecModel } from "../spec/spec-model.ts";
 import { buildRestModel, type RestModel, type RestOperationCall } from "../sdk/rest-model.ts";
+import { filesBelow, groupedName, guardPath, removeEmptyDirectories } from "./generated-paths.ts";
 
 /** The channels a run reports on: the console, or a caller's own sink. */
 type Output = Pick<Console, "log" | "error">;
@@ -11,7 +12,7 @@ type Output = Pick<Console, "log" | "error">;
 export type { Diagnostic };
 
 /** Where the operation guard modules are written when no `--out` is given. */
-const DEFAULT_OUT_DIR = join(OPERATIONS_PACKAGE_ROOT, "src/guards");
+const DEFAULT_OUT_DIR = join(OPERATIONS_PACKAGE_ROOT, "src");
 
 /** The first line of a scaffold: it names the generator that started the file, and who finishes it. */
 export const SCAFFOLD_MARKER =
@@ -25,6 +26,8 @@ const SCHEMAS_IMPORT = "sdk/schemas.ts";
 export interface GuardPlan {
     name: string;
     permission: RestPermission;
+    /** The first directory under `spec/src` the contract sits in; the guard is written beneath it. */
+    topLevelDirectory: string | undefined;
     /** One of the operations that uses the guard; its input names the guard's argument. */
     operation: RestOperationCall;
 }
@@ -40,7 +43,19 @@ export function buildGuardPlans(model: RestModel): { plans: GuardPlan[]; diagnos
         }
         const existing = byName.get(guardName);
         if (existing === undefined) {
-            byName.set(guardName, { name: guardName, permission, operation });
+            byName.set(guardName, {
+                name: guardName,
+                permission,
+                topLevelDirectory: operation.topLevelDirectory,
+                operation,
+            });
+            continue;
+        }
+        if (existing.topLevelDirectory !== operation.topLevelDirectory) {
+            diagnostics.push({
+                ...operation.location,
+                message: `\`${operation.id}\`: guard \`${guardName}\` is shared across services; a guard lives in one service`,
+            });
             continue;
         }
         if (existing.permission.scope !== permission.scope || existing.permission.action !== permission.action) {
@@ -97,7 +112,12 @@ export function renderGuardScaffold(plan: GuardPlan): string {
 
 /** The file a guard plan writes. */
 function guardFile(outDir: string, plan: GuardPlan): string {
-    return join(outDir, `${plan.name}.ts`);
+    return guardPath(outDir, plan.topLevelDirectory, plan.name);
+}
+
+/** The guard's path relative to the output root, which is also how a check run keeps it from pruning. */
+function guardName(plan: GuardPlan): string {
+    return groupedName(plan.topLevelDirectory, "guards", `${plan.name}.ts`);
 }
 
 /** The finding for a guard the spec needs and no module supplies. */
@@ -154,15 +174,12 @@ export function isGuardScaffold(source: string): boolean {
 
 /** The scaffolds the spec no longer references, which a generate run removes. */
 function staleScaffolds(outDir: string, keep: Set<string>): string[] {
-    if (!existsSync(outDir)) {
-        return [];
-    }
     const stale: string[] = [];
-    for (const entry of readdirSync(outDir, { withFileTypes: true })) {
-        if (!entry.isFile() || !entry.name.endsWith(".ts") || keep.has(entry.name)) {
+    for (const shown of filesBelow(outDir, ".ts")) {
+        if (keep.has(shown)) {
             continue;
         }
-        const file = join(outDir, entry.name);
+        const file = join(outDir, shown);
         const source = readFileSync(file, "utf8");
         if (source.split("\n", 1)[0] === SCAFFOLD_MARKER && isGuardScaffold(source)) {
             stale.push(file);
@@ -197,7 +214,7 @@ function checkRun(plans: readonly GuardPlan[], outDir: string, output: Output): 
             findings.push(driftedGuard(file, plan));
         }
     }
-    findings.push(...staleScaffolds(outDir, new Set(plans.map((plan) => `${plan.name}.ts`))).map(staleScaffold));
+    findings.push(...staleScaffolds(outDir, new Set(plans.map(guardName))).map(staleScaffold));
     if (findings.length > 0) {
         for (const finding of findings) {
             output.error(`${finding.filePath}:${finding.line}: ${finding.message}`);
@@ -219,13 +236,15 @@ function generateRun(plans: readonly GuardPlan[], outDir: string, output: Output
             verified += 1;
             continue;
         }
+        mkdirSync(dirname(file), { recursive: true });
         writeFileSync(file, renderGuardScaffold(plan));
         created += 1;
     }
-    const stale = staleScaffolds(outDir, new Set(plans.map((plan) => `${plan.name}.ts`)));
+    const stale = staleScaffolds(outDir, new Set(plans.map(guardName)));
     for (const file of stale) {
         rmSync(file);
     }
+    removeEmptyDirectories(outDir);
     output.log(`wrote ${created} operation guard(s), verified ${verified}, removed ${stale.length} scaffold(s) to ${outDir}`);
     return 0;
 }

@@ -17,7 +17,7 @@ import {
 const SILENT = { log: () => undefined, error: () => undefined };
 
 /** The glob that matches an in-memory fixture, placed so its import specifier looks like a real one. */
-const SPEC_GLOB = join(SPEC_SRC_ROOT, "fixtures/**/*.ts");
+const SPEC_GLOB = join(SPEC_SRC_ROOT, "**/*.ts");
 
 /** A contract with two describes, each carrying rows, and one operation without any. */
 const OPERATIONS = `
@@ -70,8 +70,8 @@ export interface WidgetOperations<T> {
 `.trim();
 
 /** Build a model from in-memory sources, so no test reads the real spec. */
-function build(source = OPERATIONS): SpecModel {
-    return parseInMemorySpec([{ filePath: join(SPEC_SRC_ROOT, "fixtures", "WidgetOperations.ts"), sourceFileText: source }], {
+function build(source = OPERATIONS, path = "WidgetOperations.ts"): SpecModel {
+    return parseInMemorySpec([{ filePath: join(SPEC_SRC_ROOT, path), sourceFileText: source }], {
         sourceGlob: SPEC_GLOB,
     });
 }
@@ -293,6 +293,15 @@ describe("run", () => {
 
         expect(existsSync(join(dir, `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(true);
         expect(existsSync(join(dir, `readWidget${SPEC_TEST_SUFFIX}`))).toBe(false);
+    });
+
+    it("writes the spec test under the service directory its contract names", () => {
+        const dir = tempDir();
+        const grouped = build(OPERATIONS, "widget-service/WidgetOperations.ts");
+
+        expect(run(grouped, ["--out", dir], SILENT)).toBe(0);
+        expect(existsSync(join(dir, "widget-service", `freezeWidget${SPEC_TEST_SUFFIX}`))).toBe(true);
+        expect(run(grouped, ["--out", dir, "--check"], SILENT)).toBe(0);
     });
 
     it("rewrites an unedited scaffold when the spec adds a row", () => {
