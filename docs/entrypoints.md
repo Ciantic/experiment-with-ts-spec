@@ -35,29 +35,21 @@ carries `pg` only when it is built from `main.pg.ts`, and PGlite only from
 
 ## Two bundles
 
-The entries are separate inputs, not one module that branches:
+`packages/backend/vite.config.ts` maps `--mode pg` and `--mode pglite` to one
+entry each, and `pnpm --filter backend build` runs both in turn:
 
-```ts
-// vite.config.ts
-export default defineConfig({
-    build: {
-        ssr: true,
-        target: "node22",
-        rollupOptions: {
-            input: {
-                pg: "src/main.pg.ts",
-                pglite: "src/main.pglite.ts",
-            },
-        },
-    },
-});
-```
+- `dist.pg/main.pg.js` from `main.pg.ts`
+- `dist.pglite/main.pglite.js` from `main.pglite.ts`
 
-An SSR build externalises what is in `node_modules` and bundles the linked
-workspace packages, so shared code lands in chunks both entries import, while
-`pg` and `@electric-sql/pglite` stay runtime dependencies of their own bundle.
+The build bundles every dependency (`ssr.noExternal`) and turns code splitting
+off, so each entry is one JavaScript file. Node builtins stay external.
 
 `applySchema` reads `schema.sql` through `import.meta.url`, so a bundle that
-also contains `infra` no longer finds it. Either list the workspace packages in
-`ssr.external` and let `infra` stay in `node_modules` beside its DDL, or copy
-`schema.sql` into the output at the path the emitted module resolves.
+also contains `infra` would no longer find it; the config replaces that read
+with the DDL text, and both bundles carry the schema inside the script.
+
+PGlite reads `pglite.wasm`, `initdb.wasm`, and `pglite.data` from its own
+directory instead. The `pglite` bundle copies those three beside the entry under
+the names PGlite asks for, because it loads the wasm as a module and maps the
+data file into memory: base64 copies would hide that cost inside the script.
+

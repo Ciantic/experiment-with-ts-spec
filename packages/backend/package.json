@@ -9,6 +9,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "build": "pnpm run build:pg && pnpm run build:pglite",
+    "build:pg": "vite build --mode pg",
+    "build:pglite": "vite build --mode pglite",
     "start": "node src/main.pg.ts",
     "example:server": "node src/main.pglite.ts"
   },
@@ -23,6 +26,7 @@
     "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^26.6.2",
     "@types/pg": "^8.23.1",
+    "vite": "^8.3.1",
     "vitest": "^5.0.2"
   }
 }
