@@ -51,6 +51,9 @@ seeds by default; flags:
 - `--no-mock` — skip inserting the mock data before serving.
 - `--schema` and `--seed` — the `pg` entry's opt-in flags; `pg` applies the
   schema and inserts the mock data only when they are given.
+- `--without-auth` — serve both entries with every route guard removed, so the
+  permission layer's `NotImplemented` does not answer `501`. For trying the API
+  before a session resolves the credentials.
 - `--log-sql` — let PGlite print every statement it runs, the `BEGIN`, `COMMIT`,
   and `ROLLBACK` it issues around a transaction included. PGlite's own startup
   and server logs come with it, so the output is verbose.

@@ -1,7 +1,7 @@
 /** The `pg` entry point: a server over an external Postgres. See docs/entrypoints.md. */
 import * as pgRuntime from "pg";
 import { ApiServer, PgSqlDriver, applySchema, createAppContext, seedMockData } from "infra";
-import { routes } from "./routes.ts";
+import { routes, withoutGuards } from "./routes.ts";
 import { parseServerArgs } from "./args.pg.ts";
 
 /** Read the flags, then serve over the pool `pg` builds. */
@@ -16,9 +16,12 @@ async function main(): Promise<void> {
         await seedMockData(driver.createExecutor());
     }
     const app = createAppContext({ driver });
-    const server = new ApiServer(app, routes);
+    const server = new ApiServer(app, options.withoutAuth === true ? withoutGuards(routes) : routes);
     const port = await server.listen(options.port);
-    console.log(`api listening on http://127.0.0.1:${port}${options.seed ? " (mock data seeded)" : ""}`);
+    console.log(
+        `api listening on http://127.0.0.1:${port}` +
+            `${options.seed ? " (mock data seeded)" : ""}${options.withoutAuth === true ? " (auth disabled)" : ""}`,
+    );
 }
 
 await main();

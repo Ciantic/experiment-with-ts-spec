@@ -7,26 +7,18 @@ import {
     applySchema,
     createAppContext,
     seedMockData,
-    type Route,
 } from "infra";
 import * as api from "sdk/api/index.ts";
 import * as invoiceRows from "sdk/api/invoiceRow.ts";
 import { exec, safeExec, transaction } from "sdk/client.ts";
 import { ApiClient, VersionConflictError } from "sdk/http.ts";
-import { routes } from "./routes.ts";
+import { routes, withoutGuards } from "./routes.ts";
 import type { Quantity } from "spec/invoicing-service/primitives/Quantity.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import type { TaxRate } from "spec/invoicing-service/primitives/TaxRate.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import type { InvoiceId } from "spec/invoicing-service/Invoice.ts";
 import type { InvoiceRowId } from "spec/invoicing-service/InvoiceRow.ts";
-
-/** The generated routes without guards: the permission layer still throws `NotImplemented`, so a guarded call would only see 501. */
-function withoutGuard(route: Route): Route {
-    const copy: Route = { ...route };
-    delete copy.guard;
-    return copy;
-}
 
 describe("playground", () => {
     let driver: PgliteSqlDriver;
@@ -37,7 +29,7 @@ describe("playground", () => {
         driver = new PgliteSqlDriver(PGlite);
         await applySchema(driver);
         await seedMockData(driver.createExecutor());
-        server = new ApiServer(createAppContext({ driver }), routes.map(withoutGuard));
+        server = new ApiServer(createAppContext({ driver }), withoutGuards(routes));
         const port = await server.listen(0);
         http = new ApiClient(`http://127.0.0.1:${port}`);
     });

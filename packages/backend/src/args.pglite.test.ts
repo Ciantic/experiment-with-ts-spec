@@ -36,6 +36,7 @@ describe("parseServerArgs (pglite)", () => {
                 "4123",
                 "--no-schema",
                 "--no-mock",
+                "--without-auth",
                 "--log-sql",
                 "--data-dir",
                 "./.pglite",
@@ -44,6 +45,7 @@ describe("parseServerArgs (pglite)", () => {
             port: 4123,
             schema: false,
             seed: false,
+            withoutAuth: true,
             logSql: true,
             dataDir: "./.pglite",
         });
@@ -114,7 +116,15 @@ describe("parseServerArgs (pglite)", () => {
     });
 
     it("lists every flag in the help text", () => {
-        for (const flag of ["--port", "--no-schema", "--no-mock", "--log-sql", "--data-dir", "--help"]) {
+        for (const flag of [
+            "--port",
+            "--no-schema",
+            "--no-mock",
+            "--without-auth",
+            "--log-sql",
+            "--data-dir",
+            "--help",
+        ]) {
             expect(HELP).toContain(flag);
         }
     });

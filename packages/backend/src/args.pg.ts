@@ -9,6 +9,7 @@ interface CliOptions {
     port: number;
     schema?: boolean;
     seed?: boolean;
+    withoutAuth?: boolean;
     databaseUrl?: string;
 }
 
@@ -20,6 +21,7 @@ export const HELP = [
     "  --port <n>             port to listen on (default 3000)",
     "  --schema               apply the generated schema before serving",
     "  --seed                 insert the mock data before serving",
+    "  --without-auth         serve with every route guard removed",
     "  --database-url <url>   Postgres connection string (defaults to DATABASE_URL)",
     "  --help, -h             print this help",
 ].join("\n");
@@ -29,6 +31,7 @@ const CLI_FLAGS = {
     port: { type: "string" },
     schema: { type: "boolean" },
     seed: { type: "boolean" },
+    "without-auth": { type: "boolean" },
     "database-url": { type: "string" },
     help: { type: "boolean", short: "h" },
 } as const satisfies ParseArgsOptionsConfig;
@@ -52,6 +55,9 @@ export function parseServerArgs(argv: readonly string[]): CliOptions {
     }
     if (values.seed === true) {
         options.seed = true;
+    }
+    if (values["without-auth"] === true) {
+        options.withoutAuth = true;
     }
     const port = values.port;
     if (port !== undefined) {

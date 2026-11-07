@@ -19,14 +19,21 @@ Two modules make the pick, and each imports one driver and its own parser:
 
 - `packages/backend/src/main.pg.ts` with `args.pg.ts` — `PgSqlDriver` over
   `pg`'s pool, with `--database-url` (falling back to `DATABASE_URL`) as the
-  connection string; flags are `--port`, `--schema`, `--seed`, `--database-url`,
-  and `--help`. `pg` is a runtime dependency, so this is the production entry.
+  connection string; flags are `--port`, `--schema`, `--seed`, `--without-auth`,
+  `--database-url`, and `--help`. `pg` is a runtime dependency, so this is the
+  production entry.
 - `packages/backend/src/main.pglite.ts` with `args.pglite.ts` —
   `PgliteSqlDriver` over an in-memory PGlite, unless `--data-dir` names a
   directory to persist to; it logs statements when `--log-sql` is present;
-  flags are `--port`, `--no-schema`, `--no-mock`, `--log-sql`, `--data-dir`, and
-  `--help`. PGlite is a development dependency, so this is the development and
-  test entry.
+  flags are `--port`, `--no-schema`, `--no-mock`, `--without-auth`, `--log-sql`,
+  `--data-dir`, and `--help`. PGlite is a development dependency, so this is the
+  development and test entry.
+
+`--without-auth` serves the same route table through `withoutGuards` in
+`routes.ts`, which drops every `Route.guard` before the server starts. The
+permission layer still throws `NotImplemented`, so a guarded call would answer
+`501`; the flag exists to exercise the routes until a session resolves the
+credentials. It is a development switch and never a production default.
 
 Neither setup module in `infra` imports its library at runtime: each takes the
 module as a constructor argument and names it by type otherwise. A bundle

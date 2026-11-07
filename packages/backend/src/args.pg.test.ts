@@ -36,18 +36,30 @@ describe("parseServerArgs (pg)", () => {
                 "4123",
                 "--schema",
                 "--seed",
+                "--without-auth",
                 "--database-url",
                 "postgres://localhost/db",
             ]),
-        ).toEqual({ port: 4123, schema: true, seed: true, databaseUrl: "postgres://localhost/db" });
+        ).toEqual({
+            port: 4123,
+            schema: true,
+            seed: true,
+            withoutAuth: true,
+            databaseUrl: "postgres://localhost/db",
+        });
     });
 
     it("answers the default port when there is no flag", () => {
         expect(parseServerArgs([])).toEqual({ port: 3000 });
     });
 
-    it("reads the schema and seed flags", () => {
-        expect(parseServerArgs(["--schema", "--seed"])).toEqual({ port: 3000, schema: true, seed: true });
+    it("reads the schema, seed, and without-auth flags", () => {
+        expect(parseServerArgs(["--schema", "--seed", "--without-auth"])).toEqual({
+            port: 3000,
+            schema: true,
+            seed: true,
+            withoutAuth: true,
+        });
     });
 
     it("applies the schema and the seed independently", () => {
@@ -107,7 +119,7 @@ describe("parseServerArgs (pg)", () => {
     });
 
     it("lists every flag in the help text", () => {
-        for (const flag of ["--port", "--schema", "--seed", "--database-url", "--help"]) {
+        for (const flag of ["--port", "--schema", "--seed", "--without-auth", "--database-url", "--help"]) {
             expect(HELP).toContain(flag);
         }
     });

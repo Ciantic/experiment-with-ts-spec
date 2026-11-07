@@ -9,6 +9,7 @@ interface CliOptions {
     port: number;
     schema: boolean;
     seed: boolean;
+    withoutAuth?: boolean;
     logSql?: boolean;
     dataDir?: string;
 }
@@ -21,6 +22,7 @@ export const HELP = [
     "  --port <n>             port to listen on (default 3000)",
     "  --no-schema            skip applying the generated schema",
     "  --no-mock              skip inserting the mock data",
+    "  --without-auth         serve with every route guard removed",
     "  --log-sql              log every statement PGlite runs",
     "  --data-dir <path>      directory PGlite persists to",
     "  --help, -h             print this help",
@@ -31,6 +33,7 @@ const CLI_FLAGS = {
     port: { type: "string" },
     "no-schema": { type: "boolean" },
     "no-mock": { type: "boolean" },
+    "without-auth": { type: "boolean" },
     "log-sql": { type: "boolean" },
     "data-dir": { type: "string" },
     help: { type: "boolean", short: "h" },
@@ -55,6 +58,9 @@ export function parseServerArgs(argv: readonly string[]): CliOptions {
     }
     if (values["no-mock"] === true) {
         options.seed = false;
+    }
+    if (values["without-auth"] === true) {
+        options.withoutAuth = true;
     }
     const port = values.port;
     if (port !== undefined) {
