@@ -13,12 +13,17 @@
         "comments/single-line": ["error", { "maxWidth": 150 }],
         "scaffold/no-not-implemented": "warn"
     },
-    "ignorePatterns": ["playground/**"],
     "overrides": [
         {
             "files": ["**/*.test.ts", "**/scripts/**"],
             "rules": {
                 "errors/throws-jsdoc": "off",
+                "errors/no-plain-error": "off"
+            }
+        },
+        {
+            "files": ["playground/**"],
+            "rules": {
                 "errors/no-plain-error": "off"
             }
         }

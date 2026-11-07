@@ -3,11 +3,27 @@ import { afterAll, beforeAll } from "vitest";
 import type { ApiClient } from "sdk/http.ts";
 
 /** The server an environment started, or reused, and the teardown of everything its launch opened. */
-export interface PlaygroundServer {
+export abstract class PlaygroundServer {
     /** The client for the server the environment started, or reused. */
-    http: ApiClient;
+    readonly http: ApiClient;
+
+    protected constructor(http: ApiClient) {
+        this.http = http;
+    }
+
     /** Stop the server and release everything the environment opened. */
-    close: () => Promise<void>;
+    abstract close(): Promise<void>;
+}
+
+/** A server that was already listening, so this run has nothing to release. */
+export class ReusedServer extends PlaygroundServer {
+    constructor(http: ApiClient) {
+        super(http);
+    }
+
+    close(): Promise<void> {
+        return Promise.resolve();
+    }
 }
 
 /** The `it` blocks a describe registers, asked for the client of the server it started. */
