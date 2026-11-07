@@ -105,7 +105,8 @@ describe("ApiServer", () => {
             });
 
             expect(response.headers.get("content-type")).toBe("text/event-stream");
-            expect(await response.text()).toBe(`data: ${stringify({ op: "INSERT" })}\n\n`);
+            // A comment opens the stream, so a runtime that holds the head until the first write still opens it.
+            expect(await response.text()).toBe(`: open\n\ndata: ${stringify({ op: "INSERT" })}\n\n`);
         } finally {
             await server.close();
         }

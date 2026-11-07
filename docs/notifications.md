@@ -216,6 +216,18 @@ data: {"op":"INSERT"}
 
 ```
 
+A stream opens with a comment line, before any change:
+
+```
+: open
+
+```
+
+Flushing the response's headers is not enough on every runtime: a server that
+holds the head until the first body write keeps the stream unopened, so a client
+never sees the response and never fires `open`. The comment is that first write,
+and the grammar ignores it.
+
 A quiet stream would otherwise leave the socket silent long enough for a proxy
 to close it, so every 15 seconds it writes a comment line instead:
 

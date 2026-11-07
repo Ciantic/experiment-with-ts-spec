@@ -9,6 +9,9 @@ export const SSE_HEARTBEAT_MS = 15_000;
 /** A comment line: the event-stream grammar ignores it, so it reaches no subscriber and carries no key. */
 const HEARTBEAT = ": ping\n\n";
 
+/** Startup comment that opens a stream, to avoid porffor bug. */
+const OPEN = ": open\n\n";
+
 /** The events a stream writes; the server opens it with the signal that ends with the response. */
 export class SseStream extends WritableResponse {
     readonly #open: (signal: AbortSignal) => AsyncIterable<unknown>;
@@ -30,6 +33,8 @@ export class SseStream extends WritableResponse {
         response.on("close", onClose);
         // Send the event-stream headers before the first change, so a client's `fetch` resolves.
         response.flushHeaders();
+        // Porffor has slight bug without this initial write
+        response.write(OPEN);
         const heartbeat = setInterval(() => {
             if (response.writableEnded || response.destroyed) {
                 return;

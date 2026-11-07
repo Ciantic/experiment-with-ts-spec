@@ -51,16 +51,25 @@ afterEach(() => {
 });
 
 describe("SseStream", () => {
+    it("opens the stream with a comment, so a client's open fires before the first change", async () => {
+        const { response, written, close } = responseSpy();
+        new SseStream(quiet).writeTo(response);
+
+        expect(written).toEqual([": open\n\n"]);
+
+        close();
+    });
+
     it("writes a comment on a quiet stream, so no proxy drops it for inactivity", async () => {
         vi.useFakeTimers();
         const { response, written, close } = responseSpy();
         new SseStream(quiet).writeTo(response);
 
         await vi.advanceTimersByTimeAsync(SSE_HEARTBEAT_MS);
-        expect(written).toEqual([": ping\n\n"]);
+        expect(written).toEqual([": open\n\n", ": ping\n\n"]);
 
         await vi.advanceTimersByTimeAsync(SSE_HEARTBEAT_MS);
-        expect(written).toEqual([": ping\n\n", ": ping\n\n"]);
+        expect(written).toEqual([": open\n\n", ": ping\n\n", ": ping\n\n"]);
 
         close();
         await vi.advanceTimersByTimeAsync(0);
@@ -75,7 +84,7 @@ describe("SseStream", () => {
         close();
         await vi.advanceTimersByTimeAsync(SSE_HEARTBEAT_MS * 3);
 
-        expect(written).toEqual([": ping\n\n"]);
+        expect(written).toEqual([": open\n\n", ": ping\n\n"]);
     });
 
     it("keeps a comment out of the events, so a heartbeat fires no listener", async () => {
@@ -91,8 +100,9 @@ describe("SseStream", () => {
         ).writeTo(response);
 
         await vi.advanceTimersByTimeAsync(SSE_HEARTBEAT_MS);
-        expect(written[0]).toMatch(/^data: /);
-        expect(written[1]).toBe(": ping\n\n");
+        expect(written[0]).toBe(": open\n\n");
+        expect(written[1]).toMatch(/^data: /);
+        expect(written[2]).toBe(": ping\n\n");
 
         close();
         await vi.advanceTimersByTimeAsync(SSE_HEARTBEAT_MS * 2);
