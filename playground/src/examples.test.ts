@@ -1,87 +1,38 @@
-/** SDK Playground, this is exception to testing rule and is allowed to use domain-specific features */
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+/** The SDK Playground: the SDK calls, and one describe per environment they run against. */
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
-import { createConnection } from "node:net";
-import { PGlite } from "@electric-sql/pglite";
 import { EventSource as Polyfill } from "eventsource";
-import {
-    ApiServer,
-    PgliteSqlDriver,
-    applySchema,
-    createAppContext,
-    seedMockData,
-} from "infra";
 import * as api from "sdk/api/index.ts";
 import * as invoiceRows from "sdk/api/invoiceRow.ts";
 import { exec, safeExec, transaction } from "sdk/client.ts";
 import { ApiClient, VersionConflictError } from "sdk/http.ts";
 import type { WatchAllEvent } from "sdk/watch.ts";
-import { routes, withoutGuards } from "../../packages/backend/src/routes.ts";
 import type { Quantity } from "spec/invoicing-service/primitives/Quantity.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import type { TaxRate } from "spec/invoicing-service/primitives/TaxRate.ts";
 import type { Version } from "spec/primitives/Version.ts";
 import type { InvoiceId } from "spec/invoicing-service/Invoice.ts";
 import type { InvoiceRowId } from "spec/invoicing-service/InvoiceRow.ts";
+import { runWithPglite } from "./utils/pglite-server.ts";
+import { runWithPorffor } from "./utils/porffor-server.ts";
+import { runWithPostgres, runWithPostgresContainer } from "./utils/postgres-server.ts";
 
-/** The port the playground serves on, so a server you started yourself can be reused. */
-const PLAYGROUND_PORT = 3000;
+/** Node gates its own `EventSource` behind `--experimental-eventsource`, so the watch example installs the polyfill. */
+vi.stubGlobal("EventSource", Polyfill);
 
-/** Whether anything already accepts connections on the loopback port. */
-async function isListening(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const socket = createConnection({ host: "127.0.0.1", port });
-        socket.once("connect", () => {
-            socket.destroy();
-            resolve(true);
-        });
-        socket.once("error", () => resolve(false));
-    });
-}
+afterAll(() => {
+    vi.unstubAllGlobals();
+});
 
 /** A fresh v7-shaped identifier, so a run against a long-lived server never collides with an earlier one. */
 function uniqueId(): string {
     return `00000000-0000-7000-8000-${randomBytes(6).toString("hex")}`;
 }
 
-function foo () {
-
-}
-
-// describe("run playground with real PostgreSQL server", foo);
-
-// describe("run playground with Pglite", foo);
-
-// describe("run playground with Porffor + PostgreSQL", foo);
-
-
-describe("playground", () => {
-    let driver: PgliteSqlDriver | undefined;
-    let server: ApiServer | undefined;
-    let http: ApiClient;
-
-    beforeAll(async () => {
-        // Node gates its own `EventSource` behind `--experimental-eventsource`, so the watch example installs the polyfill. See docs/notifications.md.
-        vi.stubGlobal("EventSource", Polyfill);
-        if (await isListening(PLAYGROUND_PORT)) {
-            http = new ApiClient(`http://127.0.0.1:${PLAYGROUND_PORT}`);
-            return;
-        }
-        driver = new PgliteSqlDriver(PGlite);
-        await applySchema(driver);
-        await seedMockData(driver.createExecutor());
-        server = new ApiServer(createAppContext({ driver }), withoutGuards(routes));
-        const port = await server.listen(PLAYGROUND_PORT);
-        http = new ApiClient(`http://127.0.0.1:${port}`);
-    });
-
-    afterAll(async () => {
-        vi.unstubAllGlobals();
-        await server?.close();
-        await driver?.close();
-    });
-
+/** Register the examples; `getHttp` answers with the client the surrounding describe built. */
+export function examples(getHttp: () => ApiClient): void {
     it("has a seeded server to try SDK calls against", async () => {
+        const http = getHttp();
         const [tenant] = await exec(
             http,
             api.queryTenant({ limit: 1, select: { id: true } }),
@@ -135,6 +86,7 @@ describe("playground", () => {
     });
 
     it("returns the error when a versioned update addresses no row", async () => {
+        const http = getHttp();
         const missingId = "00000000-0000-7000-8000-0000000009fe" as NonNullable<api.InvoiceInsert["id"]>;
 
         const outcome = await safeExec(
@@ -152,6 +104,7 @@ describe("playground", () => {
     });
 
     it("streams an INSERT through watchInvoice", async () => {
+        const http = getHttp();
         const [tenant] = await exec(
             http,
             api.queryTenant({ limit: 1, select: { id: true } }),
@@ -192,5 +145,14 @@ describe("playground", () => {
         }
     });
 
-    // Try other calls here; `http`, `exec`, and `safeExec` are ready for the seeded server.
-});
+    // Try other calls here; the client the surrounding describe provides is ready for the seeded server.
+}
+
+describe("run playground with Pglite", runWithPglite(examples));
+
+describe("run playground with real PostgreSQL server", runWithPostgres(examples));
+
+describe("run playground with Porffor + PostgreSQL", runWithPorffor(examples));
+
+describe("start PostgreSQL container and keep it running", runWithPostgresContainer());
+
