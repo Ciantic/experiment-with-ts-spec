@@ -9,7 +9,7 @@ export const SSE_HEARTBEAT_MS = 15_000;
 /** A comment line: the event-stream grammar ignores it, so it reaches no subscriber and carries no key. */
 const HEARTBEAT = ": ping\n\n";
 
-/** Startup comment that opens a stream, to avoid porffor bug. */
+/** Startup comment that opens a stream, to avoid porffor bug https://github.com/CanadaHonk/porffor/issues/453 */
 const OPEN = ": open\n\n";
 
 /** The events a stream writes; the server opens it with the signal that ends with the response. */
