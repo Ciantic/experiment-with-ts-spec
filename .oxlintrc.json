@@ -13,6 +13,7 @@
         "comments/single-line": ["error", { "maxWidth": 150 }],
         "scaffold/no-not-implemented": "warn"
     },
+    "ignorePatterns": ["playground/**"],
     "overrides": [
         {
             "files": ["**/*.test.ts", "**/scripts/**"],

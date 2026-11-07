@@ -16,7 +16,7 @@ import * as invoiceRows from "sdk/api/invoiceRow.ts";
 import { exec, safeExec, transaction } from "sdk/client.ts";
 import { ApiClient, VersionConflictError } from "sdk/http.ts";
 import type { WatchAllEvent } from "sdk/watch.ts";
-import { routes, withoutGuards } from "./routes.ts";
+import { routes, withoutGuards } from "../../packages/backend/src/routes.ts";
 import type { Quantity } from "spec/invoicing-service/primitives/Quantity.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
 import type { TaxRate } from "spec/invoicing-service/primitives/TaxRate.ts";
@@ -43,6 +43,17 @@ async function isListening(port: number): Promise<boolean> {
 function uniqueId(): string {
     return `00000000-0000-7000-8000-${randomBytes(6).toString("hex")}`;
 }
+
+function foo () {
+
+}
+
+// describe("run playground with real PostgreSQL server", foo);
+
+// describe("run playground with Pglite", foo);
+
+// describe("run playground with Porffor + PostgreSQL", foo);
+
 
 describe("playground", () => {
     let driver: PgliteSqlDriver | undefined;
