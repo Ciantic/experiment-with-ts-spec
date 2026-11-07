@@ -40,20 +40,30 @@ module as a constructor argument and names it by type otherwise. A bundle
 carries `pg` only when it is built from `main.pg.ts`, and PGlite only from
 `main.pglite.ts`, with no bundler rule keeping them apart.
 
-## Two bundles
+## Three bundles
 
-`packages/backend/vite.config.ts` maps `--mode pg` and `--mode pglite` to one
-entry each, and `pnpm --filter backend build` runs both in turn:
+`packages/backend/vite.config.ts` maps `--mode pg`, `--mode pglite`, and
+`--mode porffor` to one entry each, and `pnpm --filter backend build` runs all
+three in turn:
 
-- `dist.pg/main.pg.js` from `main.pg.ts`
-- `dist.pglite/main.pglite.js` from `main.pglite.ts`
+- `dist.pg/main.pg.js` from `main.pg.ts`, for Node
+- `dist.pglite/main.pglite.js` from `main.pglite.ts`, for Node
+- `dist.porffor/main.porffor.js` from `main.pg.ts`, for the porffor runtime
 
 The build bundles every dependency (`ssr.noExternal`) and turns code splitting
 off, so each entry is one JavaScript file. Node builtins stay external.
 
+The porffor runtime has no `Function` constructor, and Zod compiles its object
+parser with one unless `z.config({ jitless: true })` runs first. Zod reads that
+setting when it builds a schema, and `infra` builds the route schemas at its own
+top level, so the call must precede it. The `porffor` bundle carries a
+`virtual:zod-jitless` module, and the config prepends its import to the entry, so
+the entry stays a plain module with static imports and the bundle evaluates the
+configuration before any schema. Every other bundle leaves Zod alone.
+
 `applySchema` reads `schema.sql` through `import.meta.url`, so a bundle that
 also contains `infra` would no longer find it; the config replaces that read
-with the DDL text, and both bundles carry the schema inside the script.
+with the DDL text, and all three bundles carry the schema inside the script.
 
 PGlite reads `pglite.wasm`, `initdb.wasm`, and `pglite.data` from its own
 directory instead. The `pglite` bundle copies those three beside the entry under

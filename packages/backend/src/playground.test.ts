@@ -1,5 +1,7 @@
 /** SDK Playground, this is exception to testing rule and is allowed to use domain-specific features */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomBytes } from "node:crypto";
+import { createConnection } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import {
     ApiServer,
@@ -20,23 +22,47 @@ import type { Version } from "spec/primitives/Version.ts";
 import type { InvoiceId } from "spec/invoicing-service/Invoice.ts";
 import type { InvoiceRowId } from "spec/invoicing-service/InvoiceRow.ts";
 
+/** The port the playground serves on, so a server you started yourself can be reused. */
+const PLAYGROUND_PORT = 3000;
+
+/** Whether anything already accepts connections on the loopback port. */
+async function isListening(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        const socket = createConnection({ host: "127.0.0.1", port });
+        socket.once("connect", () => {
+            socket.destroy();
+            resolve(true);
+        });
+        socket.once("error", () => resolve(false));
+    });
+}
+
+/** A fresh v7-shaped identifier, so a run against a long-lived server never collides with an earlier one. */
+function uniqueId(): string {
+    return `00000000-0000-7000-8000-${randomBytes(6).toString("hex")}`;
+}
+
 describe("playground", () => {
-    let driver: PgliteSqlDriver;
-    let server: ApiServer;
+    let driver: PgliteSqlDriver | undefined;
+    let server: ApiServer | undefined;
     let http: ApiClient;
 
     beforeAll(async () => {
+        if (await isListening(PLAYGROUND_PORT)) {
+            http = new ApiClient(`http://127.0.0.1:${PLAYGROUND_PORT}`);
+            return;
+        }
         driver = new PgliteSqlDriver(PGlite);
         await applySchema(driver);
         await seedMockData(driver.createExecutor());
         server = new ApiServer(createAppContext({ driver }), withoutGuards(routes));
-        const port = await server.listen(0);
+        const port = await server.listen(PLAYGROUND_PORT);
         http = new ApiClient(`http://127.0.0.1:${port}`);
     });
 
     afterAll(async () => {
-        await server.close();
-        await driver.close();
+        await server?.close();
+        await driver?.close();
     });
 
     it("has a seeded server to try SDK calls against", async () => {
@@ -49,12 +75,13 @@ describe("playground", () => {
             throw new Error("the seed has no tenants");
         }
 
-        const invoiceId = "00000000-0000-7000-8000-0000000009ff" as InvoiceId;
-        const invoiceRowId = "00000000-0000-7000-8000-0000000009f1" as InvoiceRowId;
+        const invoiceId = uniqueId() as InvoiceId;
+        const invoiceRowId = uniqueId() as InvoiceRowId;
+        const number = `2026-${randomBytes(3).toString("hex")}`;
         const invoice: api.InvoiceInsert = {
             id: invoiceId,
             tenantId: tenant.id,
-            number: "2026-9001",
+            number,
             issueDate: new Date("2026-02-01T00:00:00.000Z"),
             dueDate: new Date("2026-02-15T00:00:00.000Z"),
         };
@@ -85,7 +112,7 @@ describe("playground", () => {
         if (outcome2.ok) {
             const [, createdRows, [stored]] = outcome2.value;
             expect(createdRows).toHaveLength(1);
-            expect(stored?.number).toBe("2026-9001");
+            expect(stored?.number).toBe(number);
             expect(stored?.netAmount).toBe("100.00");
             expect(stored?.taxAmount).toBe("25.50");
         }

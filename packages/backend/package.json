@@ -9,9 +9,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run build:pg && pnpm run build:pglite",
+    "build": "pnpm run build:pg && pnpm run build:pglite && pnpm run build:porffor",
     "build:pg": "vite build --mode pg",
     "build:pglite": "vite build --mode pglite",
+    "build:porffor": "vite build --mode porffor",
     "start": "node src/main.pg.ts",
     "example:server": "node src/main.pglite.ts"
   },

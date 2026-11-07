@@ -10,11 +10,11 @@ trap 'podman stop pg-throwaway' EXIT
 
 podman run --replace --rm -d --name pg-throwaway -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5432:5432 docker.io/library/postgres:18-alpine
 
-pnpm --filter backend run build:pg
+pnpm --filter backend run build:porffor
 
 echo "Waiting 5 seconds for PostgreSQL to be ready..."
 
 sleep 5
 
-porf packages/backend/dist.pg/main.pg.js --schema --seed --database-url postgres://postgres@127.0.0.1:5432/postgres
+porf packages/backend/dist.porffor/main.porffor.js --schema --seed --without-auth --database-url postgres://postgres@127.0.0.1:5432/postgres
 
