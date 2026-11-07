@@ -1,8 +1,9 @@
 /** SDK Playground, this is exception to testing rule and is allowed to use domain-specific features */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
+import { EventSource as Polyfill } from "eventsource";
 import {
     ApiServer,
     PgliteSqlDriver,
@@ -14,6 +15,7 @@ import * as api from "sdk/api/index.ts";
 import * as invoiceRows from "sdk/api/invoiceRow.ts";
 import { exec, safeExec, transaction } from "sdk/client.ts";
 import { ApiClient, VersionConflictError } from "sdk/http.ts";
+import type { WatchAllEvent } from "sdk/watch.ts";
 import { routes, withoutGuards } from "./routes.ts";
 import type { Quantity } from "spec/invoicing-service/primitives/Quantity.ts";
 import type { Money } from "spec/invoicing-service/primitives/Money.ts";
@@ -48,6 +50,8 @@ describe("playground", () => {
     let http: ApiClient;
 
     beforeAll(async () => {
+        // Node gates its own `EventSource` behind `--experimental-eventsource`, so the watch example installs the polyfill. See docs/notifications.md.
+        vi.stubGlobal("EventSource", Polyfill);
         if (await isListening(PLAYGROUND_PORT)) {
             http = new ApiClient(`http://127.0.0.1:${PLAYGROUND_PORT}`);
             return;
@@ -61,6 +65,7 @@ describe("playground", () => {
     });
 
     afterAll(async () => {
+        vi.unstubAllGlobals();
         await server?.close();
         await driver?.close();
     });
@@ -132,6 +137,47 @@ describe("playground", () => {
             if (outcome.error instanceof VersionConflictError) {
                 expect(outcome.error.status).toBe(409);
             }
+        }
+    });
+
+    it("streams an INSERT through watchInvoice", async () => {
+        const [tenant] = await exec(
+            http,
+            api.queryTenant({ limit: 1, select: { id: true } }),
+        );
+
+        if (!tenant) {
+            throw new Error("the seed has no tenants");
+        }
+
+        const events: WatchAllEvent<"INSERT">[] = [];
+        const stream = api.watchInvoice(http, {
+            onChange: (event) => events.push(event),
+            filter: { tenantId: tenant.id },
+            ops: ["INSERT"],
+        });
+
+        try {
+            // The route flushes its headers before the subscription's `LISTEN` lands, so wait for `open` and then a beat.
+            await new Promise<void>((resolve) => {
+                stream.addEventListener("open", () => resolve(), { once: true });
+            });
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            const invoice: api.InvoiceInsert = {
+                id: uniqueId() as InvoiceId,
+                tenantId: tenant.id,
+                number: `2026-${randomBytes(3).toString("hex")}`,
+                issueDate: new Date("2026-02-01T00:00:00.000Z"),
+                dueDate: new Date("2026-02-15T00:00:00.000Z"),
+            };
+            await exec(http, api.createInvoice([invoice]));
+
+            // `all` carries no key, only the operation, since the trigger publishes the statement.
+            await vi.waitFor(() => expect(events.length).toBeGreaterThan(0), { timeout: 5000 });
+            expect(events).toEqual([{ op: "INSERT" }]);
+        } finally {
+            stream.close();
         }
     });
 

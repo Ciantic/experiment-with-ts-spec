@@ -261,7 +261,8 @@ one.close();
 ```
 
 The helper uses the global `EventSource`; a host without one must install a
-polyfill, and a test substitutes the global with a double. A stream never
-finishes, so the group handler refuses a streaming call rather than waiting for
-its result, just as it refuses any route that answers with a writable instead of
-a value.
+polyfill, and a test either substitutes the global with a double or installs one
+for its own duration. Node still gates its own implementation behind
+`--experimental-eventsource`. A stream never finishes, so the group handler
+refuses a streaming call rather than waiting for its result, just as it refuses
+any route that answers with a writable instead of a value.
