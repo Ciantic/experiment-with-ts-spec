@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { AppError, BadGroupError, RequestError, VersionConflictError } from "sdk/errors.ts";
 import { AppContext, RequestContext } from "../context.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
-import type { SqlDriver } from "../db/sql-driver.ts";
 import { WritableResponse } from "./api-http-response.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { Route, RouteInput } from "./router.ts";

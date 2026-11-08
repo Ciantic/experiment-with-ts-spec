@@ -8,6 +8,8 @@
 set -e
 trap 'podman stop pg-throwaway' EXIT
 
+# For time being we can't use username and password because Porffor is missing PBKDF2 algorithm: https://github.com/CanadaHonk/porffor/issues/458
+
 podman run --replace --rm -d --name pg-throwaway -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1:5432:5432 docker.io/library/postgres:18-alpine
 
 pnpm --filter backend run build:porffor
