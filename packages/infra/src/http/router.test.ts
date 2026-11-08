@@ -14,7 +14,7 @@ import {
     ValidationError,
     VersionConflictError,
 } from "sdk/errors.ts";
-import { type AppContext, RequestContext } from "../context.ts";
+import { AppContext, RequestContext } from "../context.ts";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import { statusFor } from "./api-http-response.ts";
 import { GROUP_PATH } from "./group-handler.ts";
@@ -76,7 +76,7 @@ function createDriver() {
 /** The context startup builds, over a recording driver, so a request's executor is observable. */
 function createApp() {
     const { driver, statements } = createDriver();
-    return { app: { driver }, statements };
+    return { app: new AppContext({ driver: () => driver }), statements };
 }
 
 let app: AppContext;

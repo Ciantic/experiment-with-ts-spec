@@ -2,7 +2,7 @@
 import { parse, stringify } from "devalue";
 import { describe, expect, it } from "vitest";
 import { NotFoundError } from "sdk/errors.ts";
-import type { AppContext } from "../context.ts";
+import { AppContext } from "../context.ts";
 import { SqlDriver, type SqlConnection } from "../db/sql-driver.ts";
 import { ApiHttpResponse } from "./api-http-response.ts";
 import type { Route } from "./router.ts";
@@ -72,7 +72,7 @@ const responseRoute: Route = {
 
 /** The context startup builds, over the stub driver. */
 function createApp(): AppContext {
-    return { driver: new StubDriver() };
+    return new AppContext({ driver: () => new StubDriver() });
 }
 
 describe("ApiServer", () => {

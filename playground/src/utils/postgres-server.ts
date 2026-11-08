@@ -1,7 +1,7 @@
 /** The real PostgreSQL environment: a database on the playground's Podman container, served by this process. */
 import { expect, it } from "vitest";
 import * as pgRuntime from "pg";
-import { ApiServer, PgSqlDriver, applySchema, createAppContext, seedMockData } from "infra";
+import { ApiServer, AppContext, PgSqlDriver, applySchema, seedMockData, type SqlDriver } from "infra";
 import * as api from "sdk/api/index.ts";
 import { exec } from "sdk/client.ts";
 import { ApiClient } from "sdk/http.ts";
@@ -13,30 +13,32 @@ import { PostgresContainer } from "./postgres-container.ts";
 /** A server this process serves over one database. */
 class LocalServer extends PlaygroundServer {
     readonly #server: ApiServer;
-    readonly #driver: PgSqlDriver;
+    readonly #app: AppContext;
 
-    private constructor(http: ApiClient, server: ApiServer, driver: PgSqlDriver) {
+    private constructor(http: ApiClient, server: ApiServer, app: AppContext) {
         super(http);
         this.#server = server;
-        this.#driver = driver;
+        this.#app = app;
     }
 
     /** Serve one database over an ephemeral port; close releases only this process's server and pool. */
     static async serve(databaseUrl: string): Promise<LocalServer> {
-        const driver = new PgSqlDriver(pgRuntime, { connectionString: databaseUrl });
-        await LocalServer.prepare(driver);
-        const server = new ApiServer(createAppContext({ driver }), withoutGuards(routes));
+        const app = new AppContext({
+            driver: () => new PgSqlDriver(pgRuntime, { connectionString: databaseUrl }),
+        });
+        await LocalServer.prepare(app.driver);
+        const server = new ApiServer(app, withoutGuards(routes));
         const port = await server.listen(0);
-        return new LocalServer(new ApiClient(`http://127.0.0.1:${port}`), server, driver);
+        return new LocalServer(new ApiClient(`http://127.0.0.1:${port}`), server, app);
     }
 
     async close(): Promise<void> {
         await this.#server.close();
-        await this.#driver.close();
+        await this.#app.driver.close();
     }
 
     /** Apply the generated schema and the mock data, unless the database already holds the schema. */
-    private static async prepare(driver: PgSqlDriver): Promise<void> {
+    private static async prepare(driver: SqlDriver): Promise<void> {
         const result = await driver.query<{ tables: number }>(
             "select count(*)::int as tables from information_schema.tables where table_schema = 'public'",
         );

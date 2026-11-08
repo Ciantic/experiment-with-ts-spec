@@ -1,8 +1,8 @@
 /** The infra package entry: the hand-written surface the backend imports, plus the generated data access. */
 
 // Context exports
-export { createAppContext, RequestContext } from "./context.ts";
-export type { AppContext, AppOptions } from "./context.ts";
+export { AppContext, RequestContext } from "./context.ts";
+export type { AppOptions } from "./context.ts";
 
 // Schema exports
 export { applySchema } from "./postgres/schema.ts";

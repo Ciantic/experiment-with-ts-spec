@@ -143,6 +143,6 @@ flowchart LR
 
 Data for the requests flows through two contexts:
 
-1. `AppContext` is application specific context, created once on startup.
+1. `AppContext` is application specific context, created once on startup; its dependencies are factories, built the first time a getter reads them.
 2. `RequestContext` is request specific context, created from `AppContext` for each request.
 3. REST endpoint functionality then use parts from the `RequestContext` such as `db: SqlExecutor`.

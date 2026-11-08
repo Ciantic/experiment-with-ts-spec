@@ -12,41 +12,48 @@ import type {
     TenantPermissionEntity,
 } from "sdk/permissions.ts";
 
-/** How to build the app context. */
+/** How to build the app context: one factory per process-level dependency, each called on first use. */
 export interface AppOptions {
-    /** The driver the process chose for its database. */
-    driver: SqlDriver;
+    /** Build the driver the first time a request needs the database; the process closes what it built. */
+    driver: () => SqlDriver;
 }
 
-/** What startup creates once: the driver requests derive their executor from, and the process closes. */
-export interface AppContext {
-    /** The process's driver: each request builds its executor over it, and its owner closes it. */
-    driver: SqlDriver;
+/** What startup creates once: the dependencies a request derives its own from, each built on first use. */
+export class AppContext {
+    readonly #options: AppOptions;
+    #driver: SqlDriver | undefined;
+
+    constructor(options: AppOptions) {
+        this.#options = options;
+    }
+
+    /** The process's driver, built on first use; its owner closes it at shutdown. */
+    get driver(): SqlDriver {
+        return (this.#driver ??= this.#options.driver());
+    }
 }
 
-/** Build the process's context over the driver it was given. */
-export function createAppContext(options: AppOptions): AppContext {
-    return { driver: options.driver };
-}
-
-/** One request's context: the executor its call runs on, and the request it answers. */
+/** One request's context: the process's context, and the request it answers. */
 export class RequestContext {
-    readonly #db: SqlExecutor;
+    readonly #app: AppContext;
+    #db?: SqlExecutor;
     readonly #request: IncomingMessage;
 
-    constructor(executor: SqlExecutor, request: IncomingMessage) {
-        this.#db = executor;
+    constructor(app: AppContext, request: IncomingMessage) {
+        this.#app = app;
         this.#request = request;
     }
 
     /** The executor the call runs on; a group hands the boundary its kind opened. */
     get db(): SqlExecutor {
-        return this.#db;
+        return (this.#db ??= this.#app.driver.createExecutor());
     }
 
     /** The same request, run on another executor; a group boundary hands each of its steps one. */
     withExecutor(executor: SqlExecutor): RequestContext {
-        return new RequestContext(executor, this.#request);
+        const context = new RequestContext(this.#app, this.#request);
+        context.#db = executor;
+        return context;
     }
 
     /**

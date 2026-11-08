@@ -1,6 +1,6 @@
 /** The `pg` entry point: a server over an external Postgres. See docs/entrypoints.md. */
 import * as pgRuntime from "pg";
-import { ApiServer, PgSqlDriver, applySchema, createAppContext, seedMockData } from "infra";
+import { ApiServer, AppContext, PgSqlDriver, applySchema, seedMockData } from "infra";
 import { routes, withoutGuards } from "./routes.ts";
 import { parseServerArgs } from "./args.pg.ts";
 
@@ -8,14 +8,15 @@ import { parseServerArgs } from "./args.pg.ts";
 async function main(): Promise<void> {
     const options = parseServerArgs(process.argv.slice(2));
     const url = options.databaseUrl ?? process.env.DATABASE_URL;
-    const driver = new PgSqlDriver(pgRuntime, url === undefined ? {} : { connectionString: url });
+    const app = new AppContext({
+        driver: () => new PgSqlDriver(pgRuntime, url === undefined ? {} : { connectionString: url }),
+    });
     if (options.schema) {
-        await applySchema(driver);
+        await applySchema(app.driver);
     }
     if (options.seed) {
-        await seedMockData(driver.createExecutor());
+        await seedMockData(app.driver.createExecutor());
     }
-    const app = createAppContext({ driver });
     const server = new ApiServer(app, options.withoutAuth === true ? withoutGuards(routes) : routes);
     const port = await server.listen(options.port);
     console.log(

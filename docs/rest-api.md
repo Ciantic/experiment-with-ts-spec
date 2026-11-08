@@ -110,9 +110,10 @@ apply.
 A route handler receives one `RequestContext`, whose `db` is the request's
 executor; a generated entity route reads `ctx.db`, and a generated operation route
 passes `ctx` itself to the module, so the operation's chosen context is
-compile-checked against it. `createAppContext` in `packages/infra/src/context.ts`
-builds the process's context once at startup, and the router builds a request's
-`RequestContext` over it with `new RequestContext(app.driver.createExecutor(), request)`.
+compile-checked against it. The `AppContext` in `packages/infra/src/context.ts`
+holds the process's dependencies, built on first use,
+and the router builds a request's
+`RequestContext` over it with `new RequestContext(app, request)`.
 See `docs/operations.md`.
 
 A read pages, orders, and compares: it returns at most `limit` matching rows

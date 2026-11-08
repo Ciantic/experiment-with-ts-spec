@@ -55,7 +55,7 @@ where the caller names the modes its own boundary opens with
 stays an optional dependency. The process owns a `SqlDriver`
 (`src/db/sql-driver.ts`), a `PgSqlDriver` over `pg`'s mapped `Pool` or a
 `PgliteSqlDriver` over PGlite; a boundary receives the `SqlExecutor` the
-context derives from it with `driver.createExecutor()`.
+context derives from it with `driver.createExecutor()` when its `db` is first read.
 
 ## What a write returns
 

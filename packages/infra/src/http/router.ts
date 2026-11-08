@@ -101,7 +101,7 @@ export class ApiRouter implements HttpRouter {
         // A missing method is read as `GET`, the method a request without one carries.
         const method = request.method ?? "GET";
         // One context per request, so a route never reaches for a dependency the router did not hand it.
-        const ctx = new RequestContext(this.#app.driver.createExecutor(), request);
+        const ctx = new RequestContext(this.#app, request);
         const body = await readBody(request);
 
         if (method === "POST" && url.pathname === GROUP_PATH) {

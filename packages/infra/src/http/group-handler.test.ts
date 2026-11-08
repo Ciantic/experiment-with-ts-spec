@@ -3,8 +3,9 @@ import type { IncomingMessage } from "node:http";
 import { stringify } from "devalue";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AppError, BadGroupError, RequestError, VersionConflictError } from "sdk/errors.ts";
-import { RequestContext } from "../context.ts";
+import { AppContext, RequestContext } from "../context.ts";
 import type { SqlExecutor, TransactionOptions } from "../db/sql-executor.ts";
+import type { SqlDriver } from "../db/sql-driver.ts";
 import { WritableResponse } from "./api-http-response.ts";
 import { handleGroup } from "./group-handler.ts";
 import type { Route, RouteInput } from "./router.ts";
@@ -45,12 +46,19 @@ function createDb() {
     return { db: handle(0), boundaries, statements, modes };
 }
 
+/** A stand-in for the request a context answers; these tests never read it. */
+const REQUEST = {} as IncomingMessage;
+
 let fake: ReturnType<typeof createDb>;
 let db: SqlExecutor;
+let context: RequestContext;
 
 beforeEach(() => {
     fake = createDb();
     db = fake.db;
+    context = new RequestContext(new AppContext({ driver: () => { 
+        throw new Error("the group handler never builds an executor"); } 
+    }), REQUEST).withExecutor(db);
 });
 
 /** A route that echoes its argument back, so the results of a group are observable. */
@@ -79,7 +87,7 @@ function groupBody(kind: "batch" | "transaction" | "attempt", calls: unknown[], 
 /** Handle one body against a fixture route table, resolving calls the way the router does. */
 async function handle(routes: Route[], body: string): Promise<unknown> {
     const byId = new Map(routes.map((route) => [route.id, route]));
-    return await handleGroup(new RequestContext(db, {} as IncomingMessage), (id) => byId.get(id), body);
+    return await handleGroup(context, (id) => byId.get(id), body);
 }
 
 /** The error a group failed with, so its type and fields are both assertable. */

@@ -197,14 +197,27 @@ choose one: it writes `unknown`, which compiles because the annotation supplies
 the parameter types, and says plainly that the implementation must decide.
 
 Every route handler receives one context, `RequestContext` in
-`packages/infra/src/context.ts`, which holds the executor its request runs on and
-the request itself. Startup builds the driver it chose — the backend builds PGlite
-— applies the generated schema with `applySchema` from
-`packages/infra/src/postgres/schema.ts`, and calls `createAppContext` once to build
-the process's context. The context holds the driver, and the router builds
-`new RequestContext(app.driver.createExecutor(), request)` per request, which gives
-that request its own executor over the driver's pool; a test or a worker that needs
-only a database derives one with `app.driver.createExecutor()`. An operation annotated
+`packages/infra/src/context.ts`, which holds the process's context and the request
+it answers. `AppContext` is a class built once at startup from `AppOptions`, whose
+fields are factories rather than instances: a dependency is built the first time a
+getter reads it. The backend builds PGlite, applying the generated schema with
+`applySchema` from `packages/infra/src/postgres/schema.ts`; that reads `app.driver`,
+so startup builds the driver when the schema step runs. The router builds
+`new RequestContext(app, request)` per request, which gives that request its own
+executor over the driver's pool when `ctx.db` is first read; a test or a worker that
+needs only a database derives one with `app.driver.createExecutor()`.
+
+`AppContext` outlives every request and owns no shutdown of its own: the process,
+which lives exactly as long, closes the driver it built with `app.driver.close()`.
+
+A dependency only some endpoints need is one factory in `AppOptions`, one private
+field and a getter on `AppContext` that assigns it with `??=`, and a getter on
+`RequestContext` that reads it from `this.#app`. A request that never reads it never
+builds it, so a Redis client or a mail transport costs nothing on the routes that do
+not use it. The same rule makes `db` a getter: an executor is built when the first
+statement needs one.
+
+An operation annotated
 `WidgetOperations<{ db: SqlExecutor }>` — or `<unknown>` — accepts it unchanged.
 An operation that wanted more, such as `<{ db: SqlExecutor; clock: Clock }>`,
 would fail to compile in the generated route, because the HTTP layer cannot build
